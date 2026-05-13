@@ -12,6 +12,23 @@ open mobile table -> spectators visible -> arm copy-next-signal -> leader signal
 
 This sprint should make the product feel real before DeepBook testnet execution is required.
 
+## Current Checkpoint
+
+Completed on `codex/hot-hands-stage-1`:
+
+- Mobile table shell with spectator rail, hot trader cards, and copy-next controls.
+- PWA copy model tests for amount changes, trader selection, and arm/disarm state.
+- Demo fixtures for `opening-night`, `trap-streak`, and `hot-hand-swing`.
+- Scoring tests for win/loss settlement, trap streaks, ranked hot hands, and leader swings.
+- Worker protocol tests, table summary delta tests, and heartbeat policy tests.
+- Browser smoke test for the integrated mobile UI and copy controls.
+
+Next loop:
+
+- PWA live replay of signal/copy/settlement/leaderboard changes.
+- Demo-runner replay frames that bridge trace events to UI animation data.
+- Worker table state that preserves copy-next leader IDs and per-leader armed counts.
+
 ## Parallel Workstreams
 
 ### Agent A: PWA Shell
@@ -97,4 +114,3 @@ bun run demo opening-night
 - The Worker can accept a local WebSocket connection and update table presence.
 - `verify:fast` is upgraded from placeholders to real package checks where available.
 - No package writes outside assigned ownership.
-
