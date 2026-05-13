@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { produceTraceById } from "./index";
+import { produceReplayFramesById, produceTraceById } from "./index";
 
 declare const process: {
   argv: string[];
@@ -8,11 +8,15 @@ declare const process: {
   stderr: { write: (text: string) => void };
 };
 
-const scenarioId = process.argv[2] ?? "opening-night";
+const args = process.argv.slice(2);
+const framesMode = args.includes("--frames");
+const scenarioId = args.find((arg) => !arg.startsWith("--")) ?? "opening-night";
 
 try {
-  const trace = produceTraceById(scenarioId);
-  process.stdout.write(`${JSON.stringify(trace, null, 2)}\n`);
+  const output = framesMode
+    ? produceReplayFramesById(scenarioId)
+    : produceTraceById(scenarioId);
+  process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 } catch (error) {
   process.exitCode = 1;
   const message = error instanceof Error ? error.message : String(error);
