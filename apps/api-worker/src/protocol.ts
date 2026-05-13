@@ -22,7 +22,7 @@ export interface PingMessage {
 
 export interface ArmCopyMessage {
   type: "arm_copy";
-  leaderId?: string;
+  leaderId: string;
 }
 
 export interface DisarmCopyMessage {
@@ -67,6 +67,11 @@ export interface TableSummary {
   updatedAtMs: number;
 }
 
+export interface TableSummaryDelta {
+  summary: TableSummary;
+  delta: TableDeltaMessage;
+}
+
 export interface SocketSession {
   spectatorId: string;
   armed: boolean;
@@ -89,21 +94,27 @@ export function parseClientMessage(input: string): ClientMessage | null {
 
   switch (parsed.type) {
     case "join":
-      return {
-        type: "join",
-        spectatorId: optionalString(parsed.spectatorId)
-      };
+      if (!hasOnlyKeys(parsed, ["type", "spectatorId"])) {
+        return null;
+      }
+      return parseJoinMessage(parsed);
     case "ping":
-      return {
-        type: "ping",
-        nonce: optionalString(parsed.nonce)
-      };
+      if (!hasOnlyKeys(parsed, ["type", "nonce"])) {
+        return null;
+      }
+      return parsePingMessage(parsed);
     case "arm_copy":
+      if (!hasOnlyKeys(parsed, ["type", "leaderId"]) || !isNonEmptyString(parsed.leaderId)) {
+        return null;
+      }
       return {
         type: "arm_copy",
-        leaderId: optionalString(parsed.leaderId)
+        leaderId: parsed.leaderId
       };
     case "disarm_copy":
+      if (!hasOnlyKeys(parsed, ["type"])) {
+        return null;
+      }
       return { type: "disarm_copy" };
     default:
       return null;
@@ -111,11 +122,195 @@ export function parseClientMessage(input: string): ClientMessage | null {
 }
 
 export function encodeServerMessage(message: ServerMessage): string {
+  if (!isServerMessage(message)) {
+    throw new Error("Invalid server message");
+  }
+
   return JSON.stringify(message);
 }
 
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+export function applyTableSummaryDelta(
+  summary: TableSummary,
+  event: TableDeltaMessage["event"],
+  atMs: number
+): TableSummaryDelta {
+  if (!isTableSummary(summary) || !isTableDeltaEvent(event) || !isTimestampMs(atMs)) {
+    throw new Error("Invalid table summary delta");
+  }
+
+  let spectatorCount = summary.spectatorCount;
+  let armedCount = summary.armedCount;
+
+  switch (event) {
+    case "spectator_joined":
+      spectatorCount += 1;
+      break;
+    case "spectator_left":
+      spectatorCount = Math.max(0, spectatorCount - 1);
+      armedCount = Math.min(armedCount, spectatorCount);
+      break;
+    case "copy_armed":
+      armedCount = Math.min(spectatorCount, armedCount + 1);
+      break;
+    case "copy_disarmed":
+      armedCount = Math.max(0, armedCount - 1);
+      break;
+  }
+
+  const nextSummary: TableSummary = {
+    tableId: summary.tableId,
+    spectatorCount,
+    armedCount,
+    updatedAtMs: atMs
+  };
+
+  return {
+    summary: nextSummary,
+    delta: {
+      type: "table_delta",
+      tableId: nextSummary.tableId,
+      atMs,
+      spectatorCount,
+      armedCount,
+      event
+    }
+  };
+}
+
+function parseJoinMessage(parsed: Record<string, unknown>): JoinMessage | null {
+  const spectatorId = optionalNonEmptyString(parsed, "spectatorId");
+  if (spectatorId === null) {
+    return null;
+  }
+
+  return spectatorId ? { type: "join", spectatorId } : { type: "join" };
+}
+
+function parsePingMessage(parsed: Record<string, unknown>): PingMessage | null {
+  const nonce = optionalNonEmptyString(parsed, "nonce");
+  if (nonce === null) {
+    return null;
+  }
+
+  return nonce ? { type: "ping", nonce } : { type: "ping" };
+}
+
+function optionalNonEmptyString(
+  record: Record<string, unknown>,
+  key: string
+): string | null | undefined {
+  if (!(key in record)) {
+    return undefined;
+  }
+
+  return isNonEmptyString(record[key]) ? record[key] : null;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function hasOnlyKeys(record: Record<string, unknown>, allowedKeys: string[]): boolean {
+  return Object.keys(record).every((key) => allowedKeys.includes(key));
+}
+
+function isServerMessage(value: unknown): value is ServerMessage {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return false;
+  }
+
+  switch (value.type) {
+    case "welcome":
+      return isWelcomeMessage(value);
+    case "pong":
+      return isPongMessage(value);
+    case "table_delta":
+      return isTableDeltaMessage(value);
+    case "error":
+      return isErrorMessage(value);
+    default:
+      return false;
+  }
+}
+
+function isWelcomeMessage(value: Record<string, unknown>): boolean {
+  return (
+    hasOnlyKeys(value, ["type", "table", "spectatorId"]) &&
+    value.type === "welcome" &&
+    isTableSummary(value.table) &&
+    isNonEmptyString(value.spectatorId)
+  );
+}
+
+function isPongMessage(value: Record<string, unknown>): boolean {
+  return (
+    hasOnlyKeys(value, ["type", "atMs", "nonce"]) &&
+    value.type === "pong" &&
+    isTimestampMs(value.atMs) &&
+    (!("nonce" in value) || value.nonce === undefined || isNonEmptyString(value.nonce))
+  );
+}
+
+function isTableDeltaMessage(value: Record<string, unknown>): boolean {
+  return (
+    hasOnlyKeys(value, [
+      "type",
+      "tableId",
+      "atMs",
+      "spectatorCount",
+      "armedCount",
+      "event"
+    ]) &&
+    value.type === "table_delta" &&
+    isNonEmptyString(value.tableId) &&
+    isTimestampMs(value.atMs) &&
+    isCount(value.spectatorCount) &&
+    isCount(value.armedCount) &&
+    value.armedCount <= value.spectatorCount &&
+    isTableDeltaEvent(value.event)
+  );
+}
+
+function isErrorMessage(value: Record<string, unknown>): boolean {
+  return (
+    hasOnlyKeys(value, ["type", "code", "message"]) &&
+    value.type === "error" &&
+    isErrorCode(value.code) &&
+    isNonEmptyString(value.message)
+  );
+}
+
+function isTableSummary(value: unknown): value is TableSummary {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ["tableId", "spectatorCount", "armedCount", "updatedAtMs"]) &&
+    isNonEmptyString(value.tableId) &&
+    isCount(value.spectatorCount) &&
+    isCount(value.armedCount) &&
+    value.armedCount <= value.spectatorCount &&
+    isTimestampMs(value.updatedAtMs)
+  );
+}
+
+function isTableDeltaEvent(value: unknown): value is TableDeltaMessage["event"] {
+  return (
+    value === "spectator_joined" ||
+    value === "spectator_left" ||
+    value === "copy_armed" ||
+    value === "copy_disarmed"
+  );
+}
+
+function isErrorCode(value: unknown): value is ErrorMessage["code"] {
+  return value === "bad_json" || value === "bad_message" || value === "unsupported_message";
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isTimestampMs(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -8,8 +8,8 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"TODO: add API worker lint\"",
-    "test": "echo \"TODO: add Durable Object protocol tests\"",
-    "test:worker": "echo \"TODO: add Cloudflare Workers Vitest tests\""
+    "test": "bun test test",
+    "test:worker": "bun test test"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260509.0",
