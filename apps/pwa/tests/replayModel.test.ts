@@ -29,7 +29,7 @@ describe("live replay model", () => {
     expect(getReplayFrame(state, traders, market)).toMatchObject({
       phase: "signal-landed",
       status: "Leader signal landed",
-      latestSignal: "Mina Volt fired Long BTC on pullback",
+      latestSignal: "Mina Volt posted BTC UP on pullback",
     });
 
     state = advanceReplay(state);

@@ -52,8 +52,8 @@ export type ReplayFrame = {
     | "Hot hand updated";
   tableCall: string;
   latestSignal: string;
-  dice: [string, string];
-  puck: string;
+  signalBadges: [string, string];
+  phaseBadge: string;
   copyReceipt: ReplayCopyReceipt;
   settlement: ReplaySettlement;
   hotHand: {
@@ -65,12 +65,12 @@ export type ReplayFrame = {
   activity: string[];
 };
 
-const replayDice: Record<ReplayPhase, [string, string]> = {
-  "copy-armed": ["3", "5"],
-  "signal-landed": ["4", "4"],
-  "copy-executed": ["6", "2"],
-  settled: ["5", "3"],
-  "hot-hand-updated": ["6", "6"],
+const replaySignalBadges: Record<ReplayPhase, [string, string]> = {
+  "copy-armed": ["BTC", "ARMED"],
+  "signal-landed": ["SIGNAL", "LIVE"],
+  "copy-executed": ["COPY", "SENT"],
+  settled: ["SETTLE", "FILLED"],
+  "hot-hand-updated": ["BOARD", "HOT"],
 };
 
 const phaseStatus: Record<ReplayPhase, ReplayFrame["status"]> = {
@@ -190,10 +190,17 @@ export function getReplayFrame(
     phase,
     stepLabel: `${state.step + 1}/${REPLAY_PHASES.length}`,
     status: phaseStatus[phase],
-    tableCall: getTableCall(phase, selectedTrader.name, amount, pnl, state.copy.isArmed),
+    tableCall: getTableCall(
+      phase,
+      selectedTrader.name,
+      selectedTrader.signal,
+      amount,
+      pnl,
+      state.copy.isArmed,
+    ),
     latestSignal: getLatestSignal(phase, selectedTrader),
-    dice: replayDice[phase],
-    puck: getPuckLabel(phase, state.copy.isArmed),
+    signalBadges: replaySignalBadges[phase],
+    phaseBadge: getPhaseBadge(phase, state.copy.isArmed),
     copyReceipt: {
       leader: selectedTrader.name,
       market: market.pair,
@@ -292,11 +299,11 @@ function getReceiptSummary(
   }
 
   if (phase === "copy-executed") {
-    return `${amount} copied from ${leader}. Waiting on the fake settlement.`;
+    return `${amount} copied from ${leader}. Waiting on settlement.`;
   }
 
   if (phase === "settled") {
-    return `${amount} filled for ${pnl}; table score is posting next.`;
+    return `${amount} filled for ${pnl}; leaderboard score is posting next.`;
   }
 
   return `${leader} gets the hot hand bump after a ${pnl} copy settlement.`;
@@ -305,6 +312,7 @@ function getReceiptSummary(
 function getTableCall(
   phase: ReplayPhase,
   leader: string,
+  signal: string,
   amount: string,
   pnl: string,
   isArmed: boolean,
@@ -314,43 +322,43 @@ function getTableCall(
   }
 
   if (phase === "copy-armed") {
-    return `${amount} behind ${leader}`;
+    return `${amount} copy max ready for ${leader}`;
   }
 
   if (phase === "signal-landed") {
-    return `${leader} signal on the felt`;
+    return `${leader} posted ${signal}`;
   }
 
   if (phase === "copy-executed") {
-    return `${amount} copied to the ticket`;
+    return `${amount} copied to BTC ticket`;
   }
 
   if (phase === "settled") {
-    return `Settlement pays ${pnl}`;
+    return `Settlement posts ${pnl}`;
   }
 
-  return `${leader} takes the hot hand`;
+  return `${leader} tops the leaderboard`;
 }
 
 function getLatestSignal(phase: ReplayPhase, trader: Trader): string {
   if (phase === "copy-armed") {
-    return `${trader.name} is set for ${trader.signal}`;
+    return `${trader.name} is tracking ${trader.signal}`;
   }
 
-  return `${trader.name} fired ${trader.signal}`;
+  return `${trader.name} posted ${trader.signal}`;
 }
 
-function getPuckLabel(phase: ReplayPhase, isArmed: boolean): string {
+function getPhaseBadge(phase: ReplayPhase, isArmed: boolean): string {
   if (!isArmed) {
-    return "OFF";
+    return "PAUSED";
   }
 
   if (phase === "copy-armed") {
-    return "ON";
+    return "ARM";
   }
 
   if (phase === "signal-landed") {
-    return "SIG";
+    return "LIVE";
   }
 
   if (phase === "copy-executed") {
@@ -358,7 +366,7 @@ function getPuckLabel(phase: ReplayPhase, isArmed: boolean): string {
   }
 
   if (phase === "settled") {
-    return "PAID";
+    return "SETTLE";
   }
 
   return "HOT";
@@ -380,15 +388,15 @@ function getActivity(
   }
 
   if (phase === "signal-landed") {
-    return [`${leader} signal lands`, "Copy trigger live", `${amount} reserved`];
+    return [`${leader} signal live`, "BTC trigger live", `${amount} reserved`];
   }
 
   if (phase === "copy-executed") {
-    return [`${amount} copied`, `${leader} receipt open`, "Awaiting fill"];
+    return [`${amount} copied`, `${leader} receipt open`, "Awaiting settlement"];
   }
 
   if (phase === "settled") {
-    return ["Fake settlement filled", `${pnl} result`, "Score pending"];
+    return ["Settlement filled", `${pnl} result`, "Leaderboard pending"];
   }
 
   return [`${leader} hot hand`, "Leaderboard bumped", `${pnl} banked`];

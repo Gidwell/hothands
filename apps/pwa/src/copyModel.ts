@@ -84,13 +84,13 @@ export function getSelectedTrader(state: CopyTableState, traders: Trader[]): Tra
       name: "No leader",
       handle: "",
       avatar: "--",
-      role: "Rail",
+      role: "Signal desk",
       streak: 0,
       hotScore: 0,
       roi: "0%",
       copied: 0,
       signal: "Waiting for signal",
-      tableRead: "No active table read",
+      tableRead: "No active market read",
       tone: "gold",
     }
   );

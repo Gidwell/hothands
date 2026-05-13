@@ -10,7 +10,7 @@ import {
 import { market, traders } from "../src/mockData";
 
 describe("copy interaction model", () => {
-  test("clamps and steps copy amount in fixed table chips", () => {
+  test("clamps and steps copy amount in fixed copy chips", () => {
     const state = createInitialCopyState(traders);
 
     expect(state.copyAmount).toBe(250);
