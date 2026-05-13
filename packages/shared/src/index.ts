@@ -267,8 +267,32 @@ export function buildTableSnapshot(input: {
 }): TableSnapshot {
   return {
     ...input,
-    leaders: [...input.leaders].sort((a, b) => b.hotScore - a.hotScore),
+    leaders: rankTraderScores(input.leaders),
   };
+}
+
+export function rankTraderScores(leaders: TraderScore[]): TraderScore[] {
+  return [...leaders].sort(compareTraderScores);
+}
+
+function compareTraderScores(a: TraderScore, b: TraderScore): number {
+  return compareDesc(a.hotScore, b.hotScore) ||
+    compareDesc(a.roi, b.roi) ||
+    compareDesc(a.copiedVolume, b.copiedVolume) ||
+    compareDesc(a.pnl, b.pnl) ||
+    compareDesc(a.hitRate, b.hitRate) ||
+    compareDesc(a.resolvedCount, b.resolvedCount) ||
+    compareAsc(a.traderId, b.traderId);
+}
+
+function compareDesc(a: number, b: number): number {
+  return b - a;
+}
+
+function compareAsc(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
 }
 
 function clamp(value: number, min: number, max: number): number {
