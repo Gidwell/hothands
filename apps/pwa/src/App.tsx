@@ -1,10 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   COPY_AMOUNT_MAX,
   COPY_AMOUNT_MIN,
-  createInitialCopyState,
   formatCopyAmount,
-  getCopyReceiptPreview,
   getSelectedTrader,
   selectHotTrader,
   setCopyAmount,
@@ -12,22 +10,35 @@ import {
   toggleCopyArmed,
 } from "./copyModel";
 import { market, spectators, traders, type Trader } from "./mockData";
+import {
+  advanceReplay,
+  createInitialReplayState,
+  getReplayFrame,
+  getReplayTraders,
+  resetReplay,
+  setReplayPlaying,
+  updateReplayCopy,
+} from "./replayModel";
 
 const quickAmounts = [100, 250, 500, 1_000];
 
 function TraderCard({
   trader,
   isSelected,
+  isHotHand,
   onSelect,
 }: {
   trader: Trader;
   isSelected: boolean;
+  isHotHand: boolean;
   onSelect: (traderId: string) => void;
 }) {
   return (
     <button
       type="button"
-      className={`trader-card trader-card-${trader.tone}`}
+      className={`trader-card trader-card-${trader.tone} ${
+        isHotHand ? "trader-card-hot" : ""
+      }`}
       aria-pressed={isSelected}
       onClick={() => onSelect(trader.id)}
     >
@@ -36,7 +47,7 @@ function TraderCard({
         <div>
           <div className="trader-title-row">
             <h2>{trader.name}</h2>
-            {isSelected ? <span>Live pick</span> : null}
+            {isHotHand ? <span>Hot hand</span> : isSelected ? <span>Live pick</span> : null}
           </div>
           <p>
             {trader.handle} / {trader.role}
@@ -75,28 +86,54 @@ function TraderCard({
 }
 
 export function App() {
-  const [copyState, setCopyState] = useState(() => createInitialCopyState(traders));
-  const selectedTrader = getSelectedTrader(copyState, traders);
-  const receipt = useMemo(
-    () => getCopyReceiptPreview(copyState, traders, market),
-    [copyState],
-  );
+  const [replayState, setReplayState] = useState(() => createInitialReplayState(traders));
+  const copyState = replayState.copy;
+  const replayTraders = useMemo(() => getReplayTraders(replayState, traders), [replayState]);
+  const frame = useMemo(() => getReplayFrame(replayState, traders, market), [replayState]);
+  const selectedTrader = getSelectedTrader(copyState, replayTraders);
+  const receipt = frame.copyReceipt;
   const railCount = spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
 
+  useEffect(() => {
+    if (!replayState.isPlaying) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setReplayState((state) => advanceReplay(state));
+    }, 1800);
+
+    return () => window.clearInterval(timer);
+  }, [replayState.isPlaying]);
+
   const handleTraderSelect = (traderId: string) => {
-    setCopyState((state) => selectHotTrader(state, traderId, traders));
+    setReplayState((state) =>
+      updateReplayCopy(state, (copy) => selectHotTrader(copy, traderId, traders)),
+    );
   };
 
   const handleAmountStep = (direction: -1 | 1) => {
-    setCopyState((state) => stepCopyAmount(state, direction));
+    setReplayState((state) => updateReplayCopy(state, (copy) => stepCopyAmount(copy, direction)));
   };
 
   const handleAmountSet = (amount: number) => {
-    setCopyState((state) => setCopyAmount(state, amount));
+    setReplayState((state) => updateReplayCopy(state, (copy) => setCopyAmount(copy, amount)));
   };
 
   const handleArmToggle = () => {
-    setCopyState((state) => toggleCopyArmed(state));
+    setReplayState((state) => updateReplayCopy(state, (copy) => toggleCopyArmed(copy)));
+  };
+
+  const handleReplayToggle = () => {
+    setReplayState((state) => setReplayPlaying(state, !state.isPlaying));
+  };
+
+  const handleReplayNext = () => {
+    setReplayState((state) => advanceReplay(setReplayPlaying(state, false)));
+  };
+
+  const handleReplayReset = () => {
+    setReplayState((state) => resetReplay(state));
   };
 
   return (
@@ -122,10 +159,36 @@ export function App() {
             <p>Table 7 / point {market.point}</p>
             <h1>Hot Hands</h1>
           </div>
-          <div className="table-badge">Live roll</div>
+          <div className="table-badge">{frame.stepLabel}</div>
         </section>
 
-        <section className={`felt-table ${copyState.isArmed ? "felt-table-armed" : ""}`}>
+        <section className="replay-panel" aria-label="Live replay status">
+          <div className="replay-status-row">
+            <div>
+              <p>Live replay</p>
+              <h2>{frame.status}</h2>
+            </div>
+            <span>{frame.puck}</span>
+          </div>
+          <p className="replay-call">{frame.tableCall}</p>
+          <div className="replay-controls" aria-label="Replay controls">
+            <button type="button" onClick={handleReplayToggle}>
+              {replayState.isPlaying ? "Pause" : "Play"}
+            </button>
+            <button type="button" onClick={handleReplayNext}>
+              Next
+            </button>
+            <button type="button" onClick={handleReplayReset}>
+              Reset
+            </button>
+          </div>
+        </section>
+
+        <section
+          className={`felt-table felt-table-${frame.phase} ${
+            copyState.isArmed ? "felt-table-armed" : ""
+          }`}
+        >
           <div className="felt-rail">
             <span>Pass</span>
             <span>Come</span>
@@ -134,12 +197,13 @@ export function App() {
           <div className="shooter-puck">
             <span>{selectedTrader.avatar}</span>
             <strong>{selectedTrader.name}</strong>
-            <p>{selectedTrader.signal}</p>
+            <p>{frame.latestSignal}</p>
           </div>
+          <div className="felt-action-strip">{frame.tableCall}</div>
           <div className="dice-row" aria-hidden="true">
-            <span className="die">3</span>
-            <span className="die">5</span>
-            <span className="chip chip-gold">{copyState.isArmed ? "ON" : "OFF"}</span>
+            <span className="die">{frame.dice[0]}</span>
+            <span className="die">{frame.dice[1]}</span>
+            <span className="chip chip-gold">{frame.puck}</span>
           </div>
         </section>
 
@@ -162,18 +226,21 @@ export function App() {
             <div className="spectator-more">+{selectedTrader.streak * 11}</div>
           </div>
           <div className="rail-ticker" aria-label="Table activity">
-            <span>{selectedTrader.streak} straight hot signals</span>
-            <span>{receipt.amount} max copy</span>
-            <span>{copyState.isArmed ? "Copy armed" : "Copy paused"}</span>
+            {frame.activity.map((activity) => (
+              <span key={activity}>{activity}</span>
+            ))}
           </div>
         </section>
 
-        <section className="trader-list" aria-label="Hot traders">
-          {traders.map((trader) => (
+        <section className="trader-list" aria-label="Hot leaderboard">
+          {replayTraders.map((trader) => (
             <TraderCard
               trader={trader}
               key={trader.id}
               isSelected={trader.id === copyState.selectedTraderId}
+              isHotHand={
+                frame.phase === "hot-hand-updated" && trader.id === copyState.selectedTraderId
+              }
               onSelect={handleTraderSelect}
             />
           ))}
@@ -181,7 +248,9 @@ export function App() {
 
         <section className="copy-tray" aria-label="Copy next signal tray">
           <div className="copy-receipt">
-            <p className="copy-state">{receipt.status}</p>
+            <p className="copy-state">
+              {receipt.state} / {frame.status}
+            </p>
             <h2>{receipt.label}</h2>
             <p className="copy-summary">{receipt.summary}</p>
             <div className="receipt-grid">
@@ -190,7 +259,9 @@ export function App() {
               <span>Stake</span>
               <strong>{receipt.amount}</strong>
               <span>Settles</span>
-              <strong>Next signal</strong>
+              <strong>{receipt.settlement}</strong>
+              <span>Result</span>
+              <strong>{frame.settlement.pnl}</strong>
             </div>
           </div>
           <div className="amount-panel" aria-label="Copy amount">

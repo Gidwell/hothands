@@ -148,7 +148,7 @@ button {
 .table-badge {
   display: grid;
   place-items: center;
-  min-width: 80px;
+  min-width: 58px;
   min-height: 40px;
   padding: 0 10px;
   border: 1px solid rgba(244, 182, 79, 0.45);
@@ -160,11 +160,91 @@ button {
   white-space: nowrap;
 }
 
+.replay-panel {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid rgba(100, 212, 209, 0.26);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(100, 212, 209, 0.09), rgba(244, 182, 79, 0.06)),
+    rgba(255, 255, 255, 0.055);
+}
+
+.replay-panel p,
+.replay-panel h2 {
+  margin: 0;
+}
+
+.replay-status-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.replay-status-row p {
+  color: #9fa9a5;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.replay-status-row h2 {
+  margin-top: 2px;
+  color: #ffffff;
+  font-size: 1.05rem;
+}
+
+.replay-status-row span {
+  display: grid;
+  place-items: center;
+  min-width: 48px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 2px dashed rgba(20, 16, 10, 0.35);
+  border-radius: 999px;
+  color: #14100a;
+  background: #64d4d1;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.replay-call {
+  overflow: hidden;
+  color: #f8f4ea;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replay-controls {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr;
+  gap: 7px;
+}
+
+.replay-controls button {
+  min-height: 36px;
+  border-radius: 8px;
+  color: #f8f4ea;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.replay-controls button:first-child {
+  color: #14100a;
+  background: #64d4d1;
+}
+
 .felt-table {
   position: relative;
   display: grid;
   align-content: space-between;
-  min-height: 168px;
+  min-height: 188px;
   margin-bottom: 14px;
   padding: 14px;
   overflow: hidden;
@@ -194,6 +274,16 @@ button {
   box-shadow:
     inset 0 0 0 4px rgba(0, 0, 0, 0.16),
     0 12px 42px rgba(86, 229, 139, 0.16);
+}
+
+.felt-table-signal-landed,
+.felt-table-copy-executed {
+  border-color: rgba(100, 212, 209, 0.56);
+}
+
+.felt-table-settled,
+.felt-table-hot-hand-updated {
+  border-color: rgba(98, 214, 143, 0.62);
 }
 
 .felt-rail {
@@ -254,6 +344,24 @@ button {
   overflow: hidden;
   color: #cfe4d7;
   font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.felt-action-strip {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 235px);
+  min-height: 30px;
+  margin-top: 2px;
+  padding: 7px 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 244, 216, 0.24);
+  border-radius: 8px;
+  color: #fff8dc;
+  background: rgba(0, 0, 0, 0.24);
+  font-size: 0.74rem;
+  font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -391,6 +499,13 @@ button {
 .trader-card[aria-pressed="true"] {
   background: rgba(244, 182, 79, 0.12);
   box-shadow: inset 0 0 0 1px rgba(244, 182, 79, 0.34);
+}
+
+.trader-card-hot {
+  background: rgba(98, 214, 143, 0.13);
+  box-shadow:
+    inset 0 0 0 1px rgba(98, 214, 143, 0.32),
+    0 12px 28px rgba(98, 214, 143, 0.08);
 }
 
 .trader-main {
@@ -636,8 +751,17 @@ button {
   }
 
   .table-badge {
-    min-width: 72px;
+    min-width: 56px;
     font-size: 0.74rem;
+  }
+
+  .replay-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .replay-call,
+  .felt-action-strip {
+    white-space: normal;
   }
 
   .rail-ticker span {
