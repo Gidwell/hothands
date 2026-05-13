@@ -86,6 +86,98 @@ export interface TableSnapshot {
   leaders: TraderScore[];
 }
 
+export type ReplayPhase =
+  | "spectator"
+  | "arming"
+  | "signal"
+  | "copy"
+  | "settlement"
+  | "score"
+  | "snapshot";
+
+export interface ReplayParticipant {
+  traderId: string;
+  handle: string;
+  displayName: string;
+  avatarUrl?: string;
+}
+
+export type ReplaySignal = Pick<
+  Signal,
+  | "signalId"
+  | "leaderId"
+  | "oracleId"
+  | "market"
+  | "direction"
+  | "strike"
+  | "expiryMs"
+  | "confidenceBps"
+  | "createdAtMs"
+  | "status"
+  | "thesis"
+>;
+
+export interface ReplayCopyActivity {
+  receiptId: string;
+  signalId: string;
+  followerId: string;
+  leaderId: string;
+  copiedCost: number;
+  cumulativeCopiedVolume: number;
+}
+
+export interface ReplaySettlementActivity {
+  signalId: string;
+  leaderId: string;
+  status: SignalSettlement["status"];
+  settlementPrice: number;
+  pnl: number;
+}
+
+export interface ReplayActivity {
+  action: ScenarioAction;
+  label: string;
+  actorId?: string;
+  signalId?: string;
+  receiptId?: string;
+  leaderId?: string;
+  followerId?: string;
+  participant?: ReplayParticipant;
+  signal?: ReplaySignal;
+  copy?: ReplayCopyActivity;
+  settlement?: ReplaySettlementActivity;
+}
+
+export interface ReplayLeader extends TraderScore {
+  rank: number;
+  handle: string;
+  displayName: string;
+  avatarUrl?: string;
+}
+
+export interface ReplayTableState {
+  tableId: string;
+  oracleId: string;
+  market: string;
+  asOfMs: number;
+  spectators: number;
+  armedFollowers: number;
+  activeSignals: ReplaySignal[];
+  rankedLeaders: ReplayLeader[];
+  currentLeader?: ReplayLeader;
+  previousLeader?: ReplayLeader;
+  leaderChanged: boolean;
+}
+
+export interface DemoReplayFrame {
+  sequence: number;
+  atMs: number;
+  tableId: string;
+  phase: ReplayPhase;
+  activity: ReplayActivity;
+  state: ReplayTableState;
+}
+
 export type ScenarioAction =
   | "spectator_joined"
   | "copy_armed"
