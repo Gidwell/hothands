@@ -8,7 +8,7 @@
     "typecheck": "tsc -b",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "echo \"TODO: add PWA component and mobile flow tests\""
+    "test": "bun test tests"
   },
   "dependencies": {
     "react": "^19.0.0",
