@@ -1,11 +1,22 @@
 import {
   type ClientMessage,
-  type SocketSession,
   type TableDeltaMessage,
   type TableSummary,
   encodeServerMessage,
   parseClientMessage
 } from "./protocol";
+import {
+  addSession,
+  armCopy,
+  createTableState,
+  disarmCopy,
+  getSession,
+  removeSession,
+  setSessionSpectatorId,
+  summarizeTableState,
+  touchSession,
+  type TableState
+} from "./table-state";
 
 export interface Env {
   TABLE_ROOM: DurableObjectNamespace;
@@ -52,14 +63,15 @@ export default {
 
 export class TableRoom implements DurableObject {
   private readonly tableId: string;
-  private readonly sessions = new Map<WebSocket, SocketSession>();
-  private updatedAtMs = Date.now();
+  private readonly sockets = new Map<WebSocket, string>();
+  private readonly tableState: TableState;
 
   constructor(
     private readonly state: DurableObjectState,
     private readonly env: Env
   ) {
     this.tableId = state.id.name ?? state.id.toString();
+    this.tableState = createTableState(this.tableId, { nowMs: Date.now() });
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -86,24 +98,25 @@ export class TableRoom implements DurableObject {
   private accept(socket: WebSocket): void {
     socket.accept();
 
-    const session: SocketSession = {
-      spectatorId: crypto.randomUUID(),
-      armed: false,
-      joinedAtMs: Date.now(),
-      lastSeenAtMs: Date.now()
-    };
+    const nowMs = Date.now();
+    const sessionId = crypto.randomUUID();
+    const spectatorId = crypto.randomUUID();
+    const change = addSession(this.tableState, {
+      sessionId,
+      spectatorId,
+      nowMs
+    });
 
-    this.sessions.set(socket, session);
-    this.updatedAtMs = session.joinedAtMs;
+    this.sockets.set(socket, sessionId);
 
     socket.send(
       encodeServerMessage({
         type: "welcome",
         table: this.summary(),
-        spectatorId: session.spectatorId
+        spectatorId
       })
     );
-    this.broadcastDelta("spectator_joined");
+    this.broadcastEvents(change.events);
 
     socket.addEventListener("message", (event) => {
       this.handleSocketMessage(socket, event.data);
@@ -119,8 +132,8 @@ export class TableRoom implements DurableObject {
   }
 
   private handleSocketMessage(socket: WebSocket, data: unknown): void {
-    const session = this.sessions.get(socket);
-    if (!session) {
+    const sessionId = this.sockets.get(socket);
+    if (!sessionId || !getSession(this.tableState, sessionId)) {
       return;
     }
 
@@ -135,103 +148,90 @@ export class TableRoom implements DurableObject {
       return;
     }
 
-    this.handleClientMessage(socket, session, message);
+    this.handleClientMessage(socket, sessionId, message);
   }
 
   private handleClientMessage(
     socket: WebSocket,
-    session: SocketSession,
+    sessionId: string,
     message: ClientMessage
   ): void {
-    session.lastSeenAtMs = Date.now();
+    const nowMs = Date.now();
 
     switch (message.type) {
       case "join":
+        if (!message.spectatorId) {
+          touchSession(this.tableState, sessionId, nowMs);
+        }
         if (message.spectatorId) {
-          session.spectatorId = message.spectatorId;
+          setSessionSpectatorId(this.tableState, sessionId, message.spectatorId, nowMs);
         }
         socket.send(
           encodeServerMessage({
             type: "welcome",
             table: this.summary(),
-            spectatorId: session.spectatorId
+            spectatorId: getSession(this.tableState, sessionId)?.spectatorId ?? sessionId
           })
         );
         return;
 
       case "ping":
+        touchSession(this.tableState, sessionId, nowMs);
         socket.send(
           encodeServerMessage({
             type: "pong",
-            atMs: session.lastSeenAtMs,
+            atMs: nowMs,
             nonce: message.nonce
           })
         );
         return;
 
       case "arm_copy":
-        if (!session.armed) {
-          session.armed = true;
-          this.updatedAtMs = session.lastSeenAtMs;
-          this.broadcastDelta("copy_armed");
-        }
+        this.broadcastEvents(
+          armCopy(this.tableState, sessionId, message.leaderId, nowMs).events
+        );
         return;
 
       case "disarm_copy":
-        if (session.armed) {
-          session.armed = false;
-          this.updatedAtMs = session.lastSeenAtMs;
-          this.broadcastDelta("copy_disarmed");
-        }
+        this.broadcastEvents(disarmCopy(this.tableState, sessionId, nowMs).events);
         return;
     }
   }
 
   private close(socket: WebSocket): void {
-    const session = this.sessions.get(socket);
-    if (!session) {
+    const sessionId = this.sockets.get(socket);
+    if (!sessionId) {
       return;
     }
 
-    this.sessions.delete(socket);
-    this.updatedAtMs = Date.now();
-    this.broadcastDelta(session.armed ? "copy_disarmed" : "spectator_left");
-
-    if (session.armed) {
-      this.broadcastDelta("spectator_left");
-    }
+    this.sockets.delete(socket);
+    this.broadcastEvents(removeSession(this.tableState, sessionId, Date.now()).events);
   }
 
   private summary(): TableSummary {
-    return {
-      tableId: this.tableId,
-      spectatorCount: this.sessions.size,
-      armedCount: this.armedCount(),
-      updatedAtMs: this.updatedAtMs
-    };
+    return summarizeTableState(this.tableState);
   }
 
-  private armedCount(): number {
-    let count = 0;
-    for (const session of this.sessions.values()) {
-      if (session.armed) {
-        count += 1;
-      }
+  private broadcastEvents(events: TableDeltaMessage["event"][]): void {
+    for (const event of events) {
+      this.broadcastDelta(event);
     }
-    return count;
   }
 
   private broadcastDelta(event: TableDeltaMessage["event"]): void {
+    const summary = summarizeTableState(this.tableState);
     const message = encodeServerMessage({
       type: "table_delta",
       tableId: this.tableId,
       atMs: Date.now(),
-      spectatorCount: this.sessions.size,
-      armedCount: this.armedCount(),
+      spectatorCount: summary.spectatorCount,
+      armedCount: summary.armedCount,
+      perLeaderArmedCounts: summary.perLeaderArmedCounts,
+      hotScore: summary.hotScore,
       event
     });
 
-    for (const socket of this.sessions.keys()) {
+    for (const socket of this.sockets.keys()) {
       socket.send(message);
     }
   }
