@@ -1,10 +1,12 @@
 import type { DemoScenario } from "../../shared/src/index";
+import { hotHandSwingScenario } from "./hot-hand-swing";
 import { openingNightScenario } from "./opening-night";
 import { trapStreakScenario } from "./trap-streak";
 
-export { openingNightScenario, trapStreakScenario };
+export { hotHandSwingScenario, openingNightScenario, trapStreakScenario };
 
 export const scenarios = {
+  "hot-hand-swing": hotHandSwingScenario,
   "opening-night": openingNightScenario,
   "trap-streak": trapStreakScenario,
 } satisfies Record<string, DemoScenario>;

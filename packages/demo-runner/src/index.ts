@@ -17,7 +17,13 @@ export type TracePayload =
   | { signal: Signal }
   | { copyReceipt: CopyReceipt; copiedVolume: number }
   | { signal: Signal & { settlement: SignalSettlement } }
-  | { score: TraderScore }
+  | {
+    score: TraderScore;
+    snapshot: TableSnapshot;
+    leaderId?: string;
+    previousLeaderId?: string;
+    leaderChanged: boolean;
+  }
   | { snapshot: TableSnapshot };
 
 export interface TraceEvent {
@@ -36,6 +42,7 @@ interface RunnerState {
   activeSignals: Map<string, Signal>;
   resolvedSignals: Map<string, Array<Signal & { settlement: SignalSettlement }>>;
   copiedVolumeByLeader: Map<string, number>;
+  lastLeaderId?: string;
 }
 
 export function loadScenario(scenarioId: string): DemoScenario {
@@ -49,6 +56,7 @@ export function produceTrace(scenario: DemoScenario): TraceEvent[] {
     activeSignals: new Map(),
     resolvedSignals: new Map(),
     copiedVolumeByLeader: new Map(),
+    lastLeaderId: undefined,
   };
   const signalsById = new Map(
     scenario.signals.map((signal) => [signal.signalId, signal]),
@@ -110,23 +118,27 @@ export function produceTrace(scenario: DemoScenario): TraceEvent[] {
         case "score_updated": {
           const actorId = requireActor(step.actorId, step.action);
           const score = scoreForLeader(state, actorId, step.atMs);
-          return event(scenario, step, sequence, { score });
+          const snapshot = snapshotForState(scenario, state, step.atMs);
+          const leaderId = snapshot.leaders[0]?.traderId;
+          const previousLeaderId = state.lastLeaderId;
+          const leaderChanged = previousLeaderId !== undefined &&
+            leaderId !== undefined &&
+            previousLeaderId !== leaderId;
+
+          state.lastLeaderId = leaderId;
+
+          return event(scenario, step, sequence, {
+            score,
+            snapshot,
+            leaderId,
+            previousLeaderId,
+            leaderChanged,
+          });
         }
 
         case "snapshot_emitted": {
-          const leaders = scenario.traders.map((trader) =>
-            scoreForLeader(state, trader.traderId, step.atMs)
-          );
-          const snapshot = buildTableSnapshot({
-            tableId: scenario.tableId,
-            oracleId: scenario.oracleId,
-            market: scenario.market,
-            asOfMs: step.atMs,
-            spectators: state.spectators.size,
-            armedFollowers: state.armedFollowers.size,
-            activeSignals: [...state.activeSignals.values()],
-            leaders,
-          });
+          const snapshot = snapshotForState(scenario, state, step.atMs);
+          state.lastLeaderId = snapshot.leaders[0]?.traderId ?? state.lastLeaderId;
           return event(scenario, step, sequence, { snapshot });
         }
       }
@@ -147,6 +159,27 @@ function scoreForLeader(
     resolvedSignals: state.resolvedSignals.get(traderId) ?? [],
     copiedVolume: state.copiedVolumeByLeader.get(traderId) ?? 0,
     nowMs,
+  });
+}
+
+function snapshotForState(
+  scenario: DemoScenario,
+  state: RunnerState,
+  nowMs: number,
+): TableSnapshot {
+  const leaders = scenario.traders.map((trader) =>
+    scoreForLeader(state, trader.traderId, nowMs)
+  );
+
+  return buildTableSnapshot({
+    tableId: scenario.tableId,
+    oracleId: scenario.oracleId,
+    market: scenario.market,
+    asOfMs: nowMs,
+    spectators: state.spectators.size,
+    armedFollowers: state.armedFollowers.size,
+    activeSignals: [...state.activeSignals.values()],
+    leaders,
   });
 }
 

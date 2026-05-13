@@ -4,6 +4,7 @@ import { getScenario, scenarios } from "../src/index";
 describe("scenario fixtures", () => {
   test("exports required Stage 1 fixtures", () => {
     expect(Object.keys(scenarios).sort()).toEqual([
+      "hot-hand-swing",
       "opening-night",
       "trap-streak",
     ]);
