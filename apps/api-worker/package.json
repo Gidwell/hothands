@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "build": "bun build src/index.ts --target=browser > /dev/null",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "lint": "echo \"TODO: add API worker lint\"",

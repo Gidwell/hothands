@@ -62,16 +62,16 @@ export function produceTrace(scenario: DemoScenario): TraceEvent[] {
     .map((step, sequence): TraceEvent => {
       switch (step.action) {
         case "spectator_joined": {
-          requireActor(step.actorId, step.action);
-          state.spectators.add(step.actorId);
+          const actorId = requireActor(step.actorId, step.action);
+          state.spectators.add(actorId);
           return event(scenario, step, sequence, {
             spectatorCount: state.spectators.size,
           });
         }
 
         case "copy_armed": {
-          requireActor(step.actorId, step.action);
-          state.armedFollowers.add(step.actorId);
+          const actorId = requireActor(step.actorId, step.action);
+          state.armedFollowers.add(actorId);
           return event(scenario, step, sequence, {
             armedFollowers: state.armedFollowers.size,
           });
@@ -108,8 +108,8 @@ export function produceTrace(scenario: DemoScenario): TraceEvent[] {
         }
 
         case "score_updated": {
-          requireActor(step.actorId, step.action);
-          const score = scoreForLeader(state, step.actorId, step.atMs);
+          const actorId = requireActor(step.actorId, step.action);
+          const score = scoreForLeader(state, actorId, step.atMs);
           return event(scenario, step, sequence, { score });
         }
 

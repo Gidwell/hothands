@@ -8,7 +8,7 @@ import {
 } from "./protocol";
 
 export interface Env {
-  TABLE_ROOM: DurableObjectNamespace<TableRoom>;
+  TABLE_ROOM: DurableObjectNamespace;
 }
 
 const JSON_HEADERS = {
@@ -251,7 +251,7 @@ export class TableRoom implements DurableObject {
   }
 }
 
-function tableRoom(env: Env, tableId: string): DurableObjectStub<TableRoom> {
+function tableRoom(env: Env, tableId: string): DurableObjectStub {
   const id = env.TABLE_ROOM.idFromName(tableId);
   return env.TABLE_ROOM.get(id);
 }
