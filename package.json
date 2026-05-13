@@ -10,7 +10,7 @@
     "dev": "bun run --cwd apps/pwa dev",
     "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/fixtures typecheck && bun run --cwd packages/demo-runner typecheck && bun run --cwd apps/api-worker typecheck && bun run --cwd apps/pwa typecheck",
     "lint": "echo \"TODO: add lint\"",
-    "test": "bun test packages/shared/test packages/fixtures/test packages/demo-runner/test",
+    "test": "bun test packages/shared/test packages/fixtures/test packages/demo-runner/test && bun run test:pwa && bun run test:worker",
     "test:pwa": "bun run --cwd apps/pwa test",
     "test:worker": "bun run --cwd apps/api-worker test:worker",
     "test:contracts": "echo \"TODO: add contract transaction tests\"",
