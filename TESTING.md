@@ -88,9 +88,9 @@ Fixture data should cover:
 
 A change is done when:
 
-- the relevant tests are added before or with implementation
+- the relevant tests are added first and fail for the expected reason
+- the implementation makes those tests pass without weakening the assertion
 - the narrow verification command passes
 - shared schemas are updated if event shapes changed
 - demo fixtures still run
 - the agent reports remaining risk honestly
-

@@ -147,6 +147,11 @@ Until implementation exists, scripts may be placeholders. Replace placeholders a
 
 ## Test-First Rules
 
+- Agents must use red/green TDD for implementation slices:
+  1. write or update the narrow test/check first
+  2. run it and confirm the expected failure
+  3. implement the smallest change that makes it pass
+  4. rerun the package check and any affected root verification
 - Scoring changes require fixture tests first.
 - Realtime protocol changes require Durable Object tests first.
 - Transaction builder changes require snapshot tests and dry-run coverage.
@@ -167,7 +172,9 @@ Until implementation exists, scripts may be placeholders. Replace placeholders a
 
 Each agent final update should include:
 
+- red command and expected failure summary
+- green command results
 - changed files
-- verification commands run
+- commit hash, if the branch was committed
 - known risks
 - next package boundary needed

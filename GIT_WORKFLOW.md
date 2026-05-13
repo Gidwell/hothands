@@ -49,7 +49,7 @@ After the first commit exists, use git worktrees for larger parallel work. Each 
 Suggested layout outside the main repo:
 
 ```text
-/Users/sorzech/Documents/hot-hands-worktrees/
+/private/tmp/hot-hands-worktrees/
   stage-1-pwa/
   stage-1-realtime/
   stage-1-fixtures/
@@ -59,14 +59,15 @@ Suggested layout outside the main repo:
 Example:
 
 ```bash
-mkdir -p /Users/sorzech/Documents/hot-hands-worktrees
-git worktree add ../hot-hands-worktrees/stage-1-pwa -b codex/stage-1-pwa codex/hot-hands-stage-1
+mkdir -p /private/tmp/hot-hands-worktrees
+git worktree add /private/tmp/hot-hands-worktrees/stage-1-pwa -b codex/stage-1-pwa codex/hot-hands-stage-1
 ```
 
 ## Agent Rules
 
 - Agents work in their assigned branch/worktree when possible.
 - Agents own disjoint directories.
+- Agents follow red/green TDD and report the failing command before implementation.
 - Agents do not rebase or reset shared branches.
 - Agents report changed files and verification commands.
 - The orchestrator reviews and merges package branches into the integration branch.
@@ -90,4 +91,3 @@ Additional package checks:
 ## Dependency Installs
 
 Do not let every agent install dependencies independently. The orchestrator should run dependency installation from the integration branch, commit the lockfile, then worktrees should use that baseline.
-
