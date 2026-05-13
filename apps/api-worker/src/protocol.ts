@@ -173,8 +173,9 @@ export function applyTableSummaryDelta(
   if (summary.hotScore !== undefined) {
     nextSummary.hotScore = summary.hotScore;
   }
-  if (event === "spectator_joined" && summary.perLeaderArmedCounts !== undefined) {
-    nextSummary.perLeaderArmedCounts = { ...summary.perLeaderArmedCounts };
+  const perLeaderArmedCounts = applyLeaderCountDelta(summary, event, armedCount);
+  if (perLeaderArmedCounts !== undefined) {
+    nextSummary.perLeaderArmedCounts = perLeaderArmedCounts;
   }
 
   return {
@@ -190,6 +191,54 @@ export function applyTableSummaryDelta(
       event
     }
   };
+}
+
+function applyLeaderCountDelta(
+  summary: TableSummary,
+  event: TableDeltaMessage["event"],
+  armedCount: number
+): Record<string, number> | undefined {
+  if (summary.perLeaderArmedCounts === undefined) {
+    return undefined;
+  }
+
+  if (event === "copy_armed") {
+    return undefined;
+  }
+
+  if (event === "spectator_joined" || event === "copy_rearmed") {
+    return { ...summary.perLeaderArmedCounts };
+  }
+
+  return clampLeaderCounts(summary.perLeaderArmedCounts, armedCount);
+}
+
+function clampLeaderCounts(
+  counts: Record<string, number>,
+  targetTotal: number
+): Record<string, number> {
+  const nextCounts = { ...counts };
+  let excess = totalLeaderCounts(nextCounts) - targetTotal;
+
+  for (const leaderId of Object.keys(nextCounts).sort().reverse()) {
+    if (excess <= 0) {
+      break;
+    }
+
+    const decrement = Math.min(nextCounts[leaderId], excess);
+    nextCounts[leaderId] -= decrement;
+    excess -= decrement;
+
+    if (nextCounts[leaderId] === 0) {
+      delete nextCounts[leaderId];
+    }
+  }
+
+  return nextCounts;
+}
+
+function totalLeaderCounts(counts: Record<string, number>): number {
+  return Object.values(counts).reduce((total, count) => total + count, 0);
 }
 
 function parseJoinMessage(parsed: Record<string, unknown>): JoinMessage | null {

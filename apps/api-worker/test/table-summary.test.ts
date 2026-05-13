@@ -65,4 +65,96 @@ describe("table summary deltas", () => {
       armedCount: 0
     });
   });
+
+  test("keeps leader count metadata consistent across rearm, disarm, and leave", () => {
+    const active: TableSummary = {
+      tableId: "table-1",
+      spectatorCount: 3,
+      armedCount: 3,
+      perLeaderArmedCounts: {
+        "leader-a": 2,
+        "leader-b": 1
+      },
+      hotScore: 92,
+      updatedAtMs: 1000
+    };
+
+    const rearmed = applyTableSummaryDelta(active, "copy_rearmed", 1100);
+    expect(rearmed.summary).toMatchObject({
+      spectatorCount: 3,
+      armedCount: 3,
+      perLeaderArmedCounts: {
+        "leader-a": 2,
+        "leader-b": 1
+      },
+      hotScore: 92
+    });
+    expect(totalLeaderArms(rearmed.summary)).toBe(rearmed.summary.armedCount);
+    expect(totalLeaderArmsFromDelta(rearmed.delta)).toBe(rearmed.delta.armedCount);
+
+    const disarmed = applyTableSummaryDelta(
+      {
+        tableId: "table-1",
+        spectatorCount: 2,
+        armedCount: 2,
+        perLeaderArmedCounts: {
+          "leader-a": 2
+        },
+        updatedAtMs: 1200
+      },
+      "copy_disarmed",
+      1300
+    );
+    expect(disarmed.summary).toMatchObject({
+      spectatorCount: 2,
+      armedCount: 1,
+      perLeaderArmedCounts: {
+        "leader-a": 1
+      }
+    });
+    expect(totalLeaderArms(disarmed.summary)).toBe(disarmed.summary.armedCount);
+    expect(totalLeaderArmsFromDelta(disarmed.delta)).toBe(disarmed.delta.armedCount);
+
+    const left = applyTableSummaryDelta(
+      {
+        tableId: "table-1",
+        spectatorCount: 2,
+        armedCount: 2,
+        perLeaderArmedCounts: {
+          "leader-a": 2
+        },
+        updatedAtMs: 1400
+      },
+      "spectator_left",
+      1500
+    );
+    expect(left.summary).toMatchObject({
+      spectatorCount: 1,
+      armedCount: 1,
+      perLeaderArmedCounts: {
+        "leader-a": 1
+      }
+    });
+    expect(left.summary.armedCount).toBeLessThanOrEqual(left.summary.spectatorCount);
+    expect(totalLeaderArms(left.summary)).toBe(left.summary.armedCount);
+    expect(totalLeaderArmsFromDelta(left.delta)).toBe(left.delta.armedCount);
+  });
 });
+
+function totalLeaderArms(summary: TableSummary): number | undefined {
+  return totalCounts(summary.perLeaderArmedCounts);
+}
+
+function totalLeaderArmsFromDelta(
+  delta: ReturnType<typeof applyTableSummaryDelta>["delta"]
+): number | undefined {
+  return totalCounts(delta.perLeaderArmedCounts);
+}
+
+function totalCounts(counts: Record<string, number> | undefined): number | undefined {
+  if (!counts) {
+    return undefined;
+  }
+
+  return Object.values(counts).reduce((total, count) => total + count, 0);
+}
