@@ -47,11 +47,14 @@ export interface TableDeltaMessage {
   atMs: number;
   spectatorCount: number;
   armedCount: number;
+  perLeaderArmedCounts?: Record<string, number>;
+  hotScore?: number;
   event:
     | "spectator_joined"
     | "spectator_left"
     | "copy_armed"
-    | "copy_disarmed";
+    | "copy_disarmed"
+    | "copy_rearmed";
 }
 
 export interface ErrorMessage {
@@ -64,6 +67,8 @@ export interface TableSummary {
   tableId: string;
   spectatorCount: number;
   armedCount: number;
+  perLeaderArmedCounts?: Record<string, number>;
+  hotScore?: number;
   updatedAtMs: number;
 }
 
@@ -74,7 +79,7 @@ export interface TableSummaryDelta {
 
 export interface SocketSession {
   spectatorId: string;
-  armed: boolean;
+  armedLeaderId?: string;
   joinedAtMs: number;
   lastSeenAtMs: number;
 }
@@ -155,6 +160,8 @@ export function applyTableSummaryDelta(
     case "copy_disarmed":
       armedCount = Math.max(0, armedCount - 1);
       break;
+    case "copy_rearmed":
+      break;
   }
 
   const nextSummary: TableSummary = {
@@ -163,6 +170,13 @@ export function applyTableSummaryDelta(
     armedCount,
     updatedAtMs: atMs
   };
+  if (summary.hotScore !== undefined) {
+    nextSummary.hotScore = summary.hotScore;
+  }
+  const perLeaderArmedCounts = applyLeaderCountDelta(summary, event, armedCount);
+  if (perLeaderArmedCounts !== undefined) {
+    nextSummary.perLeaderArmedCounts = perLeaderArmedCounts;
+  }
 
   return {
     summary: nextSummary,
@@ -172,9 +186,59 @@ export function applyTableSummaryDelta(
       atMs,
       spectatorCount,
       armedCount,
+      hotScore: nextSummary.hotScore,
+      perLeaderArmedCounts: nextSummary.perLeaderArmedCounts,
       event
     }
   };
+}
+
+function applyLeaderCountDelta(
+  summary: TableSummary,
+  event: TableDeltaMessage["event"],
+  armedCount: number
+): Record<string, number> | undefined {
+  if (summary.perLeaderArmedCounts === undefined) {
+    return undefined;
+  }
+
+  if (event === "copy_armed") {
+    return undefined;
+  }
+
+  if (event === "spectator_joined" || event === "copy_rearmed") {
+    return { ...summary.perLeaderArmedCounts };
+  }
+
+  return clampLeaderCounts(summary.perLeaderArmedCounts, armedCount);
+}
+
+function clampLeaderCounts(
+  counts: Record<string, number>,
+  targetTotal: number
+): Record<string, number> {
+  const nextCounts = { ...counts };
+  let excess = totalLeaderCounts(nextCounts) - targetTotal;
+
+  for (const leaderId of Object.keys(nextCounts).sort().reverse()) {
+    if (excess <= 0) {
+      break;
+    }
+
+    const decrement = Math.min(nextCounts[leaderId], excess);
+    nextCounts[leaderId] -= decrement;
+    excess -= decrement;
+
+    if (nextCounts[leaderId] === 0) {
+      delete nextCounts[leaderId];
+    }
+  }
+
+  return nextCounts;
+}
+
+function totalLeaderCounts(counts: Record<string, number>): number {
+  return Object.values(counts).reduce((total, count) => total + count, 0);
 }
 
 function parseJoinMessage(parsed: Record<string, unknown>): JoinMessage | null {
@@ -259,6 +323,8 @@ function isTableDeltaMessage(value: Record<string, unknown>): boolean {
       "atMs",
       "spectatorCount",
       "armedCount",
+      "perLeaderArmedCounts",
+      "hotScore",
       "event"
     ]) &&
     value.type === "table_delta" &&
@@ -267,6 +333,8 @@ function isTableDeltaMessage(value: Record<string, unknown>): boolean {
     isCount(value.spectatorCount) &&
     isCount(value.armedCount) &&
     value.armedCount <= value.spectatorCount &&
+    optionalLeaderCountsMatch(value.perLeaderArmedCounts, value.armedCount) &&
+    optionalHotScore(value.hotScore) &&
     isTableDeltaEvent(value.event)
   );
 }
@@ -283,11 +351,20 @@ function isErrorMessage(value: Record<string, unknown>): boolean {
 function isTableSummary(value: unknown): value is TableSummary {
   return (
     isRecord(value) &&
-    hasOnlyKeys(value, ["tableId", "spectatorCount", "armedCount", "updatedAtMs"]) &&
+    hasOnlyKeys(value, [
+      "tableId",
+      "spectatorCount",
+      "armedCount",
+      "perLeaderArmedCounts",
+      "hotScore",
+      "updatedAtMs"
+    ]) &&
     isNonEmptyString(value.tableId) &&
     isCount(value.spectatorCount) &&
     isCount(value.armedCount) &&
     value.armedCount <= value.spectatorCount &&
+    optionalLeaderCountsMatch(value.perLeaderArmedCounts, value.armedCount) &&
+    optionalHotScore(value.hotScore) &&
     isTimestampMs(value.updatedAtMs)
   );
 }
@@ -297,7 +374,8 @@ function isTableDeltaEvent(value: unknown): value is TableDeltaMessage["event"] 
     value === "spectator_joined" ||
     value === "spectator_left" ||
     value === "copy_armed" ||
-    value === "copy_disarmed"
+    value === "copy_disarmed" ||
+    value === "copy_rearmed"
   );
 }
 
@@ -311,6 +389,33 @@ function isCount(value: unknown): value is number {
 
 function isTimestampMs(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function optionalHotScore(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (typeof value === "number" && Number.isFinite(value) && value >= 0)
+  );
+}
+
+function optionalLeaderCountsMatch(value: unknown, armedCount: number): boolean {
+  if (value === undefined) {
+    return true;
+  }
+
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  let total = 0;
+  for (const [leaderId, count] of Object.entries(value)) {
+    if (!isNonEmptyString(leaderId) || !isCount(count)) {
+      return false;
+    }
+    total += count;
+  }
+
+  return total === armedCount;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,3 +1,5 @@
+import type { TableSummary } from "./protocol";
+
 export const HEARTBEAT_POLICY = {
   emptyIntervalMs: 30_000,
   quietIntervalMs: 15_000,
@@ -43,6 +45,19 @@ export function chooseHeartbeatPolicy(input: HeartbeatPolicyInput): HeartbeatPol
   }
 
   return { tier: "quiet", intervalMs: HEARTBEAT_POLICY.quietIntervalMs };
+}
+
+export function chooseHeartbeatPolicyForSummary(
+  summary: TableSummary,
+  nowMs: number
+): HeartbeatPolicyDecision {
+  return chooseHeartbeatPolicy({
+    spectatorCount: summary.spectatorCount,
+    armedCount: summary.armedCount,
+    hotScore: summary.hotScore ?? 0,
+    updatedAtMs: summary.updatedAtMs,
+    nowMs
+  });
 }
 
 function assertValidHeartbeatInput(input: HeartbeatPolicyInput): void {
