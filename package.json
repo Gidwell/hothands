@@ -1,0 +1,29 @@
+{
+  "name": "hot-hands",
+  "private": true,
+  "packageManager": "bun@1.1.20",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "echo \"TODO: run PWA, Worker, and mock services\"",
+    "typecheck": "echo \"TODO: install dependencies, then run package typechecks\"",
+    "lint": "echo \"TODO: add lint\"",
+    "test": "bun test packages/shared/test packages/fixtures/test packages/demo-runner/test",
+    "test:pwa": "bun run --cwd apps/pwa test",
+    "test:worker": "bun run --cwd apps/api-worker test:worker",
+    "test:contracts": "echo \"TODO: add contract transaction tests\"",
+    "test:scoring": "bun test packages/shared/test/scoring.test.ts",
+    "build:api": "bun build apps/api-worker/src/index.ts --target=browser > /dev/null",
+    "move:test": "echo \"TODO: run sui move test in packages/contracts\"",
+    "demo:seed": "echo \"TODO: seed deterministic demo users\"",
+    "demo:play": "bun run --cwd packages/demo-runner play",
+    "demo:reset": "echo \"TODO: reset demo state\"",
+    "verify:fast": "bun run typecheck && bun run lint && bun run test && bun run test:pwa && bun run test:worker && bun run build:api && bun run move:test",
+    "verify:e2e": "echo \"TODO: run Playwright mobile e2e\"",
+    "verify:perf": "echo \"TODO: run spectator heartbeat simulation\"",
+    "verify:testnet": "echo \"TODO: run DeepBook Predict testnet canary\"",
+    "verify:visual": "echo \"TODO: run screenshot checks\""
+  }
+}

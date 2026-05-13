@@ -1,0 +1,23 @@
+{
+  "name": "@hot-hands/demo-runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "bin": {
+    "hot-hands-demo": "./src/cli.ts"
+  },
+  "scripts": {
+    "play": "bun src/cli.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-hands/fixtures": "workspace:*",
+    "@hot-hands/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

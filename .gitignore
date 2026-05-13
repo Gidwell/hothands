@@ -1,0 +1,14 @@
+node_modules
+.wrangler
+.turbo
+dist
+build
+coverage
+playwright-report
+test-results
+.env
+.env.*
+!.env.example
+.DS_Store
+Move.lock
+
