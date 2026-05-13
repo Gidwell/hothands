@@ -503,16 +503,17 @@ button {
 
 .copy-tray {
   position: sticky;
-  bottom: 0;
+  top: 12px;
   z-index: 3;
   display: grid;
   gap: 14px;
   margin-top: 14px;
+  margin-bottom: 4px;
   padding: 14px;
   border: 1px solid rgba(244, 182, 79, 0.44);
   border-radius: 8px;
   background: rgba(17, 18, 18, 0.96);
-  box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.42);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
   backdrop-filter: blur(12px);
 }
 
