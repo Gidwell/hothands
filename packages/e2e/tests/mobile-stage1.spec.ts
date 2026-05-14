@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", async ({ page }) => {
   await page.goto("/");
@@ -7,6 +7,10 @@ test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", asy
   await expect(page.getByTestId("active-signal-strip")).toBeVisible();
   await expect(page.getByTestId("active-signal-strip").getByText("Copy ready")).toBeVisible();
   await expect(page.getByTestId("inline-copy-panel")).toHaveCount(0);
+  await expect(page.getByTestId("scenario-selector")).toBeHidden();
+  await expect(page.getByTestId("replay-next")).toBeHidden();
+  await expect(page.getByTestId("replay-reset")).toBeHidden();
+  await expect(demoAffordance(page)).toBeVisible();
 
   const hotTraderRows = page.getByTestId("hot-trader-row");
   await expect(async () => {
@@ -36,9 +40,13 @@ test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", asy
   await expect(inlineCopyPanel).toBeVisible();
   await expect(inlineCopyPanel.getByTestId("arm-copy-button")).toBeVisible();
   await expect(inlineCopyPanel.getByTestId("close-copy-panel")).toBeVisible();
+  await expect(inlineCopyPanel.getByRole("button", { name: "$100" })).toBeVisible();
+  await expect(inlineCopyPanel.getByRole("button", { name: "$250" })).toBeVisible();
+  await expect(inlineCopyPanel.getByRole("button", { name: "$500" })).toBeVisible();
 
   const frozenOrder = await traderNames(hotTraderRows);
-  await page.getByRole("button", { name: "Next" }).click();
+  await openDemoControls(page);
+  await page.getByTestId("replay-next").click();
   await expect(page.getByTestId("active-signal-strip").getByText("Leader signal landed")).toBeVisible();
   expect(await traderNames(hotTraderRows)).toEqual(frozenOrder);
 
@@ -75,16 +83,20 @@ test("mobile stage 1 copy loop reaches settlement and leaderboard update", async
   const leaderboard = page.getByRole("region", { name: "Hot leaderboard" });
   const miraTrader = page.getByTestId("hot-trader-row").filter({ hasText: "Mira Vale" });
 
-  await expect(page.getByRole("heading", { name: "Hot Hands" })).toBeVisible();
+  await expect(page.getByTestId("market-header")).toBeVisible();
   await expect(page.getByTestId("market-header")).toContainText("BTC-USD");
   await expect(signalStrip).toBeVisible();
   await expect(leaderboard).toContainText("Copy the next BTC UP/DOWN signal");
 
   await expect(page.getByTestId("spectator-rail")).toBeVisible();
-  await expect(page.getByLabel("IC watching")).toBeVisible();
-  await expect(page.getByLabel("SP watching")).toBeVisible();
+  await expect(page.getByTestId("spectator-rail")).toContainText("watching");
 
-  await page.getByRole("button", { name: "Reset" }).click();
+  await expect(page.getByTestId("scenario-selector")).toBeHidden();
+  await expect(page.getByTestId("replay-next")).toBeHidden();
+  await expect(page.getByTestId("replay-reset")).toBeHidden();
+  await openDemoControls(page);
+
+  await page.getByTestId("replay-reset").click();
   await expect(signalStrip.getByText("Copy ready")).toBeVisible();
 
   await expect(miraTrader).toHaveCount(1);
@@ -99,24 +111,35 @@ test("mobile stage 1 copy loop reaches settlement and leaderboard update", async
   await expect(inlineCopyPanel.getByTestId("arm-copy-button")).toHaveText("Pause copy");
   await expect(miraTrader).toContainText("Armed");
 
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByTestId("replay-next").click();
   await expect(signalStrip.getByText("Leader signal landed")).toBeVisible();
   await expect(signalStrip.getByText(/posted BTC (UP|DOWN)/).first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByTestId("replay-next").click();
   await expect(signalStrip.getByText("Copy executed")).toBeVisible();
   await expect(signalStrip.getByText("$500 copied to BTC ticket")).toBeVisible();
   await expect(miraTrader).toContainText("Copied");
 
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByTestId("replay-next").click();
   await expect(signalStrip.getByText("Settlement posted")).toBeVisible();
   await expect(signalStrip.getByText("Settlement posts +$40")).toBeVisible();
 
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByTestId("replay-next").click();
   await expect(signalStrip.getByText("Hot hand updated")).toBeVisible();
   await expect(signalStrip.getByText("Mira Vale tops the leaderboard")).toBeVisible();
-  await expect(page.getByLabel("Mira Vale hot score 50")).toBeVisible();
+  await expect(miraTrader).toContainText("50");
 });
+
+function demoAffordance(page: Page) {
+  return page.getByRole("button", { name: /demo/i });
+}
+
+async function openDemoControls(page: Page) {
+  await demoAffordance(page).click();
+  await expect(page.getByTestId("scenario-selector")).toBeVisible();
+  await expect(page.getByTestId("replay-next")).toBeVisible();
+  await expect(page.getByTestId("replay-reset")).toBeVisible();
+}
 
 async function traderNames(rows: Locator) {
   const names: string[] = [];

@@ -87,6 +87,13 @@ button {
   font-weight: 750;
 }
 
+.market-strip h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1rem;
+  line-height: 1.05;
+}
+
 .market-live {
   display: flex;
   gap: 8px;
@@ -132,9 +139,6 @@ button {
 }
 
 .market-badges span,
-.phase-chip,
-.step-chip,
-.copy-status,
 .trader-row-metrics span,
 .activity-ticker span {
   display: grid;
@@ -157,11 +161,11 @@ button {
 
 .active-signal-strip {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   margin-top: 8px;
-  padding: 10px;
+  padding: 8px 10px;
   background:
-    linear-gradient(135deg, rgba(100, 212, 209, 0.14), rgba(244, 182, 79, 0.09)),
+    linear-gradient(135deg, rgba(100, 212, 209, 0.1), rgba(244, 182, 79, 0.06)),
     rgba(255, 255, 255, 0.055);
 }
 
@@ -174,60 +178,44 @@ button {
 
 .signal-strip-top {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: center;
 }
 
-.signal-strip-top h1 {
-  margin: 1px 0 0;
+.signal-strip-top strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   color: #ffffff;
-  font-size: 1.28rem;
-  line-height: 1;
+  font-size: 0.94rem;
+  line-height: 1.12;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.phase-chip,
-.step-chip {
-  min-width: 44px;
-  min-height: 28px;
-  padding: 0 8px;
-}
-
-.phase-chip {
-  color: #14100a;
-  background: #64d4d1;
-}
-
-.step-chip {
-  color: #fff8dc;
-  background: rgba(0, 0, 0, 0.24);
+.signal-strip-top > span {
+  min-width: 0;
+  color: #dce8e2;
+  font-size: 0.68rem;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .signal-strip-leader {
   display: grid;
-  grid-template-columns: 34px 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
   min-width: 0;
-  padding: 8px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.22);
 }
 
-.signal-strip-leader > span,
 .trader-avatar {
   display: grid;
   place-items: center;
   color: #14100a;
   background: #f4b64f;
   font-weight: 900;
-}
-
-.signal-strip-leader > span {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  font-size: 0.78rem;
 }
 
 .signal-strip-leader strong,
@@ -242,6 +230,22 @@ button {
 .signal-strip-leader strong {
   color: #ffffff;
   font-size: 0.82rem;
+}
+
+.signal-strip-leader > span {
+  color: #aeb9b5;
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.demo-toggle {
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 8px;
+  color: #14100a;
+  background: #64d4d1;
+  font-size: 0.68rem;
+  font-weight: 950;
 }
 
 .demo-controls {
@@ -288,12 +292,12 @@ button {
 
 .spectator-rail {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
   align-items: center;
-  min-height: 46px;
+  min-height: 38px;
   margin-top: 8px;
-  padding: 7px 8px;
+  padding: 6px 8px;
   background: rgba(255, 255, 255, 0.045);
 }
 
@@ -314,40 +318,21 @@ button {
   font-weight: 850;
 }
 
-.spectator-watchers {
-  display: flex;
-  min-width: 72px;
-}
-
-.spectator-avatar {
-  width: 26px;
-  height: 26px;
-  margin-left: -5px;
-  border: 2px solid #0b1110;
-  border-radius: 50%;
-  color: #0a0c10;
-  font-size: 0.58rem;
-  font-weight: 900;
-}
-
-.spectator-avatar:first-child {
-  margin-left: 0;
-}
-
 .activity-ticker {
-  display: flex;
-  gap: 5px;
   min-width: 0;
   overflow: hidden;
 }
 
 .activity-ticker span {
-  flex: 1 1 0;
-  min-height: 24px;
-  padding: 0 6px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  display: block;
+  min-height: auto;
+  padding: 0;
+  border: 0;
   color: #e8efe9;
-  background: rgba(255, 255, 255, 0.055);
+  background: transparent;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  text-align: right;
 }
 
 .trader-list {
@@ -388,8 +373,8 @@ button {
 .trader-row {
   display: grid;
   gap: 6px;
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.055);
+  padding: 8px 9px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .trader-row-gold {
@@ -405,8 +390,8 @@ button {
 }
 
 .trader-row-selected {
-  background: rgba(244, 182, 79, 0.11);
-  box-shadow: inset 0 0 0 1px rgba(244, 182, 79, 0.28);
+  background: rgba(244, 182, 79, 0.08);
+  box-shadow: inset 3px 0 0 rgba(244, 182, 79, 0.82);
 }
 
 .trader-row-hot {
@@ -415,7 +400,7 @@ button {
 
 .trader-row-main {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 42px 58px;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -435,7 +420,8 @@ button {
 .trader-title-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -449,37 +435,17 @@ button {
   white-space: nowrap;
 }
 
-.copy-status {
+.trader-title-row span {
   flex: 0 0 auto;
-  min-height: 20px;
-  padding: 0 7px;
-  color: #d8e1dd;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.copy-status-armed,
-.copy-status-copied {
-  color: #14100a;
-  background: #62d68f;
-}
-
-.copy-status-selected {
-  color: #14100a;
-  background: #64d4d1;
-}
-
-.copy-status-disarmed {
-  color: #fff8dc;
-  background: rgba(239, 125, 114, 0.28);
+  color: #9fa9a5;
+  font-size: 0.64rem;
+  font-weight: 900;
 }
 
 .trader-row-score {
   display: grid;
   place-items: center;
-  width: 40px;
-  min-height: 36px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.22);
+  min-height: 32px;
 }
 
 .trader-row-score strong {
@@ -497,55 +463,28 @@ button {
 .trader-row-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 5px;
+  gap: 8px;
 }
 
 .trader-row-metrics span {
-  min-height: 22px;
-  padding: 0 6px;
-  color: #dce8e2;
-  background: rgba(0, 0, 0, 0.18);
-}
-
-.trader-row-signal {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 58px;
-  gap: 7px;
-  align-items: center;
-}
-
-.trader-row-signal p {
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  color: #f8fbff;
-  font-size: 0.75rem;
+  display: block;
+  min-height: auto;
+  padding: 0;
+  color: #b8c4bf;
+  background: transparent;
+  font-size: 0.66rem;
   font-weight: 850;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.trader-row-signal button {
+.trader-row-main button {
   min-height: 30px;
   border-radius: 8px;
   color: #14100a;
   background: #f4b64f;
   font-size: 0.72rem;
   font-weight: 950;
-}
-
-.heat-meter {
-  height: 4px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.11);
-}
-
-.heat-meter span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #62d68f 0%, #f4b64f 58%, #ef7d72 100%);
 }
 
 .inline-copy-panel {
@@ -652,6 +591,27 @@ button {
   background: #b73434;
 }
 
+.custom-copy-adjust {
+  display: grid;
+  gap: 8px;
+}
+
+.custom-copy-adjust summary {
+  width: fit-content;
+  color: #dce8e2;
+  font-size: 0.7rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.custom-copy-adjust[open] {
+  gap: 8px;
+}
+
+.custom-copy-adjust[open] summary {
+  margin-bottom: 8px;
+}
+
 @media (max-width: 380px) {
   .phone-frame {
     padding-right: 8px;
@@ -666,8 +626,7 @@ button {
     grid-column: 1 / -1;
   }
 
-  .demo-controls,
-  .spectator-rail {
+  .demo-controls {
     grid-template-columns: 1fr;
   }
 
@@ -675,13 +634,14 @@ button {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .activity-ticker span:nth-child(n + 3) {
-    display: none;
-  }
-
   .section-heading {
     display: grid;
     gap: 1px;
+  }
+
+  .trader-row-main {
+    grid-template-columns: minmax(0, 1fr) 38px 54px;
+    gap: 6px;
   }
 
   .chip-row {

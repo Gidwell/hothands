@@ -77,34 +77,17 @@ function TraderRow({
       data-testid="hot-trader-row"
     >
       <div className="trader-row-main">
-        <div className="trader-avatar" aria-hidden="true">
-          {trader.avatar}
-        </div>
         <div className="trader-identity">
           <div className="trader-title-row">
             <h2>{trader.name}</h2>
-            <span className={`copy-status copy-status-${status.toLowerCase()}`}>
-              {status}
-            </span>
+            <span>{status}</span>
           </div>
-          <p>
-            {trader.handle} / {trader.role}
-          </p>
+          <p>{trader.signal}</p>
         </div>
         <div className="trader-row-score">
           <strong>{trader.hotScore}</strong>
           <span>Hot</span>
         </div>
-      </div>
-
-      <div className="trader-row-metrics" aria-label={`${trader.name} trading stats`}>
-        <span>{trader.streak} streak</span>
-        <span>{trader.roi} ROI</span>
-        <span>{trader.copied.toLocaleString()} copied</span>
-      </div>
-
-      <div className="trader-row-signal">
-        <p>{trader.signal}</p>
         <button
           type="button"
           data-testid="copy-trigger"
@@ -115,8 +98,10 @@ function TraderRow({
         </button>
       </div>
 
-      <div className="heat-meter" aria-label={`${trader.name} hot score ${trader.hotScore}`}>
-        <span style={{ width: `${trader.hotScore}%` }} />
+      <div className="trader-row-metrics" aria-label={`${trader.name} trading stats`}>
+        <span>{trader.roi} ROI</span>
+        <span>{trader.streak} streak</span>
+        <span>{trader.copied.toLocaleString()} copied</span>
       </div>
 
       {isExpanded ? (
@@ -136,32 +121,6 @@ function TraderRow({
               Close
             </button>
           </div>
-          <div className="amount-stepper">
-            <button
-              type="button"
-              aria-label="Decrease copy amount"
-              onClick={() => onAmountStep(-1)}
-            >
-              -
-            </button>
-            <strong>{formatCopyAmount(copyAmount)}</strong>
-            <button
-              type="button"
-              aria-label="Increase copy amount"
-              onClick={() => onAmountStep(1)}
-            >
-              +
-            </button>
-          </div>
-          <input
-            aria-label="Copy amount"
-            min={COPY_AMOUNT_MIN}
-            max={COPY_AMOUNT_MAX}
-            step="25"
-            type="range"
-            value={copyAmount}
-            onChange={(event) => onAmountSet(Number(event.currentTarget.value))}
-          />
           <div className="chip-row" aria-label="Quick copy amounts">
             {quickAmounts.map((amount) => (
               <button
@@ -182,6 +141,35 @@ function TraderRow({
           >
             {receiptState === "Armed" || receiptState === "Copied" ? "Pause copy" : "Arm copy"}
           </button>
+          <details className="custom-copy-adjust">
+            <summary>Adjust amount</summary>
+            <div className="amount-stepper">
+              <button
+                type="button"
+                aria-label="Decrease copy amount"
+                onClick={() => onAmountStep(-1)}
+              >
+                -
+              </button>
+              <strong>{formatCopyAmount(copyAmount)}</strong>
+              <button
+                type="button"
+                aria-label="Increase copy amount"
+                onClick={() => onAmountStep(1)}
+              >
+                +
+              </button>
+            </div>
+            <input
+              aria-label="Copy amount"
+              min={COPY_AMOUNT_MIN}
+              max={COPY_AMOUNT_MAX}
+              step="25"
+              type="range"
+              value={copyAmount}
+              onChange={(event) => onAmountSet(Number(event.currentTarget.value))}
+            />
+          </details>
         </div>
       ) : null}
     </article>
@@ -234,35 +222,21 @@ function ReplayControls({
 
 function SpectatorRail({
   spectatorCount,
-  scenario,
   activity,
 }: {
   spectatorCount: number;
-  scenario: ReturnType<typeof createReplayScenario>;
   activity: string[];
 }) {
+  const latestActivity = activity[0] ?? "Waiting for the next BTC signal";
+
   return (
     <section className="spectator-rail" aria-label="Live activity" data-testid="spectator-rail">
       <div className="spectator-copy">
         <strong>{spectatorCount.toLocaleString()}</strong>
         <span>watching</span>
       </div>
-      <div className="spectator-watchers" aria-label="Spectators watching">
-        {scenario.spectators.slice(0, 5).map((spectator) => (
-          <div
-            className="spectator-avatar"
-            key={spectator.id}
-            style={{ backgroundColor: spectator.color }}
-            aria-label={`${spectator.initials} ${spectator.mood}`}
-          >
-            {spectator.initials}
-          </div>
-        ))}
-      </div>
       <div className="activity-ticker" aria-label="Market activity">
-        {activity.map((item, index) => (
-          <span key={`${item}-${index}`}>{item}</span>
-        ))}
+        <span>{latestActivity}</span>
       </div>
     </section>
   );
@@ -270,7 +244,8 @@ function SpectatorRail({
 
 function ActiveSignalStrip({
   frame,
-  selectedTrader,
+  receiptState,
+  copyAmount,
   isPlaying,
   scenarioId,
   onReplayToggle,
@@ -279,7 +254,8 @@ function ActiveSignalStrip({
   onScenarioChange,
 }: {
   frame: ReturnType<typeof getReplayFrame>;
-  selectedTrader: Trader;
+  receiptState: string;
+  copyAmount: number;
   isPlaying: boolean;
   scenarioId: ReplayScenarioId;
   onReplayToggle: () => void;
@@ -287,6 +263,8 @@ function ActiveSignalStrip({
   onReplayReset: () => void;
   onScenarioChange: (scenarioId: ReplayScenarioId) => void;
 }) {
+  const [isDemoOpen, setIsDemoOpen] = useState(false);
+
   return (
     <section
       className={`active-signal-strip active-signal-strip-${frame.phase}`}
@@ -294,28 +272,40 @@ function ActiveSignalStrip({
       data-testid="active-signal-strip"
     >
       <div className="signal-strip-top">
-        <span className="phase-chip">{frame.phaseBadge}</span>
         <div>
           <p>{frame.status}</p>
-          <h1>Hot Hands</h1>
         </div>
-        <span className="step-chip">{frame.stepLabel}</span>
+        <span>
+          {receiptState === "Disarmed"
+            ? `Ready / ${formatCopyAmount(copyAmount)}`
+            : `${receiptState} / ${formatCopyAmount(copyAmount)}`}
+        </span>
+        <button
+          type="button"
+          className="demo-toggle"
+          aria-expanded={isDemoOpen}
+          onClick={() => setIsDemoOpen((isOpen) => !isOpen)}
+        >
+          Demo
+        </button>
       </div>
       <div className="signal-strip-leader">
-        <span aria-hidden="true">{selectedTrader.avatar}</span>
         <div>
           <strong>{frame.latestSignal}</strong>
           <p>{frame.tableCall}</p>
         </div>
+        <span>{frame.stepLabel}</span>
       </div>
-      <ReplayControls
-        isPlaying={isPlaying}
-        scenarioId={scenarioId}
-        onReplayToggle={onReplayToggle}
-        onReplayNext={onReplayNext}
-        onReplayReset={onReplayReset}
-        onScenarioChange={onScenarioChange}
-      />
+      {isDemoOpen ? (
+        <ReplayControls
+          isPlaying={isPlaying}
+          scenarioId={scenarioId}
+          onReplayToggle={onReplayToggle}
+          onReplayNext={onReplayNext}
+          onReplayReset={onReplayReset}
+          onScenarioChange={onScenarioChange}
+        />
+      ) : null}
     </section>
   );
 }
@@ -326,18 +316,15 @@ function MarketHeader() {
       <div className="market-live">
         <span aria-hidden="true" />
         <div>
-          <p>{market.status}</p>
-          <strong>{market.pair}</strong>
+          <h1>Hot Hands</h1>
+          <p>
+            {market.pair} / {market.expiry}
+          </p>
         </div>
       </div>
       <div className="market-price">
         <strong>{market.price}</strong>
         <span>{market.move}</span>
-      </div>
-      <div className="market-badges" aria-label="Market details">
-        <span>{market.expiry}</span>
-        <span>{market.strike}</span>
-        <span>{market.volume}</span>
       </div>
     </header>
   );
@@ -498,7 +485,8 @@ export function App() {
         <MarketHeader />
         <ActiveSignalStrip
           frame={frame}
-          selectedTrader={selectedTrader}
+          receiptState={receipt.state}
+          copyAmount={copyState.copyAmount}
           isPlaying={replayState.isPlaying}
           scenarioId={scenario.id}
           onReplayToggle={handleReplayToggle}
@@ -508,7 +496,6 @@ export function App() {
         />
         <SpectatorRail
           spectatorCount={spectatorCount}
-          scenario={scenario}
           activity={frame.activity}
         />
         <HotTraderList
