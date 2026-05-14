@@ -246,11 +246,13 @@ export function getReplayFrame(
   const selectedTrader = getSelectedTrader(state.copy, scenario.traders);
   const replayTraders = getReplayTraders(state, scenario);
   const replayLeader = getSelectedTrader(state.copy, replayTraders);
+  const hotLeader = replayTraders[0] ?? replayLeader;
+  const stripTrader = phase === "hot-hand-updated" ? hotLeader : selectedTrader;
   const activeSignal =
-    signalForLeader(scenarioFrame.source.state.activeSignals, selectedTrader.id) ??
+    signalForLeader(scenarioFrame.source.state.activeSignals, stripTrader.id) ??
     signalForLeader(scenarioFrame.source.state.activeSignals, scenarioFrame.source.activity.leaderId) ??
     scenarioFrame.source.activity.signal ??
-    latestSignalForLeader(scenario.frames.map(({ source }) => source), selectedTrader.id);
+    latestSignalForLeader(scenario.frames.map(({ source }) => source), stripTrader.id);
   const amount = formatCopyAmount(state.copy.copyAmount);
   const pnl = formatPnl(getFramePnl(scenarioFrame.source));
   const isCopied = state.copy.isArmed && phaseIndex(phase) >= phaseIndex("copy-executed");
@@ -264,13 +266,13 @@ export function getReplayFrame(
     status: phaseStatus[phase],
     tableCall: getTableCall(
       phase,
-      selectedTrader.name,
-      selectedTrader.signal,
+      stripTrader.name,
+      stripTrader.signal,
       amount,
       pnl,
       state.copy.isArmed,
     ),
-    latestSignal: getLatestSignal(phase, selectedTrader, activeSignal),
+    latestSignal: getLatestSignal(phase, stripTrader, activeSignal),
     signalBadges: replaySignalBadges[phase],
     phaseBadge: getPhaseBadge(phase, state.copy.isArmed),
     copyReceipt: {
@@ -295,10 +297,10 @@ export function getReplayFrame(
       status: isSettled ? "Filled" : "Paused",
     },
     hotHand: {
-      leader: replayLeader.name,
-      hotScore: isUpdated ? replayLeader.hotScore : selectedTrader.hotScore,
-      streak: isUpdated ? replayLeader.streak : selectedTrader.streak,
-      copied: isUpdated ? replayLeader.copied : selectedTrader.copied,
+      leader: hotLeader.name,
+      hotScore: isUpdated ? hotLeader.hotScore : selectedTrader.hotScore,
+      streak: isUpdated ? hotLeader.streak : selectedTrader.streak,
+      copied: isUpdated ? hotLeader.copied : selectedTrader.copied,
     },
     activity: activityLabelsForFrame(scenarioFrame.source, selectedTrader.name, amount, pnl),
   };

@@ -20,6 +20,11 @@ export const openingNightScenario: DemoScenario = {
       handle: "jax",
       displayName: "Jax Rook",
     },
+    {
+      traderId: "trader-nova",
+      handle: "nova",
+      displayName: "Nova Chen",
+    },
   ],
   spectators: [
     {
