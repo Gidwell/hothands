@@ -9,15 +9,19 @@ import {
   stepCopyAmount,
   toggleCopyArmed,
 } from "./copyModel";
-import { market, spectators, traders, type Trader } from "./mockData";
+import { market, type Trader } from "./mockData";
 import {
   advanceReplay,
+  createReplayScenario,
   createInitialReplayState,
   getReplayFrame,
   getReplayTraders,
+  REPLAY_SCENARIOS,
   resetReplay,
+  selectReplayScenario,
   setReplayPlaying,
   updateReplayCopy,
+  type ReplayScenarioId,
 } from "./replayModel";
 
 const quickAmounts = [100, 250, 500, 1_000];
@@ -86,13 +90,20 @@ function TraderCard({
 }
 
 export function App() {
-  const [replayState, setReplayState] = useState(() => createInitialReplayState(traders));
+  const [scenario, setScenario] = useState(() => createReplayScenario("opening-night"));
+  const [replayState, setReplayState] = useState(() => createInitialReplayState(scenario));
   const copyState = replayState.copy;
-  const replayTraders = useMemo(() => getReplayTraders(replayState, traders), [replayState]);
-  const frame = useMemo(() => getReplayFrame(replayState, traders, market), [replayState]);
+  const replayTraders = useMemo(
+    () => getReplayTraders(replayState, scenario),
+    [replayState, scenario],
+  );
+  const frame = useMemo(
+    () => getReplayFrame(replayState, scenario, market),
+    [replayState, scenario],
+  );
   const selectedTrader = getSelectedTrader(copyState, replayTraders);
   const receipt = frame.copyReceipt;
-  const spectatorCount = spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
+  const spectatorCount = scenario.spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
 
   useEffect(() => {
     if (!replayState.isPlaying) {
@@ -100,15 +111,22 @@ export function App() {
     }
 
     const timer = window.setInterval(() => {
-      setReplayState((state) => advanceReplay(state));
+      setReplayState((state) => advanceReplay(state, scenario));
     }, 1800);
 
     return () => window.clearInterval(timer);
-  }, [replayState.isPlaying]);
+  }, [replayState.isPlaying, scenario]);
+
+  const handleScenarioChange = (scenarioId: ReplayScenarioId) => {
+    const nextScenario = createReplayScenario(scenarioId);
+
+    setScenario(nextScenario);
+    setReplayState((state) => selectReplayScenario(state, nextScenario));
+  };
 
   const handleTraderSelect = (traderId: string) => {
     setReplayState((state) =>
-      updateReplayCopy(state, (copy) => selectHotTrader(copy, traderId, traders)),
+      updateReplayCopy(state, (copy) => selectHotTrader(copy, traderId, scenario.traders)),
     );
   };
 
@@ -129,7 +147,7 @@ export function App() {
   };
 
   const handleReplayNext = () => {
-    setReplayState((state) => advanceReplay(setReplayPlaying(state, false)));
+    setReplayState((state) => advanceReplay(setReplayPlaying(state, false), scenario));
   };
 
   const handleReplayReset = () => {
@@ -137,7 +155,7 @@ export function App() {
   };
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" data-testid="app-shell">
       <section className="phone-frame" aria-label="Hot Hands market shell">
         <header className="market-strip">
           <div className="market-live">
@@ -166,7 +184,26 @@ export function App() {
           <div className="table-badge">{frame.stepLabel}</div>
         </section>
 
-        <section className="replay-panel" aria-label="Live replay status">
+        <section className="scenario-switcher" aria-label="Demo scenario">
+          <select
+            aria-label="Demo scenario"
+            data-testid="scenario-selector"
+            value={scenario.id}
+            onChange={(event) => handleScenarioChange(event.currentTarget.value as ReplayScenarioId)}
+          >
+            {REPLAY_SCENARIOS.map((availableScenario) => (
+              <option key={availableScenario.id} value={availableScenario.id}>
+                {availableScenario.title}
+              </option>
+            ))}
+          </select>
+        </section>
+
+        <section
+          className="replay-panel"
+          aria-label="Live replay status"
+          data-testid="replay-status"
+        >
           <div className="replay-status-row">
             <div>
               <p>Live replay</p>
@@ -179,10 +216,10 @@ export function App() {
             <button type="button" onClick={handleReplayToggle}>
               {replayState.isPlaying ? "Pause" : "Play"}
             </button>
-            <button type="button" onClick={handleReplayNext}>
+            <button type="button" data-testid="replay-next" onClick={handleReplayNext}>
               Next
             </button>
-            <button type="button" onClick={handleReplayReset}>
+            <button type="button" data-testid="replay-reset" onClick={handleReplayReset}>
               Reset
             </button>
           </div>
@@ -217,7 +254,7 @@ export function App() {
             <p>spectators watching</p>
           </div>
           <div className="spectator-watchers">
-            {spectators.map((spectator) => (
+            {scenario.spectators.map((spectator) => (
               <div
                 className="spectator-avatar"
                 key={spectator.id}
@@ -230,13 +267,13 @@ export function App() {
             <div className="spectator-more">+{selectedTrader.streak * 11}</div>
           </div>
           <div className="activity-ticker" aria-label="Market activity">
-            {frame.activity.map((activity) => (
-              <span key={activity}>{activity}</span>
+            {frame.activity.map((activity, index) => (
+              <span key={`${activity}-${index}`}>{activity}</span>
             ))}
           </div>
         </section>
 
-        <section className="trader-list" aria-label="Hot leaderboard">
+        <section className="trader-list" aria-label="Hot leaderboard" data-testid="hot-leaderboard">
           {replayTraders.map((trader) => (
             <TraderCard
               trader={trader}
@@ -251,7 +288,7 @@ export function App() {
         </section>
 
         <section className="copy-tray" aria-label="Copy next signal tray">
-          <div className="copy-receipt">
+          <div className="copy-receipt" data-testid="copy-receipt">
             <p className="copy-state">
               {receipt.state} / {frame.status}
             </p>
@@ -310,6 +347,7 @@ export function App() {
             <button
               type="button"
               className={`arm-button ${copyState.isArmed ? "armed" : ""}`}
+              data-testid="arm-button"
               onClick={handleArmToggle}
             >
               {copyState.isArmed ? "Disarm copy" : "Arm copy"}

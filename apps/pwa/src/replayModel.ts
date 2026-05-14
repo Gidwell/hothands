@@ -1,12 +1,31 @@
 import {
-  COPY_AMOUNT_DEFAULT,
   createInitialCopyState,
   formatCopyAmount,
   getSelectedTrader,
   type CopyMarket,
   type CopyTableState,
 } from "./copyModel";
-import type { Trader } from "./mockData";
+import type { Spectator, Trader } from "./mockData";
+import {
+  produceReplayFramesById,
+} from "../../../packages/demo-runner/src/index";
+import type {
+  DemoReplayFrame,
+  ReplayLeader,
+  ReplaySignal,
+} from "../../../packages/shared/src/index";
+import {
+  getScenario,
+  type ScenarioId,
+} from "../../../packages/fixtures/src/index";
+
+export const REPLAY_SCENARIOS = [
+  { id: "opening-night", title: "Opening Night" },
+  { id: "trap-streak", title: "Trap Streak" },
+  { id: "hot-hand-swing", title: "Hot Hand Swing" },
+] as const satisfies Array<{ id: ScenarioId; title: string }>;
+
+export type ReplayScenarioId = (typeof REPLAY_SCENARIOS)[number]["id"];
 
 export const REPLAY_PHASES = [
   "copy-armed",
@@ -65,6 +84,20 @@ export type ReplayFrame = {
   activity: string[];
 };
 
+export type ReplayScenarioFrame = {
+  phase: ReplayPhase;
+  source: DemoReplayFrame;
+};
+
+export type ReplayScenario = {
+  id: ReplayScenarioId;
+  title: string;
+  market: string;
+  traders: Trader[];
+  spectators: Spectator[];
+  frames: ReplayScenarioFrame[];
+};
+
 const replaySignalBadges: Record<ReplayPhase, [string, string]> = {
   "copy-armed": ["BTC", "ARMED"],
   "signal-landed": ["SIGNAL", "LIVE"],
@@ -81,12 +114,68 @@ const phaseStatus: Record<ReplayPhase, ReplayFrame["status"]> = {
   "hot-hand-updated": "Hot hand updated",
 };
 
-export function createInitialReplayState(traders: Trader[]): ReplayState {
+const toneCycle: Trader["tone"][] = ["gold", "green", "blue"];
+const spectatorColors = ["#f4b64f", "#62d68f", "#6aa9ff", "#ef7d72", "#b98cff", "#64d4d1"];
+
+export function createReplayScenario(scenarioId: ReplayScenarioId): ReplayScenario {
+  const scenario = getScenario(scenarioId);
+  const sharedFrames = produceReplayFramesById(scenarioId);
+  const frames = pickVerticalSliceFrames(sharedFrames);
+
   return {
-    copy: createInitialCopyState(traders),
+    id: scenarioId,
+    title: scenario.title,
+    market: scenario.market,
+    traders: scenario.traders.map((trader, index) =>
+      traderFromSharedLeader(
+        {
+          traderId: trader.traderId,
+          handle: trader.handle,
+          displayName: trader.displayName,
+          rank: index + 1,
+          hotScore: 0,
+          roi: 0,
+          pnl: 0,
+          hitRate: 0,
+          resolvedCount: 0,
+          winStreak: 0,
+          copiedVolume: 0,
+          freshnessScore: 0,
+          label: "Warming",
+        },
+        index,
+        firstSignalForLeader(sharedFrames, trader.traderId),
+      ),
+    ),
+    spectators: scenario.spectators.map((spectator, index) => ({
+      id: spectator.traderId,
+      initials: initialsForName(spectator.displayName),
+      color: spectatorColors[index % spectatorColors.length],
+      mood: "watching",
+    })),
+    frames,
+  };
+}
+
+export function createInitialReplayState(scenario: ReplayScenario): ReplayState {
+  return {
+    copy: createInitialCopyState(scenario.traders),
     step: 0,
     isPlaying: true,
     completedLoops: 0,
+  };
+}
+
+export function selectReplayScenario(
+  state: ReplayState,
+  scenario: ReplayScenario,
+): ReplayState {
+  return {
+    ...state,
+    copy: createInitialCopyState(scenario.traders),
+    step: 0,
+    completedLoops: 0,
+    isPlaying: false,
   };
 }
 
@@ -116,8 +205,8 @@ export function resetReplay(state: ReplayState): ReplayState {
   };
 }
 
-export function advanceReplay(state: ReplayState): ReplayState {
-  const nextStep = (state.step + 1) % REPLAY_PHASES.length;
+export function advanceReplay(state: ReplayState, scenario: ReplayScenario): ReplayState {
+  const nextStep = (state.step + 1) % scenario.frames.length;
 
   return {
     ...state,
@@ -127,60 +216,48 @@ export function advanceReplay(state: ReplayState): ReplayState {
   };
 }
 
-export function getReplayPhase(state: ReplayState): ReplayPhase {
-  return REPLAY_PHASES[state.step] ?? "copy-armed";
+export function getReplayPhase(state: ReplayState, scenario: ReplayScenario): ReplayPhase {
+  return getScenarioFrame(state, scenario).phase;
 }
 
-export function getReplayTraders(state: ReplayState, traders: Trader[]): Trader[] {
-  const phase = getReplayPhase(state);
+export function getReplayTraders(
+  state: ReplayState,
+  scenario: ReplayScenario,
+): Trader[] {
+  const frame = getScenarioFrame(state, scenario);
+  const leaders = frame.source.state.rankedLeaders;
 
-  if (phase !== "hot-hand-updated" || !state.copy.isArmed) {
-    return traders;
+  if (leaders.length === 0) {
+    return scenario.traders;
   }
 
-  const selectedTraderId = state.copy.selectedTraderId;
-  const replayTraders = traders.map((trader) => {
-    if (trader.id !== selectedTraderId) {
-      return trader;
-    }
-
-    return {
-      ...trader,
-      streak: trader.streak + 1,
-      hotScore: 99,
-      copied: trader.copied + getCopiedDelta(state.copy.copyAmount),
-    };
-  });
-
-  return replayTraders.sort((first, second) => {
-    const scoreDelta = second.hotScore - first.hotScore;
-
-    if (scoreDelta !== 0) {
-      return scoreDelta;
-    }
-
-    if (first.id === selectedTraderId) {
-      return -1;
-    }
-
-    if (second.id === selectedTraderId) {
-      return 1;
-    }
-
-    return 0;
-  });
+  return leaders.map((leader, index) =>
+    traderFromSharedLeader(
+      leader,
+      index,
+      latestSignalForLeader([frame.source], leader.traderId) ??
+        latestSignalForLeader(scenario.frames.map(({ source }) => source), leader.traderId),
+    ),
+  );
 }
 
 export function getReplayFrame(
   state: ReplayState,
-  traders: Trader[],
+  scenario: ReplayScenario,
   market: CopyMarket,
 ): ReplayFrame {
-  const phase = getReplayPhase(state);
-  const selectedTrader = getSelectedTrader(state.copy, traders);
-  const replayLeader = getSelectedTrader(state.copy, getReplayTraders(state, traders));
+  const scenarioFrame = getScenarioFrame(state, scenario);
+  const phase = scenarioFrame.phase;
+  const selectedTrader = getSelectedTrader(state.copy, scenario.traders);
+  const replayTraders = getReplayTraders(state, scenario);
+  const replayLeader = getSelectedTrader(state.copy, replayTraders);
+  const activeSignal =
+    signalForLeader(scenarioFrame.source.state.activeSignals, selectedTrader.id) ??
+    signalForLeader(scenarioFrame.source.state.activeSignals, scenarioFrame.source.activity.leaderId) ??
+    scenarioFrame.source.activity.signal ??
+    latestSignalForLeader(scenario.frames.map(({ source }) => source), selectedTrader.id);
   const amount = formatCopyAmount(state.copy.copyAmount);
-  const pnl = formatPnl(getSettlementPnl(state.copy.copyAmount));
+  const pnl = formatPnl(getFramePnl(scenarioFrame.source));
   const isCopied = state.copy.isArmed && phaseIndex(phase) >= phaseIndex("copy-executed");
   const isSettled = state.copy.isArmed && phaseIndex(phase) >= phaseIndex("settled");
   const isUpdated = state.copy.isArmed && phase === "hot-hand-updated";
@@ -188,7 +265,7 @@ export function getReplayFrame(
 
   return {
     phase,
-    stepLabel: `${state.step + 1}/${REPLAY_PHASES.length}`,
+    stepLabel: `${state.step + 1}/${scenario.frames.length}`,
     status: phaseStatus[phase],
     tableCall: getTableCall(
       phase,
@@ -198,7 +275,7 @@ export function getReplayFrame(
       pnl,
       state.copy.isArmed,
     ),
-    latestSignal: getLatestSignal(phase, selectedTrader),
+    latestSignal: getLatestSignal(phase, selectedTrader, activeSignal),
     signalBadges: replaySignalBadges[phase],
     phaseBadge: getPhaseBadge(phase, state.copy.isArmed),
     copyReceipt: {
@@ -228,22 +305,156 @@ export function getReplayFrame(
       streak: isUpdated ? replayLeader.streak : selectedTrader.streak,
       copied: isUpdated ? replayLeader.copied : selectedTrader.copied,
     },
-    activity: getActivity(phase, selectedTrader.name, amount, pnl, state.copy.isArmed),
+    activity: activityLabelsForFrame(scenarioFrame.source, selectedTrader.name, amount, pnl),
   };
+}
+
+function pickVerticalSliceFrames(sharedFrames: DemoReplayFrame[]): ReplayScenarioFrame[] {
+  return REPLAY_PHASES.map((phase) => ({
+    phase,
+    source: frameForPhase(sharedFrames, phase),
+  }));
+}
+
+function frameForPhase(sharedFrames: DemoReplayFrame[], phase: ReplayPhase): DemoReplayFrame {
+  const byAction = (action: DemoReplayFrame["activity"]["action"]) =>
+    sharedFrames.find((frame) => frame.activity.action === action);
+  const lastByAction = (action: DemoReplayFrame["activity"]["action"]) =>
+    [...sharedFrames].reverse().find((frame) => frame.activity.action === action);
+
+  if (phase === "copy-armed") {
+    return byAction("copy_armed") ?? byAction("spectator_joined") ?? sharedFrames[0];
+  }
+
+  if (phase === "signal-landed") {
+    return byAction("signal_posted") ?? sharedFrames[0];
+  }
+
+  if (phase === "copy-executed") {
+    return byAction("copy_executed") ?? byAction("signal_posted") ?? sharedFrames[0];
+  }
+
+  if (phase === "settled") {
+    return byAction("signal_settled") ?? sharedFrames[sharedFrames.length - 1];
+  }
+
+  return byAction("score_updated") ?? lastByAction("snapshot_emitted") ?? sharedFrames[sharedFrames.length - 1];
+}
+
+function getScenarioFrame(state: ReplayState, scenario: ReplayScenario): ReplayScenarioFrame {
+  return scenario.frames[state.step] ?? scenario.frames[0];
 }
 
 function phaseIndex(phase: ReplayPhase): number {
   return REPLAY_PHASES.indexOf(phase);
 }
 
-function getCopiedDelta(amount: number): number {
-  return Math.max(1, Math.round(amount / 11));
+function latestSignalForLeader(
+  frames: DemoReplayFrame[],
+  leaderId?: string,
+): ReplaySignal | undefined {
+  if (!leaderId) {
+    return undefined;
+  }
+
+  return [...frames]
+    .reverse()
+    .flatMap((frame) => [
+      frame.activity.signal,
+      ...frame.state.activeSignals,
+    ])
+    .find((signal) => signal?.leaderId === leaderId);
 }
 
-function getSettlementPnl(amount: number): number {
-  const safeAmount = Number.isFinite(amount) ? amount : COPY_AMOUNT_DEFAULT;
+function firstSignalForLeader(
+  frames: DemoReplayFrame[],
+  leaderId?: string,
+): ReplaySignal | undefined {
+  if (!leaderId) {
+    return undefined;
+  }
 
-  return Math.round(safeAmount * 0.128);
+  return frames
+    .flatMap((frame) => [
+      frame.activity.signal,
+      ...frame.state.activeSignals,
+    ])
+    .find((signal) => signal?.leaderId === leaderId);
+}
+
+function signalForLeader(
+  signals: ReplaySignal[],
+  leaderId?: string,
+): ReplaySignal | undefined {
+  return leaderId ? signals.find((signal) => signal.leaderId === leaderId) : undefined;
+}
+
+function traderFromSharedLeader(
+  leader: ReplayLeader,
+  index: number,
+  signal?: ReplaySignal,
+): Trader {
+  const displayName = leader.displayName;
+  const signalText = signal ? formatSignal(signal) : "Waiting for BTC signal";
+
+  return {
+    id: leader.traderId,
+    name: displayName,
+    handle: `@${leader.handle}`,
+    avatar: initialsForName(displayName),
+    role: roleForSignal(signal),
+    streak: leader.winStreak,
+    hotScore: Math.round(leader.hotScore),
+    roi: formatRoi(leader.roi),
+    copied: leader.copiedVolume,
+    signal: signalText,
+    tableRead: signal?.thesis ?? `${leader.label} on ${signal?.market ?? "BTC-USD"}`,
+    tone: toneCycle[index % toneCycle.length],
+  };
+}
+
+function initialsForName(name: string): string {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function roleForSignal(signal?: ReplaySignal): string {
+  if (!signal) {
+    return "BTC signal lead";
+  }
+
+  return signal.direction === "up" ? "UP signal lead" : "DOWN signal lead";
+}
+
+function formatSignal(signal: ReplaySignal): string {
+  return `BTC ${signal.direction.toUpperCase()} ${signal.direction === "up" ? "above" : "below"} ${
+    formatPrice(signal.strike)
+  }`;
+}
+
+function formatPrice(value: number): string {
+  return `$${value.toLocaleString()}`;
+}
+
+function formatRoi(roi: number): string {
+  const percent = Math.round(roi * 1000) / 10;
+
+  return `${percent >= 0 ? "+" : ""}${percent}%`;
+}
+
+function getFramePnl(frame: DemoReplayFrame): number {
+  if (frame.activity.settlement) {
+    return frame.activity.settlement.pnl;
+  }
+
+  const latestSettlement = [...frame.state.rankedLeaders]
+    .sort((first, second) => Math.abs(second.pnl) - Math.abs(first.pnl))[0]?.pnl;
+
+  return latestSettlement ?? 0;
 }
 
 function formatPnl(amount: number): string {
@@ -340,12 +551,18 @@ function getTableCall(
   return `${leader} tops the leaderboard`;
 }
 
-function getLatestSignal(phase: ReplayPhase, trader: Trader): string {
+function getLatestSignal(
+  phase: ReplayPhase,
+  trader: Trader,
+  signal?: ReplaySignal,
+): string {
+  const signalText = signal ? formatSignal(signal) : trader.signal;
+
   if (phase === "copy-armed") {
-    return `${trader.name} is tracking ${trader.signal}`;
+    return `${trader.name} is tracking ${signalText}`;
   }
 
-  return `${trader.name} posted ${trader.signal}`;
+  return `${trader.name} posted ${signalText}`;
 }
 
 function getPhaseBadge(phase: ReplayPhase, isArmed: boolean): string {
@@ -372,32 +589,31 @@ function getPhaseBadge(phase: ReplayPhase, isArmed: boolean): string {
   return "HOT";
 }
 
-function getActivity(
-  phase: ReplayPhase,
+function activityLabelsForFrame(
+  frame: DemoReplayFrame,
   leader: string,
   amount: string,
   pnl: string,
-  isArmed: boolean,
 ): string[] {
-  if (!isArmed) {
-    return [`${leader} live`, "Copy paused", "No ticket sent"];
+  const labels = [
+    frame.activity.label,
+    `${frame.state.spectators.toLocaleString()} watching`,
+    frame.state.armedFollowers > 0
+      ? `${frame.state.armedFollowers.toLocaleString()} armed`
+      : `${leader} selected`,
+  ];
+
+  if (frame.activity.action === "copy_executed") {
+    labels[1] = `${amount} copied`;
   }
 
-  if (phase === "copy-armed") {
-    return [`${leader} selected`, `${amount} max copy`, "Copy armed"];
+  if (frame.activity.action === "signal_settled") {
+    labels[1] = `${pnl} result`;
   }
 
-  if (phase === "signal-landed") {
-    return [`${leader} signal live`, "BTC trigger live", `${amount} reserved`];
+  if (frame.activity.action === "score_updated") {
+    labels[1] = "Leaderboard bumped";
   }
 
-  if (phase === "copy-executed") {
-    return [`${amount} copied`, `${leader} receipt open`, "Awaiting settlement"];
-  }
-
-  if (phase === "settled") {
-    return ["Settlement filled", `${pnl} result`, "Leaderboard pending"];
-  }
-
-  return [`${leader} hot hand`, "Leaderboard bumped", `${pnl} banked`];
+  return labels;
 }

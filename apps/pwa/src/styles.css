@@ -166,6 +166,27 @@ button {
   white-space: nowrap;
 }
 
+.scenario-switcher {
+  margin: 0 0 12px;
+}
+
+.scenario-switcher select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: #f8f4ea;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.scenario-switcher option {
+  color: #111818;
+}
+
 .replay-panel {
   display: grid;
   gap: 9px;
