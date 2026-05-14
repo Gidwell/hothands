@@ -1,39 +1,72 @@
 import { describe, expect, test } from "bun:test";
 import { selectHotTrader, setCopyAmount } from "../src/copyModel";
-import { market, traders } from "../src/mockData";
+import { market } from "../src/mockData";
 import {
+  REPLAY_SCENARIOS,
   advanceReplay,
   createInitialReplayState,
+  createReplayScenario,
   getReplayFrame,
   getReplayTraders,
+  selectReplayScenario,
   updateReplayCopy,
 } from "../src/replayModel";
 
 describe("live replay model", () => {
-  test("walks the deterministic copy loop from armed to hot hand update", () => {
-    let state = createInitialReplayState(traders);
+  test("builds BTC replay scenarios from shared deterministic frames", () => {
+    expect(REPLAY_SCENARIOS.map((scenario) => scenario.id)).toEqual([
+      "opening-night",
+      "trap-streak",
+      "hot-hand-swing",
+    ]);
 
-    expect(state.copy.selectedTraderId).toBe("t1");
+    const openingNight = createReplayScenario("opening-night");
+    const trapStreak = createReplayScenario("trap-streak");
+    const hotHandSwing = createReplayScenario("hot-hand-swing");
+
+    expect(openingNight.title).toBe("Opening Night");
+    expect(openingNight.traders[0]).toMatchObject({
+      id: "trader-mira",
+      name: "Mira Vale",
+      signal: "BTC UP above $64,200",
+    });
+    expect(openingNight.frames.map((frame) => frame.phase)).toContain("copy-executed");
+    expect(openingNight.frames.map((frame) => frame.phase)).toContain("hot-hand-updated");
+    expect(trapStreak.traders[0]).toMatchObject({
+      id: "trader-kade",
+      name: "Kade Lin",
+    });
+    expect(hotHandSwing.traders.map((trader) => trader.name)).toEqual([
+      "Alpha Cruz",
+      "Beta Shah",
+    ]);
+  });
+
+  test("walks the shared deterministic copy loop from armed to hot hand update", () => {
+    const scenario = createReplayScenario("opening-night");
+    let state = createInitialReplayState(scenario);
+
+    expect(state.copy.selectedTraderId).toBe("trader-mira");
     expect(state.copy.isArmed).toBe(true);
-    expect(getReplayFrame(state, traders, market)).toMatchObject({
+    expect(getReplayFrame(state, scenario, market)).toMatchObject({
       phase: "copy-armed",
       status: "Copy armed",
       copyReceipt: {
-        leader: "Mina Volt",
+        leader: "Mira Vale",
         amount: "$250",
         state: "Armed",
       },
     });
 
-    state = advanceReplay(state);
-    expect(getReplayFrame(state, traders, market)).toMatchObject({
+    state = advanceReplay(state, scenario);
+    expect(getReplayFrame(state, scenario, market)).toMatchObject({
       phase: "signal-landed",
       status: "Leader signal landed",
-      latestSignal: "Mina Volt posted BTC UP on pullback",
+      latestSignal: "Mira Vale posted BTC UP above $64,200",
     });
 
-    state = advanceReplay(state);
-    expect(getReplayFrame(state, traders, market)).toMatchObject({
+    state = advanceReplay(state, scenario);
+    expect(getReplayFrame(state, scenario, market)).toMatchObject({
       phase: "copy-executed",
       status: "Copy executed",
       copyReceipt: {
@@ -43,56 +76,74 @@ describe("live replay model", () => {
       },
     });
 
-    state = advanceReplay(state);
-    expect(getReplayFrame(state, traders, market)).toMatchObject({
+    state = advanceReplay(state, scenario);
+    expect(getReplayFrame(state, scenario, market)).toMatchObject({
       phase: "settled",
       status: "Settlement posted",
       settlement: {
         amount: "$250",
-        pnl: "+$32",
+        pnl: "+$40",
         status: "Filled",
       },
     });
 
-    state = advanceReplay(state);
-    const frame = getReplayFrame(state, traders, market);
-    const replayTraders = getReplayTraders(state, traders);
+    state = advanceReplay(state, scenario);
+    const frame = getReplayFrame(state, scenario, market);
+    const replayTraders = getReplayTraders(state, scenario);
 
     expect(frame).toMatchObject({
       phase: "hot-hand-updated",
       status: "Hot hand updated",
       hotHand: {
-        leader: "Mina Volt",
-        hotScore: 99,
-        streak: 9,
+        leader: "Mira Vale",
+        hotScore: 50,
+        streak: 1,
       },
     });
     expect(replayTraders[0]).toMatchObject({
-      id: "t1",
-      hotScore: 99,
-      copied: 1263,
-      streak: 9,
+      id: "trader-mira",
+      hotScore: 50,
+      copied: 20,
+      streak: 1,
     });
   });
 
   test("keeps selected trader and amount intact while replay ticks advance", () => {
-    let state = createInitialReplayState(traders);
+    const scenario = createReplayScenario("hot-hand-swing");
+    let state = createInitialReplayState(scenario);
     state = updateReplayCopy(state, (copyState) =>
-      setCopyAmount(selectHotTrader(copyState, "t3", traders), 375),
+      setCopyAmount(selectHotTrader(copyState, "trader-beta", scenario.traders), 375),
     );
 
-    state = advanceReplay(advanceReplay(advanceReplay(state)));
-    const frame = getReplayFrame(state, traders, market);
+    state = advanceReplay(advanceReplay(advanceReplay(state, scenario), scenario), scenario);
+    const frame = getReplayFrame(state, scenario, market);
 
-    expect(state.copy.selectedTraderId).toBe("t3");
+    expect(state.copy.selectedTraderId).toBe("trader-beta");
     expect(state.copy.copyAmount).toBe(375);
     expect(frame.copyReceipt).toMatchObject({
-      leader: "Rhea Stack",
+      leader: "Beta Shah",
       amount: "$375",
     });
     expect(frame.settlement).toMatchObject({
       amount: "$375",
-      pnl: "+$48",
+      pnl: "+$80",
+    });
+  });
+
+  test("resets copy state and replay frame when switching shared scenarios", () => {
+    const openingNight = createReplayScenario("opening-night");
+    const trapStreak = createReplayScenario("trap-streak");
+    const state = selectReplayScenario(
+      advanceReplay(createInitialReplayState(openingNight), openingNight),
+      trapStreak,
+    );
+
+    expect(state.step).toBe(0);
+    expect(state.copy.selectedTraderId).toBe("trader-kade");
+    expect(getReplayFrame(state, trapStreak, market).copyReceipt).toMatchObject({
+      leader: "Kade Lin",
+      market: "BTC-USD",
+      state: "Armed",
     });
   });
 });
