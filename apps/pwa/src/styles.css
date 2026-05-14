@@ -59,6 +59,7 @@ button {
 }
 
 .market-strip,
+.account-summary,
 .active-signal-strip,
 .spectator-rail,
 .trader-row {
@@ -129,6 +130,101 @@ button {
   color: #6ee89a;
   font-size: 0.76rem;
   font-weight: 900;
+}
+
+.account-summary {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.075), rgba(100, 212, 209, 0.055)),
+    rgba(255, 255, 255, 0.04);
+}
+
+.account-summary-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.account-value,
+.account-pnl {
+  min-width: 0;
+}
+
+.account-value span,
+.account-pnl p,
+.account-summary-stats span,
+.account-summary > p {
+  margin: 0;
+  color: #aeb9b5;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.account-value strong {
+  display: block;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 0.92rem;
+  line-height: 1.04;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-value {
+  display: grid;
+  justify-items: end;
+  gap: 1px;
+  text-align: right;
+}
+
+.account-pnl strong {
+  color: #f8f4ea;
+  font-size: 1.22rem;
+  line-height: 1.05;
+}
+
+.account-summary-positive .account-pnl strong {
+  color: #6ee89a;
+}
+
+.account-summary-negative .account-pnl strong {
+  color: #ef7d72;
+}
+
+.account-summary-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 38px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.account-summary-stats div {
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  min-width: 0;
+  padding: 5px 7px;
+}
+
+.account-summary-stats div + div {
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.account-summary-stats strong {
+  overflow-wrap: anywhere;
+  color: #ffffff;
+  font-size: 0.74rem;
+  line-height: 1.08;
+}
+
+.account-summary > p {
+  color: #d3ded8;
+  line-height: 1.22;
 }
 
 .market-badges {

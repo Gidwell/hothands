@@ -15,6 +15,7 @@ import {
   advanceReplay,
   createReplayScenario,
   createInitialReplayState,
+  getReplayAccountSummary,
   getReplayFrame,
   getReplayTraders,
   REPLAY_SCENARIOS,
@@ -362,6 +363,46 @@ function MarketHeader() {
   );
 }
 
+function AccountSummary({
+  summary,
+}: {
+  summary: ReturnType<typeof getReplayAccountSummary>;
+}) {
+  return (
+    <section
+      className={`account-summary account-summary-${summary.pnlTone}`}
+      aria-label="Account summary"
+      data-testid="session-pnl"
+    >
+      <div className="account-summary-main">
+        <div className="account-pnl" data-testid="account-pnl">
+          <p>{summary.title}</p>
+          <strong>{summary.pnl}</strong>
+        </div>
+        <div className="account-value">
+          <span>Bankroll</span>
+          <strong data-testid="account-value">{summary.accountValue}</strong>
+        </div>
+      </div>
+      <div className="account-summary-stats">
+        <div>
+          <span>Available</span>
+          <strong>{summary.available}</strong>
+        </div>
+        <div>
+          <span>{summary.copyLabel}</span>
+          <strong>{summary.copyValue}</strong>
+        </div>
+        <div>
+          <span>Status</span>
+          <strong>{summary.status}</strong>
+        </div>
+      </div>
+      <p>{summary.detail}</p>
+    </section>
+  );
+}
+
 function HotTraderList({
   traders,
   selectedTraderId,
@@ -451,6 +492,7 @@ export function App() {
   );
   const selectedTrader = getSelectedTrader(copyState, replayTraders);
   const hotTrader = replayTraders.find((trader) => trader.name === frame.hotHand.leader);
+  const accountSummary = getReplayAccountSummary(replayState, frame);
   const receipt = frame.copyReceipt;
   const spectatorCount = scenario.spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
 
@@ -532,6 +574,7 @@ export function App() {
     <main className="app-shell" data-testid="app-shell">
       <section className="phone-frame" aria-label="Hot Hands market shell">
         <MarketHeader />
+        <AccountSummary summary={accountSummary} />
         <ActiveSignalStrip
           frame={frame}
           receiptState={receipt.state}

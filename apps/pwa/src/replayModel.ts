@@ -43,6 +43,7 @@ export type ReplayState = {
 export type ReplaySettlement = {
   amount: string;
   pnl: string;
+  pnlValue: number;
   status: "Filled" | "Paused";
 };
 
@@ -81,6 +82,18 @@ export type ReplayFrame = {
   activity: string[];
 };
 
+export type ReplayAccountSummary = {
+  title: "My Session";
+  accountValue: string;
+  available: string;
+  pnl: string;
+  pnlTone: "positive" | "negative" | "flat";
+  copyLabel: "Copy max" | "Reserved" | "Confirm" | "In flight" | "Settled";
+  copyValue: string;
+  status: "Flat" | "Armed" | "Confirm" | "Pending" | "Settled";
+  detail: string;
+};
+
 export type ReplayScenarioFrame = {
   phase: ReplayPhase;
   source: DemoReplayFrame;
@@ -103,6 +116,7 @@ const replaySignalBadges: Record<ReplayPhase, [string, string]> = {
   "hot-hand-updated": ["BOARD", "HOT"],
 };
 
+const DEMO_ACCOUNT_STARTING_BALANCE = 1_250;
 const toneCycle: Trader["tone"][] = ["gold", "green", "blue"];
 const spectatorColors = ["#f4b64f", "#62d68f", "#6aa9ff", "#ef7d72", "#b98cff", "#64d4d1"];
 
@@ -252,6 +266,7 @@ export function getReplayFrame(
   const replayLeader = getSelectedTrader(state.copy, replayTraders);
   const hotLeader = replayTraders[0] ?? replayLeader;
   const stripTrader = phase === "hot-hand-updated" ? hotLeader : selectedTrader;
+  const rawPnl = getFramePnl(scenarioFrame.source);
   const activeSignal =
     signalForLeader(scenarioFrame.source.state.activeSignals, stripTrader.id) ??
     (scenarioFrame.source.activity.signal?.leaderId === stripTrader.id
@@ -259,7 +274,7 @@ export function getReplayFrame(
       : undefined) ??
     latestSignalForLeader(scenario.frames.map(({ source }) => source), stripTrader.id);
   const amount = formatCopyAmount(state.copy.copyAmount);
-  const pnl = formatPnl(getFramePnl(scenarioFrame.source));
+  const pnl = formatPnl(rawPnl);
   const hasSubmittedCopy = state.copy.copyStatus === "submitted";
   const isCopyLive = state.copy.isArmed || hasSubmittedCopy;
   const isCopied = hasSubmittedCopy && phaseIndex(phase) >= phaseIndex("copy-executed");
@@ -301,6 +316,7 @@ export function getReplayFrame(
     settlement: {
       amount,
       pnl: isSettled ? pnl : "+$0",
+      pnlValue: isSettled ? rawPnl : 0,
       status: isSettled ? "Filled" : "Paused",
     },
     hotHand: {
@@ -310,6 +326,74 @@ export function getReplayFrame(
       copied: isUpdated ? hotLeader.copied : selectedTrader.copied,
     },
     activity: activityLabelsForFrame(scenarioFrame.source, selectedTrader.name, amount, pnl),
+  };
+}
+
+export function getReplayAccountSummary(
+  state: ReplayState,
+  frame: ReplayFrame,
+): ReplayAccountSummary {
+  const copyValue = formatUsd(state.copy.copyAmount);
+  const hasSubmittedCopy = state.copy.copyStatus === "submitted";
+  const hasSettledCopy = hasSubmittedCopy && frame.settlement.status === "Filled";
+  const pnlValue = hasSettledCopy ? frame.settlement.pnlValue : 0;
+  const accountValue = DEMO_ACCOUNT_STARTING_BALANCE + pnlValue;
+  const reservedAmount =
+    state.copy.isArmed || (hasSubmittedCopy && !hasSettledCopy)
+      ? state.copy.copyAmount
+      : 0;
+  const available = accountValue - reservedAmount;
+  const base = {
+    title: "My Session" as const,
+    accountValue: formatUsd(accountValue),
+    available: formatUsd(available),
+    pnl: formatPnl(pnlValue),
+    pnlTone:
+      pnlValue > 0 ? "positive" as const : pnlValue < 0 ? "negative" as const : "flat" as const,
+    copyValue,
+  };
+
+  if (hasSettledCopy) {
+    return {
+      ...base,
+      copyLabel: "Settled",
+      status: "Settled",
+      detail: `${copyValue} settled for ${formatPnl(pnlValue)}.`,
+    };
+  }
+
+  if (hasSubmittedCopy) {
+    return {
+      ...base,
+      copyLabel: "In flight",
+      status: "Pending",
+      detail: `${copyValue} copy submitted. Settlement pending.`,
+    };
+  }
+
+  if (frame.copyReceipt.state === "Signal landed") {
+    return {
+      ...base,
+      copyLabel: "Confirm",
+      status: "Confirm",
+      detail: `Confirm before submitting up to ${copyValue}.`,
+    };
+  }
+
+  if (state.copy.isArmed) {
+    return {
+      ...base,
+      copyLabel: "Reserved",
+      status: "Armed",
+      detail: `${copyValue} reserved for ${frame.copyReceipt.leader}'s next ${frame.copyReceipt.market} signal.`,
+    };
+  }
+
+  return {
+    ...base,
+    copyLabel: "Copy max",
+    status: "Flat",
+    detail: `No active copy. ${frame.copyReceipt.leader} selected.`,
   };
 }
 
@@ -468,6 +552,12 @@ function formatRoi(roi: number): string {
   const percent = Math.round(roi * 1000) / 10;
 
   return `${percent >= 0 ? "+" : ""}${percent}%`;
+}
+
+function formatUsd(amount: number): string {
+  const roundedAmount = Math.round(amount);
+
+  return `${roundedAmount < 0 ? "-" : ""}$${Math.abs(roundedAmount).toLocaleString()}`;
 }
 
 function getFramePnl(frame: DemoReplayFrame): number {

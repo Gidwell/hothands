@@ -5,6 +5,9 @@ test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", asy
 
   await expect(page.getByTestId("market-header")).toBeVisible();
   await expect(page.getByTestId("active-signal-strip")).toBeVisible();
+  await expect(page.getByTestId("session-pnl")).toBeVisible();
+  await expect(page.getByTestId("session-pnl")).toContainText("My Session");
+  await expect(page.getByTestId("session-pnl")).toContainText("+$0");
   await expect(page.getByTestId("active-signal-strip").getByText("Copy ready")).toBeVisible();
   await expect(page.getByTestId("inline-copy-panel")).toHaveCount(0);
   await expect(page.getByTestId("scenario-selector")).toBeHidden();
@@ -86,6 +89,8 @@ test("mobile stage 1 one-shot copy loop reaches settlement and leaderboard updat
   await expect(page.getByTestId("market-header")).toBeVisible();
   await expect(page.getByTestId("market-header")).toContainText("BTC-USD");
   await expect(signalStrip).toBeVisible();
+  await expect(page.getByTestId("session-pnl")).toContainText("+$0");
+  await expect(page.getByTestId("session-pnl")).toContainText("Flat");
   await expect(leaderboard).toContainText("Copy the next BTC UP/DOWN signal");
 
   await expect(page.getByTestId("spectator-rail")).toBeVisible();
@@ -110,21 +115,27 @@ test("mobile stage 1 one-shot copy loop reaches settlement and leaderboard updat
   await inlineCopyPanel.getByTestId("arm-copy-button").click();
   await expect(inlineCopyPanel.getByTestId("arm-copy-button")).not.toHaveText(/pause copy/i);
   await expectOneShotArmedCopy(page);
+  await expect(page.getByTestId("session-pnl")).toContainText("Armed");
+  await expect(page.getByTestId("session-pnl")).toContainText("$500");
   await expect(miraTrader).toContainText("Armed");
 
   await page.getByTestId("replay-next").click();
   await expect(signalStrip.getByText("Leader signal landed")).toBeVisible();
   await expect(signalStrip.getByText(/posted BTC (UP|DOWN)/).first()).toBeVisible();
+  await expect(page.getByTestId("session-pnl")).toContainText("Confirm");
   await confirmCopyAction(page).click();
 
   await expect(signalStrip.getByText("Copy executed")).toBeVisible();
   await expect(signalStrip.getByText("$500 copied to BTC ticket")).toBeVisible();
+  await expect(page.getByTestId("session-pnl")).toContainText("Pending");
   await expectOneShotCopyConsumed(page);
   await expect(miraTrader).toContainText("Copied");
 
   await page.getByTestId("replay-next").click();
   await expect(signalStrip.getByText("Settlement posted")).toBeVisible();
   await expect(signalStrip.getByText("Settlement posts +$40")).toBeVisible();
+  await expect(page.getByTestId("session-pnl")).toContainText("+$40");
+  await expect(page.getByTestId("session-pnl")).toContainText("Settled");
 
   await page.getByTestId("replay-next").click();
   await expect(signalStrip.getByText("Hot hand updated")).toBeVisible();

@@ -6,6 +6,7 @@ import {
   advanceReplay,
   createInitialReplayState,
   createReplayScenario,
+  getReplayAccountSummary,
   getReplayFrame,
   getReplayTraders,
   selectReplayScenario,
@@ -149,6 +150,67 @@ describe("live replay model", () => {
     expect(frame.settlement).toMatchObject({
       amount: "$375",
       pnl: "+$80",
+    });
+  });
+
+  test("summarizes account PnL and copy exposure from replay state", () => {
+    const scenario = createReplayScenario("opening-night");
+    let state = createInitialReplayState(scenario);
+    let frame = getReplayFrame(state, scenario, market);
+
+    expect(getReplayAccountSummary(state, frame)).toEqual({
+      title: "My Session",
+      accountValue: "$1,250",
+      available: "$1,250",
+      pnl: "+$0",
+      pnlTone: "flat",
+      copyLabel: "Copy max",
+      copyValue: "$250",
+      status: "Flat",
+      detail: "No active copy. Mira Vale selected.",
+    });
+
+    state = updateReplayCopy(state, (copyState) => toggleCopyArmed(copyState));
+    frame = getReplayFrame(state, scenario, market);
+    expect(getReplayAccountSummary(state, frame)).toMatchObject({
+      available: "$1,000",
+      pnl: "+$0",
+      copyLabel: "Reserved",
+      copyValue: "$250",
+      status: "Armed",
+      detail: "$250 reserved for Mira Vale's next BTC-USD signal.",
+    });
+
+    state = advanceReplay(state, scenario);
+    frame = getReplayFrame(state, scenario, market);
+    expect(getReplayAccountSummary(state, frame)).toMatchObject({
+      available: "$1,000",
+      copyLabel: "Confirm",
+      status: "Confirm",
+      detail: "Confirm before submitting up to $250.",
+    });
+
+    state = advanceReplay(state, scenario);
+    frame = getReplayFrame(state, scenario, market);
+    expect(getReplayAccountSummary(state, frame)).toMatchObject({
+      available: "$1,000",
+      copyLabel: "In flight",
+      status: "Pending",
+      detail: "$250 copy submitted. Settlement pending.",
+    });
+
+    state = advanceReplay(state, scenario);
+    frame = getReplayFrame(state, scenario, market);
+    expect(getReplayAccountSummary(state, frame)).toEqual({
+      title: "My Session",
+      accountValue: "$1,290",
+      available: "$1,290",
+      pnl: "+$40",
+      pnlTone: "positive",
+      copyLabel: "Settled",
+      copyValue: "$250",
+      status: "Settled",
+      detail: "$250 settled for +$40.",
     });
   });
 
