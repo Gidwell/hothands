@@ -2,7 +2,7 @@
 
 Hot Hands is a mobile-first social prediction market app for DeepBook Predict. The core loop is simple: watch live BTC prediction tables, find traders with a hot hand, arm a copy-next-signal rule, and execute the copy trade with your own chosen amount.
 
-This repository starts as a hackathon build plan and scaffold. The current priority is to create a tight local development and verification loop before pushing into full DeepBook testnet execution.
+This repository now has the Stage 1 fake-data vertical slice: a deterministic local mobile demo before pushing into full DeepBook testnet execution.
 
 ## Product Loop
 
@@ -32,7 +32,7 @@ This repository starts as a hackathon build plan and scaffold. The current prior
 - `packages/fixtures`: deterministic test data and recorded testnet fixtures
 - `packages/e2e`: Playwright and performance verification harness
 
-## First Verification Targets
+## Stage 1 Verification
 
 The first implementation milestone is a deterministic local demo:
 
@@ -42,5 +42,10 @@ bun run verify:fast
 bun run verify:e2e
 ```
 
-Those commands are placeholders until the packages are implemented. See `ROADMAP.md`, `SPEC.md`, `ARCHITECTURE.md`, and `AGENTS.md` for the build plan.
+`verify:e2e` uses Playwright. On a fresh machine, install the browser binary first:
 
+```bash
+bunx playwright install chromium
+```
+
+In this local Codex workspace, the project folder contains a space, so final Vite/Playwright verification is safest from a clean no-space worktree under `/private/tmp/hot-hands-worktrees`. See `SPRINT-01.md`, `ROADMAP.md`, `SPEC.md`, `ARCHITECTURE.md`, and `AGENTS.md` for the build plan.

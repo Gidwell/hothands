@@ -1,6 +1,6 @@
 # Hot Hands Testing And Verification
 
-Last updated: May 13, 2026
+Last updated: May 14, 2026
 
 ## Test Pyramid
 
@@ -20,14 +20,15 @@ Testnet canary flows
 
 Runs on every meaningful change.
 
-Expected checks:
+Current Stage 1 checks:
 
 - TypeScript typecheck.
-- Lint.
 - Unit tests.
 - Durable Object tests.
-- Move tests.
-- Transaction builder snapshots.
+- PWA production build.
+- Worker production build.
+
+Later stages will add lint, Move tests, and transaction builder snapshots.
 
 ### `verify:e2e`
 
@@ -43,7 +44,18 @@ Expected checks:
 - execute fake copy
 - settle fake market
 - assert streak and leaderboard update
-- save screenshots
+
+Stage 1 implementation:
+
+- `packages/e2e` uses Playwright with a Pixel 7 profile.
+- The test starts the PWA dev server, opens the app, arms copy, advances replay, confirms copy execution, settlement, and leaderboard update.
+- Fresh machines may need the browser cache populated first:
+
+```bash
+bunx playwright install chromium
+```
+
+Local note: if Vite/esbuild hangs in a workspace path with spaces, run verification from a clean no-space worktree such as `/private/tmp/hot-hands-worktrees/integration-verify`.
 
 ### `verify:perf`
 
@@ -77,7 +89,7 @@ Expected checks:
 
 Fixture data should cover:
 
-- hot shooter wins 5 in a row
+- hot trader wins 5 in a row
 - trap streak wins often but loses ROI
 - cold table loses twice
 - whale attracts spectators

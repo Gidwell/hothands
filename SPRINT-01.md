@@ -12,22 +12,31 @@ open mobile table -> spectators visible -> arm copy-next-signal -> leader signal
 
 This sprint should make the product feel real before DeepBook testnet execution is required.
 
-## Current Checkpoint
+## Final Checkpoint
+
+Completed on May 14, 2026.
 
 Completed on `codex/hot-hands-stage-1`:
 
-- Mobile table shell with spectator rail, hot trader cards, and copy-next controls.
+- Mobile BTC prediction market shell with spectators, hot trader cards, and copy-next controls.
+- PWA replay loop wired to shared deterministic fixtures for `opening-night`, `trap-streak`, and `hot-hand-swing`.
+- Scenario switcher for the three Stage 1 demo paths.
 - PWA copy model tests for amount changes, trader selection, and arm/disarm state.
 - Demo fixtures for `opening-night`, `trap-streak`, and `hot-hand-swing`.
 - Scoring tests for win/loss settlement, trap streaks, ranked hot hands, and leader swings.
-- Worker protocol tests, table summary delta tests, and heartbeat policy tests.
-- Browser smoke test for the integrated mobile UI and copy controls.
-
-Next loop:
-
-- PWA live replay of signal/copy/settlement/leaderboard changes.
 - Demo-runner replay frames that bridge trace events to UI animation data.
-- Worker table state that preserves copy-next leader IDs and per-leader armed counts.
+- Worker protocol tests, table summary delta tests, heartbeat policy tests, and fake spectator simulation.
+- Playwright mobile e2e flow for arm copy, signal, copy execution, settlement, and leaderboard update.
+- Browser smoke test for the integrated mobile UI and shared fixture scenarios.
+
+Verification passed from a clean detached worktree at `/private/tmp/hot-hands-worktrees/integration-verify`:
+
+```bash
+bun run verify:fast
+bun run verify:e2e
+```
+
+The clean worktree is currently the preferred verification surface because the Codex project path contains a space, which has caused Vite/esbuild process hangs in this local desktop session.
 
 ## Parallel Workstreams
 
@@ -40,7 +49,7 @@ Ownership:
 Deliverables:
 
 - React/Vite/TypeScript mobile app shell.
-- Hot table screen with market strip, spectator rail, trader cards, and copy tray.
+- Hot table screen with market strip, spectator stack, trader cards, and copy tray.
 - Static mock data if shared fixtures are not ready yet.
 - Local dev/build scripts.
 
@@ -113,4 +122,9 @@ bun run demo opening-night
 - The demo runner can produce an event trace for `opening-night`.
 - The Worker can accept a local WebSocket connection and update table presence.
 - `verify:fast` is upgraded from placeholders to real package checks where available.
+- `verify:e2e` runs a real mobile Playwright copy-loop test.
+- PWA replay consumes shared deterministic fixtures instead of a separate UI-only story.
+- Worker fake spectator simulation verifies joins, heartbeats, copy arming, disarming, leaving, and per-leader armed counts.
 - No package writes outside assigned ownership.
+
+Stage 1 is complete.

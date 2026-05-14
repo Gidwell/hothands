@@ -35,7 +35,7 @@ Owns:
 - `apps/pwa`
 - mobile table UI
 - copy tray
-- spectator rail
+- spectator stack
 - Playwright selectors for UI flows
 
 Does not own:

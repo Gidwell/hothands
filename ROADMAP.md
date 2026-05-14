@@ -1,6 +1,6 @@
 # Hot Hands Roadmap
 
-Last updated: May 13, 2026
+Last updated: May 14, 2026
 
 The hackathon submission deadline is June 21, 2026. This roadmap is organized around gates. Each gate should end with a working demo or a major risk retired.
 
@@ -29,6 +29,8 @@ rg "Do not write every heartbeat"
 
 Target: May 14-17
 
+Status: Complete on `codex/hot-hands-stage-1`.
+
 Goal: make the app feel good locally before fighting testnet.
 
 Deliverables:
@@ -50,8 +52,16 @@ Verification:
 
 ```bash
 bun run demo:play opening-night
+bun run verify:fast
 bun run verify:e2e
 ```
+
+Completion notes:
+
+- PWA uses shared replay frames for `opening-night`, `trap-streak`, and `hot-hand-swing`.
+- Worker has fake spectator simulation coverage for joins, heartbeats, arm/rearm/disarm, leaving, and per-leader armed counts.
+- Mobile Playwright e2e verifies the core copy-next-signal loop through settlement and leaderboard update.
+- Final build/e2e verification passed from `/private/tmp/hot-hands-worktrees/integration-verify` to avoid local Vite/esbuild path issues in the Codex project folder.
 
 ## Stage 2: DeepBook Predict Spike
 
@@ -206,7 +216,7 @@ bun run test:scoring
 bun run demo:play trap-streak
 ```
 
-## Stage 7: Casino Polish
+## Stage 7: Live Market Polish
 
 Target: June 6-14
 
@@ -217,7 +227,7 @@ Deliverables:
 - chip animations
 - table glow by streak
 - bottom-sheet copy flow
-- spectator rail
+- spectator stack
 - copy volume chips
 - PWA install polish
 - optional haptics and sound toggle
@@ -266,4 +276,3 @@ Submission gate:
 - no blocking console errors
 - mobile screenshots look polished
 - project explains DeepBook usage clearly
-
