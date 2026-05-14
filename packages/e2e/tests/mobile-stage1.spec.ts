@@ -12,8 +12,8 @@ test("mobile stage 1 copy loop reaches settlement and leaderboard update", async
   await expect(page.getByText("BTC DOWN", { exact: true })).toBeVisible();
 
   await expect(page.getByRole("region", { name: "Spectators watching" })).toBeVisible();
-  await expect(page.getByLabel("AO copied")).toBeVisible();
-  await expect(page.getByLabel("MK cheering")).toBeVisible();
+  await expect(page.getByLabel("IC watching")).toBeVisible();
+  await expect(page.getByLabel("SP watching")).toBeVisible();
 
   await page.getByRole("button", { name: "Reset" }).click();
   await expect(page.getByRole("heading", { name: "Copy armed" })).toBeVisible();
@@ -37,12 +37,12 @@ test("mobile stage 1 copy loop reaches settlement and leaderboard update", async
 
   await page.getByRole("button", { name: "Next" }).click();
   await expect(page.getByRole("heading", { name: "Settlement posted" })).toBeVisible();
-  await expect(replayStatus.getByText("Settlement posts +$64")).toBeVisible();
-  await expect(copyTray.getByText("Filled +$64")).toBeVisible();
+  await expect(replayStatus.getByText("Settlement posts +$40")).toBeVisible();
+  await expect(copyTray.getByText("Filled +$40")).toBeVisible();
 
   await page.getByRole("button", { name: "Next" }).click();
   await expect(page.getByRole("heading", { name: "Hot hand updated" })).toBeVisible();
-  await expect(replayStatus.getByText("Mina Volt tops the leaderboard")).toBeVisible();
+  await expect(replayStatus.getByText("Mira Vale tops the leaderboard")).toBeVisible();
   await expect(leaderboard.getByText("Hot hand")).toBeVisible();
-  await expect(page.getByLabel("Mina Volt hot score 99")).toBeVisible();
+  await expect(page.getByLabel("Mira Vale hot score 50")).toBeVisible();
 });

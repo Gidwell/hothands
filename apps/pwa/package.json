@@ -11,6 +11,9 @@
     "test": "bun test tests"
   },
   "dependencies": {
+    "@hot-hands/demo-runner": "workspace:*",
+    "@hot-hands/fixtures": "workspace:*",
+    "@hot-hands/shared": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

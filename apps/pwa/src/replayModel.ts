@@ -6,18 +6,13 @@ import {
   type CopyTableState,
 } from "./copyModel";
 import type { Spectator, Trader } from "./mockData";
-import {
-  produceReplayFramesById,
-} from "../../../packages/demo-runner/src/index";
+import { produceReplayFramesById } from "@hot-hands/demo-runner";
 import type {
   DemoReplayFrame,
   ReplayLeader,
   ReplaySignal,
-} from "../../../packages/shared/src/index";
-import {
-  getScenario,
-  type ScenarioId,
-} from "../../../packages/fixtures/src/index";
+} from "@hot-hands/shared";
+import { getScenario, type ScenarioId } from "@hot-hands/fixtures";
 
 export const REPLAY_SCENARIOS = [
   { id: "opening-night", title: "Opening Night" },
