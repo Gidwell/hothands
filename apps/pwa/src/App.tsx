@@ -92,7 +92,7 @@ export function App() {
   const frame = useMemo(() => getReplayFrame(replayState, traders, market), [replayState]);
   const selectedTrader = getSelectedTrader(copyState, replayTraders);
   const receipt = frame.copyReceipt;
-  const railCount = spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
+  const spectatorCount = spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
 
   useEffect(() => {
     if (!replayState.isPlaying) {
@@ -213,10 +213,10 @@ export function App() {
 
         <section className="spectator-section" aria-label="Spectators watching">
           <div className="spectator-copy">
-            <span>{railCount.toLocaleString()}</span>
-            <p>spectators on the rail</p>
+            <span>{spectatorCount.toLocaleString()}</span>
+            <p>spectators watching</p>
           </div>
-          <div className="spectator-rail">
+          <div className="spectator-watchers">
             {spectators.map((spectator) => (
               <div
                 className="spectator-avatar"
@@ -229,7 +229,7 @@ export function App() {
             ))}
             <div className="spectator-more">+{selectedTrader.streak * 11}</div>
           </div>
-          <div className="rail-ticker" aria-label="Market activity">
+          <div className="activity-ticker" aria-label="Market activity">
             {frame.activity.map((activity) => (
               <span key={activity}>{activity}</span>
             ))}

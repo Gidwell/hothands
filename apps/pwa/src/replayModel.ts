@@ -287,7 +287,7 @@ function getReceiptSummary(
   isArmed: boolean,
 ): string {
   if (!isArmed) {
-    return `${leader} is live on ${pair}, but the copy rail is paused.`;
+    return `${leader} is live on ${pair}, but copy is paused.`;
   }
 
   if (phase === "copy-armed") {
@@ -318,7 +318,7 @@ function getTableCall(
   isArmed: boolean,
 ): string {
   if (!isArmed) {
-    return "Copy rail paused";
+    return "Copy paused";
   }
 
   if (phase === "copy-armed") {

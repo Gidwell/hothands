@@ -436,7 +436,7 @@ button {
   font-weight: 900;
 }
 
-.spectator-rail {
+.spectator-watchers {
   display: flex;
   min-height: 46px;
   padding-left: 4px;
@@ -461,14 +461,14 @@ button {
   background: #222b2a;
 }
 
-.rail-ticker {
+.activity-ticker {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
 }
 
-.rail-ticker span {
+.activity-ticker span {
   display: grid;
   place-items: center;
   min-height: 30px;
@@ -783,7 +783,7 @@ button {
     white-space: normal;
   }
 
-  .rail-ticker span {
+  .activity-ticker span {
     font-size: 0.62rem;
   }
 
