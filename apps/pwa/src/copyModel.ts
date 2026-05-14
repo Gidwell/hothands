@@ -4,6 +4,7 @@ export type CopyTableState = {
   selectedTraderId: string;
   copyAmount: number;
   isArmed: boolean;
+  copyStatus: "idle" | "waiting" | "submitted";
 };
 
 export type CopyReceiptPreview = {
@@ -11,7 +12,7 @@ export type CopyReceiptPreview = {
   market: string;
   amount: string;
   label: "Copy next signal";
-  status: "Armed" | "Disarmed";
+  status: "Waiting" | "Disarmed" | "Copied once";
   summary: string;
 };
 
@@ -29,6 +30,7 @@ export function createInitialCopyState(traders: Trader[]): CopyTableState {
     selectedTraderId: traders[0]?.id ?? "",
     copyAmount: COPY_AMOUNT_DEFAULT,
     isArmed: false,
+    copyStatus: "idle",
   };
 }
 
@@ -55,9 +57,24 @@ export function stepCopyAmount(
 }
 
 export function toggleCopyArmed(state: CopyTableState): CopyTableState {
+  const shouldArm = !state.isArmed;
+
   return {
     ...state,
-    isArmed: !state.isArmed,
+    isArmed: shouldArm,
+    copyStatus: shouldArm ? "waiting" : "idle",
+  };
+}
+
+export function markCopySubmitted(state: CopyTableState): CopyTableState {
+  if (!state.isArmed && state.copyStatus !== "waiting") {
+    return state;
+  }
+
+  return {
+    ...state,
+    isArmed: false,
+    copyStatus: "submitted",
   };
 }
 
@@ -73,6 +90,8 @@ export function selectHotTrader(
   return {
     ...state,
     selectedTraderId: traderId,
+    isArmed: traderId === state.selectedTraderId ? state.isArmed : false,
+    copyStatus: traderId === state.selectedTraderId ? state.copyStatus : "idle",
   };
 }
 
@@ -107,7 +126,12 @@ export function getCopyReceiptPreview(
 ): CopyReceiptPreview {
   const trader = getSelectedTrader(state, traders);
   const amount = formatCopyAmount(state.copyAmount);
-  const status = state.isArmed ? "Armed" : "Disarmed";
+  const status =
+    state.copyStatus === "submitted"
+      ? "Copied once"
+      : state.isArmed
+        ? "Waiting"
+        : "Disarmed";
 
   return {
     leader: trader.name,
@@ -115,8 +139,11 @@ export function getCopyReceiptPreview(
     amount,
     label: "Copy next signal",
     status,
-    summary: state.isArmed
-      ? `${trader.name} on ${market.pair}, up to ${amount} when the next signal lands.`
-      : `${trader.name} selected on ${market.pair}. Arm copy to use up to ${amount} on the next signal.`,
+    summary:
+      state.copyStatus === "submitted"
+        ? `${amount} copied once from ${trader.name}. Re-arm to copy another future signal.`
+        : state.isArmed
+          ? `Waiting for ${trader.name}'s next ${market.pair} signal. No trade until you confirm.`
+          : `${trader.name} selected on ${market.pair}. Arm copy to use up to ${amount} on the next signal.`,
   };
 }

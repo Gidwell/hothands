@@ -515,6 +515,13 @@ button {
   font-size: 0.86rem;
 }
 
+.inline-copy-summary span {
+  color: #aebbb5;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
 .close-copy-button {
   min-height: 30px;
   padding: 0 9px;

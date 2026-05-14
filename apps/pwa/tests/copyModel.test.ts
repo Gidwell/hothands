@@ -5,6 +5,7 @@ import {
   selectHotTrader,
   setCopyAmount,
   stepCopyAmount,
+  markCopySubmitted,
   toggleCopyArmed,
 } from "../src/copyModel";
 import { market, traders } from "../src/mockData";
@@ -27,8 +28,21 @@ describe("copy interaction model", () => {
 
     expect(selected.isArmed).toBe(false);
     expect(armed.isArmed).toBe(true);
+    expect(armed.copyStatus).toBe("waiting");
     expect(disarmed.isArmed).toBe(false);
+    expect(disarmed.copyStatus).toBe("idle");
     expect(disarmed.selectedTraderId).toBe("t2");
+  });
+
+  test("consumes a one-shot arm after copy submission", () => {
+    const state = toggleCopyArmed(selectHotTrader(createInitialCopyState(traders), "t2", traders));
+    const submitted = markCopySubmitted(state);
+    const rearmed = toggleCopyArmed(submitted);
+
+    expect(submitted.isArmed).toBe(false);
+    expect(submitted.copyStatus).toBe("submitted");
+    expect(rearmed.isArmed).toBe(true);
+    expect(rearmed.copyStatus).toBe("waiting");
   });
 
   test("builds the next-signal receipt preview from selected trader and amount", () => {

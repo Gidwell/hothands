@@ -4,6 +4,7 @@ import {
   COPY_AMOUNT_MIN,
   formatCopyAmount,
   getSelectedTrader,
+  markCopySubmitted,
   selectHotTrader,
   setCopyAmount,
   stepCopyAmount,
@@ -39,6 +40,18 @@ function traderCopyStatus(
     return isExpanded ? "Selected" : "Live";
   }
 
+  if (receiptState === "Waiting") {
+    return "Armed";
+  }
+
+  if (receiptState === "Signal landed") {
+    return "Confirm";
+  }
+
+  if (receiptState === "Copied once") {
+    return "Copied";
+  }
+
   return receiptState;
 }
 
@@ -53,6 +66,7 @@ function TraderRow({
   onAmountStep,
   onAmountSet,
   onArmToggle,
+  onConfirmCopy,
   onClose,
 }: {
   trader: Trader;
@@ -65,9 +79,26 @@ function TraderRow({
   onAmountStep: (direction: -1 | 1) => void;
   onAmountSet: (amount: number) => void;
   onArmToggle: () => void;
+  onConfirmCopy: () => void;
   onClose: () => void;
 }) {
   const status = traderCopyStatus(isSelected, isExpanded, receiptState);
+  const copyCta =
+    receiptState === "Signal landed"
+      ? "Confirm copy"
+      : receiptState === "Copied once"
+        ? "Re-arm to copy another"
+        : receiptState === "Waiting"
+          ? "Cancel arm"
+          : "Arm copy";
+  const copyStatus =
+    receiptState === "Signal landed"
+      ? "Signal landed. Confirm before submitting."
+      : receiptState === "Copied once"
+        ? "Copied once. Re-arm to copy another future signal."
+        : receiptState === "Waiting"
+          ? "Waiting for next signal. No trade yet."
+          : "Choose your max, then arm one future signal.";
 
   return (
     <article
@@ -110,6 +141,7 @@ function TraderRow({
             <div className="inline-copy-summary">
               <p>Copy next {trader.name} signal</p>
               <strong>{formatCopyAmount(copyAmount)} max / BTC-USD</strong>
+              <span>{copyStatus}</span>
             </div>
             <button
               type="button"
@@ -135,11 +167,11 @@ function TraderRow({
           </div>
           <button
             type="button"
-            className={`arm-button ${receiptState === "Armed" || receiptState === "Copied" ? "armed" : ""}`}
+            className={`arm-button ${receiptState !== "Disarmed" ? "armed" : ""}`}
             data-testid="arm-copy-button"
-            onClick={onArmToggle}
+            onClick={receiptState === "Signal landed" ? onConfirmCopy : onArmToggle}
           >
-            {receiptState === "Armed" || receiptState === "Copied" ? "Pause copy" : "Arm copy"}
+            {copyCta}
           </button>
           <details className="custom-copy-adjust">
             <summary>Adjust amount</summary>
@@ -341,6 +373,7 @@ function HotTraderList({
   onAmountStep,
   onAmountSet,
   onArmToggle,
+  onConfirmCopy,
   onClose,
 }: {
   traders: Trader[];
@@ -353,6 +386,7 @@ function HotTraderList({
   onAmountStep: (direction: -1 | 1) => void;
   onAmountSet: (amount: number) => void;
   onArmToggle: () => void;
+  onConfirmCopy: () => void;
   onClose: () => void;
 }) {
   const hasArmedSelection = receiptState !== "Disarmed";
@@ -379,6 +413,7 @@ function HotTraderList({
           onAmountStep={onAmountStep}
           onAmountSet={onAmountSet}
           onArmToggle={onArmToggle}
+          onConfirmCopy={onConfirmCopy}
           onClose={onClose}
         />
       ))}
@@ -442,7 +477,10 @@ export function App() {
 
   const handleTraderSelect = (traderId: string) => {
     setReplayState((state) =>
-      updateReplayCopy(state, (copy) => selectHotTrader(copy, traderId, scenario.traders)),
+      setReplayPlaying(
+        updateReplayCopy(state, (copy) => selectHotTrader(copy, traderId, scenario.traders)),
+        false,
+      ),
     );
     setExpandedTraderId(traderId);
     setFrozenTraderOrder(replayTraders.map((trader) => trader.id));
@@ -457,7 +495,18 @@ export function App() {
   };
 
   const handleArmToggle = () => {
-    setReplayState((state) => updateReplayCopy(state, (copy) => toggleCopyArmed(copy)));
+    setReplayState((state) =>
+      setReplayPlaying(updateReplayCopy(state, (copy) => toggleCopyArmed(copy)), false),
+    );
+  };
+
+  const handleConfirmCopy = () => {
+    setReplayState((state) =>
+      advanceReplay(
+        updateReplayCopy(state, (copy) => markCopySubmitted(copy)),
+        scenario,
+      ),
+    );
   };
 
   const handleCloseCopyPanel = () => {
@@ -509,6 +558,7 @@ export function App() {
           onAmountStep={handleAmountStep}
           onAmountSet={handleAmountSet}
           onArmToggle={handleArmToggle}
+          onConfirmCopy={handleConfirmCopy}
           onClose={handleCloseCopyPanel}
         />
       </section>

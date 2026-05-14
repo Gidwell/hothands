@@ -2,6 +2,7 @@ import {
   createInitialCopyState,
   formatCopyAmount,
   getSelectedTrader,
+  markCopySubmitted,
   type CopyMarket,
   type CopyTableState,
 } from "./copyModel";
@@ -50,7 +51,7 @@ export type ReplayCopyReceipt = {
   market: string;
   amount: string;
   label: "Copy next signal" | "Copied receipt";
-  state: "Armed" | "Copied" | "Disarmed";
+  state: "Waiting" | "Signal landed" | "Copied once" | "Disarmed";
   settlement: string;
   summary: string;
 };
@@ -187,6 +188,11 @@ export function setReplayPlaying(state: ReplayState, isPlaying: boolean): Replay
 export function resetReplay(state: ReplayState): ReplayState {
   return {
     ...state,
+    copy: {
+      ...state.copy,
+      isArmed: false,
+      copyStatus: "idle",
+    },
     step: 0,
     completedLoops: 0,
     isPlaying: false,
@@ -195,9 +201,14 @@ export function resetReplay(state: ReplayState): ReplayState {
 
 export function advanceReplay(state: ReplayState, scenario: ReplayScenario): ReplayState {
   const nextStep = (state.step + 1) % scenario.frames.length;
+  const nextPhase = scenario.frames[nextStep]?.phase;
 
   return {
     ...state,
+    copy:
+      nextPhase === "copy-executed" && state.copy.isArmed
+        ? markCopySubmitted(state.copy)
+        : state.copy,
     step: nextStep,
     completedLoops:
       nextStep === 0 ? state.completedLoops + 1 : state.completedLoops,
@@ -249,40 +260,42 @@ export function getReplayFrame(
     latestSignalForLeader(scenario.frames.map(({ source }) => source), stripTrader.id);
   const amount = formatCopyAmount(state.copy.copyAmount);
   const pnl = formatPnl(getFramePnl(scenarioFrame.source));
-  const isCopied = state.copy.isArmed && phaseIndex(phase) >= phaseIndex("copy-executed");
-  const isSettled = state.copy.isArmed && phaseIndex(phase) >= phaseIndex("settled");
-  const isUpdated = state.copy.isArmed && phase === "hot-hand-updated";
-  const receiptState = getReceiptState(state.copy, isCopied);
+  const hasSubmittedCopy = state.copy.copyStatus === "submitted";
+  const isCopyLive = state.copy.isArmed || hasSubmittedCopy;
+  const isCopied = hasSubmittedCopy && phaseIndex(phase) >= phaseIndex("copy-executed");
+  const isSettled = hasSubmittedCopy && phaseIndex(phase) >= phaseIndex("settled");
+  const isUpdated = hasSubmittedCopy && phase === "hot-hand-updated";
+  const receiptState = getReceiptState(state.copy, phase, isCopied);
 
   return {
     phase,
     stepLabel: `${state.step + 1}/${scenario.frames.length}`,
-    status: getPhaseStatus(phase, state.copy.isArmed),
+    status: getPhaseStatus(phase, isCopyLive),
     tableCall: getTableCall(
       phase,
       stripTrader.name,
       stripTrader.signal,
       amount,
       pnl,
-      state.copy.isArmed,
+      isCopyLive,
     ),
     latestSignal: getLatestSignal(phase, stripTrader, activeSignal),
     signalBadges: replaySignalBadges[phase],
-    phaseBadge: getPhaseBadge(phase, state.copy.isArmed),
+    phaseBadge: getPhaseBadge(phase, isCopyLive),
     copyReceipt: {
       leader: selectedTrader.name,
       market: market.pair,
       amount,
       label: isCopied ? "Copied receipt" : "Copy next signal",
       state: receiptState,
-      settlement: getReceiptSettlement(phase, pnl, state.copy.isArmed),
+      settlement: getReceiptSettlement(phase, pnl, state.copy),
       summary: getReceiptSummary(
         phase,
         selectedTrader.name,
         market.pair,
         amount,
         pnl,
-        state.copy.isArmed,
+        state.copy,
       ),
     },
     settlement: {
@@ -472,32 +485,54 @@ function formatPnl(amount: number): string {
   return amount >= 0 ? `+$${amount.toLocaleString()}` : `-$${Math.abs(amount).toLocaleString()}`;
 }
 
-function getReceiptState(copy: CopyTableState, isCopied: boolean): ReplayCopyReceipt["state"] {
-  if (!copy.isArmed) {
-    return "Disarmed";
+function getReceiptState(
+  copy: CopyTableState,
+  phase: ReplayPhase,
+  isCopied: boolean,
+): ReplayCopyReceipt["state"] {
+  if (isCopied || copy.copyStatus === "submitted") {
+    return "Copied once";
   }
 
-  return isCopied ? "Copied" : "Armed";
+  if (copy.isArmed) {
+    if (phase === "signal-landed") {
+      return "Signal landed";
+    }
+
+    return "Waiting";
+  }
+
+  return "Disarmed";
 }
 
 function getReceiptSettlement(
   phase: ReplayPhase,
   pnl: string,
-  isArmed: boolean,
+  copy: CopyTableState,
 ): string {
-  if (!isArmed) {
+  if (copy.copyStatus === "submitted") {
+    if (phase === "copy-executed") {
+      return "Submitted once";
+    }
+
+    if (phase === "settled" || phase === "hot-hand-updated") {
+      return `Filled ${pnl}`;
+    }
+  }
+
+  if (!copy.isArmed) {
     return "Paused";
   }
 
-  if (phase === "copy-armed" || phase === "signal-landed") {
-    return phase === "signal-landed" ? "Copy pending" : "Next signal";
+  if (phase === "copy-armed") {
+    return "Waiting for next signal";
   }
 
-  if (phase === "copy-executed") {
-    return "Awaiting fill";
+  if (phase === "signal-landed") {
+    return "Confirm copy";
   }
 
-  return `Filled ${pnl}`;
+  return "Waiting for next signal";
 }
 
 function getReceiptSummary(
@@ -506,29 +541,35 @@ function getReceiptSummary(
   pair: string,
   amount: string,
   pnl: string,
-  isArmed: boolean,
+  copy: CopyTableState,
 ): string {
-  if (!isArmed) {
+  if (copy.copyStatus === "submitted") {
+    if (phase === "copy-executed") {
+      return `${amount} copied once from ${leader}. Re-arm to copy another future signal.`;
+    }
+
+    if (phase === "settled") {
+      return `${amount} filled for ${pnl}; re-arm before copying another future signal.`;
+    }
+
+    if (phase === "hot-hand-updated") {
+      return `${leader} gets the hot hand bump after a ${pnl} one-shot copy.`;
+    }
+  }
+
+  if (!copy.isArmed) {
     return `${leader} is live on ${pair}, but copy is paused.`;
   }
 
   if (phase === "copy-armed") {
-    return `${leader} on ${pair}, up to ${amount} when the next signal lands.`;
+    return `Waiting for ${leader}'s next ${pair} signal. No trade yet.`;
   }
 
   if (phase === "signal-landed") {
-    return `${leader}'s signal landed. Copy ticket is moving up to ${amount}.`;
+    return `${leader}'s signal landed. Confirm to submit up to ${amount}.`;
   }
 
-  if (phase === "copy-executed") {
-    return `${amount} copied from ${leader}. Waiting on settlement.`;
-  }
-
-  if (phase === "settled") {
-    return `${amount} filled for ${pnl}; leaderboard score is posting next.`;
-  }
-
-  return `${leader} gets the hot hand bump after a ${pnl} copy settlement.`;
+  return `Waiting for ${leader}'s next ${pair} signal. No trade yet.`;
 }
 
 function getTableCall(

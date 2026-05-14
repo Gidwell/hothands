@@ -63,7 +63,9 @@ describe("live replay model", () => {
       phase: "copy-armed",
       status: "Copy armed",
       copyReceipt: {
-        state: "Armed",
+        state: "Waiting",
+        settlement: "Waiting for next signal",
+        summary: "Waiting for Mira Vale's next BTC-USD signal. No trade yet.",
       },
     });
 
@@ -72,16 +74,25 @@ describe("live replay model", () => {
       phase: "signal-landed",
       status: "Leader signal landed",
       latestSignal: "Mira Vale posted BTC UP above $64,200",
+      copyReceipt: {
+        state: "Signal landed",
+        settlement: "Confirm copy",
+        summary: "Mira Vale's signal landed. Confirm to submit up to $250.",
+      },
     });
 
     state = advanceReplay(state, scenario);
+    expect(state.copy.isArmed).toBe(false);
+    expect(state.copy.copyStatus).toBe("submitted");
     expect(getReplayFrame(state, scenario, market)).toMatchObject({
       phase: "copy-executed",
       status: "Copy executed",
       copyReceipt: {
         label: "Copied receipt",
         amount: "$250",
-        settlement: "Awaiting fill",
+        state: "Copied once",
+        settlement: "Submitted once",
+        summary: "$250 copied once from Mira Vale. Re-arm to copy another future signal.",
       },
     });
 
