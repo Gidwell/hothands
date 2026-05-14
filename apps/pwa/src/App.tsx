@@ -92,7 +92,7 @@ export function App() {
   const frame = useMemo(() => getReplayFrame(replayState, traders, market), [replayState]);
   const selectedTrader = getSelectedTrader(copyState, replayTraders);
   const receipt = frame.copyReceipt;
-  const railCount = spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
+  const spectatorCount = spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
 
   useEffect(() => {
     if (!replayState.isPlaying) {
@@ -138,7 +138,7 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <section className="phone-frame" aria-label="Hot Hands table shell">
+      <section className="phone-frame" aria-label="Hot Hands market shell">
         <header className="market-strip">
           <div className="market-live">
             <span aria-hidden="true" />
@@ -151,12 +151,16 @@ export function App() {
             <strong>{market.price}</strong>
             <span>{market.move}</span>
           </div>
-          <span className="volume-chip">{market.volume}</span>
+          <div className="market-badges" aria-label="Market details">
+            <span>{market.expiry}</span>
+            <span>{market.strike}</span>
+            <span>{market.volume}</span>
+          </div>
         </header>
 
         <section className="table-heading">
           <div>
-            <p>Table 7 / point {market.point}</p>
+            <p>BTC UP/DOWN signal market</p>
             <h1>Hot Hands</h1>
           </div>
           <div className="table-badge">{frame.stepLabel}</div>
@@ -168,7 +172,7 @@ export function App() {
               <p>Live replay</p>
               <h2>{frame.status}</h2>
             </div>
-            <span>{frame.puck}</span>
+            <span>{frame.phaseBadge}</span>
           </div>
           <p className="replay-call">{frame.tableCall}</p>
           <div className="replay-controls" aria-label="Replay controls">
@@ -185,34 +189,34 @@ export function App() {
         </section>
 
         <section
-          className={`felt-table felt-table-${frame.phase} ${
-            copyState.isArmed ? "felt-table-armed" : ""
+          className={`market-board market-board-${frame.phase} ${
+            copyState.isArmed ? "market-board-armed" : ""
           }`}
         >
-          <div className="felt-rail">
-            <span>Pass</span>
-            <span>Come</span>
-            <span>Odds</span>
+          <div className="prediction-zones">
+            <span>BTC UP</span>
+            <span>BTC DOWN</span>
+            <span>Copy max</span>
           </div>
-          <div className="shooter-puck">
+          <div className="signal-leader">
             <span>{selectedTrader.avatar}</span>
             <strong>{selectedTrader.name}</strong>
             <p>{frame.latestSignal}</p>
           </div>
-          <div className="felt-action-strip">{frame.tableCall}</div>
-          <div className="dice-row" aria-hidden="true">
-            <span className="die">{frame.dice[0]}</span>
-            <span className="die">{frame.dice[1]}</span>
-            <span className="chip chip-gold">{frame.puck}</span>
+          <div className="market-action-strip">{frame.tableCall}</div>
+          <div className="signal-badge-row" aria-hidden="true">
+            <span className="signal-badge">{frame.signalBadges[0]}</span>
+            <span className="signal-badge">{frame.signalBadges[1]}</span>
+            <span className="phase-chip chip-gold">{frame.phaseBadge}</span>
           </div>
         </section>
 
         <section className="spectator-section" aria-label="Spectators watching">
           <div className="spectator-copy">
-            <span>{railCount.toLocaleString()}</span>
-            <p>spectators on the rail</p>
+            <span>{spectatorCount.toLocaleString()}</span>
+            <p>spectators watching</p>
           </div>
-          <div className="spectator-rail">
+          <div className="spectator-watchers">
             {spectators.map((spectator) => (
               <div
                 className="spectator-avatar"
@@ -225,7 +229,7 @@ export function App() {
             ))}
             <div className="spectator-more">+{selectedTrader.streak * 11}</div>
           </div>
-          <div className="rail-ticker" aria-label="Table activity">
+          <div className="activity-ticker" aria-label="Market activity">
             {frame.activity.map((activity) => (
               <span key={activity}>{activity}</span>
             ))}
@@ -256,7 +260,7 @@ export function App() {
             <div className="receipt-grid">
               <span>Leader</span>
               <strong>{receipt.leader}</strong>
-              <span>Stake</span>
+              <span>Copy max</span>
               <strong>{receipt.amount}</strong>
               <span>Settles</span>
               <strong>{receipt.settlement}</strong>
