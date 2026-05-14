@@ -49,6 +49,7 @@ describe("live replay model", () => {
 
     expect(state.copy.selectedTraderId).toBe("trader-mira");
     expect(state.copy.isArmed).toBe(false);
+    expect(state.isPlaying).toBe(false);
     expect(getReplayFrame(state, scenario, market)).toMatchObject({
       phase: "copy-armed",
       status: "Copy ready",
@@ -164,7 +165,6 @@ describe("live replay model", () => {
       available: "$1,250",
       pnl: "+$0",
       pnlTone: "flat",
-      copyLabel: "Copy max",
       copyValue: "$250",
       status: "Flat",
       detail: "No active copy. Mira Vale selected.",
@@ -175,7 +175,6 @@ describe("live replay model", () => {
     expect(getReplayAccountSummary(state, frame)).toMatchObject({
       available: "$1,000",
       pnl: "+$0",
-      copyLabel: "Reserved",
       copyValue: "$250",
       status: "Armed",
       detail: "$250 reserved for Mira Vale's next BTC-USD signal.",
@@ -185,7 +184,6 @@ describe("live replay model", () => {
     frame = getReplayFrame(state, scenario, market);
     expect(getReplayAccountSummary(state, frame)).toMatchObject({
       available: "$1,000",
-      copyLabel: "Confirm",
       status: "Confirm",
       detail: "Confirm before submitting up to $250.",
     });
@@ -194,7 +192,6 @@ describe("live replay model", () => {
     frame = getReplayFrame(state, scenario, market);
     expect(getReplayAccountSummary(state, frame)).toMatchObject({
       available: "$1,000",
-      copyLabel: "In flight",
       status: "Pending",
       detail: "$250 copy submitted. Settlement pending.",
     });
@@ -207,7 +204,6 @@ describe("live replay model", () => {
       available: "$1,290",
       pnl: "+$40",
       pnlTone: "positive",
-      copyLabel: "Settled",
       copyValue: "$250",
       status: "Settled",
       detail: "$250 settled for +$40.",

@@ -134,7 +134,7 @@ button {
 
 .account-summary {
   display: grid;
-  gap: 7px;
+  gap: 6px;
   margin-top: 8px;
   padding: 8px 10px;
   background:
@@ -156,8 +156,7 @@ button {
 
 .account-value span,
 .account-pnl p,
-.account-summary-stats span,
-.account-summary > p {
+.account-summary-stats span {
   margin: 0;
   color: #aeb9b5;
   font-size: 0.66rem;
@@ -198,9 +197,8 @@ button {
 .account-summary-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  min-height: 38px;
+  min-height: 34px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .account-summary-stats div {
@@ -220,11 +218,6 @@ button {
   color: #ffffff;
   font-size: 0.74rem;
   line-height: 1.08;
-}
-
-.account-summary > p {
-  color: #d3ded8;
-  line-height: 1.22;
 }
 
 .market-badges {
@@ -314,18 +307,14 @@ button {
   font-weight: 900;
 }
 
-.signal-strip-leader strong,
-.signal-strip-leader p {
+.signal-strip-leader strong {
   display: block;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.signal-strip-leader strong {
   color: #ffffff;
   font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .signal-strip-leader > span {

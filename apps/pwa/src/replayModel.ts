@@ -88,7 +88,6 @@ export type ReplayAccountSummary = {
   available: string;
   pnl: string;
   pnlTone: "positive" | "negative" | "flat";
-  copyLabel: "Copy max" | "Reserved" | "Confirm" | "In flight" | "Settled";
   copyValue: string;
   status: "Flat" | "Armed" | "Confirm" | "Pending" | "Settled";
   detail: string;
@@ -164,7 +163,7 @@ export function createInitialReplayState(scenario: ReplayScenario): ReplayState 
   return {
     copy: createInitialCopyState(scenario.traders),
     step: 0,
-    isPlaying: true,
+    isPlaying: false,
     completedLoops: 0,
   };
 }
@@ -356,7 +355,6 @@ export function getReplayAccountSummary(
   if (hasSettledCopy) {
     return {
       ...base,
-      copyLabel: "Settled",
       status: "Settled",
       detail: `${copyValue} settled for ${formatPnl(pnlValue)}.`,
     };
@@ -365,7 +363,6 @@ export function getReplayAccountSummary(
   if (hasSubmittedCopy) {
     return {
       ...base,
-      copyLabel: "In flight",
       status: "Pending",
       detail: `${copyValue} copy submitted. Settlement pending.`,
     };
@@ -374,7 +371,6 @@ export function getReplayAccountSummary(
   if (frame.copyReceipt.state === "Signal landed") {
     return {
       ...base,
-      copyLabel: "Confirm",
       status: "Confirm",
       detail: `Confirm before submitting up to ${copyValue}.`,
     };
@@ -383,7 +379,6 @@ export function getReplayAccountSummary(
   if (state.copy.isArmed) {
     return {
       ...base,
-      copyLabel: "Reserved",
       status: "Armed",
       detail: `${copyValue} reserved for ${frame.copyReceipt.leader}'s next ${frame.copyReceipt.market} signal.`,
     };
@@ -391,7 +386,6 @@ export function getReplayAccountSummary(
 
   return {
     ...base,
-    copyLabel: "Copy max",
     status: "Flat",
     detail: `No active copy. ${frame.copyReceipt.leader} selected.`,
   };

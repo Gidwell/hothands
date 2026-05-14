@@ -91,7 +91,8 @@ test("mobile stage 1 one-shot copy loop reaches settlement and leaderboard updat
   await expect(signalStrip).toBeVisible();
   await expect(page.getByTestId("session-pnl")).toContainText("+$0");
   await expect(page.getByTestId("session-pnl")).toContainText("Flat");
-  await expect(leaderboard).toContainText("Copy the next BTC UP/DOWN signal");
+  await expect(leaderboard).toContainText("Copy hand");
+  await expect(page.getByTestId("session-pnl")).not.toContainText("Copy max");
 
   await expect(page.getByTestId("spectator-rail")).toBeVisible();
   await expect(page.getByTestId("spectator-rail")).toContainText("watching");
@@ -126,20 +127,17 @@ test("mobile stage 1 one-shot copy loop reaches settlement and leaderboard updat
   await confirmCopyAction(page).click();
 
   await expect(signalStrip.getByText("Copy executed")).toBeVisible();
-  await expect(signalStrip.getByText("$500 copied to BTC ticket")).toBeVisible();
   await expect(page.getByTestId("session-pnl")).toContainText("Pending");
   await expectOneShotCopyConsumed(page);
   await expect(miraTrader).toContainText("Copied");
 
   await page.getByTestId("replay-next").click();
   await expect(signalStrip.getByText("Settlement posted")).toBeVisible();
-  await expect(signalStrip.getByText("Settlement posts +$40")).toBeVisible();
   await expect(page.getByTestId("session-pnl")).toContainText("+$40");
   await expect(page.getByTestId("session-pnl")).toContainText("Settled");
 
   await page.getByTestId("replay-next").click();
   await expect(signalStrip.getByText("Hot hand updated")).toBeVisible();
-  await expect(signalStrip.getByText("Mira Vale tops the leaderboard")).toBeVisible();
   await expect(miraTrader).toContainText("50");
 });
 
@@ -155,20 +153,20 @@ async function openDemoControls(page: Page) {
 }
 
 function confirmCopyAction(page: Page) {
-  return page.getByRole("button", { name: /confirm copy|submit copy/i });
+  return page.getByRole("button", { name: /confirm( copy)?|submit copy/i });
 }
 
 async function expectOneShotArmedCopy(page: Page) {
   await expect(
     page
-      .getByText(/waiting for (the )?next signal|armed for (one|1) next signal|armed for (the )?next signal/i)
+      .getByText(/no trade yet|waiting for (the )?next signal|armed for (one|1) next signal|armed for (the )?next signal/i)
       .first(),
   ).toBeVisible();
 }
 
 async function expectOneShotCopyConsumed(page: Page) {
   await expect(
-    page.getByText(/copy (used|consumed)|one-shot copy (used|consumed)|re-?arm.*another.*signal|arm copy again/i).first(),
+    page.getByText(/copied once|copy (used|consumed)|one-shot copy (used|consumed)|re-?arm|arm copy again/i).first(),
   ).toBeVisible();
 }
 

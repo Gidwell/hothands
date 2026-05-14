@@ -86,20 +86,20 @@ function TraderRow({
   const status = traderCopyStatus(isSelected, isExpanded, receiptState);
   const copyCta =
     receiptState === "Signal landed"
-      ? "Confirm copy"
+      ? "Confirm"
       : receiptState === "Copied once"
-        ? "Re-arm to copy another"
+        ? "Re-arm"
         : receiptState === "Waiting"
           ? "Cancel arm"
           : "Arm copy";
   const copyStatus =
     receiptState === "Signal landed"
-      ? "Signal landed. Confirm before submitting."
+      ? "Confirm signal"
       : receiptState === "Copied once"
-        ? "Copied once. Re-arm to copy another future signal."
+        ? "Copied once"
         : receiptState === "Waiting"
-          ? "Waiting for next signal. No trade yet."
-          : "Choose your max, then arm one future signal.";
+          ? "No trade yet"
+          : "Set amount";
 
   return (
     <article
@@ -140,8 +140,8 @@ function TraderRow({
         <div className="inline-copy-panel" data-testid="inline-copy-panel">
           <div className="inline-copy-header">
             <div className="inline-copy-summary">
-              <p>Copy next {trader.name} signal</p>
-              <strong>{formatCopyAmount(copyAmount)} max / BTC-USD</strong>
+              <p>Copy {trader.name}</p>
+              <strong>{formatCopyAmount(copyAmount)} / BTC-USD</strong>
               <span>{copyStatus}</span>
             </div>
             <button
@@ -325,7 +325,6 @@ function ActiveSignalStrip({
       <div className="signal-strip-leader">
         <div>
           <strong>{frame.latestSignal}</strong>
-          <p>{frame.tableCall}</p>
         </div>
         <span>{frame.stepLabel}</span>
       </div>
@@ -386,19 +385,18 @@ function AccountSummary({
       </div>
       <div className="account-summary-stats">
         <div>
-          <span>Available</span>
+          <span>Avail</span>
           <strong>{summary.available}</strong>
         </div>
         <div>
-          <span>{summary.copyLabel}</span>
+          <span>Copy</span>
           <strong>{summary.copyValue}</strong>
         </div>
         <div>
-          <span>Status</span>
+          <span>State</span>
           <strong>{summary.status}</strong>
         </div>
       </div>
-      <p>{summary.detail}</p>
     </section>
   );
 }
@@ -436,7 +434,7 @@ function HotTraderList({
     <section className="trader-list" aria-label="Hot leaderboard" data-testid="hot-leaderboard">
       <div className="section-heading">
         <p>Hot Right Now</p>
-        <span>Copy the next BTC UP/DOWN signal</span>
+        <span>Copy hand</span>
       </div>
       {traders.map((trader) => (
         <TraderRow
