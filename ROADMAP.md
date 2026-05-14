@@ -69,8 +69,15 @@ Target: May 16-20
 
 Goal: retire the largest external integration risk.
 
+Stage 1 carry-forward:
+
+- Keep fixture mode green while adding testnet mode.
+- Start with current official DeepBook Predict docs and shared config constants before writing transaction code.
+- Preserve the mobile e2e copy loop as the product baseline; Stage 2 should add proof of real testnet execution without breaking the local demo.
+
 Deliverables:
 
+- Confirm current Predict server, package IDs, registry, quote asset, and faucet/token flow.
 - Read active BTC oracles.
 - Build a valid Predict mint transaction.
 - Create/find `PredictManager`.

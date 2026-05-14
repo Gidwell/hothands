@@ -1,6 +1,6 @@
 # Hot Hands Architecture
 
-Last updated: May 13, 2026
+Last updated: May 14, 2026
 
 ## System Overview
 
@@ -37,6 +37,7 @@ Postgres
 Responsibilities:
 
 - Render table-first mobile UI.
+- Consume shared deterministic replay frames in fixture mode.
 - Connect wallet or zkLogin flow.
 - Subscribe to table WebSocket.
 - Arm copy-next-signal rules.
@@ -76,6 +77,10 @@ Stored in memory or Durable Object storage:
 
 Never store every heartbeat in Postgres.
 
+Stage 1 note:
+
+- Fake spectator simulation currently verifies table-state behavior in pure Worker tests. Actual WebSocket broadcast load tests are still future `verify:perf` work.
+
 ### Postgres
 
 Durable data:
@@ -113,7 +118,7 @@ DeepBook Predict remains the execution layer.
 
 ## DeepBook Predict Integration
 
-Known public integration targets as of May 13, 2026 should live in shared constants once implemented:
+Known public integration targets should live in shared constants once implemented. Re-check official DeepBook Predict docs before coding Stage 2 because testnet package IDs and server details are provisional:
 
 - network: Sui Testnet
 - Predict server: `https://predict-server.testnet.mystenlabs.com`
@@ -152,6 +157,19 @@ Broadcast only changes:
 - `market_settled`
 - `score_changed`
 
+## Demo Data Flow
+
+Stage 1 established this local data path:
+
+```text
+packages/fixtures
+  -> packages/demo-runner replay frames
+  -> apps/pwa replay adapter
+  -> packages/e2e mobile flow
+```
+
+Keep this path intact as Stage 2 adds replayed testnet data and live testnet bot mode. New demo scenarios should start in fixtures, then flow outward through the same adapters.
+
 ## Performance Budgets
 
 Initial budgets:
@@ -176,3 +194,7 @@ Scaling strategy:
 - Treat DeepBook Predict package IDs as testnet-provisional.
 - Separate fixture/replay/live modes clearly in UI and logs.
 
+## Local Tooling Notes
+
+- Bun remains the package/script runner.
+- In this Codex desktop workspace, the project path contains a space. Vite/esbuild has intermittently hung in that path, so final build/e2e verification should run from a clean no-space worktree under `/private/tmp/hot-hands-worktrees` until the project is moved or CI owns verification.

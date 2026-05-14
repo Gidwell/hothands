@@ -1,6 +1,6 @@
 # Hot Hands Product Spec
 
-Last updated: May 13, 2026
+Last updated: May 14, 2026
 
 ## One-Line Pitch
 
@@ -8,11 +8,20 @@ Hot Hands is the live social layer for DeepBook Predict: find traders who are he
 
 ## Product Principles
 
-- The app should feel like a mobile casino table, not a trading dashboard.
+- The app should feel like a live social market floor: high-energy and communal, but always grounded in BTC UP/DOWN prediction language.
+- Avoid literal craps/dice/table-game terminology unless the feature truly maps to prediction markets.
 - The home page should answer: who is hot, who is watching, who is armed, and what can I copy right now?
 - Copying should be explicit and user-signed for MVP.
 - Onchain state should prove important social and trading artifacts, but ephemeral liveness should stay offchain.
 - The testnet demo must work even if public data is noisy, slow, or quiet.
+
+## Stage 1 Learnings
+
+- Shared deterministic fixtures should be the source of truth for local demos, UI replay, e2e tests, and scoring checks. Avoid separate PWA-only demo stories.
+- Demo scenarios should each prove a product point: `opening-night` for the happy path, `trap-streak` for high win rate with negative ROI, and `hot-hand-swing` for leaderboard movement.
+- Spectator and heartbeat activity makes the app feel live, but it should remain ephemeral and cheap unless it becomes a meaningful table event.
+- The strongest Stage 1 UX was copy-next-signal, not automatic custody. Keep copy explicit and user-sized until a later delegated-trading design is deliberately chosen.
+- Fixture, replay, and live testnet modes must stay visually and technically distinguishable so judges understand what proof they are seeing.
 
 ## MVP User Stories
 
@@ -175,4 +184,3 @@ Recorded DeepBook Predict testnet data replayed through the same UI and realtime
 ### Live Testnet Bot Mode
 
 Funded test wallets post signals and execute real DeepBook Predict testnet trades. Used for final validation and demo proof.
-

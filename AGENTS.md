@@ -2,6 +2,8 @@
 
 This file is the operating manual for human and AI contributors.
 
+Last updated: May 14, 2026
+
 ## Prime Directive
 
 Build a thin, verified end-to-end loop first:
@@ -127,6 +129,15 @@ Before adding a cross-package concept, define:
 - expected owner package
 - test covering parsing/validation
 
+## Stage 1 Agent Lessons
+
+- Prefer shared fixtures and replay frames over package-local demo data. The PWA should adapt shared scenarios, not invent its own parallel story.
+- Add stable accessible labels or `data-testid` hooks while building UI, because e2e agents should not have to edit the PWA just to verify the product loop.
+- Keep root script, lockfile, and dependency changes narrow. Announce them clearly because they affect every worktree.
+- Ignore or delete Playwright runtime artifacts such as `test-results/` and `playwright-report/` before committing.
+- If Vite/esbuild behaves oddly in the Codex project path with spaces, verify from a clean no-space worktree rather than weakening tests.
+- Browser smoke is useful, but a real Playwright mobile e2e is the authority for the Stage 1 copy loop.
+
 ## Required Commands
 
 When implemented, these commands should be the main loop:
@@ -165,6 +176,7 @@ Until implementation exists, scripts may be placeholders. Replace placeholders a
 - Do not build automatic custodial copy trading for MVP.
 - Do not hardcode provisional DeepBook IDs outside shared config.
 - Do not make fixture data indistinguishable from live testnet data.
+- Do not reintroduce literal craps/dice/rail language into product UI or docs unless the user explicitly asks for that motif.
 - Do not let agents edit each other's packages without announcing it.
 - Do not skip verification because the UI "looks fine."
 
