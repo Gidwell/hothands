@@ -28,7 +28,7 @@ export function createInitialCopyState(traders: Trader[]): CopyTableState {
   return {
     selectedTraderId: traders[0]?.id ?? "",
     copyAmount: COPY_AMOUNT_DEFAULT,
-    isArmed: true,
+    isArmed: false,
   };
 }
 
@@ -115,6 +115,8 @@ export function getCopyReceiptPreview(
     amount,
     label: "Copy next signal",
     status,
-    summary: `${trader.name} on ${market.pair}, up to ${amount} when the next signal lands.`,
+    summary: state.isArmed
+      ? `${trader.name} on ${market.pair}, up to ${amount} when the next signal lands.`
+      : `${trader.name} selected on ${market.pair}. Arm copy to use up to ${amount} on the next signal.`,
   };
 }

@@ -1,10 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("market-header")).toBeVisible();
   await expect(page.getByTestId("active-signal-strip")).toBeVisible();
+  await expect(page.getByTestId("active-signal-strip").getByText("Copy ready")).toBeVisible();
+  await expect(page.getByTestId("inline-copy-panel")).toHaveCount(0);
 
   const hotTraderRows = page.getByTestId("hot-trader-row");
   await expect(async () => {
@@ -33,6 +35,12 @@ test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", asy
   const inlineCopyPanel = page.getByTestId("inline-copy-panel");
   await expect(inlineCopyPanel).toBeVisible();
   await expect(inlineCopyPanel.getByTestId("arm-copy-button")).toBeVisible();
+  await expect(inlineCopyPanel.getByTestId("close-copy-panel")).toBeVisible();
+
+  const frozenOrder = await traderNames(hotTraderRows);
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByTestId("active-signal-strip").getByText("Leader signal landed")).toBeVisible();
+  expect(await traderNames(hotTraderRows)).toEqual(frozenOrder);
 
   await expect(
     firstRow.evaluate((row) => {
@@ -56,13 +64,16 @@ test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", asy
   const spectatorBox = await spectatorRail.boundingBox();
   expect(spectatorBox, "spectator rail should have a layout box").not.toBeNull();
   expect(spectatorBox!.height).toBeLessThan(viewport!.height * 0.5);
+
+  await inlineCopyPanel.getByTestId("close-copy-panel").click();
+  await expect(inlineCopyPanel).toBeHidden();
 });
 
 test("mobile stage 1 copy loop reaches settlement and leaderboard update", async ({ page }) => {
   await page.goto("/");
   const signalStrip = page.getByTestId("active-signal-strip");
   const leaderboard = page.getByRole("region", { name: "Hot leaderboard" });
-  const firstTrader = page.getByTestId("hot-trader-row").first();
+  const miraTrader = page.getByTestId("hot-trader-row").filter({ hasText: "Mira Vale" });
 
   await expect(page.getByRole("heading", { name: "Hot Hands" })).toBeVisible();
   await expect(page.getByTestId("market-header")).toContainText("BTC-USD");
@@ -74,9 +85,10 @@ test("mobile stage 1 copy loop reaches settlement and leaderboard update", async
   await expect(page.getByLabel("SP watching")).toBeVisible();
 
   await page.getByRole("button", { name: "Reset" }).click();
-  await expect(signalStrip.getByText("Copy armed")).toBeVisible();
+  await expect(signalStrip.getByText("Copy ready")).toBeVisible();
 
-  await firstTrader.getByTestId("copy-trigger").click();
+  await expect(miraTrader).toHaveCount(1);
+  await miraTrader.getByTestId("copy-trigger").click();
   const inlineCopyPanel = page.getByTestId("inline-copy-panel");
   await expect(inlineCopyPanel).toBeVisible();
 
@@ -84,10 +96,8 @@ test("mobile stage 1 copy loop reaches settlement and leaderboard update", async
   await expect(inlineCopyPanel).toContainText("$500");
 
   await inlineCopyPanel.getByTestId("arm-copy-button").click();
-  await expect(inlineCopyPanel.getByTestId("arm-copy-button")).toHaveText("Arm copy");
-  await inlineCopyPanel.getByTestId("arm-copy-button").click();
-  await expect(inlineCopyPanel).toBeHidden();
-  await expect(firstTrader).toContainText("Armed");
+  await expect(inlineCopyPanel.getByTestId("arm-copy-button")).toHaveText("Pause copy");
+  await expect(miraTrader).toContainText("Armed");
 
   await page.getByRole("button", { name: "Next" }).click();
   await expect(signalStrip.getByText("Leader signal landed")).toBeVisible();
@@ -96,7 +106,7 @@ test("mobile stage 1 copy loop reaches settlement and leaderboard update", async
   await page.getByRole("button", { name: "Next" }).click();
   await expect(signalStrip.getByText("Copy executed")).toBeVisible();
   await expect(signalStrip.getByText("$500 copied to BTC ticket")).toBeVisible();
-  await expect(firstTrader).toContainText("Copied");
+  await expect(miraTrader).toContainText("Copied");
 
   await page.getByRole("button", { name: "Next" }).click();
   await expect(signalStrip.getByText("Settlement posted")).toBeVisible();
@@ -107,3 +117,14 @@ test("mobile stage 1 copy loop reaches settlement and leaderboard update", async
   await expect(signalStrip.getByText("Mira Vale tops the leaderboard")).toBeVisible();
   await expect(page.getByLabel("Mira Vale hot score 50")).toBeVisible();
 });
+
+async function traderNames(rows: Locator) {
+  const names: string[] = [];
+  const count = await rows.count();
+
+  for (let index = 0; index < count; index += 1) {
+    names.push(await rows.nth(index).getByRole("heading").innerText());
+  }
+
+  return names;
+}

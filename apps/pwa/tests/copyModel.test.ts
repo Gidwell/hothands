@@ -22,12 +22,13 @@ describe("copy interaction model", () => {
   test("toggles copy arming without losing the selected leader", () => {
     const state = createInitialCopyState(traders);
     const selected = selectHotTrader(state, "t2", traders);
-    const disarmed = toggleCopyArmed(selected);
-    const armed = toggleCopyArmed(disarmed);
+    const armed = toggleCopyArmed(selected);
+    const disarmed = toggleCopyArmed(armed);
 
-    expect(disarmed.isArmed).toBe(false);
+    expect(selected.isArmed).toBe(false);
     expect(armed.isArmed).toBe(true);
-    expect(armed.selectedTraderId).toBe("t2");
+    expect(disarmed.isArmed).toBe(false);
+    expect(disarmed.selectedTraderId).toBe("t2");
   });
 
   test("builds the next-signal receipt preview from selected trader and amount", () => {
@@ -41,8 +42,8 @@ describe("copy interaction model", () => {
       market: "BTC-USD",
       amount: "$375",
       label: "Copy next signal",
-      status: "Armed",
-      summary: "Rhea Stack on BTC-USD, up to $375 when the next signal lands.",
+      status: "Disarmed",
+      summary: "Rhea Stack selected on BTC-USD. Arm copy to use up to $375 on the next signal.",
     });
   });
 });

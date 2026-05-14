@@ -59,6 +59,7 @@ export type ReplayFrame = {
   phase: ReplayPhase;
   stepLabel: string;
   status:
+    | "Copy ready"
     | "Copy armed"
     | "Leader signal landed"
     | "Copy executed"
@@ -99,14 +100,6 @@ const replaySignalBadges: Record<ReplayPhase, [string, string]> = {
   "copy-executed": ["COPY", "SENT"],
   settled: ["SETTLE", "FILLED"],
   "hot-hand-updated": ["BOARD", "HOT"],
-};
-
-const phaseStatus: Record<ReplayPhase, ReplayFrame["status"]> = {
-  "copy-armed": "Copy armed",
-  "signal-landed": "Leader signal landed",
-  "copy-executed": "Copy executed",
-  settled: "Settlement posted",
-  "hot-hand-updated": "Hot hand updated",
 };
 
 const toneCycle: Trader["tone"][] = ["gold", "green", "blue"];
@@ -250,8 +243,9 @@ export function getReplayFrame(
   const stripTrader = phase === "hot-hand-updated" ? hotLeader : selectedTrader;
   const activeSignal =
     signalForLeader(scenarioFrame.source.state.activeSignals, stripTrader.id) ??
-    signalForLeader(scenarioFrame.source.state.activeSignals, scenarioFrame.source.activity.leaderId) ??
-    scenarioFrame.source.activity.signal ??
+    (scenarioFrame.source.activity.signal?.leaderId === stripTrader.id
+      ? scenarioFrame.source.activity.signal
+      : undefined) ??
     latestSignalForLeader(scenario.frames.map(({ source }) => source), stripTrader.id);
   const amount = formatCopyAmount(state.copy.copyAmount);
   const pnl = formatPnl(getFramePnl(scenarioFrame.source));
@@ -263,7 +257,7 @@ export function getReplayFrame(
   return {
     phase,
     stepLabel: `${state.step + 1}/${scenario.frames.length}`,
-    status: phaseStatus[phase],
+    status: getPhaseStatus(phase, state.copy.isArmed),
     tableCall: getTableCall(
       phase,
       stripTrader.name,
@@ -344,6 +338,26 @@ function getScenarioFrame(state: ReplayState, scenario: ReplayScenario): ReplayS
 
 function phaseIndex(phase: ReplayPhase): number {
   return REPLAY_PHASES.indexOf(phase);
+}
+
+function getPhaseStatus(phase: ReplayPhase, isArmed: boolean): ReplayFrame["status"] {
+  if (phase === "copy-armed") {
+    return isArmed ? "Copy armed" : "Copy ready";
+  }
+
+  if (phase === "signal-landed") {
+    return "Leader signal landed";
+  }
+
+  if (phase === "copy-executed") {
+    return "Copy executed";
+  }
+
+  if (phase === "settled") {
+    return "Settlement posted";
+  }
+
+  return "Hot hand updated";
 }
 
 function latestSignalForLeader(
@@ -526,7 +540,7 @@ function getTableCall(
   isArmed: boolean,
 ): string {
   if (!isArmed) {
-    return "Copy paused";
+    return phase === "copy-armed" ? "Pick a hot trader to arm copy" : "Copy paused";
   }
 
   if (phase === "copy-armed") {
@@ -564,7 +578,7 @@ function getLatestSignal(
 
 function getPhaseBadge(phase: ReplayPhase, isArmed: boolean): string {
   if (!isArmed) {
-    return "PAUSED";
+    return phase === "copy-armed" ? "READY" : "PAUSED";
   }
 
   if (phase === "copy-armed") {

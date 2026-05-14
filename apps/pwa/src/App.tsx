@@ -26,9 +26,17 @@ import {
 
 const quickAmounts = [100, 250, 500, 1_000];
 
-function traderCopyStatus(isSelected: boolean, receiptState: string): string {
+function traderCopyStatus(
+  isSelected: boolean,
+  isExpanded: boolean,
+  receiptState: string,
+): string {
   if (!isSelected) {
     return "Live";
+  }
+
+  if (receiptState === "Disarmed") {
+    return isExpanded ? "Selected" : "Live";
   }
 
   return receiptState;
@@ -45,6 +53,7 @@ function TraderRow({
   onAmountStep,
   onAmountSet,
   onArmToggle,
+  onClose,
 }: {
   trader: Trader;
   isSelected: boolean;
@@ -56,8 +65,9 @@ function TraderRow({
   onAmountStep: (direction: -1 | 1) => void;
   onAmountSet: (amount: number) => void;
   onArmToggle: () => void;
+  onClose: () => void;
 }) {
-  const status = traderCopyStatus(isSelected, receiptState);
+  const status = traderCopyStatus(isSelected, isExpanded, receiptState);
 
   return (
     <article
@@ -111,9 +121,20 @@ function TraderRow({
 
       {isExpanded ? (
         <div className="inline-copy-panel" data-testid="inline-copy-panel">
-          <div className="inline-copy-summary">
-            <p>Copy next {trader.name} signal</p>
-            <strong>{formatCopyAmount(copyAmount)} max / BTC-USD</strong>
+          <div className="inline-copy-header">
+            <div className="inline-copy-summary">
+              <p>Copy next {trader.name} signal</p>
+              <strong>{formatCopyAmount(copyAmount)} max / BTC-USD</strong>
+            </div>
+            <button
+              type="button"
+              aria-label="Close copy panel"
+              className="close-copy-button"
+              data-testid="close-copy-panel"
+              onClick={onClose}
+            >
+              Close
+            </button>
           </div>
           <div className="amount-stepper">
             <button
@@ -333,6 +354,7 @@ function HotTraderList({
   onAmountStep,
   onAmountSet,
   onArmToggle,
+  onClose,
 }: {
   traders: Trader[];
   selectedTraderId: string;
@@ -344,7 +366,10 @@ function HotTraderList({
   onAmountStep: (direction: -1 | 1) => void;
   onAmountSet: (amount: number) => void;
   onArmToggle: () => void;
+  onClose: () => void;
 }) {
+  const hasArmedSelection = receiptState !== "Disarmed";
+
   return (
     <section className="trader-list" aria-label="Hot leaderboard" data-testid="hot-leaderboard">
       <div className="section-heading">
@@ -355,7 +380,10 @@ function HotTraderList({
         <TraderRow
           trader={trader}
           key={trader.id}
-          isSelected={trader.id === selectedTraderId}
+          isSelected={
+            trader.id === selectedTraderId &&
+            (hasArmedSelection || trader.id === expandedTraderId)
+          }
           isExpanded={trader.id === expandedTraderId}
           isHotTrader={trader.id === hotTraderId}
           receiptState={receiptState}
@@ -364,6 +392,7 @@ function HotTraderList({
           onAmountStep={onAmountStep}
           onAmountSet={onAmountSet}
           onArmToggle={onArmToggle}
+          onClose={onClose}
         />
       ))}
     </section>
@@ -374,11 +403,26 @@ export function App() {
   const [scenario, setScenario] = useState(() => createReplayScenario("opening-night"));
   const [replayState, setReplayState] = useState(() => createInitialReplayState(scenario));
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
+  const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
   const copyState = replayState.copy;
   const replayTraders = useMemo(
     () => getReplayTraders(replayState, scenario),
     [replayState, scenario],
   );
+  const displayedTraders = useMemo(() => {
+    if (!frozenTraderOrder) {
+      return replayTraders;
+    }
+
+    const tradersById = new Map(replayTraders.map((trader) => [trader.id, trader]));
+    const frozenIds = new Set(frozenTraderOrder);
+    const frozenTraders = frozenTraderOrder
+      .map((traderId) => tradersById.get(traderId))
+      .filter((trader): trader is Trader => Boolean(trader));
+    const newTraders = replayTraders.filter((trader) => !frozenIds.has(trader.id));
+
+    return [...frozenTraders, ...newTraders];
+  }, [frozenTraderOrder, replayTraders]);
   const frame = useMemo(
     () => getReplayFrame(replayState, scenario, market),
     [replayState, scenario],
@@ -406,6 +450,7 @@ export function App() {
     setScenario(nextScenario);
     setReplayState((state) => selectReplayScenario(state, nextScenario));
     setExpandedTraderId(null);
+    setFrozenTraderOrder(null);
   };
 
   const handleTraderSelect = (traderId: string) => {
@@ -413,6 +458,7 @@ export function App() {
       updateReplayCopy(state, (copy) => selectHotTrader(copy, traderId, scenario.traders)),
     );
     setExpandedTraderId(traderId);
+    setFrozenTraderOrder(replayTraders.map((trader) => trader.id));
   };
 
   const handleAmountStep = (direction: -1 | 1) => {
@@ -424,13 +470,12 @@ export function App() {
   };
 
   const handleArmToggle = () => {
-    const willArmCopy = !copyState.isArmed;
-
     setReplayState((state) => updateReplayCopy(state, (copy) => toggleCopyArmed(copy)));
+  };
 
-    if (willArmCopy) {
-      setExpandedTraderId(null);
-    }
+  const handleCloseCopyPanel = () => {
+    setExpandedTraderId(null);
+    setFrozenTraderOrder(null);
   };
 
   const handleReplayToggle = () => {
@@ -444,6 +489,7 @@ export function App() {
   const handleReplayReset = () => {
     setReplayState((state) => resetReplay(state));
     setExpandedTraderId(null);
+    setFrozenTraderOrder(null);
   };
 
   return (
@@ -466,7 +512,7 @@ export function App() {
           activity={frame.activity}
         />
         <HotTraderList
-          traders={replayTraders}
+          traders={displayedTraders}
           selectedTraderId={copyState.selectedTraderId}
           expandedTraderId={expandedTraderId}
           receiptState={receipt.state}
@@ -476,6 +522,7 @@ export function App() {
           onAmountStep={handleAmountStep}
           onAmountSet={handleAmountSet}
           onArmToggle={handleArmToggle}
+          onClose={handleCloseCopyPanel}
         />
       </section>
     </main>

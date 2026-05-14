@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { selectHotTrader, setCopyAmount } from "../src/copyModel";
+import { selectHotTrader, setCopyAmount, toggleCopyArmed } from "../src/copyModel";
 import { market } from "../src/mockData";
 import {
   REPLAY_SCENARIOS,
@@ -47,13 +47,22 @@ describe("live replay model", () => {
     let state = createInitialReplayState(scenario);
 
     expect(state.copy.selectedTraderId).toBe("trader-mira");
-    expect(state.copy.isArmed).toBe(true);
+    expect(state.copy.isArmed).toBe(false);
+    expect(getReplayFrame(state, scenario, market)).toMatchObject({
+      phase: "copy-armed",
+      status: "Copy ready",
+      copyReceipt: {
+        leader: "Mira Vale",
+        amount: "$250",
+        state: "Disarmed",
+      },
+    });
+
+    state = updateReplayCopy(state, (copyState) => toggleCopyArmed(copyState));
     expect(getReplayFrame(state, scenario, market)).toMatchObject({
       phase: "copy-armed",
       status: "Copy armed",
       copyReceipt: {
-        leader: "Mira Vale",
-        amount: "$250",
         state: "Armed",
       },
     });
@@ -112,7 +121,9 @@ describe("live replay model", () => {
     const scenario = createReplayScenario("hot-hand-swing");
     let state = createInitialReplayState(scenario);
     state = updateReplayCopy(state, (copyState) =>
-      setCopyAmount(selectHotTrader(copyState, "trader-beta", scenario.traders), 375),
+      toggleCopyArmed(
+        setCopyAmount(selectHotTrader(copyState, "trader-beta", scenario.traders), 375),
+      ),
     );
 
     state = advanceReplay(advanceReplay(advanceReplay(state, scenario), scenario), scenario);
@@ -143,7 +154,7 @@ describe("live replay model", () => {
     expect(getReplayFrame(state, trapStreak, market).copyReceipt).toMatchObject({
       leader: "Kade Lin",
       market: "BTC-USD",
-      state: "Armed",
+      state: "Disarmed",
     });
   });
 });
