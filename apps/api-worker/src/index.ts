@@ -17,6 +17,7 @@ import {
   touchSession,
   type TableState
 } from "./table-state";
+import { createTableActivityBroadcast } from "./table-activity";
 
 export interface Env {
   TABLE_ROOM: DurableObjectNamespace;
@@ -34,12 +35,19 @@ export default {
       return json({ ok: true, service: "api-worker", stage: 1 });
     }
 
-    const tableMatch = url.pathname.match(/^\/tables\/([^/]+)(?:\/(summary|ws))?$/);
+    const tableMatch = url.pathname.match(
+      /^\/tables\/([^/]+)(?:\/(summary|ws|activity))?$/
+    );
     if (!tableMatch) {
       return json(
         {
           error: "not_found",
-          routes: ["/health", "/tables/:tableId/summary", "/tables/:tableId/ws"]
+          routes: [
+            "/health",
+            "/tables/:tableId/summary",
+            "/tables/:tableId/ws",
+            "/tables/:tableId/activity"
+          ]
         },
         404
       );
@@ -55,6 +63,15 @@ export default {
 
     if (action === "ws" && request.method === "GET") {
       return room.fetch(request);
+    }
+
+    if (action === "activity" && request.method === "POST") {
+      return room.fetch(
+        new Request("https://table-room/activity", {
+          method: "POST",
+          body: request.body
+        })
+      );
     }
 
     return json({ error: "method_not_allowed" }, 405);
@@ -79,6 +96,10 @@ export class TableRoom implements DurableObject {
 
     if (url.pathname === "/summary") {
       return json(this.summary());
+    }
+
+    if (url.pathname === "/activity" && request.method === "POST") {
+      return this.broadcastActivity(request);
     }
 
     if (request.headers.get("upgrade") !== "websocket") {
@@ -218,6 +239,37 @@ export class TableRoom implements DurableObject {
     }
   }
 
+  private async broadcastActivity(request: Request): Promise<Response> {
+    let activity: unknown;
+    try {
+      activity = await request.json();
+    } catch {
+      return json({ error: "bad_json" }, 400);
+    }
+
+    try {
+      const broadcast = createTableActivityBroadcast(this.tableState, activity);
+      for (const message of broadcast.messages) {
+        this.broadcastEncoded(encodeServerMessage(message));
+      }
+
+      return json({
+        ok: true,
+        activityCount: Array.isArray(activity) ? activity.length : 0,
+        broadcastCount: broadcast.messages.length,
+        table: broadcast.summary
+      });
+    } catch (error) {
+      return json(
+        {
+          error: "bad_activity",
+          message: error instanceof Error ? error.message : "Invalid activity trace"
+        },
+        400
+      );
+    }
+  }
+
   private broadcastDelta(event: TableDeltaMessage["event"]): void {
     const summary = summarizeTableState(this.tableState);
     const message = encodeServerMessage({
@@ -231,6 +283,12 @@ export class TableRoom implements DurableObject {
       event
     });
 
+    for (const socket of this.sockets.keys()) {
+      socket.send(message);
+    }
+  }
+
+  private broadcastEncoded(message: string): void {
     for (const socket of this.sockets.keys()) {
       socket.send(message);
     }
