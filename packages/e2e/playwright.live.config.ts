@@ -1,11 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const port = Number(process.env.HOT_HANDS_E2E_PORT ?? 4173);
+const port = Number(process.env.HOT_HANDS_E2E_LIVE_PORT ?? 4174);
 const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./tests",
-  testIgnore: /mobile-live-activity\.spec\.ts/,
+  testMatch: /mobile-live-activity\.spec\.ts/,
   timeout: 30_000,
   expect: {
     timeout: 5_000,
@@ -16,8 +16,11 @@ export default defineConfig({
   },
   webServer: {
     command: `bun run --cwd ../../apps/pwa dev -- --host 127.0.0.1 --port ${port}`,
+    env: {
+      VITE_HOT_HANDS_API_URL: "https://worker.example.test/live",
+    },
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 60_000,
   },
   projects: [

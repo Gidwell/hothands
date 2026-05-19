@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test": "bun test realtime/realtime-activity-stream.test.ts && playwright test",
+    "test": "bun test realtime/realtime-activity-stream.test.ts && playwright test && bun run test:live",
+    "test:live": "playwright test --config playwright.live.config.ts",
     "test:realtime": "bun test realtime/realtime-activity-stream.test.ts"
   },
   "devDependencies": {
