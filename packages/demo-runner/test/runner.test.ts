@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   loadScenario,
   produceRealtimeActivityTrace,
+  produceRealtimeActivityTraceById,
   produceReplayFrames,
   produceTrace,
   produceTraceById,
@@ -194,6 +195,20 @@ describe("demo replay frames", () => {
 });
 
 describe("realtime activity trace adapter", () => {
+  test("produces realtime activity trace by scenario id", () => {
+    const items = produceRealtimeActivityTraceById("opening-night");
+
+    expect(items[0]).toMatchObject({
+      type: "table_activity",
+      source: "fixture_replay",
+      sequence: 0,
+      event: "signal_landed",
+      tableId: "btc-15m",
+    });
+    expect(items.map((item) => item.event)).toContain("copy_submitted");
+    expect(items.map((item) => item.event)).toContain("hot_hand_updated");
+  });
+
   test("projects hot hand swing replay into JSON-safe Stage 2 activity items", () => {
     const items = produceRealtimeActivityTrace(loadScenario("hot-hand-swing"));
 

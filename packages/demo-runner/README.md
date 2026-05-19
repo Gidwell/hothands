@@ -23,3 +23,9 @@ The demo runner should feed the same realtime and scoring paths as production.
 
 These events remain visibly sourced as `fixture_replay` so demo data cannot be
 confused with future testnet/indexed activity.
+
+Inspect the stream locally with:
+
+```bash
+bun run demo:play opening-night --realtime
+```

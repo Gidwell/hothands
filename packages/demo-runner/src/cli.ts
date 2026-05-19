@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
-import { produceReplayFramesById, produceTraceById } from "./index";
+import {
+  produceRealtimeActivityTraceById,
+  produceReplayFramesById,
+  produceTraceById,
+} from "./index";
 
 declare const process: {
   argv: string[];
@@ -10,12 +14,15 @@ declare const process: {
 
 const args = process.argv.slice(2);
 const framesMode = args.includes("--frames");
+const realtimeMode = args.includes("--realtime");
 const scenarioId = args.find((arg) => !arg.startsWith("--")) ?? "opening-night";
 
 try {
-  const output = framesMode
-    ? produceReplayFramesById(scenarioId)
-    : produceTraceById(scenarioId);
+  const output = realtimeMode
+    ? produceRealtimeActivityTraceById(scenarioId)
+    : framesMode
+      ? produceReplayFramesById(scenarioId)
+      : produceTraceById(scenarioId);
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 } catch (error) {
   process.exitCode = 1;
