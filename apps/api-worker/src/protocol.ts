@@ -1,3 +1,8 @@
+import type {
+  RealtimeActivityEvent,
+  RealtimeActivityTraceItem
+} from "@hot-hands/shared";
+
 export type ClientMessage =
   | JoinMessage
   | PingMessage
@@ -8,6 +13,7 @@ export type ServerMessage =
   | WelcomeMessage
   | PongMessage
   | TableDeltaMessage
+  | TableActivityMessage
   | ErrorMessage;
 
 export interface JoinMessage {
@@ -49,13 +55,18 @@ export interface TableDeltaMessage {
   armedCount: number;
   perLeaderArmedCounts?: Record<string, number>;
   hotScore?: number;
-  event:
-    | "spectator_joined"
-    | "spectator_left"
-    | "copy_armed"
-    | "copy_disarmed"
-    | "copy_rearmed";
+  event: TableDeltaEvent;
 }
+
+export type TableDeltaEvent =
+  | "spectator_joined"
+  | "spectator_left"
+  | "copy_armed"
+  | "copy_disarmed"
+  | "copy_rearmed"
+  | "hot_score_updated";
+
+export type TableActivityMessage = RealtimeActivityTraceItem;
 
 export interface ErrorMessage {
   type: "error";
@@ -161,6 +172,7 @@ export function applyTableSummaryDelta(
       armedCount = Math.max(0, armedCount - 1);
       break;
     case "copy_rearmed":
+    case "hot_score_updated":
       break;
   }
 
@@ -290,6 +302,8 @@ function isServerMessage(value: unknown): value is ServerMessage {
       return isPongMessage(value);
     case "table_delta":
       return isTableDeltaMessage(value);
+    case "table_activity":
+      return isTableActivityMessage(value);
     case "error":
       return isErrorMessage(value);
     default:
@@ -339,6 +353,48 @@ function isTableDeltaMessage(value: Record<string, unknown>): boolean {
   );
 }
 
+function isTableActivityMessage(value: Record<string, unknown>): boolean {
+  return (
+    hasOnlyKeys(value, [
+      "type",
+      "source",
+      "sequence",
+      "sourceSequence",
+      "atMs",
+      "tableId",
+      "event",
+      "label",
+      "actorId",
+      "leaderId",
+      "followerId",
+      "signalId",
+      "receiptId",
+      "spectatorCount",
+      "armedCount",
+      "hotScore",
+      "payload"
+    ]) &&
+    value.type === "table_activity" &&
+    value.source === "fixture_replay" &&
+    isCount(value.sequence) &&
+    isCount(value.sourceSequence) &&
+    isNonEmptyString(value.tableId) &&
+    isTimestampMs(value.atMs) &&
+    isRealtimeActivityEvent(value.event) &&
+    isNonEmptyString(value.label) &&
+    optionalNonEmptyStringValue(value.actorId) &&
+    optionalNonEmptyStringValue(value.leaderId) &&
+    optionalNonEmptyStringValue(value.followerId) &&
+    optionalNonEmptyStringValue(value.signalId) &&
+    optionalNonEmptyStringValue(value.receiptId) &&
+    isCount(value.spectatorCount) &&
+    isCount(value.armedCount) &&
+    value.armedCount <= value.spectatorCount &&
+    optionalHotScore(value.hotScore) &&
+    isRealtimeActivityPayload(value.event, value.payload)
+  );
+}
+
 function isErrorMessage(value: Record<string, unknown>): boolean {
   return (
     hasOnlyKeys(value, ["type", "code", "message"]) &&
@@ -375,7 +431,165 @@ function isTableDeltaEvent(value: unknown): value is TableDeltaMessage["event"] 
     value === "spectator_left" ||
     value === "copy_armed" ||
     value === "copy_disarmed" ||
-    value === "copy_rearmed"
+    value === "copy_rearmed" ||
+    value === "hot_score_updated"
+  );
+}
+
+function isRealtimeActivityEvent(value: unknown): value is RealtimeActivityEvent {
+  return (
+    value === "signal_landed" ||
+    value === "copy_submitted" ||
+    value === "copy_executed" ||
+    value === "settlement_posted" ||
+    value === "hot_hand_updated"
+  );
+}
+
+function isRealtimeActivityPayload(
+  event: RealtimeActivityEvent,
+  value: unknown
+): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  switch (event) {
+    case "signal_landed":
+      return hasOnlyKeys(value, ["signal"]) && isReplaySignal(value.signal);
+    case "copy_submitted":
+      return (
+        hasOnlyKeys(value, ["copy"]) &&
+        isRealtimeCopyActivity(value.copy, "submitted")
+      );
+    case "copy_executed":
+      return (
+        hasOnlyKeys(value, ["copy"]) &&
+        isRealtimeCopyActivity(value.copy, "executed")
+      );
+    case "settlement_posted":
+      return hasOnlyKeys(value, ["settlement"]) && isReplaySettlement(value.settlement);
+    case "hot_hand_updated":
+      return hasOnlyKeys(value, ["hotHand"]) && isRealtimeHotHand(value.hotHand);
+  }
+}
+
+function isReplaySignal(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, [
+      "signalId",
+      "leaderId",
+      "oracleId",
+      "market",
+      "direction",
+      "strike",
+      "expiryMs",
+      "confidenceBps",
+      "createdAtMs",
+      "status",
+      "thesis"
+    ]) &&
+    isNonEmptyString(value.signalId) &&
+    isNonEmptyString(value.leaderId) &&
+    isNonEmptyString(value.oracleId) &&
+    isNonEmptyString(value.market) &&
+    (value.direction === "up" || value.direction === "down") &&
+    isFiniteJsonNumber(value.strike) &&
+    isTimestampMs(value.expiryMs) &&
+    isBasisPoints(value.confidenceBps) &&
+    isTimestampMs(value.createdAtMs) &&
+    isSignalStatus(value.status) &&
+    optionalStringValue(value.thesis)
+  );
+}
+
+function isRealtimeCopyActivity(
+  value: unknown,
+  status: "submitted" | "executed"
+): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, [
+      "receiptId",
+      "signalId",
+      "followerId",
+      "leaderId",
+      "copiedCost",
+      "cumulativeCopiedVolume",
+      "status"
+    ]) &&
+    isNonEmptyString(value.receiptId) &&
+    isNonEmptyString(value.signalId) &&
+    isNonEmptyString(value.followerId) &&
+    isNonEmptyString(value.leaderId) &&
+    isFiniteNonNegativeNumber(value.copiedCost) &&
+    isFiniteNonNegativeNumber(value.cumulativeCopiedVolume) &&
+    value.status === status
+  );
+}
+
+function isReplaySettlement(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, ["signalId", "leaderId", "status", "settlementPrice", "pnl"]) &&
+    isNonEmptyString(value.signalId) &&
+    isNonEmptyString(value.leaderId) &&
+    isSettlementStatus(value.status) &&
+    isFiniteJsonNumber(value.settlementPrice) &&
+    isFiniteJsonNumber(value.pnl)
+  );
+}
+
+function isRealtimeHotHand(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, [
+      "leaderChanged",
+      "currentLeaderId",
+      "previousLeaderId",
+      "score"
+    ]) &&
+    typeof value.leaderChanged === "boolean" &&
+    isNonEmptyString(value.currentLeaderId) &&
+    optionalNonEmptyStringValue(value.previousLeaderId) &&
+    isReplayLeader(value.score)
+  );
+}
+
+function isReplayLeader(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, [
+      "rank",
+      "traderId",
+      "handle",
+      "displayName",
+      "avatarUrl",
+      "hotScore",
+      "roi",
+      "pnl",
+      "hitRate",
+      "resolvedCount",
+      "winStreak",
+      "copiedVolume",
+      "freshnessScore",
+      "label"
+    ]) &&
+    isCount(value.rank) &&
+    isNonEmptyString(value.traderId) &&
+    isNonEmptyString(value.handle) &&
+    isNonEmptyString(value.displayName) &&
+    optionalStringValue(value.avatarUrl) &&
+    isHotScore(value.hotScore) &&
+    isFiniteJsonNumber(value.roi) &&
+    isFiniteJsonNumber(value.pnl) &&
+    isFiniteNonNegativeNumber(value.hitRate) &&
+    isCount(value.resolvedCount) &&
+    isCount(value.winStreak) &&
+    isFiniteNonNegativeNumber(value.copiedVolume) &&
+    isFiniteNonNegativeNumber(value.freshnessScore) &&
+    isNonEmptyString(value.label)
   );
 }
 
@@ -391,11 +605,47 @@ function isTimestampMs(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-function optionalHotScore(value: unknown): boolean {
+function optionalNonEmptyStringValue(value: unknown): boolean {
+  return value === undefined || isNonEmptyString(value);
+}
+
+function optionalStringValue(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isBasisPoints(value: unknown): boolean {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 10_000;
+}
+
+function isSignalStatus(value: unknown): boolean {
   return (
-    value === undefined ||
-    (typeof value === "number" && Number.isFinite(value) && value >= 0)
+    value === "posted" ||
+    value === "copyable" ||
+    value === "expired" ||
+    value === "settled_win" ||
+    value === "settled_loss" ||
+    value === "voided"
   );
+}
+
+function isSettlementStatus(value: unknown): boolean {
+  return value === "settled_win" || value === "settled_loss" || value === "voided";
+}
+
+function isFiniteJsonNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isFiniteNonNegativeNumber(value: unknown): boolean {
+  return isFiniteJsonNumber(value) && value >= 0;
+}
+
+function isHotScore(value: unknown): value is number {
+  return isFiniteJsonNumber(value) && value >= 0;
+}
+
+function optionalHotScore(value: unknown): boolean {
+  return value === undefined || isHotScore(value);
 }
 
 function optionalLeaderCountsMatch(value: unknown, armedCount: number): boolean {

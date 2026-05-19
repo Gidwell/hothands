@@ -23,6 +23,7 @@
     "demo:reset": "echo \"TODO: reset demo state\"",
     "verify:fast": "bun run typecheck && bun run test && bun run build:pwa && bun run build:api",
     "verify:e2e": "bun run --cwd packages/e2e test",
+    "verify:realtime:sim": "bun run test:worker && bun test packages/demo-runner/test && bun run verify:e2e",
     "verify:perf": "echo \"TODO: run spectator heartbeat simulation\"",
     "verify:testnet": "echo \"TODO: run DeepBook Predict testnet canary\"",
     "verify:visual": "echo \"TODO: run screenshot checks\""

@@ -11,7 +11,7 @@ Primary responsibilities:
 - transaction preparation endpoints
 - rate limiting and auth/session checks
 
-## Stage 1 Realtime Skeleton
+## Stage 2 Simulated Realtime Skeleton
 
 This package owns the first local/dev friendly Cloudflare Worker loop:
 
@@ -42,6 +42,19 @@ Server messages:
 { "type": "pong", "atMs": 1778700000000, "nonce": "optional-client-nonce" }
 { "type": "table_delta", "tableId": "btc-demo", "atMs": 1778700000000, "spectatorCount": 2, "armedCount": 1, "event": "copy_armed" }
 ```
+
+Stage 2 also supports JSON-safe `table_activity` messages using the shared
+`RealtimeActivityTraceItem` shape from `@hot-hands/shared`:
+
+- `signal_landed`
+- `copy_submitted`
+- `copy_executed`
+- `settlement_posted`
+- `hot_hand_updated`
+
+The demo runner emits these events from fixture replay data. The worker protocol
+validates the same shape so the PWA can later consume simulated and indexed
+activity without a translation layer.
 
 ### Local Commands
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   loadScenario,
+  produceRealtimeActivityTrace,
   produceReplayFrames,
   produceTrace,
   produceTraceById,
@@ -189,6 +190,141 @@ describe("demo replay frames", () => {
         label: "Warming",
       },
     ]);
+  });
+});
+
+describe("realtime activity trace adapter", () => {
+  test("projects hot hand swing replay into JSON-safe Stage 2 activity items", () => {
+    const items = produceRealtimeActivityTrace(loadScenario("hot-hand-swing"));
+
+    expect(items.map((item) => item.event)).toEqual([
+      "signal_landed",
+      "copy_submitted",
+      "copy_executed",
+      "settlement_posted",
+      "hot_hand_updated",
+      "signal_landed",
+      "settlement_posted",
+      "hot_hand_updated",
+      "signal_landed",
+      "settlement_posted",
+      "hot_hand_updated",
+    ]);
+    expect(JSON.parse(JSON.stringify(items))).toEqual(items);
+
+    const signalItem = items[0];
+    expect(signalItem).toEqual({
+      type: "table_activity",
+      source: "fixture_replay",
+      sequence: 0,
+      sourceSequence: 1,
+      atMs: 1_786_575_610_000,
+      tableId: "btc-15m",
+      event: "signal_landed",
+      label: "Alpha Cruz posted UP BTC-USD",
+      actorId: "trader-alpha",
+      leaderId: "trader-alpha",
+      signalId: "sig-alpha-1",
+      spectatorCount: 1,
+      armedCount: 0,
+      payload: {
+        signal: {
+          signalId: "sig-alpha-1",
+          leaderId: "trader-alpha",
+          oracleId: "btc-15m",
+          market: "BTC-USD",
+          direction: "up",
+          strike: 65_000,
+          expiryMs: 1_786_575_900_000,
+          confidenceBps: 7_200,
+          createdAtMs: 1_786_575_610_000,
+          status: "copyable",
+          thesis: "High-conviction continuation after the first pullback.",
+        },
+      },
+    });
+
+    const copySubmittedItem = items.find((item) => item.event === "copy_submitted");
+    expect(copySubmittedItem).toEqual({
+      type: "table_activity",
+      source: "fixture_replay",
+      sequence: 1,
+      sourceSequence: 2,
+      atMs: 1_786_575_620_000,
+      tableId: "btc-15m",
+      event: "copy_submitted",
+      label: "Vee Moss submitted copy for Alpha Cruz",
+      actorId: "follower-vee",
+      leaderId: "trader-alpha",
+      followerId: "follower-vee",
+      signalId: "sig-alpha-1",
+      receiptId: "copy-alpha-1",
+      spectatorCount: 1,
+      armedCount: 0,
+      payload: {
+        copy: {
+          receiptId: "copy-alpha-1",
+          signalId: "sig-alpha-1",
+          followerId: "follower-vee",
+          leaderId: "trader-alpha",
+          copiedCost: 120,
+          cumulativeCopiedVolume: 120,
+          status: "submitted",
+        },
+      },
+    });
+
+    const copyExecutedItem = items.find((item) => item.event === "copy_executed");
+    expect(copyExecutedItem?.payload).toEqual({
+      copy: {
+        receiptId: "copy-alpha-1",
+        signalId: "sig-alpha-1",
+        followerId: "follower-vee",
+        leaderId: "trader-alpha",
+        copiedCost: 120,
+        cumulativeCopiedVolume: 120,
+        status: "executed",
+      },
+    });
+
+    const settlementItem = items.find((item) =>
+      item.event === "settlement_posted" &&
+      item.signalId === "sig-alpha-1"
+    );
+    expect(settlementItem?.payload).toEqual({
+      settlement: {
+        signalId: "sig-alpha-1",
+        leaderId: "trader-alpha",
+        status: "settled_win",
+        settlementPrice: 65_280,
+        pnl: 80,
+      },
+    });
+
+    const hotHandItem = items.find((item) =>
+      item.event === "hot_hand_updated" &&
+      item.leaderId === "trader-beta"
+    );
+    expect(hotHandItem).toMatchObject({
+      event: "hot_hand_updated",
+      label: "Beta Shah moved into first",
+      actorId: "trader-beta",
+      leaderId: "trader-beta",
+      hotScore: 61,
+      payload: {
+        hotHand: {
+          leaderChanged: true,
+          currentLeaderId: "trader-beta",
+          previousLeaderId: "trader-alpha",
+          score: {
+            traderId: "trader-beta",
+            hotScore: 61,
+            pnl: 40,
+            label: "Heating Up",
+          },
+        },
+      },
+    });
   });
 });
 

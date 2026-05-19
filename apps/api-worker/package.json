@@ -11,6 +11,9 @@
     "test": "bun test test",
     "test:worker": "bun test test"
   },
+  "dependencies": {
+    "@hot-hands/shared": "workspace:*"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260509.0",
     "typescript": "^5.8.3",

@@ -6,7 +6,12 @@ import {
   type CopyReceipt,
   type DemoReplayFrame,
   type DemoScenario,
+  type RealtimeActivityEvent,
+  type RealtimeActivityPayload,
+  type RealtimeActivityTraceItem,
+  type RealtimeCopyActivity,
   type ReplayActivity,
+  type ReplayCopyActivity,
   type ReplayLeader,
   type ReplayParticipant,
   type ReplayPhase,
@@ -208,6 +213,26 @@ export function produceReplayFrames(scenario: DemoScenario): DemoReplayFrame[] {
 
 export function produceReplayFramesById(scenarioId: string): DemoReplayFrame[] {
   return produceReplayFrames(loadScenario(scenarioId));
+}
+
+export function produceRealtimeActivityTrace(
+  scenario: DemoScenario,
+): RealtimeActivityTraceItem[] {
+  return realtimeActivityTraceFromReplayFrames(produceReplayFrames(scenario));
+}
+
+export function produceRealtimeActivityTraceById(
+  scenarioId: string,
+): RealtimeActivityTraceItem[] {
+  return produceRealtimeActivityTrace(loadScenario(scenarioId));
+}
+
+export function realtimeActivityTraceFromReplayFrames(
+  frames: DemoReplayFrame[],
+): RealtimeActivityTraceItem[] {
+  return frames
+    .flatMap(realtimeActivityItemsForFrame)
+    .map((item, sequence) => ({ ...item, sequence }));
 }
 
 function scoreForLeader(
@@ -653,4 +678,137 @@ function requireReceipt(
   const receipt = receiptsById.get(receiptId);
   if (!receipt) throw new Error(`Unknown copy receipt "${receiptId}"`);
   return receipt;
+}
+
+type RealtimeActivityTraceItemDraft = Omit<RealtimeActivityTraceItem, "sequence">;
+
+function realtimeActivityItemsForFrame(
+  frame: DemoReplayFrame,
+): RealtimeActivityTraceItemDraft[] {
+  switch (frame.activity.action) {
+    case "signal_posted": {
+      if (!frame.activity.signal) {
+        throw new Error(`Replay frame "${frame.sequence}" requires signal activity`);
+      }
+
+      return [
+        realtimeItem(frame, "signal_landed", frame.activity.label, {
+          signal: frame.activity.signal,
+        }),
+      ];
+    }
+
+    case "copy_executed": {
+      if (!frame.activity.copy) {
+        throw new Error(`Replay frame "${frame.sequence}" requires copy activity`);
+      }
+
+      const followerName = frame.activity.participant?.displayName ??
+        frame.activity.copy.followerId;
+      const leaderName = leaderNameForFrame(frame, frame.activity.copy.leaderId);
+
+      return [
+        realtimeItem(
+          frame,
+          "copy_submitted",
+          `${followerName} submitted copy for ${leaderName}`,
+          { copy: realtimeCopyActivity(frame.activity.copy, "submitted") },
+        ),
+        realtimeItem(frame, "copy_executed", frame.activity.label, {
+          copy: realtimeCopyActivity(frame.activity.copy, "executed"),
+        }),
+      ];
+    }
+
+    case "signal_settled": {
+      if (!frame.activity.settlement) {
+        throw new Error(`Replay frame "${frame.sequence}" requires settlement activity`);
+      }
+
+      return [
+        realtimeItem(frame, "settlement_posted", frame.activity.label, {
+          settlement: frame.activity.settlement,
+        }),
+      ];
+    }
+
+    case "score_updated": {
+      const currentLeader = currentLeaderForFrame(frame);
+      return [
+        realtimeItem(
+          frame,
+          "hot_hand_updated",
+          frame.activity.label,
+          {
+            hotHand: {
+              leaderChanged: frame.state.leaderChanged,
+              currentLeaderId: currentLeader.traderId,
+              ...(frame.state.previousLeader
+                ? { previousLeaderId: frame.state.previousLeader.traderId }
+                : {}),
+              score: currentLeader,
+            },
+          },
+          currentLeader.hotScore,
+        ),
+      ];
+    }
+
+    case "spectator_joined":
+    case "copy_armed":
+    case "snapshot_emitted":
+      return [];
+  }
+}
+
+function realtimeItem(
+  frame: DemoReplayFrame,
+  event: RealtimeActivityEvent,
+  label: string,
+  payload: RealtimeActivityPayload,
+  hotScore?: number,
+): RealtimeActivityTraceItemDraft {
+  return {
+    type: "table_activity",
+    source: "fixture_replay",
+    sourceSequence: frame.sequence,
+    atMs: frame.atMs,
+    tableId: frame.tableId,
+    event,
+    label,
+    ...(frame.activity.actorId ? { actorId: frame.activity.actorId } : {}),
+    ...(frame.activity.leaderId ? { leaderId: frame.activity.leaderId } : {}),
+    ...(frame.activity.followerId ? { followerId: frame.activity.followerId } : {}),
+    ...(frame.activity.signalId ? { signalId: frame.activity.signalId } : {}),
+    ...(frame.activity.receiptId ? { receiptId: frame.activity.receiptId } : {}),
+    spectatorCount: frame.state.spectators,
+    armedCount: frame.state.armedFollowers,
+    ...(hotScore !== undefined ? { hotScore } : {}),
+    payload,
+  };
+}
+
+function realtimeCopyActivity(
+  copy: ReplayCopyActivity,
+  status: RealtimeCopyActivity["status"],
+): RealtimeCopyActivity {
+  return {
+    ...copy,
+    status,
+  };
+}
+
+function leaderNameForFrame(frame: DemoReplayFrame, leaderId: string): string {
+  return frame.state.rankedLeaders.find((leader) =>
+    leader.traderId === leaderId
+  )?.displayName ?? leaderId;
+}
+
+function currentLeaderForFrame(frame: DemoReplayFrame): ReplayLeader {
+  const currentLeader = frame.state.currentLeader ?? frame.state.rankedLeaders[0];
+  if (!currentLeader) {
+    throw new Error(`Replay frame "${frame.sequence}" requires a current leader`);
+  }
+
+  return currentLeader;
 }

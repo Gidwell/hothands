@@ -158,7 +158,8 @@ function emptyEventCounts(): Record<TableEvent, number> {
     spectator_left: 0,
     copy_armed: 0,
     copy_disarmed: 0,
-    copy_rearmed: 0
+    copy_rearmed: 0,
+    hot_score_updated: 0
   };
 }
 

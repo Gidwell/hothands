@@ -190,7 +190,7 @@ export function setTableHotScore(
 
   state.hotScore = hotScore;
   state.updatedAtMs = nowMs;
-  return tableStateChange(state, []);
+  return tableStateChange(state, ["hot_score_updated"]);
 }
 
 export function getSession(

@@ -178,6 +178,52 @@ export interface DemoReplayFrame {
   state: ReplayTableState;
 }
 
+export type RealtimeActivitySource = "fixture_replay";
+
+export type RealtimeActivityEvent =
+  | "signal_landed"
+  | "copy_submitted"
+  | "copy_executed"
+  | "settlement_posted"
+  | "hot_hand_updated";
+
+export interface RealtimeCopyActivity extends ReplayCopyActivity {
+  status: "submitted" | "executed";
+}
+
+export interface RealtimeHotHandActivity {
+  leaderChanged: boolean;
+  currentLeaderId: string;
+  previousLeaderId?: string;
+  score: ReplayLeader;
+}
+
+export type RealtimeActivityPayload =
+  | { signal: ReplaySignal }
+  | { copy: RealtimeCopyActivity }
+  | { settlement: ReplaySettlementActivity }
+  | { hotHand: RealtimeHotHandActivity };
+
+export interface RealtimeActivityTraceItem {
+  type: "table_activity";
+  source: RealtimeActivitySource;
+  sequence: number;
+  sourceSequence: number;
+  atMs: number;
+  tableId: string;
+  event: RealtimeActivityEvent;
+  label: string;
+  actorId?: string;
+  leaderId?: string;
+  followerId?: string;
+  signalId?: string;
+  receiptId?: string;
+  spectatorCount: number;
+  armedCount: number;
+  hotScore?: number;
+  payload: RealtimeActivityPayload;
+}
+
 export type ScenarioAction =
   | "spectator_joined"
   | "copy_armed"

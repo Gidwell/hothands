@@ -20,7 +20,8 @@ describe("fake spectator table simulation", () => {
       spectator_left: 0,
       copy_armed: 0,
       copy_disarmed: 0,
-      copy_rearmed: 0
+      copy_rearmed: 0,
+      hot_score_updated: 0
     });
 
     simulation.pingAll(3);
@@ -34,7 +35,8 @@ describe("fake spectator table simulation", () => {
       spectator_left: 0,
       copy_armed: 0,
       copy_disarmed: 0,
-      copy_rearmed: 0
+      copy_rearmed: 0,
+      hot_score_updated: 0
     });
     expect(simulation.heartbeatNoopCount()).toBe(144);
 
@@ -83,7 +85,8 @@ describe("fake spectator table simulation", () => {
       spectator_left: 16,
       copy_armed: 36,
       copy_disarmed: 10,
-      copy_rearmed: 6
+      copy_rearmed: 6,
+      hot_score_updated: 0
     });
   });
 });

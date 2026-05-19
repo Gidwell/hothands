@@ -1,6 +1,6 @@
 # Hot Hands Roadmap
 
-Last updated: May 14, 2026
+Last updated: May 18, 2026
 
 The hackathon submission deadline is June 21, 2026. This roadmap is organized around gates. Each gate should end with a working demo or a major risk retired.
 
@@ -29,7 +29,7 @@ rg "Do not write every heartbeat"
 
 Target: May 14-17
 
-Status: Complete on `codex/hot-hands-stage-1`.
+Status: Complete on `main`.
 
 Goal: make the app feel good locally before fighting testnet.
 
@@ -63,17 +63,56 @@ Completion notes:
 - Mobile Playwright e2e verifies the core copy-next-signal loop through settlement and leaderboard update.
 - Final build/e2e verification passed from `/private/tmp/hot-hands-worktrees/integration-verify` to avoid local Vite/esbuild path issues in the Codex project folder.
 
-## Stage 2: DeepBook Predict Spike
+## Stage 2: Simulated Realtime Tables
 
-Target: May 16-20
+Target: May 18-22
 
-Goal: retire the largest external integration risk.
+Goal: make the app behave like a production realtime table before adding testnet variability.
 
 Stage 1 carry-forward:
 
-- Keep fixture mode green while adding testnet mode.
+- Keep fixture mode green while adding realtime mode.
+- Preserve the mobile e2e copy loop as the product baseline.
+- Use simulated events shaped like future indexed/testnet events, so Stage 3 can swap the source without rewriting the PWA.
+
+Deliverables:
+
+- Durable Object protocol for richer table activity: spectator joins, copy arms, leader signal landed, copy submitted, settlement posted, and hot-score update.
+- Demo-runner adapter that emits JSON-safe realtime activity traces from existing fixtures.
+- PWA adapter path for consuming table activity through the same state shape the UI already understands.
+- Verification docs and commands for the simulated realtime gate.
+- No Postgres writes per heartbeat.
+
+TDD:
+
+- protocol encode/parse tests
+- demo activity adapter fixture tests
+- worker table broadcast tests
+- mobile e2e still verifies the one-shot copy loop
+
+Verification:
+
+```bash
+bun run verify:realtime:sim
+bun run verify:fast
+```
+
+Risk:
+
+- Do not overbuild the backend; this stage proves the event shape and realtime loop, not the full production data layer.
+- Simulated data must stay visibly distinguishable from future live testnet data.
+
+## Stage 3: DeepBook Predict Spike
+
+Target: May 20-25
+
+Goal: retire the largest external integration risk.
+
+Stage 2 carry-forward:
+
+- Keep simulated realtime mode green while adding testnet mode.
 - Start with current official DeepBook Predict docs and shared config constants before writing transaction code.
-- Preserve the mobile e2e copy loop as the product baseline; Stage 2 should add proof of real testnet execution without breaking the local demo.
+- Preserve the mobile e2e copy loop as the product baseline; Stage 3 should add proof of real testnet execution without breaking the local demo.
 
 Deliverables:
 
@@ -102,9 +141,9 @@ Risk:
 - DeepBook Predict contracts are provisional testnet targets.
 - Testnet token access may require manual faucet/request flow.
 
-## Stage 3: Hot Hands Contracts
+## Stage 4: Hot Hands Contracts
 
-Target: May 18-23
+Target: May 23-28
 
 Goal: create the minimal onchain social proof layer.
 
@@ -128,9 +167,9 @@ bun run move:test
 bun run test:contracts
 ```
 
-## Stage 4: Real Copy Next Signal
+## Stage 5: Real Copy Next Signal
 
-Target: May 22-29
+Target: May 27-June 4
 
 Goal: complete the core user loop end to end.
 
@@ -158,11 +197,11 @@ bun run verify:e2e
 bun run verify:testnet
 ```
 
-## Stage 5: Realtime Tables
+## Stage 6: Realtime Scale And Perf
 
-Target: May 27-June 4
+Target: June 1-6
 
-Goal: make tables feel alive.
+Goal: make thousands of active tables viable.
 
 Deliverables:
 
@@ -171,6 +210,7 @@ Deliverables:
 - Armed copy count.
 - Table deltas.
 - Home page subscribes only to visible hot tables.
+- Performance harness for active table fanout.
 
 TDD:
 
@@ -192,9 +232,9 @@ Initial budgets:
 - missed heartbeat rate under 1 percent
 - no Postgres writes per heartbeat
 
-## Stage 6: Scoring And Leaderboards
+## Stage 7: Scoring And Leaderboards
 
-Target: June 1-8
+Target: June 4-10
 
 Goal: make "who is hot?" trustworthy.
 
@@ -223,9 +263,9 @@ bun run test:scoring
 bun run demo:play trap-streak
 ```
 
-## Stage 7: Live Market Polish
+## Stage 8: Live Market Polish
 
-Target: June 6-14
+Target: June 8-14
 
 Goal: make judges remember the experience.
 
@@ -252,7 +292,7 @@ bun run verify:e2e
 bun run verify:visual
 ```
 
-## Stage 8: Hardening And Submission
+## Stage 9: Hardening And Submission
 
 Target: June 14-21
 

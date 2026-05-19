@@ -7,6 +7,7 @@ import {
   disarmCopy,
   getSession,
   removeSession,
+  setTableHotScore,
   summarizeTableState
 } from "../src/table-state";
 
@@ -129,6 +130,28 @@ describe("pure table state", () => {
     expect(policy).toEqual({
       tier: "hot",
       intervalMs: HEARTBEAT_POLICY.fastIntervalMs
+    });
+  });
+
+  test("hot score changes produce a broadcastable table delta", () => {
+    const state = createTableState("table-1", {
+      nowMs: 1000,
+      hotScore: 12
+    });
+
+    const changed = setTableHotScore(state, 88.5, 1100);
+
+    expect(changed.events).toEqual(["hot_score_updated"]);
+    expect(changed.summary).toMatchObject({
+      hotScore: 88.5,
+      updatedAtMs: 1100
+    });
+
+    const unchanged = setTableHotScore(state, 88.5, 1200);
+    expect(unchanged.events).toEqual([]);
+    expect(unchanged.summary).toMatchObject({
+      hotScore: 88.5,
+      updatedAtMs: 1100
     });
   });
 });

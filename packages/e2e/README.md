@@ -9,3 +9,4 @@ Primary responsibilities:
 - spectator heartbeat simulations
 - demo trace assertions
 
+Stage 2 simulated realtime gate: [STAGE-2-REALTIME-GATE.md](./STAGE-2-REALTIME-GATE.md)
