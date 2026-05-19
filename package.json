@@ -9,12 +9,12 @@
   "scripts": {
     "dev": "bun run --cwd apps/pwa dev",
     "dev:live": "bun packages/demo-runner/src/dev-live.ts",
-    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/fixtures typecheck && bun run --cwd packages/demo-runner typecheck && bun run --cwd packages/indexer typecheck && bun run --cwd apps/api-worker typecheck && bun run --cwd apps/pwa typecheck",
+    "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/fixtures typecheck && bun run --cwd packages/demo-runner typecheck && bun run --cwd packages/indexer typecheck && bun run --cwd packages/contracts typecheck && bun run --cwd apps/api-worker typecheck && bun run --cwd apps/pwa typecheck",
     "lint": "echo \"TODO: add lint\"",
-    "test": "bun test packages/shared/test packages/fixtures/test packages/demo-runner/test packages/indexer/test && bun run test:pwa && bun run test:worker",
+    "test": "bun test packages/shared/test packages/fixtures/test packages/demo-runner/test packages/indexer/test packages/contracts/test && bun run test:pwa && bun run test:worker",
     "test:pwa": "bun run --cwd apps/pwa test",
     "test:worker": "bun run --cwd apps/api-worker test:worker",
-    "test:contracts": "echo \"TODO: add contract transaction tests\"",
+    "test:contracts": "bun run --cwd packages/contracts test",
     "test:scoring": "bun test packages/shared/test/scoring.test.ts",
     "build:pwa": "bun run --cwd apps/pwa build",
     "build:api": "bun run --cwd apps/api-worker build",
@@ -27,7 +27,7 @@
     "verify:e2e": "bun run --cwd packages/e2e test",
     "verify:realtime:sim": "bun run test:worker && bun test packages/demo-runner/test && bun run verify:e2e",
     "verify:perf": "echo \"TODO: run spectator heartbeat simulation\"",
-    "verify:testnet": "bun run --cwd packages/indexer verify:testnet",
+    "verify:testnet": "bun run --cwd packages/indexer verify:testnet && bun run --cwd packages/contracts verify:testnet",
     "verify:visual": "echo \"TODO: run screenshot checks\""
   }
 }

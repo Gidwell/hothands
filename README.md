@@ -2,7 +2,7 @@
 
 Hot Hands is a mobile-first social prediction market app for DeepBook Predict. The core loop is simple: watch live BTC prediction tables, find traders with a hot hand, arm a copy-next-signal rule, and execute the copy trade with your own chosen amount.
 
-This repository now has the Stage 1 fake-data vertical slice and the Stage 2 simulated realtime loop: deterministic mobile replay, worker-shaped table activity, an in-process socket contract, optional PWA live-mode checks, and a local Wrangler-backed worker smoke. Stage 3 has started with a read-only DeepBook Predict testnet canary before transaction-builder and mint work.
+This repository now has the Stage 1 fake-data vertical slice, the Stage 2 simulated realtime loop, and the first Stage 3 DeepBook Predict testnet bridge: deterministic mobile replay, worker-shaped table activity, an in-process socket contract, optional PWA live-mode checks, a local Wrangler-backed worker smoke, a Predict server read canary, and Sui SDK transaction builders for manager creation, quote deposit, and copied mint.
 
 ## Product Loop
 
@@ -62,8 +62,9 @@ activity through the worker.
 bunx playwright install chromium
 ```
 
-Stage 3 `verify:testnet` is the first read-canary checkpoint. Its initial scope
-is to read public DeepBook Predict server data for active BTC oracle visibility;
-Predict mint, DUSDC manager, and wallet-flow checks come next.
+Stage 3 `verify:testnet` now runs the public Predict server read canary and a
+no-funds Sui testnet dev-inspect of the `predict::create_manager` transaction
+builder. Full DUSDC deposit and copied mint dry-runs still need funded testnet
+wallet objects.
 
 In this local Codex workspace, the project folder contains a space, so final Vite/Playwright verification is safest from a clean no-space worktree under `/private/tmp/hot-hands-worktrees`. See `SPRINT-01.md`, `ROADMAP.md`, `SPEC.md`, `ARCHITECTURE.md`, and `AGENTS.md` for the build plan.

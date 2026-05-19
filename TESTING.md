@@ -28,7 +28,7 @@ Current checks:
 - PWA production build.
 - Worker production build.
 
-Later stages will add lint, Move tests, and transaction builder snapshots.
+Later stages will add lint, Move tests, and wallet-backed mint dry-runs.
 
 ### `verify:realtime:sim`
 
@@ -128,18 +128,25 @@ Expected checks:
 
 ### `verify:testnet`
 
-First checkpoint: read-only DeepBook Predict testnet canary.
+Current checkpoint: DeepBook Predict testnet read canary plus transaction
+builder dev-inspect.
 
-Initial scope:
+Current scope:
 
 - read public Predict server status and Predict object state
 - read active BTC oracle data
 - read the selected BTC oracle's latest indexed price
-- avoid wallet, token, manager, deposit, mint, or Hot Hands write flows
+- snapshot Sui SDK transactions for manager creation, quote deposit, and copied
+  mint
+- dev-inspect `predict::create_manager` on Sui testnet without funded wallet
+  objects
+- avoid funded wallet, DUSDC mint/deposit execution, copied mint execution, or
+  Hot Hands write flows
 
 Current public target:
 
 - Predict server: `https://predict-server.testnet.mystenlabs.com`
+- Sui RPC: `https://fullnode.testnet.sui.io:443`
 
 Optional target overrides should only be documented as required after code
 implements them. Expected names are:
@@ -150,10 +157,11 @@ implements them. Expected names are:
 - `HOT_HANDS_PREDICT_OBJECT_ID`
 - `HOT_HANDS_PREDICT_QUOTE_ASSET`
 - `HOT_HANDS_PREDICT_BTC_ONLY`
+- `HOT_HANDS_SUI_TESTNET_RPC_URL`
+- `HOT_HANDS_DEV_INSPECT_SENDER`
 
 Next checkpoints:
 
-- transaction builder snapshots
 - direct onchain reads around wallet flows
 - `PredictManager` find/create
 - DUSDC deposit and small mint on testnet
@@ -162,7 +170,8 @@ Next checkpoints:
 ## Current Verification Gaps
 
 - `verify:perf` is still a placeholder; no fanout or heartbeat load harness yet.
-- `verify:testnet` is read-only; it is not yet a transaction or mint canary.
+- `verify:testnet` dev-inspects manager creation, but deposit and mint dry-runs
+  still require funded testnet wallet objects.
 - Worker-backed realtime proof is local Wrangler only, not deployed Cloudflare
   infrastructure.
 - Visual regression screenshots are not wired into `verify:visual`.

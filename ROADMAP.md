@@ -135,7 +135,8 @@ Risk:
 
 Target: May 20-25
 
-Status: Started with the read-only testnet canary checkpoint.
+Status: In progress. Read canary and transaction-builder checkpoint are green on
+`codex/deepbook-predict-tx-builders`.
 
 Goal: retire the largest external integration risk.
 
@@ -149,8 +150,10 @@ Deliverables:
 
 - Confirm current Predict server, package IDs, registry, quote asset, and provisional-docs pin.
 - Read active BTC oracles from the public Predict server.
-- Keep `verify:testnet` read-only for the first checkpoint.
-- Build a valid Predict mint transaction after the read canary is stable.
+- Keep the first `verify:testnet` checkpoint non-funded: Predict server reads
+  plus Sui dev-inspect.
+- Build valid SDK transactions for manager creation, quote deposit, and Predict
+  mint.
 - Create/find `PredictManager` after transaction snapshots exist.
 - Deposit DUSDC into manager after wallet-flow prerequisites are verified.
 - Execute one real UP/DOWN testnet trade.
@@ -161,7 +164,8 @@ TDD:
 - read-canary response parsing tests
 - transaction builder snapshot tests
 - config validation tests
-- dry-run test against testnet when credentials exist
+- dev-inspect test against testnet before wallet credentials exist
+- funded dry-run test against testnet when wallet objects exist
 
 Verification:
 
@@ -173,6 +177,8 @@ Risk:
 
 - DeepBook Predict docs are currently pinned to `predict-testnet-4-16`; package IDs, object layouts, and entrypoints are provisional before mainnet.
 - Testnet token access may require manual faucet/request flow.
+- `create_manager` can be dev-inspected without funds, but deposit and mint
+  dry-runs need gas, DUSDC, an existing `PredictManager`, and a live oracle.
 
 ## Stage 4: Hot Hands Contracts
 

@@ -1,0 +1,19 @@
+{
+  "name": "@hot-hands/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "verify:testnet": "bun src/verify-testnet.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "@mysten/sui": "2.16.3"
+  }
+}

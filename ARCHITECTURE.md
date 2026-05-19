@@ -144,12 +144,25 @@ Data-source guidance:
 - Use Sui events/checkpoints for low-latency oracle updates when the indexer needs fresher settlement signals.
 - Use direct onchain reads around wallet flows, manager state, deposits, and transaction confirmation.
 
+Transaction-builder checkpoint:
+
+- `packages/contracts` exports Sui SDK builders for `predict::create_manager`,
+  `predict_manager::deposit<Quote>`, and an existing-manager copied
+  `predict::mint<Quote>`.
+- The copied mint builder constructs `market_key::new(oracle_id, expiry, strike,
+  is_up)` and then calls `predict::mint(predict, manager, oracle, key, quantity,
+  clock)`.
+- `verify:testnet` dev-inspects `predict::create_manager` against Sui Testnet
+  without a funded wallet. Deposit and mint dry-runs remain gated on real gas,
+  DUSDC, a user-owned `PredictManager` shared object, and a live oracle.
+
 Integration sequence:
 
 1. Read active BTC oracles from the public Predict server.
 2. Validate response shape and config overrides without requiring credentials.
 3. Select market and strike.
-4. Add transaction-builder snapshots for mint payloads.
+4. Build and snapshot SDK transactions for manager setup, quote deposit, and
+   mint payloads.
 5. Find or create user `PredictManager`.
 6. Ensure DUSDC deposit.
 7. Execute with user signature.
