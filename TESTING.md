@@ -128,23 +128,41 @@ Expected checks:
 
 ### `verify:testnet`
 
-Runs only when testnet credentials and tokens are available.
+First checkpoint: read-only DeepBook Predict testnet canary.
 
-Expected checks:
+Initial scope:
 
-- read Predict server status
-- read active BTC oracles
-- find/create manager
-- deposit DUSDC
-- execute small mint
-- read indexed mint
-- optionally post Hot Hands signal/copy receipt
+- read public Predict server status and Predict object state
+- read active BTC oracle data
+- read the selected BTC oracle's latest indexed price
+- avoid wallet, token, manager, deposit, mint, or Hot Hands write flows
+
+Current public target:
+
+- Predict server: `https://predict-server.testnet.mystenlabs.com`
+
+Optional target overrides should only be documented as required after code
+implements them. Expected names are:
+
+- `HOT_HANDS_PREDICT_SERVER_URL`
+- `HOT_HANDS_PREDICT_PACKAGE_ID`
+- `HOT_HANDS_PREDICT_REGISTRY_ID`
+- `HOT_HANDS_PREDICT_OBJECT_ID`
+- `HOT_HANDS_PREDICT_QUOTE_ASSET`
+- `HOT_HANDS_PREDICT_BTC_ONLY`
+
+Next checkpoints:
+
+- transaction builder snapshots
+- direct onchain reads around wallet flows
+- `PredictManager` find/create
+- DUSDC deposit and small mint on testnet
+- indexed mint readback
 
 ## Current Verification Gaps
 
 - `verify:perf` is still a placeholder; no fanout or heartbeat load harness yet.
-- `verify:testnet` is still a placeholder; no DeepBook Predict transaction
-  canary yet.
+- `verify:testnet` is read-only; it is not yet a transaction or mint canary.
 - Worker-backed realtime proof is local Wrangler only, not deployed Cloudflare
   infrastructure.
 - Visual regression screenshots are not wired into `verify:visual`.

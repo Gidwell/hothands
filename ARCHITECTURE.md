@@ -129,22 +129,32 @@ DeepBook Predict remains the execution layer.
 
 ## DeepBook Predict Integration
 
-Known public integration targets should live in shared constants once implemented. Re-check official DeepBook Predict docs before coding Stage 3 because testnet package IDs and server details are provisional:
+Current public integration targets live in the indexer read canary config. Official DeepBook Predict docs checked May 19, 2026 are pinned to `predict-testnet-4-16` and warn that package IDs, object layouts, and entrypoints are provisional before mainnet:
 
 - network: Sui Testnet
 - Predict server: `https://predict-server.testnet.mystenlabs.com`
-- Predict object, package, registry, quote asset: from current DeepBook Predict contract docs
+- Predict package: `0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138`
+- Predict registry: `0x43af14fed5480c20ff77e2263d5f794c35b9fab7e2212903127062f4fe2a6e64`
+- Predict object: `0xc8736204d12f0a7277c86388a68bf8a194b0a14c5538ad13f22cbd8e2a38028a`
+- quote asset DUSDC: `0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC`
+
+Data-source guidance:
+
+- Use the public Predict server for render-ready read-canary data.
+- Use Sui events/checkpoints for low-latency oracle updates when the indexer needs fresher settlement signals.
+- Use direct onchain reads around wallet flows, manager state, deposits, and transaction confirmation.
 
 Integration sequence:
 
-1. Read active oracles from Predict server.
-2. Select market and strike.
-3. Find or create user `PredictManager`.
-4. Ensure DUSDC deposit.
-5. Build mint transaction for UP/DOWN position.
-6. Execute with user signature.
-7. Read back indexed mint event.
-8. Link event to Hot Hands signal or copy receipt.
+1. Read active BTC oracles from the public Predict server.
+2. Validate response shape and config overrides without requiring credentials.
+3. Select market and strike.
+4. Add transaction-builder snapshots for mint payloads.
+5. Find or create user `PredictManager`.
+6. Ensure DUSDC deposit.
+7. Execute with user signature.
+8. Read back indexed mint event.
+9. Link event to Hot Hands signal or copy receipt.
 
 ## Realtime Presence
 

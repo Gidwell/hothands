@@ -135,6 +135,8 @@ Risk:
 
 Target: May 20-25
 
+Status: Started with the read-only testnet canary checkpoint.
+
 Goal: retire the largest external integration risk.
 
 Stage 2 carry-forward:
@@ -145,16 +147,18 @@ Stage 2 carry-forward:
 
 Deliverables:
 
-- Confirm current Predict server, package IDs, registry, quote asset, and faucet/token flow.
-- Read active BTC oracles.
-- Build a valid Predict mint transaction.
-- Create/find `PredictManager`.
-- Deposit DUSDC into manager.
+- Confirm current Predict server, package IDs, registry, quote asset, and provisional-docs pin.
+- Read active BTC oracles from the public Predict server.
+- Keep `verify:testnet` read-only for the first checkpoint.
+- Build a valid Predict mint transaction after the read canary is stable.
+- Create/find `PredictManager` after transaction snapshots exist.
+- Deposit DUSDC into manager after wallet-flow prerequisites are verified.
 - Execute one real UP/DOWN testnet trade.
 - Read indexed mint event back.
 
 TDD:
 
+- read-canary response parsing tests
 - transaction builder snapshot tests
 - config validation tests
 - dry-run test against testnet when credentials exist
@@ -167,7 +171,7 @@ bun run verify:testnet
 
 Risk:
 
-- DeepBook Predict contracts are provisional testnet targets.
+- DeepBook Predict docs are currently pinned to `predict-testnet-4-16`; package IDs, object layouts, and entrypoints are provisional before mainnet.
 - Testnet token access may require manual faucet/request flow.
 
 ## Stage 4: Hot Hands Contracts
