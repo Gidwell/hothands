@@ -2,7 +2,7 @@
 
 Hot Hands is a mobile-first social prediction market app for DeepBook Predict. The core loop is simple: watch live BTC prediction tables, find traders with a hot hand, arm a copy-next-signal rule, and execute the copy trade with your own chosen amount.
 
-This repository now has the Stage 1 fake-data vertical slice: a deterministic local mobile demo before pushing into full DeepBook testnet execution.
+This repository now has the Stage 1 fake-data vertical slice and the Stage 2 simulated realtime loop: deterministic mobile replay, worker-shaped table activity, and an in-process socket contract before pushing into full DeepBook testnet execution.
 
 ## Product Loop
 
@@ -32,17 +32,19 @@ This repository now has the Stage 1 fake-data vertical slice: a deterministic lo
 - `packages/fixtures`: deterministic test data and recorded testnet fixtures
 - `packages/e2e`: Playwright and performance verification harness
 
-## Stage 1 Verification
+## Verification
 
-The first implementation milestone is a deterministic local demo:
+The current local gates are:
 
 ```bash
 bun run demo:play opening-night
 bun run verify:fast
-bun run verify:e2e
+bun run verify:realtime:sim
 ```
 
-`verify:e2e` uses Playwright. On a fresh machine, install the browser binary first:
+`verify:realtime:sim` runs worker protocol/state tests, demo realtime trace tests,
+the realtime stream contract, and the mobile Playwright copy loop. On a fresh
+machine, install the browser binary first:
 
 ```bash
 bunx playwright install chromium

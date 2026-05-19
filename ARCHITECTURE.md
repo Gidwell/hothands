@@ -1,6 +1,6 @@
 # Hot Hands Architecture
 
-Last updated: May 14, 2026
+Last updated: May 19, 2026
 
 ## System Overview
 
@@ -81,6 +81,15 @@ Stage 1 note:
 
 - Fake spectator simulation currently verifies table-state behavior in pure Worker tests. Actual WebSocket broadcast load tests are still future `verify:perf` work.
 
+Stage 2 note:
+
+- Worker `table_activity` messages are validated and broadcast through the
+  table Durable Object path.
+- The current realtime stream verifier is an in-process socket contract, not a
+  full Wrangler/workerd network smoke.
+- The PWA can parse worker-shaped activity JSON, but the actual browser
+  WebSocket subscription is still the next integration slice.
+
 ### Postgres
 
 Durable data:
@@ -118,7 +127,7 @@ DeepBook Predict remains the execution layer.
 
 ## DeepBook Predict Integration
 
-Known public integration targets should live in shared constants once implemented. Re-check official DeepBook Predict docs before coding Stage 2 because testnet package IDs and server details are provisional:
+Known public integration targets should live in shared constants once implemented. Re-check official DeepBook Predict docs before coding Stage 3 because testnet package IDs and server details are provisional:
 
 - network: Sui Testnet
 - Predict server: `https://predict-server.testnet.mystenlabs.com`
@@ -152,23 +161,31 @@ Broadcast only changes:
 - `spectator_left`
 - `copy_armed`
 - `copy_disarmed`
-- `signal_posted`
+- `signal_landed`
+- `copy_submitted`
 - `copy_executed`
-- `market_settled`
-- `score_changed`
+- `settlement_posted`
+- `hot_hand_updated`
+- `hot_score_updated`
 
 ## Demo Data Flow
 
-Stage 1 established this local data path:
+Stage 1 established the local replay path and Stage 2 added worker-shaped
+activity:
 
 ```text
 packages/fixtures
   -> packages/demo-runner replay frames
+  -> packages/demo-runner realtime activity traces
+  -> apps/api-worker table_activity protocol
   -> apps/pwa replay adapter
+  -> apps/pwa activity stream parser
   -> packages/e2e mobile flow
 ```
 
-Keep this path intact as Stage 2 adds replayed testnet data and live testnet bot mode. New demo scenarios should start in fixtures, then flow outward through the same adapters.
+Keep this path intact as Stage 3 adds replayed testnet data and live testnet
+bot mode. New demo scenarios should start in fixtures, then flow outward through
+the same adapters.
 
 ## Performance Budgets
 

@@ -1,6 +1,6 @@
 # Hot Hands Roadmap
 
-Last updated: May 18, 2026
+Last updated: May 19, 2026
 
 The hackathon submission deadline is June 21, 2026. This roadmap is organized around gates. Each gate should end with a working demo or a major risk retired.
 
@@ -67,6 +67,8 @@ Completion notes:
 
 Target: May 18-22
 
+Status: Complete on `main`.
+
 Goal: make the app behave like a production realtime table before adding testnet variability.
 
 Stage 1 carry-forward:
@@ -96,6 +98,28 @@ Verification:
 bun run verify:realtime:sim
 bun run verify:fast
 ```
+
+Completion notes:
+
+- Shared `table_activity` events now cover signal landed, copy submitted,
+  copy executed, settlement posted, and hot-score update.
+- Demo runner projects deterministic fixtures into JSON-safe realtime activity
+  traces.
+- API Worker validates and broadcasts ordered activity traces through the
+  table Durable Object WebSocket path without persisting heartbeat traffic.
+- PWA has a local activity model plus a browser-facing worker message parser
+  that ignores non-activity messages and malformed activity frames.
+- E2E has an in-process realtime contract proving a subscribed table socket
+  receives the opening-night activity lifecycle and hot-score deltas in order.
+
+Remaining verifier gaps before production realtime:
+
+- Add a real Wrangler/workerd network smoke for the worker route and socket.
+- Wire the PWA to an actual worker WebSocket subscription with reconnect and
+  table-selection behavior.
+- Add `verify:perf` for table fanout, heartbeat cadence, and thousands of
+  active tables.
+- Add visual regression checks for the mobile table density and copy panel.
 
 Risk:
 

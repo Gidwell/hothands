@@ -1,6 +1,6 @@
 # Hot Hands Testing And Verification
 
-Last updated: May 14, 2026
+Last updated: May 19, 2026
 
 ## Test Pyramid
 
@@ -20,7 +20,7 @@ Testnet canary flows
 
 Runs on every meaningful change.
 
-Current Stage 1 checks:
+Current checks:
 
 - TypeScript typecheck.
 - Unit tests.
@@ -29,6 +29,21 @@ Current Stage 1 checks:
 - Worker production build.
 
 Later stages will add lint, Move tests, and transaction builder snapshots.
+
+### `verify:realtime:sim`
+
+Runs the simulated realtime gate.
+
+Current Stage 2 checks:
+
+- Worker protocol, table-state, heartbeat, and activity broadcast tests.
+- Demo-runner realtime trace tests.
+- E2E realtime contract that posts an `opening-night` fixture trace while a
+  table socket is subscribed.
+- Playwright mobile copy loop.
+
+This gate proves the fixture-shaped realtime loop without requiring testnet or
+a production worker server.
 
 ### `verify:e2e`
 
@@ -57,6 +72,24 @@ bunx playwright install chromium
 
 Local note: if Vite/esbuild hangs in a workspace path with spaces, run verification from a clean no-space worktree such as `/private/tmp/hot-hands-worktrees/integration-verify`.
 
+### `packages/e2e test:realtime`
+
+Runs only the realtime stream contract:
+
+```bash
+bun run --cwd packages/e2e test:realtime
+```
+
+Expected checks:
+
+- construct the worker and `TableRoom` in-process
+- subscribe to a table WebSocket
+- post fixture `table_activity`
+- assert ordered activity broadcasts and `hot_score_updated` deltas
+
+It is intentionally lighter than a Wrangler/workerd smoke. Add that real
+runtime smoke before relying on this as the only realtime verifier.
+
 ### `verify:perf`
 
 Runs spectator and heartbeat load scenarios.
@@ -84,6 +117,16 @@ Expected checks:
 - execute small mint
 - read indexed mint
 - optionally post Hot Hands signal/copy receipt
+
+## Current Verification Gaps
+
+- `verify:perf` is still a placeholder; no fanout or heartbeat load harness yet.
+- `verify:testnet` is still a placeholder; no DeepBook Predict transaction
+  canary yet.
+- Realtime socket proof is in-process, not a real Wrangler/workerd network
+  server.
+- PWA does not yet open a production worker WebSocket subscription.
+- Visual regression screenshots are not wired into `verify:visual`.
 
 ## Deterministic Fixtures
 
