@@ -5,6 +5,7 @@ Playwright and performance verification.
 Primary responsibilities:
 
 - mobile PWA e2e flows
+- realtime table activity stream contracts
 - visual screenshots
 - spectator heartbeat simulations
 - demo trace assertions

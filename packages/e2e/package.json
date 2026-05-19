@@ -4,9 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test": "playwright test"
+    "test": "bun test realtime/realtime-activity-stream.test.ts && playwright test",
+    "test:realtime": "bun test realtime/realtime-activity-stream.test.ts"
   },
   "devDependencies": {
+    "@hot-hands/demo-runner": "workspace:*",
+    "@hot-hands/shared": "workspace:*",
     "@playwright/test": "^1.60.0"
   }
 }

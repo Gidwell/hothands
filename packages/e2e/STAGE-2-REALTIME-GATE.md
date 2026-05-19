@@ -21,37 +21,40 @@ Expected coverage:
   table state, and heartbeat behavior compatible with the table loop.
 - Demo activity adapter tests keep replay frames browser-safe and preserve copy,
   settlement, and hot score activity needed by the PWA.
+- Realtime contract tests post a fixture `table_activity` trace into the worker
+  route while a table socket is subscribed, then assert ordered lifecycle
+  broadcasts and hot-score deltas.
 - Mobile Playwright e2e keeps the existing copy-next-signal flow green through
   arm, signal, copy execution, settlement, and leaderboard update.
 
-## WebSocket Smoke Target
+## Realtime Contract
 
-This is not required for the first simulated gate. Add it once the worker can be
-started consistently in verification:
+The simulated realtime contract runs in-process, using the real worker fetch
+route, `TableRoom`, and a small WebSocketPair-compatible harness. It does not
+start a long-lived Wrangler or Miniflare server.
+
+The contract covers:
 
 - open a local table WebSocket
-- receive a welcome or snapshot message
-- send `join`, `ping`, `arm_copy`, and `disarm_copy`
-- assert `pong` and table delta messages are encoded with the shared protocol
-- connect a second client and assert a broadcast is observed
-- close one client and assert presence/armed counts settle without writing every
-  heartbeat durably
+- post the `opening-night` fixture trace to `/tables/:tableId/activity`
+- assert ordered `signal_landed`, `copy_submitted`, `copy_executed`,
+  `settlement_posted`, and `hot_hand_updated` activity broadcasts
+- assert `hot_score_updated` deltas are emitted after hot-score changes
 
-Keep the smoke small. Its job is to prove the live socket path still matches the
-worker protocol tests, not to replace load or performance verification.
+Keep this contract small. Its job is to prove the live socket path still matches
+the worker protocol tests, not to replace load or performance verification.
 
 ## Root Scripts
 
 `verify:realtime:sim` is the fast simulated realtime gate. It runs worker
-protocol/state tests, demo activity adapter tests, and the mobile Playwright
-suite together.
+protocol/state tests, demo activity adapter tests, the realtime stream contract,
+and the mobile Playwright suite together.
 
-When the WebSocket smoke exists, keep it opt-in until stable:
+The realtime stream contract can also be run directly:
 
-```json
-"verify:realtime:smoke": "bun run --cwd packages/e2e test -- --grep @realtime-smoke"
+```bash
+bun run --cwd packages/e2e test:realtime
 ```
 
-After the smoke is reliable in CI, `verify:perf` can graduate from its current
-placeholder to the spectator heartbeat/load harness, with the smoke remaining a
-fast correctness check.
+`verify:perf` can graduate from its current placeholder to the spectator
+heartbeat/load harness, with this contract remaining a fast correctness check.
