@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   COPY_AMOUNT_MAX,
   COPY_AMOUNT_MIN,
@@ -30,6 +30,13 @@ import {
   createInitialRealtimeActivityState,
 } from "./realtimeActivityModel";
 import { applyRealtimeActivityServerMessageJson } from "./realtimeActivityStreamClient";
+import {
+  createLiveActivityMode,
+  createReplayLiveActivitySnapshot,
+  type LiveActivityModeController,
+  type LiveActivityModeSnapshot,
+  type LiveActivityModeStatus,
+} from "./liveActivityMode";
 
 const quickAmounts = [100, 250, 500, 1_000];
 
@@ -262,10 +269,14 @@ function SpectatorRail({
   spectatorCount,
   activity,
   activitySource,
+  activityStatus,
+  activityStatusLabel,
 }: {
   spectatorCount: number;
   activity: string[];
   activitySource?: string;
+  activityStatus: LiveActivityModeStatus;
+  activityStatusLabel: string;
 }) {
   const latestActivity = activity[0] ?? "Waiting for the next BTC signal";
 
@@ -274,11 +285,21 @@ function SpectatorRail({
       className="spectator-rail"
       aria-label="Live activity"
       data-source={activitySource}
+      data-status={activityStatus}
       data-testid="spectator-rail"
     >
       <div className="spectator-copy">
         <strong>{spectatorCount.toLocaleString()}</strong>
-        <span>watching</span>
+        <span>
+          watching /{" "}
+          <span
+            className="activity-source-status"
+            data-testid="activity-connection-status"
+            role="status"
+          >
+            {activityStatusLabel}
+          </span>
+        </span>
       </div>
       <div className="activity-ticker" aria-label="Market activity">
         <span>{latestActivity}</span>
@@ -475,9 +496,16 @@ function HotTraderList({
 export function App() {
   const [scenario, setScenario] = useState(() => createReplayScenario("opening-night"));
   const [replayState, setReplayState] = useState(() => createInitialReplayState(scenario));
+  const [liveActivitySnapshotState, setLiveActivitySnapshotState] = useState<{
+    key: string;
+    snapshot: LiveActivityModeSnapshot;
+  } | null>(null);
+  const liveActivityModeRef = useRef<LiveActivityModeController | null>(null);
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
   const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
   const copyState = replayState.copy;
+  const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
+  const liveActivityKey = `${scenario.id}:${scenario.tableId}:${realtimeApiBaseUrl ?? ""}`;
   const realtimeTrace = useMemo(
     () => produceRealtimeActivityTraceById(scenario.id),
     [scenario.id],
@@ -504,7 +532,7 @@ export function App() {
     () => getReplayFrame(replayState, scenario, market),
     [replayState, scenario],
   );
-  const realtimeActivity = useMemo(() => {
+  const replayActivity = useMemo(() => {
     const sourceSequence = scenario.frames[replayState.step]?.source.sequence ?? 0;
     const visibleTrace = realtimeTrace.filter(
       (item) => item.sourceSequence <= sourceSequence,
@@ -516,14 +544,53 @@ export function App() {
       createInitialRealtimeActivityState(),
     );
   }, [realtimeTrace, replayState.step, scenario.frames]);
+  const fallbackActivitySnapshot = useMemo(
+    () => createReplayLiveActivitySnapshot(replayActivity),
+    [replayActivity],
+  );
+  const liveActivitySnapshot =
+    liveActivitySnapshotState?.key === liveActivityKey
+      ? liveActivitySnapshotState.snapshot
+      : fallbackActivitySnapshot;
   const selectedTrader = getSelectedTrader(copyState, replayTraders);
   const hotTrader = replayTraders.find((trader) => trader.name === frame.hotHand.leader);
   const accountSummary = getReplayAccountSummary(replayState, frame);
   const receipt = frame.copyReceipt;
   const spectatorCount = scenario.spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
-  const activity = realtimeActivity.latestActivity
-    ? [realtimeActivity.latestActivity.label]
+  const activity = liveActivitySnapshot.activity.latestActivity
+    ? [liveActivitySnapshot.activity.latestActivity.label]
     : frame.activity;
+
+  useEffect(() => {
+    const setSnapshot = (snapshot: LiveActivityModeSnapshot) => {
+      setLiveActivitySnapshotState({
+        key: liveActivityKey,
+        snapshot,
+      });
+    };
+    const mode = createLiveActivityMode({
+      apiBaseUrl: realtimeApiBaseUrl,
+      tableId: scenario.tableId,
+      spectatorId: "spectator-local",
+      replayActivity,
+      onSnapshot: setSnapshot,
+    });
+
+    liveActivityModeRef.current = mode;
+    setSnapshot(mode.snapshot);
+
+    return () => {
+      if (liveActivityModeRef.current === mode) {
+        liveActivityModeRef.current = null;
+      }
+
+      mode.close();
+    };
+  }, [liveActivityKey, realtimeApiBaseUrl, scenario.tableId]);
+
+  useEffect(() => {
+    liveActivityModeRef.current?.updateReplayActivity(replayActivity);
+  }, [replayActivity]);
 
   useEffect(() => {
     if (!replayState.isPlaying) {
@@ -618,7 +685,9 @@ export function App() {
         <SpectatorRail
           spectatorCount={spectatorCount}
           activity={activity}
-          activitySource={realtimeActivity.source}
+          activitySource={liveActivitySnapshot.dataSource}
+          activityStatus={liveActivitySnapshot.status}
+          activityStatusLabel={liveActivitySnapshot.statusLabel}
         />
         <HotTraderList
           traders={displayedTraders}

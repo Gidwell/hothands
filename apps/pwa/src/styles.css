@@ -403,6 +403,14 @@ button {
   font-weight: 850;
 }
 
+.spectator-rail[data-status="live"] .activity-source-status {
+  color: #6ee89a;
+}
+
+.spectator-rail[data-status="connecting"] .activity-source-status {
+  color: #64d4d1;
+}
+
 .activity-ticker {
   min-width: 0;
   overflow: hidden;

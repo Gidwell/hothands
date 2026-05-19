@@ -101,6 +101,7 @@ export type ReplayScenarioFrame = {
 export type ReplayScenario = {
   id: ReplayScenarioId;
   title: string;
+  tableId: string;
   market: string;
   traders: Trader[];
   spectators: Spectator[];
@@ -127,6 +128,7 @@ export function createReplayScenario(scenarioId: ReplayScenarioId): ReplayScenar
   return {
     id: scenarioId,
     title: scenario.title,
+    tableId: scenario.tableId,
     market: scenario.market,
     traders: scenario.traders.map((trader, index) =>
       traderFromSharedLeader(
