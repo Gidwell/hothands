@@ -25,6 +25,11 @@ import {
   updateReplayCopy,
   type ReplayScenarioId,
 } from "./replayModel";
+import { produceRealtimeActivityTraceById } from "@hot-hands/demo-runner";
+import {
+  applyRealtimeActivityTrace,
+  createInitialRealtimeActivityState,
+} from "./realtimeActivityModel";
 
 const quickAmounts = [100, 250, 500, 1_000];
 
@@ -256,14 +261,21 @@ function ReplayControls({
 function SpectatorRail({
   spectatorCount,
   activity,
+  activitySource,
 }: {
   spectatorCount: number;
   activity: string[];
+  activitySource?: string;
 }) {
   const latestActivity = activity[0] ?? "Waiting for the next BTC signal";
 
   return (
-    <section className="spectator-rail" aria-label="Live activity" data-testid="spectator-rail">
+    <section
+      className="spectator-rail"
+      aria-label="Live activity"
+      data-source={activitySource}
+      data-testid="spectator-rail"
+    >
       <div className="spectator-copy">
         <strong>{spectatorCount.toLocaleString()}</strong>
         <span>watching</span>
@@ -466,6 +478,10 @@ export function App() {
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
   const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
   const copyState = replayState.copy;
+  const realtimeTrace = useMemo(
+    () => produceRealtimeActivityTraceById(scenario.id),
+    [scenario.id],
+  );
   const replayTraders = useMemo(
     () => getReplayTraders(replayState, scenario),
     [replayState, scenario],
@@ -488,11 +504,25 @@ export function App() {
     () => getReplayFrame(replayState, scenario, market),
     [replayState, scenario],
   );
+  const realtimeActivity = useMemo(() => {
+    const sourceSequence = scenario.frames[replayState.step]?.source.sequence ?? 0;
+    const visibleTrace = realtimeTrace.filter(
+      (item) => item.sourceSequence <= sourceSequence,
+    );
+
+    return applyRealtimeActivityTrace(
+      createInitialRealtimeActivityState(),
+      visibleTrace,
+    );
+  }, [realtimeTrace, replayState.step, scenario.frames]);
   const selectedTrader = getSelectedTrader(copyState, replayTraders);
   const hotTrader = replayTraders.find((trader) => trader.name === frame.hotHand.leader);
   const accountSummary = getReplayAccountSummary(replayState, frame);
   const receipt = frame.copyReceipt;
   const spectatorCount = scenario.spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
+  const activity = realtimeActivity.latestActivity
+    ? [realtimeActivity.latestActivity.label]
+    : frame.activity;
 
   useEffect(() => {
     if (!replayState.isPlaying) {
@@ -586,7 +616,8 @@ export function App() {
         />
         <SpectatorRail
           spectatorCount={spectatorCount}
-          activity={frame.activity}
+          activity={activity}
+          activitySource={realtimeActivity.source}
         />
         <HotTraderList
           traders={displayedTraders}
