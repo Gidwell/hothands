@@ -82,7 +82,9 @@ Deliverables:
 - Durable Object protocol for richer table activity: spectator joins, copy arms, leader signal landed, copy submitted, settlement posted, and hot-score update.
 - Demo-runner adapter that emits JSON-safe realtime activity traces from existing fixtures.
 - PWA adapter path for consuming table activity through the same state shape the UI already understands.
+- Optional PWA live activity mode behind `VITE_HOT_HANDS_API_URL`, with replay fallback when live config or socket connectivity is unavailable.
 - Verification docs and commands for the simulated realtime gate.
+- Optional worker-backed local smoke that starts Wrangler and verifies a real worker WebSocket broadcast reaches the PWA.
 - No Postgres writes per heartbeat.
 
 TDD:
@@ -109,17 +111,20 @@ Completion notes:
   table Durable Object WebSocket path without persisting heartbeat traffic.
 - PWA has a local activity model plus a browser-facing worker message parser
   that ignores non-activity messages and malformed activity frames.
+- PWA can open an optional live worker subscription and fall back to deterministic
+  replay when live config or socket connectivity is unavailable.
 - E2E has an in-process realtime contract proving a subscribed table socket
   receives the opening-night activity lifecycle and hot-score deltas in order.
+- E2E has a mocked live-mode PWA check and an optional Wrangler-backed smoke:
+  `bun run --cwd packages/e2e test:worker-live`.
 
 Remaining verifier gaps before production realtime:
 
-- Add a real Wrangler/workerd network smoke for the worker route and socket.
-- Wire the PWA to an actual worker WebSocket subscription with reconnect and
-  table-selection behavior.
 - Add `verify:perf` for table fanout, heartbeat cadence, and thousands of
   active tables.
 - Add visual regression checks for the mobile table density and copy panel.
+- Add deployed-worker or preview-environment verification when the hosting
+  target is selected.
 
 Risk:
 

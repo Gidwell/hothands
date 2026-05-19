@@ -85,10 +85,12 @@ Stage 2 note:
 
 - Worker `table_activity` messages are validated and broadcast through the
   table Durable Object path.
-- The current realtime stream verifier is an in-process socket contract, not a
-  full Wrangler/workerd network smoke.
-- The PWA can parse worker-shaped activity JSON, but the actual browser
-  WebSocket subscription is still the next integration slice.
+- The fast realtime stream verifier is an in-process socket contract, and the
+  optional `packages/e2e test:worker-live` gate starts Wrangler plus the PWA to
+  prove a real local worker WebSocket broadcast reaches the browser.
+- The PWA can open an optional worker WebSocket subscription behind
+  `VITE_HOT_HANDS_API_URL` and falls back to replay activity when live mode is
+  unavailable.
 
 ### Postgres
 

@@ -40,6 +40,8 @@ Current Stage 2 checks:
 - Demo-runner realtime trace tests.
 - E2E realtime contract that posts an `opening-night` fixture trace while a
   table socket is subscribed.
+- Mocked PWA live-mode Playwright check that verifies WebSocket URL, join
+  payload, live status, and rendered activity without starting Wrangler.
 - Playwright mobile copy loop.
 
 This gate proves the fixture-shaped realtime loop without requiring testnet or
@@ -87,8 +89,28 @@ Expected checks:
 - post fixture `table_activity`
 - assert ordered activity broadcasts and `hot_score_updated` deltas
 
-It is intentionally lighter than a Wrangler/workerd smoke. Add that real
-runtime smoke before relying on this as the only realtime verifier.
+It is intentionally lighter than a Wrangler/workerd smoke, so keep it as the
+fast protocol guard.
+
+### `packages/e2e test:worker-live`
+
+Runs the optional local worker-backed smoke:
+
+```bash
+bun run --cwd packages/e2e test:worker-live
+```
+
+Expected checks:
+
+- start the real API Worker through Wrangler
+- start the PWA with `VITE_HOT_HANDS_API_URL` pointed at that worker
+- open the mobile PWA without mocking `WebSocket`
+- post fixture `table_activity` to `/tables/btc-15m/activity`
+- assert the PWA shows `Live` and renders the worker broadcast
+
+This gate is heavier than `verify:realtime:sim` and may need local loopback
+permissions in sandboxed environments. Set `HOT_HANDS_E2E_NODE_PATH` if
+Wrangler needs a specific Node 22+ binary.
 
 ### `verify:perf`
 
@@ -123,9 +145,8 @@ Expected checks:
 - `verify:perf` is still a placeholder; no fanout or heartbeat load harness yet.
 - `verify:testnet` is still a placeholder; no DeepBook Predict transaction
   canary yet.
-- Realtime socket proof is in-process, not a real Wrangler/workerd network
-  server.
-- PWA does not yet open a production worker WebSocket subscription.
+- Worker-backed realtime proof is local Wrangler only, not deployed Cloudflare
+  infrastructure.
 - Visual regression screenshots are not wired into `verify:visual`.
 
 ## Deterministic Fixtures

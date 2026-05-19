@@ -24,6 +24,8 @@ Expected coverage:
 - Realtime contract tests post a fixture `table_activity` trace into the worker
   route while a table socket is subscribed, then assert ordered lifecycle
   broadcasts and hot-score deltas.
+- Mocked PWA live-mode tests verify the browser subscription URL, join payload,
+  live status, and rendered activity without requiring Wrangler.
 - Mobile Playwright e2e keeps the existing copy-next-signal flow green through
   arm, signal, copy execution, settlement, and leaderboard update.
 
@@ -55,6 +57,18 @@ The realtime stream contract can also be run directly:
 ```bash
 bun run --cwd packages/e2e test:realtime
 ```
+
+The heavier local worker smoke is intentionally separate from
+`verify:realtime:sim`:
+
+```bash
+bun run --cwd packages/e2e test:worker-live
+```
+
+It starts Wrangler and the PWA, points `VITE_HOT_HANDS_API_URL` at the local
+worker, posts fixture activity to `/tables/btc-15m/activity`, and asserts the
+mobile UI renders the real worker WebSocket broadcast. Set
+`HOT_HANDS_E2E_NODE_PATH` when Wrangler needs an explicit Node 22+ binary.
 
 `verify:perf` can graduate from its current placeholder to the spectator
 heartbeat/load harness, with this contract remaining a fast correctness check.
