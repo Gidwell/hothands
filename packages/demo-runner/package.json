@@ -9,7 +9,9 @@
     "hot-hands-demo": "./src/cli.ts"
   },
   "scripts": {
+    "dev:live": "bun src/dev-live.ts",
     "play": "bun src/cli.ts",
+    "push-activity": "bun src/push-activity.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

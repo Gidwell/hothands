@@ -38,6 +38,8 @@ The current local gates are:
 
 ```bash
 bun run demo:play opening-night
+bun run dev:live
+bun run demo:push-activity opening-night
 bun run verify:fast
 bun run verify:realtime:sim
 bun run --cwd packages/e2e test:worker-live
@@ -49,6 +51,11 @@ Playwright copy loop. `test:worker-live` is the heavier optional smoke that
 starts Wrangler and the PWA, then verifies a real local worker WebSocket
 broadcast reaches the mobile UI. On a fresh machine, install the browser binary
 first:
+
+For manual live demos, run `bun run dev:live` in one terminal and
+`bun run demo:push-activity opening-night` in another. The first command starts
+the local worker and PWA with live mode enabled; the second streams fixture
+activity through the worker.
 
 ```bash
 bunx playwright install chromium

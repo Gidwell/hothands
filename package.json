@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev": "bun run --cwd apps/pwa dev",
+    "dev:live": "bun packages/demo-runner/src/dev-live.ts",
     "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/fixtures typecheck && bun run --cwd packages/demo-runner typecheck && bun run --cwd apps/api-worker typecheck && bun run --cwd apps/pwa typecheck",
     "lint": "echo \"TODO: add lint\"",
     "test": "bun test packages/shared/test packages/fixtures/test packages/demo-runner/test && bun run test:pwa && bun run test:worker",
@@ -20,6 +21,7 @@
     "move:test": "echo \"TODO: run sui move test in packages/contracts\"",
     "demo:seed": "echo \"TODO: seed deterministic demo users\"",
     "demo:play": "bun run --cwd packages/demo-runner play",
+    "demo:push-activity": "bun packages/demo-runner/src/push-activity.ts",
     "demo:reset": "echo \"TODO: reset demo state\"",
     "verify:fast": "bun run typecheck && bun run test && bun run build:pwa && bun run build:api",
     "verify:e2e": "bun run --cwd packages/e2e test",
