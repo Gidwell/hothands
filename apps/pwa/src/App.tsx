@@ -27,9 +27,9 @@ import {
 } from "./replayModel";
 import { produceRealtimeActivityTraceById } from "@hot-hands/demo-runner";
 import {
-  applyRealtimeActivityTrace,
   createInitialRealtimeActivityState,
 } from "./realtimeActivityModel";
+import { applyRealtimeActivityServerMessageJson } from "./realtimeActivityStreamClient";
 
 const quickAmounts = [100, 250, 500, 1_000];
 
@@ -510,9 +510,10 @@ export function App() {
       (item) => item.sourceSequence <= sourceSequence,
     );
 
-    return applyRealtimeActivityTrace(
+    return visibleTrace.reduce(
+      (state, item) =>
+        applyRealtimeActivityServerMessageJson(state, JSON.stringify(item)),
       createInitialRealtimeActivityState(),
-      visibleTrace,
     );
   }, [realtimeTrace, replayState.step, scenario.frames]);
   const selectedTrader = getSelectedTrader(copyState, replayTraders);
