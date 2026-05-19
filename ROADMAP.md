@@ -150,6 +150,10 @@ Deliverables:
 
 - Confirm current Predict server, package IDs, registry, quote asset, and provisional-docs pin.
 - Read active BTC oracles from the public Predict server.
+- Read recent Predict mints/redeems and per-oracle trade history from the
+  public server.
+- Add a PWA testnet-read mode that renders real BTC trade activity with copy
+  disabled or preview-only.
 - Keep the first `verify:testnet` checkpoint non-funded: Predict server reads
   plus Sui dev-inspect.
 - Build valid SDK transactions for manager creation, quote deposit, and Predict
@@ -162,6 +166,8 @@ Deliverables:
 TDD:
 
 - read-canary response parsing tests
+- trade-history response parsing and normalization tests
+- PWA testnet mode tests with fixture-captured Predict rows
 - transaction builder snapshot tests
 - config validation tests
 - dev-inspect test against testnet before wallet credentials exist
@@ -179,6 +185,9 @@ Risk:
 - Testnet token access may require manual faucet/request flow.
 - `create_manager` can be dev-inspected without funds, but deposit and mint
   dry-runs need gas, DUSDC, an existing `PredictManager`, and a live oracle.
+- Public Predict trade rows are protocol activity, not Hot Hands social proof;
+  leaderboard and hot-hand claims must stay provisional until signal/copy
+  records and settlement-aware scoring are linked.
 
 ## Stage 4: Hot Hands Contracts
 

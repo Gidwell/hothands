@@ -17,9 +17,25 @@ It reads server status, Predict object state, BTC oracles, and the selected BTC
 oracle's latest indexed price. It does not require wallet credentials or submit
 transactions.
 
+Next testnet read checkpoint:
+
+- read recent binary mints from `/positions/minted`
+- read recent binary redeems from `/positions/redeemed`
+- read per-oracle activity from `/trades/:oracle_id`
+- keep range endpoints available for later with `/ranges/minted` and
+  `/ranges/redeemed`
+
+These rows are raw DeepBook Predict activity, not Hot Hands social records. A
+mint row has the trader address, manager ID, oracle ID, expiry, strike,
+direction, quantity, cost, and ask price. A redeem row adds payout, bid price,
+and settlement state. The first UI pass should label these as "Testnet trades"
+and use them for activity/trader discovery only; true Hot Hands copy reputation
+still needs our signal/copy receipt layer plus settlement-aware scoring.
+
 Primary responsibilities:
 
 - Predict server polling/replay adapters
+- DeepBook Predict trade-history normalization
 - Sui event/checkpoint adapters for oracle updates
 - Hot Hands event indexing
 - signal resolution

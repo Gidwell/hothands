@@ -162,6 +162,9 @@ implements them. Expected names are:
 
 Next checkpoints:
 
+- Predict trade-history parsing for `/positions/minted`, `/positions/redeemed`,
+  and `/trades/:oracle_id`
+- PWA testnet-read mode using captured Predict trade rows
 - direct onchain reads around wallet flows
 - `PredictManager` find/create
 - DUSDC deposit and small mint on testnet

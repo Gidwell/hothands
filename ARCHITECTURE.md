@@ -141,8 +141,25 @@ Current public integration targets live in the indexer read canary config. Offic
 Data-source guidance:
 
 - Use the public Predict server for render-ready read-canary data.
+- Use the public Predict server history endpoints for recent testnet trade
+  activity:
+  - `/positions/minted`
+  - `/positions/redeemed`
+  - `/trades/:oracle_id`
 - Use Sui events/checkpoints for low-latency oracle updates when the indexer needs fresher settlement signals.
 - Use direct onchain reads around wallet flows, manager state, deposits, and transaction confirmation.
+
+Testnet trade read mode:
+
+- The first real-data PWA mode should consume normalized Predict trade rows,
+  then render recent BTC mints/redeems as table activity.
+- Raw `trader` and `manager_id` values can seed provisional trader cards, but
+  they are not Hot Hands identities yet.
+- Raw mint/redeem activity can support a "who is active" or "who is pressing"
+  feed. Do not present it as final ROI, copy reputation, or copy receipts until
+  Hot Hands signal records and settlement-aware scoring are linked.
+- Keep fixture/replay mode visually distinct from testnet mode so demos do not
+  blur simulated copy behavior with real testnet market activity.
 
 Transaction-builder checkpoint:
 
@@ -161,13 +178,15 @@ Integration sequence:
 1. Read active BTC oracles from the public Predict server.
 2. Validate response shape and config overrides without requiring credentials.
 3. Select market and strike.
-4. Build and snapshot SDK transactions for manager setup, quote deposit, and
+4. Read recent testnet mints/redeems and per-oracle trade history.
+5. Render a PWA testnet-read mode with copy disabled or preview-only.
+6. Build and snapshot SDK transactions for manager setup, quote deposit, and
    mint payloads.
-5. Find or create user `PredictManager`.
-6. Ensure DUSDC deposit.
-7. Execute with user signature.
-8. Read back indexed mint event.
-9. Link event to Hot Hands signal or copy receipt.
+7. Find or create user `PredictManager`.
+8. Ensure DUSDC deposit.
+9. Execute with user signature.
+10. Read back indexed mint event.
+11. Link event to Hot Hands signal or copy receipt.
 
 ## Realtime Presence
 
