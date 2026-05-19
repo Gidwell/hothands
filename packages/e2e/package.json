@@ -6,6 +6,7 @@
   "scripts": {
     "test": "bun test realtime/realtime-activity-stream.test.ts && playwright test && bun run test:live",
     "test:live": "playwright test --config playwright.live.config.ts",
+    "test:worker-live": "playwright test --config playwright.worker-live.config.ts",
     "test:realtime": "bun test realtime/realtime-activity-stream.test.ts"
   },
   "devDependencies": {

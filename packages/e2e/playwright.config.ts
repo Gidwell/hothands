@@ -5,7 +5,10 @@ const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./tests",
-  testIgnore: /mobile-live-activity\.spec\.ts/,
+  testIgnore: [
+    /mobile-live-activity\.spec\.ts/,
+    /mobile-worker-live-activity\.spec\.ts/,
+  ],
   timeout: 30_000,
   expect: {
     timeout: 5_000,
