@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
   DEEPBOOK_PREDICT_TESTNET_CONFIG,
   buildPredictServerUrl,
+  computeMarketHeat,
+  createPredictTradeHistoryClient,
   createPredictReadCanary,
+  normalizePredictTradeRow,
   parsePredictCanaryConfig,
   selectBestBtcOracle,
 } from "../src/deepbook-predict";
@@ -128,6 +131,144 @@ describe("DeepBook Predict read canary", () => {
   });
 });
 
+describe("DeepBook Predict trade-history normalization", () => {
+  test("normalizes captured public minted, redeemed, and oracle trade rows", () => {
+    expect(normalizePredictTradeRow(capturedMintedRow)).toEqual({
+      eventId: "mint:0xmintdigest:7",
+      kind: "mint",
+      actor: "0xtrader-hot",
+      trader: "0xtrader-hot",
+      managerId: "manager-btc-72k",
+      oracleId: "btc-2026-05-19",
+      expiryMs: 1_779_158_400_000,
+      strike: 72_000_000_000,
+      isUp: true,
+      quantity: 3,
+      cost: 1_200_000,
+      payout: undefined,
+      transactionDigest: "0xmintdigest",
+      checkpoint: 4242,
+      timestampMs: 1_779_070_800_000,
+      source: "positions/minted",
+    });
+
+    expect(normalizePredictTradeRow(capturedRedeemedRow)).toMatchObject({
+      eventId: "redeem:0xredeemdigest:3",
+      kind: "redeem",
+      actor: "0xtrader-hot",
+      managerId: "manager-btc-72k",
+      oracleId: "btc-2026-05-19",
+      cost: undefined,
+      payout: 1_800_000,
+      source: "positions/redeemed",
+    });
+
+    expect(normalizePredictTradeRow(capturedOracleTradeRow)).toMatchObject({
+      eventId: "mint:0xoracledigest:11",
+      kind: "mint",
+      actor: "0xtrader-warm",
+      managerId: "manager-btc-75k",
+      oracleId: "btc-2026-05-19",
+      cost: 400_000,
+      source: "trades/oracle",
+    });
+  });
+
+  test("reads trade-history endpoints through injected fetch without live network calls", async () => {
+    const requests: string[] = [];
+    const client = createPredictTradeHistoryClient({
+      fetchImpl: async (input: RequestInfo | URL) => {
+        const url = String(input);
+        requests.push(url);
+
+        if (url.endsWith("/positions/minted")) {
+          return jsonResponse([capturedMintedRow]);
+        }
+
+        if (url.endsWith("/positions/redeemed")) {
+          return jsonResponse([capturedRedeemedRow]);
+        }
+
+        if (url.endsWith("/trades/btc-2026-05-19")) {
+          return jsonResponse([capturedOracleTradeRow]);
+        }
+
+        return jsonResponse({ error: "not_found" }, 404);
+      },
+    });
+
+    await expect(client.listMintedPositions()).resolves.toEqual([
+      normalizePredictTradeRow(capturedMintedRow),
+    ]);
+    await expect(client.listRedeemedPositions()).resolves.toEqual([
+      normalizePredictTradeRow(capturedRedeemedRow),
+    ]);
+    await expect(client.listOracleTrades("btc-2026-05-19")).resolves.toEqual([
+      normalizePredictTradeRow(capturedOracleTradeRow),
+    ]);
+
+    expect(requests).toEqual([
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/positions/minted`,
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/positions/redeemed`,
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/trades/btc-2026-05-19`,
+    ]);
+  });
+});
+
+describe("DeepBook Predict market heat scoring", () => {
+  test("groups external traders by manager and ranks hot recent realized activity", () => {
+    const events = [
+      normalizePredictTradeRow(capturedMintedRow),
+      normalizePredictTradeRow(capturedRedeemedRow),
+      normalizePredictTradeRow({
+        ...capturedOracleTradeRow,
+        trader: "0xtrader-warm",
+        cost: "400000",
+        quantity: "1",
+        timestamp_ms: 1_779_070_700_000,
+      }),
+      normalizePredictTradeRow({
+        ...capturedRedeemedRow,
+        owner: undefined,
+        executor: "0xtrader-warm",
+        manager_id: "manager-btc-75k",
+        strike: "75000000000",
+        is_up: false,
+        payout: "0",
+        digest: "0xwarmredeem",
+        event_seq: 4,
+      }),
+    ];
+
+    expect(computeMarketHeat(events, { nowMs: 1_779_071_000_000 })).toEqual([
+      {
+        trader: "0xtrader-hot",
+        managerId: "manager-btc-72k",
+        hotScore: 81,
+        eventCount: 2,
+        mintCount: 1,
+        redeemCount: 1,
+        recentWinCount: 1,
+        realizedPnl: 600_000,
+        observedVolume: 1_200_000,
+        lastSeenMs: 1_779_070_900_000,
+      },
+      {
+        trader: "0xtrader-warm",
+        managerId: "manager-btc-75k",
+        hotScore: 10,
+        eventCount: 2,
+        mintCount: 1,
+        redeemCount: 1,
+        recentWinCount: 0,
+        realizedPnl: -400_000,
+        observedVolume: 400_000,
+        lastSeenMs: 1_779_070_900_000,
+      },
+    ]);
+  });
+});
+
 function btcOracle(overrides: Record<string, unknown>) {
   return {
     predict_id: DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId,
@@ -147,3 +288,50 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "content-type": "application/json" },
   });
 }
+
+const capturedMintedRow = {
+  event_digest: "0xmintdigest",
+  event_index: 7,
+  trader: "0xtrader-hot",
+  manager_id: "manager-btc-72k",
+  oracle_id: "btc-2026-05-19",
+  expiry_ms: "1779158400000",
+  strike: "72000000000",
+  is_up: true,
+  quantity: "3",
+  cost: "1200000",
+  checkpoint: "4242",
+  checkpoint_timestamp_ms: "1779070800000",
+};
+
+const capturedRedeemedRow = {
+  event_digest: "0xredeemdigest",
+  event_index: 3,
+  owner: "0xtrader-hot",
+  executor: "0xexecutor",
+  manager_id: "manager-btc-72k",
+  oracle_id: "btc-2026-05-19",
+  expiry_ms: "1779158400000",
+  strike: "72000000000",
+  is_up: true,
+  quantity: "3",
+  payout: "1800000",
+  checkpoint: "4250",
+  checkpoint_timestamp_ms: "1779070900000",
+};
+
+const capturedOracleTradeRow = {
+  digest: "0xoracledigest",
+  event_seq: 11,
+  kind: "minted",
+  trader: "0xtrader-warm",
+  manager_id: "manager-btc-75k",
+  oracle_id: "btc-2026-05-19",
+  expiry: "1779158400",
+  strike: "75000000000",
+  is_up: false,
+  quantity: "1",
+  cost: "400000",
+  checkpoint: "4245",
+  timestamp_ms: "1779070850000",
+};

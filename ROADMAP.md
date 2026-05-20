@@ -135,8 +135,9 @@ Risk:
 
 Target: May 20-25
 
-Status: In progress. Read canary and transaction-builder checkpoint are green on
-`codex/deepbook-predict-tx-builders`.
+Status: In progress. Read canary, transaction-builder checkpoint, Predict
+trade-history normalization, provisional `Market Heat`, and PWA testnet preview
+are green.
 
 Goal: make the app feel alive with real DeepBook Predict activity before Hot
 Hands-native leaders exist.
@@ -192,6 +193,16 @@ Risk:
 - Public Predict trade rows are protocol activity, not Hot Hands-native social
   proof. Label rankings as `Market Heat` until watch rules, copy receipts, and
   settlement-aware scoring are linked.
+
+Current notes:
+
+- `packages/indexer` can fetch and normalize recent minted/redeemed/per-oracle
+  Predict rows through injectable clients.
+- `computeMarketHeat` groups external trader/manager activity conservatively;
+  PnL matching is still provisional until live row shape and position identity
+  are pinned.
+- `apps/pwa` has a compact `Testnet` preview mode backed by captured BTC
+  activity, clearly separated from replay copy behavior.
 
 ## Stage 4: Hot Hands Watch And Proof Contracts
 

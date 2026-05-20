@@ -17,7 +17,7 @@ It reads server status, Predict object state, BTC oracles, and the selected BTC
 oracle's latest indexed price. It does not require wallet credentials or submit
 transactions.
 
-Next testnet read checkpoint:
+Implemented testnet read checkpoint:
 
 - read recent binary mints from `/positions/minted`
 - read recent binary redeems from `/positions/redeemed`
@@ -29,6 +29,12 @@ These rows are raw DeepBook Predict activity, not Hot Hands-native social
 records. A mint row has the trader address, manager ID, oracle ID, expiry,
 strike, direction, quantity, cost, and ask price. A redeem row adds payout, bid
 price, and settlement state.
+
+`deepbook-predict.ts` normalizes captured minted, redeemed, and per-oracle rows
+into `PredictNormalizedTradeEvent` records and computes provisional
+`MarketHeatTrader` rankings. Field aliases observed on testnet such as
+`event_digest`, `event_index`, and `checkpoint_timestamp_ms` are covered by
+fixture tests.
 
 The first UI pass should label these as "Testnet trades" or "Market Heat" and
 use them for activity/trader discovery. Users can still watch an external

@@ -1,5 +1,21 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+test("mobile market heat mode shows external preview rows", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByTestId("market-heat-mode").click();
+
+  const preview = page.getByTestId("market-heat-preview");
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText("BTC-USD");
+  await expect(preview).toContainText("Copy hand");
+  await expect(preview).toContainText("Watch hand");
+
+  const rows = page.getByTestId("market-heat-row");
+  await expect(rows.first()).toBeVisible();
+  await expect(rows.first()).toContainText("BTC-USD");
+});
+
 test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", async ({ page }) => {
   await page.goto("/");
 
