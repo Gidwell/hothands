@@ -30,7 +30,13 @@ export type MarketHeatPreview = {
   modeLabel: "Testnet";
   actionLabel: "Watch hand";
   detailLabel: "Observed Predict mints";
+  sourceLabel: string;
   rows: MarketHeatPreviewRow[];
+};
+
+export type LoadMarketHeatPreviewOptions = {
+  apiBaseUrl?: string;
+  fetcher?: typeof fetch;
 };
 
 export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
@@ -78,6 +84,7 @@ export function buildMarketHeatPreview(
     modeLabel: "Testnet",
     actionLabel: "Watch hand",
     detailLabel: "Observed Predict mints",
+    sourceLabel: "Captured",
     rows: rows.slice(0, limit).map((row) => ({
       id: row.id,
       displayName: formatWallet(row.wallet),
@@ -93,6 +100,43 @@ export function buildMarketHeatPreview(
   };
 }
 
+export async function loadMarketHeatPreview({
+  apiBaseUrl,
+  fetcher = fetch,
+}: LoadMarketHeatPreviewOptions = {}): Promise<MarketHeatPreview> {
+  const normalizedBaseUrl = apiBaseUrl?.trim();
+
+  if (!normalizedBaseUrl) {
+    return buildMarketHeatPreview();
+  }
+
+  try {
+    const response = await fetcher(buildMarketHeatUrl(normalizedBaseUrl));
+
+    if (!response.ok) {
+      return buildMarketHeatPreview();
+    }
+
+    const payload: unknown = await response.json();
+    const rows = parseMarketHeatRows(payload);
+
+    if (!rows) {
+      return buildMarketHeatPreview();
+    }
+
+    return {
+      ...buildMarketHeatPreview(rows),
+      sourceLabel: formatMarketHeatSource(payload),
+    };
+  } catch {
+    return buildMarketHeatPreview();
+  }
+}
+
+function buildMarketHeatUrl(apiBaseUrl: string): string {
+  return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/market-heat`;
+}
+
 function formatWallet(wallet: string): string {
   return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
 }
@@ -103,4 +147,72 @@ function formatMint(value: number): string {
   }
 
   return value.toLocaleString();
+}
+
+function parseMarketHeatRows(payload: unknown): MarketHeatPreviewRowInput[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.rows)) {
+    return null;
+  }
+
+  const rows = payload.rows.filter(isMarketHeatRowInput);
+
+  return rows.length > 0 ? rows : null;
+}
+
+function isMarketHeatRowInput(value: unknown): value is MarketHeatPreviewRowInput {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    isNonEmptyString(value.id) &&
+    isNonEmptyString(value.wallet) &&
+    isNonEmptyString(value.manager) &&
+    isNonEmptyString(value.market) &&
+    (value.side === "UP" || value.side === "DOWN") &&
+    isNonNegativeNumber(value.observedMint) &&
+    isNonNegativeNumber(value.heatScore) &&
+    isNonNegativeNumber(value.preparedCopies) &&
+    (value.status === "copy_ready" || value.status === "watching")
+  );
+}
+
+function formatMarketHeatSource(payload: unknown): string {
+  if (!isRecord(payload)) {
+    return "API";
+  }
+
+  const rawSource = isNonEmptyString(payload.source) ? payload.source : "api";
+  if (rawSource === "captured_testnet") {
+    return "Captured";
+  }
+
+  const source = formatCompactLabel(rawSource);
+  const mode = isNonEmptyString(payload.mode) ? payload.mode.toLowerCase() : "";
+
+  return mode && !source.toLowerCase().includes(mode) ? `${source} ${mode}` : source;
+}
+
+function formatCompactLabel(value: string): string {
+  if (value.toLowerCase() === "api") {
+    return "API";
+  }
+
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`)
+    .join(" ");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }

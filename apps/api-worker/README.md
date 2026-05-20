@@ -16,6 +16,7 @@ Primary responsibilities:
 This package owns the first local/dev friendly Cloudflare Worker loop:
 
 - `GET /health`
+- `GET /testnet/market-heat`
 - `GET /tables/:tableId/summary`
 - `GET /tables/:tableId/ws`
 
@@ -55,6 +56,29 @@ Stage 2 also supports JSON-safe `table_activity` messages using the shared
 The demo runner emits these events from fixture replay data. The worker protocol
 validates the same shape so the PWA can later consume simulated and indexed
 activity without a translation layer.
+
+## Stage 3 Testnet Read Projection
+
+`GET /testnet/market-heat` returns the PWA's compact read-only Testnet mode
+projection. The current response is deterministic captured DeepBook Predict
+activity labelled with `source: "captured_testnet"`; it is a contract for the
+PWA fetch/fallback path, not live polling yet.
+
+Rows use the browser-facing input shape:
+
+```json
+{
+  "id": "captured-alpha-cruz-btc-up-67k",
+  "wallet": "0x7a2c...4f91",
+  "manager": "Alpha Cruz",
+  "market": "BTC-USD",
+  "side": "UP",
+  "observedMint": 67000,
+  "heatScore": 91,
+  "preparedCopies": 14,
+  "status": "copy_ready"
+}
+```
 
 ### Local Commands
 

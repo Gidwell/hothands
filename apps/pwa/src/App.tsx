@@ -39,6 +39,8 @@ import {
 } from "./liveActivityMode";
 import {
   buildMarketHeatPreview,
+  loadMarketHeatPreview,
+  type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
 } from "./marketHeatModel";
 
@@ -353,6 +355,7 @@ function ActiveSignalStrip({
   onReplayReset,
   onScenarioChange,
   onModeChange,
+  marketHeatSourceLabel,
 }: {
   frame: ReturnType<typeof getReplayFrame>;
   receiptState: string;
@@ -365,6 +368,7 @@ function ActiveSignalStrip({
   onReplayReset: () => void;
   onScenarioChange: (scenarioId: ReplayScenarioId) => void;
   onModeChange: (mode: PreviewMode) => void;
+  marketHeatSourceLabel: string;
 }) {
   const [isDemoOpen, setIsDemoOpen] = useState(false);
 
@@ -403,7 +407,7 @@ function ActiveSignalStrip({
               : frame.latestSignal}
           </strong>
         </div>
-        <span>{mode === "market" ? "Testnet" : frame.stepLabel}</span>
+        <span>{mode === "market" ? marketHeatSourceLabel : frame.stepLabel}</span>
       </div>
       {isDemoOpen ? (
         <ReplayControls
@@ -421,14 +425,16 @@ function ActiveSignalStrip({
 
 function MarketHeatPreview({
   rows,
+  sourceLabel,
 }: {
   rows: MarketHeatPreviewRow[];
+  sourceLabel: string;
 }) {
   return (
     <section className="market-heat-list" aria-label="Market Heat" data-testid="market-heat-preview">
       <div className="section-heading">
         <p>Market Heat</p>
-        <span>Testnet watch</span>
+        <span>{sourceLabel}</span>
       </div>
       {rows.map((row) => (
         <article
@@ -587,6 +593,9 @@ export function App() {
     key: string;
     snapshot: LiveActivityModeSnapshot;
   } | null>(null);
+  const [marketHeatPreview, setMarketHeatPreview] = useState<MarketHeatPreviewModel>(() =>
+    buildMarketHeatPreview(),
+  );
   const liveActivityModeRef = useRef<LiveActivityModeController | null>(null);
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
   const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
@@ -647,8 +656,6 @@ export function App() {
   const activity = liveActivitySnapshot.activity.latestActivity
     ? [liveActivitySnapshot.activity.latestActivity.label]
     : frame.activity;
-  const marketHeatPreview = useMemo(() => buildMarketHeatPreview(), []);
-
   useEffect(() => {
     const setSnapshot = (snapshot: LiveActivityModeSnapshot) => {
       setLiveActivitySnapshotState({
@@ -675,6 +682,20 @@ export function App() {
       mode.close();
     };
   }, [liveActivityKey, realtimeApiBaseUrl, scenario.tableId]);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    loadMarketHeatPreview({ apiBaseUrl: realtimeApiBaseUrl }).then((preview) => {
+      if (isCurrent) {
+        setMarketHeatPreview(preview);
+      }
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [realtimeApiBaseUrl]);
 
   useEffect(() => {
     liveActivityModeRef.current?.updateReplayActivity(replayActivity);
@@ -771,6 +792,7 @@ export function App() {
           onReplayReset={handleReplayReset}
           onScenarioChange={handleScenarioChange}
           onModeChange={setPreviewMode}
+          marketHeatSourceLabel={marketHeatPreview.sourceLabel}
         />
         <SpectatorRail
           spectatorCount={spectatorCount}
@@ -780,7 +802,10 @@ export function App() {
           activityStatusLabel={liveActivitySnapshot.statusLabel}
         />
         {previewMode === "market" ? (
-          <MarketHeatPreview rows={marketHeatPreview.rows} />
+          <MarketHeatPreview
+            rows={marketHeatPreview.rows}
+            sourceLabel={marketHeatPreview.sourceLabel}
+          />
         ) : (
           <HotTraderList
             traders={displayedTraders}

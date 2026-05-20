@@ -32,3 +32,24 @@ test("mobile PWA renders worker activity broadcast over a real WebSocket", async
     openingActivity.label,
   );
 });
+
+test("mobile Testnet market heat mode renders worker API rows", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await page.getByTestId("market-heat-mode").click();
+
+  const preview = page.getByTestId("market-heat-preview");
+  await expect(preview).toBeVisible();
+  await expect(preview).toContainText("Captured");
+  await expect(preview).toContainText("Alpha Cruz");
+  await expect(preview).toContainText("Mina Park");
+
+  const rows = page.getByTestId("market-heat-row");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("67.0K mint");
+  await expect(rows.first()).toContainText("Copy hand");
+  await expect(rows.nth(1)).toContainText("66.0K mint");
+  await expect(rows.nth(1)).toContainText("Watch hand");
+});

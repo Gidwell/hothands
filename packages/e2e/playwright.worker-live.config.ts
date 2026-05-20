@@ -32,9 +32,9 @@ export default defineConfig({
       command: [
         shellQuote(nodeBin),
         shellQuote(wranglerBin),
-        "dev",
         "--cwd",
         shellQuote(apiWorkerRoot),
+        "dev",
         "--ip",
         "127.0.0.1",
         "--port",
@@ -44,6 +44,9 @@ export default defineConfig({
         "error",
         "--show-interactive-dev-session=false",
       ].join(" "),
+      env: {
+        WRANGLER_SEND_METRICS: "false",
+      },
       url: `${workerBaseURL}/health`,
       reuseExistingServer: false,
       timeout: 120_000,

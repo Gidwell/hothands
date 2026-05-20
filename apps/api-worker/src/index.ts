@@ -18,21 +18,46 @@ import {
   type TableState
 } from "./table-state";
 import { createTableActivityBroadcast } from "./table-activity";
+import { getCapturedTestnetMarketHeat } from "./market-heat";
 
 export interface Env {
   TABLE_ROOM: DurableObjectNamespace;
 }
 
 const JSON_HEADERS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "content-type",
   "content-type": "application/json; charset=utf-8"
+};
+
+const CORS_HEADERS = {
+  "access-control-allow-origin": JSON_HEADERS["access-control-allow-origin"],
+  "access-control-allow-methods": JSON_HEADERS["access-control-allow-methods"],
+  "access-control-allow-headers": JSON_HEADERS["access-control-allow-headers"]
 };
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: CORS_HEADERS
+      });
+    }
+
     if (url.pathname === "/health") {
       return json({ ok: true, service: "api-worker", stage: 1 });
+    }
+
+    if (url.pathname === "/testnet/market-heat") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      return json(getCapturedTestnetMarketHeat());
     }
 
     const tableMatch = url.pathname.match(
@@ -44,6 +69,7 @@ export default {
           error: "not_found",
           routes: [
             "/health",
+            "/testnet/market-heat",
             "/tables/:tableId/summary",
             "/tables/:tableId/ws",
             "/tables/:tableId/activity"

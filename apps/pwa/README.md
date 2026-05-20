@@ -13,3 +13,11 @@ Primary responsibilities:
   exist
 - wallet signing flow
 - mobile visual verification hooks
+
+Testnet mode:
+
+- without `VITE_HOT_HANDS_API_URL`, it renders captured fallback rows
+- with `VITE_HOT_HANDS_API_URL`, it fetches
+  `/testnet/market-heat` and falls back to captured rows if the request fails
+- source labels stay compact (`Captured`, `API testnet`) so the first screen
+  stays scan-friendly
