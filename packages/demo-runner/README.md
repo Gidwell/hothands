@@ -59,3 +59,28 @@ Environment overrides:
 - `HOT_HANDS_WORKER_URL`
 - `HOT_HANDS_TABLE_ID`
 - `HOT_HANDS_E2E_NODE_PATH`
+
+## Testnet Dev Launcher
+
+Start the local testnet API and PWA together:
+
+```bash
+bun run dev:testnet
+```
+
+The launcher starts `apps/api-worker` with its Bun testnet server, waits for
+`/health`, then starts the PWA with `VITE_HOT_HANDS_API_URL` pointed at that
+local API.
+
+Defaults:
+
+- API: `http://127.0.0.1:8789`
+- PWA: `http://127.0.0.1:5176`
+
+Environment overrides:
+
+- `HOT_HANDS_TESTNET_API_PORT`
+- `HOT_HANDS_TESTNET_PWA_PORT`
+- `HOT_HANDS_TESTNET_HOST`
+- `HOT_HANDS_TESTNET_API_HOST`
+- `HOT_HANDS_TESTNET_PWA_HOST`

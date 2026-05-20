@@ -613,11 +613,19 @@ button {
   border: 1px solid rgba(100, 212, 209, 0.28);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
 }
 
 .market-heat-row-copy_ready {
   border-color: rgba(98, 214, 143, 0.5);
   box-shadow: inset 3px 0 0 rgba(98, 214, 143, 0.68);
+}
+
+.market-heat-row-selected {
+  background:
+    linear-gradient(135deg, rgba(100, 212, 209, 0.12), rgba(98, 214, 143, 0.06)),
+    rgba(255, 255, 255, 0.045);
+  box-shadow: inset 3px 0 0 rgba(100, 212, 209, 0.72);
 }
 
 .market-heat-identity p {
@@ -633,6 +641,37 @@ button {
 .market-heat-main button {
   padding: 0 5px;
   font-size: 0.66rem;
+}
+
+.inline-watch-panel {
+  display: grid;
+  gap: 7px;
+  margin-top: 1px;
+  padding: 8px;
+  border: 1px solid rgba(100, 212, 209, 0.28);
+  border-radius: 8px;
+  background: rgba(5, 12, 13, 0.72);
+}
+
+.inline-watch-panel-copy_ready {
+  border-color: rgba(98, 214, 143, 0.38);
+}
+
+.market-heat-intent-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.market-heat-intent-meta span {
+  min-width: 0;
+  overflow: hidden;
+  color: #b8c4bf;
+  font-size: 0.66rem;
+  font-weight: 850;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inline-copy-panel {

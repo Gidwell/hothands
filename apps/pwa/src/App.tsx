@@ -38,8 +38,12 @@ import {
   type LiveActivityModeStatus,
 } from "./liveActivityMode";
 import {
+  buildMarketHeatIntentPanel,
   buildMarketHeatPreview,
+  closeMarketHeatIntent,
   loadMarketHeatPreview,
+  selectMarketHeatIntent,
+  type MarketHeatIntentState,
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
 } from "./marketHeatModel";
@@ -423,12 +427,18 @@ function ActiveSignalStrip({
   );
 }
 
-function MarketHeatPreview({
+export function MarketHeatPreview({
   rows,
   sourceLabel,
+  selectedRowId,
+  onSelectRow,
+  onCloseIntent,
 }: {
   rows: MarketHeatPreviewRow[];
   sourceLabel: string;
+  selectedRowId: string | null;
+  onSelectRow: (rowId: string) => void;
+  onCloseIntent: () => void;
 }) {
   return (
     <section className="market-heat-list" aria-label="Market Heat" data-testid="market-heat-preview">
@@ -436,33 +446,82 @@ function MarketHeatPreview({
         <p>Market Heat</p>
         <span>{sourceLabel}</span>
       </div>
-      {rows.map((row) => (
-        <article
-          className={`market-heat-row market-heat-row-${row.status}`}
-          data-testid="market-heat-row"
-          key={row.id}
-        >
-          <div className="market-heat-main">
-            <div className="market-heat-identity">
-              <div className="trader-title-row">
-                <h2>{row.displayName}</h2>
-                <span>{row.statusLabel}</span>
+      {rows.map((row) => {
+        const isSelected = row.id === selectedRowId;
+        const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
+
+        return (
+          <article
+            aria-current={isSelected ? "true" : undefined}
+            className={`market-heat-row market-heat-row-${row.status} ${
+              isSelected ? "market-heat-row-selected" : ""
+            }`}
+            data-testid="market-heat-row"
+            key={row.id}
+            onClick={() => onSelectRow(row.id)}
+          >
+            <div className="market-heat-main">
+              <div className="market-heat-identity">
+                <div className="trader-title-row">
+                  <h2>{row.displayName}</h2>
+                  <span>{row.statusLabel}</span>
+                </div>
+                <p>{row.manager}</p>
               </div>
-              <p>{row.manager}</p>
+              <div className="trader-row-score">
+                <strong>{row.heatScore}</strong>
+                <span>Heat</span>
+              </div>
+              <button
+                type="button"
+                data-testid="market-heat-row-action"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectRow(row.id);
+                }}
+              >
+                {row.actionLabel}
+              </button>
             </div>
-            <div className="trader-row-score">
-              <strong>{row.heatScore}</strong>
-              <span>Heat</span>
+            <div className="trader-row-metrics" aria-label={`${row.displayName} market heat stats`}>
+              <span>{row.market}</span>
+              <span>{row.observedMint} mint</span>
+              <span>{row.preparedCopies} prep</span>
             </div>
-            <button type="button">{row.actionLabel}</button>
-          </div>
-          <div className="trader-row-metrics" aria-label={`${row.displayName} market heat stats`}>
-            <span>{row.market}</span>
-            <span>{row.observedMint} mint</span>
-            <span>{row.preparedCopies} prep</span>
-          </div>
-        </article>
-      ))}
+            {intentPanel ? (
+              <div
+                className={`inline-watch-panel inline-watch-panel-${row.status}`}
+                data-testid="market-heat-intent-panel"
+              >
+                <div className="inline-copy-header">
+                  <div className="inline-copy-summary">
+                    <p>{intentPanel.title}</p>
+                    <strong>{intentPanel.actionLabel}</strong>
+                    <span>{intentPanel.signatureLabel}</span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`Cancel ${row.displayName} watch`}
+                    className="close-copy-button"
+                    data-testid="close-market-heat-intent"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onCloseIntent();
+                    }}
+                  >
+                    {intentPanel.closeLabel}
+                  </button>
+                </div>
+                <div className="market-heat-intent-meta" aria-label={`${row.displayName} intent`}>
+                  <span>{intentPanel.statusLabel}</span>
+                  <span>{intentPanel.detailLabel}</span>
+                  <span>{row.market}</span>
+                </div>
+              </div>
+            ) : null}
+          </article>
+        );
+      })}
     </section>
   );
 }
@@ -596,6 +655,9 @@ export function App() {
   const [marketHeatPreview, setMarketHeatPreview] = useState<MarketHeatPreviewModel>(() =>
     buildMarketHeatPreview(),
   );
+  const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
+    selectedRowId: null,
+  });
   const liveActivityModeRef = useRef<LiveActivityModeController | null>(null);
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
   const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
@@ -775,6 +837,24 @@ export function App() {
     setFrozenTraderOrder(null);
   };
 
+  const handlePreviewModeChange = (mode: PreviewMode) => {
+    setPreviewMode(mode);
+
+    if (mode !== "market") {
+      setMarketHeatIntent((state) => closeMarketHeatIntent(state));
+    }
+  };
+
+  const handleMarketHeatSelect = (rowId: string) => {
+    setMarketHeatIntent((state) =>
+      selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
+    );
+  };
+
+  const handleMarketHeatClose = () => {
+    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
+  };
+
   return (
     <main className="app-shell" data-testid="app-shell">
       <section className="phone-frame" aria-label="Hot Hands market shell">
@@ -791,7 +871,7 @@ export function App() {
           onReplayNext={handleReplayNext}
           onReplayReset={handleReplayReset}
           onScenarioChange={handleScenarioChange}
-          onModeChange={setPreviewMode}
+          onModeChange={handlePreviewModeChange}
           marketHeatSourceLabel={marketHeatPreview.sourceLabel}
         />
         <SpectatorRail
@@ -805,6 +885,9 @@ export function App() {
           <MarketHeatPreview
             rows={marketHeatPreview.rows}
             sourceLabel={marketHeatPreview.sourceLabel}
+            selectedRowId={marketHeatIntent.selectedRowId}
+            onSelectRow={handleMarketHeatSelect}
+            onCloseIntent={handleMarketHeatClose}
           />
         ) : (
           <HotTraderList

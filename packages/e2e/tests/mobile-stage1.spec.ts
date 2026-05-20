@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-test("mobile market heat mode shows external preview rows", async ({ page }) => {
+test("mobile market heat mode opens watch and copy intent panels", async ({ page }) => {
   await page.goto("/");
 
   await page.getByTestId("market-heat-mode").click();
@@ -14,6 +14,28 @@ test("mobile market heat mode shows external preview rows", async ({ page }) => 
   const rows = page.getByTestId("market-heat-row");
   await expect(rows.first()).toBeVisible();
   await expect(rows.first()).toContainText("BTC-USD");
+
+  const watchOnlyRow = rows.filter({ hasText: "Watch hand" });
+  await expect(watchOnlyRow).toHaveCount(1);
+  await watchOnlyRow.getByTestId("market-heat-row-action").click();
+
+  const intentPanel = page.getByTestId("market-heat-intent-panel");
+  await expect(intentPanel).toBeVisible();
+  await expect(intentPanel).toContainText("Watch hand");
+  await expect(intentPanel).toContainText("Copy waits for a ready mint");
+  await expect(intentPanel).toContainText("No copy prepared");
+
+  await intentPanel.getByTestId("close-market-heat-intent").click();
+  await expect(intentPanel).toHaveCount(0);
+
+  const copyReadyRow = rows.filter({ hasText: "Copy hand" });
+  await expect(copyReadyRow).toHaveCount(1);
+  await copyReadyRow.getByTestId("market-heat-row-action").click();
+
+  await expect(intentPanel).toBeVisible();
+  await expect(intentPanel).toContainText("Copy hand");
+  await expect(intentPanel).toContainText("Ready for user signature");
+  await expect(intentPanel).toContainText("Prepared copy");
 });
 
 test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", async ({ page }) => {

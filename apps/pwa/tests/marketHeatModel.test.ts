@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   MARKET_HEAT_PREVIEW_ROWS,
+  buildMarketHeatIntentPanel,
   buildMarketHeatPreview,
+  closeMarketHeatIntent,
   loadMarketHeatPreview,
+  selectMarketHeatIntent,
 } from "../src/marketHeatModel";
 
 describe("market heat preview model", () => {
@@ -41,6 +44,40 @@ describe("market heat preview model", () => {
           statusLabel: "Watching",
         },
       ],
+    });
+  });
+
+  test("selects and closes a row without promoting watch-only rows to copy intent", () => {
+    const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 3);
+    const selected = selectMarketHeatIntent(
+      { selectedRowId: null },
+      "external-0x28b7",
+      preview.rows,
+    );
+    const watchingRow = preview.rows.find((row) => row.id === selected.selectedRowId);
+
+    expect(selected.selectedRowId).toBe("external-0x28b7");
+    expect(buildMarketHeatIntentPanel(watchingRow)).toEqual({
+      actionLabel: "Watch hand",
+      closeLabel: "Cancel",
+      detailLabel: "No copy prepared",
+      signatureLabel: "Copy waits for a ready mint",
+      statusLabel: "Watching",
+      title: "Watch 0x28b7...4c10",
+    });
+    expect(closeMarketHeatIntent(selected)).toEqual({ selectedRowId: null });
+  });
+
+  test("labels copy intent only when an observed mint has a prepared copy", () => {
+    const [copyReadyRow] = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS).rows;
+
+    expect(buildMarketHeatIntentPanel(copyReadyRow)).toEqual({
+      actionLabel: "Copy hand",
+      closeLabel: "Cancel",
+      detailLabel: "Prepared copy",
+      signatureLabel: "Ready for user signature",
+      statusLabel: "Copy ready",
+      title: "Copy 0x84d2...91af",
     });
   });
 

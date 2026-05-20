@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:testnet": "bun src/testnet-dev-server.ts",
     "build": "bun build src/index.ts --target=browser > /dev/null",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",

@@ -25,6 +25,19 @@ export type MarketHeatPreviewRow = {
   statusLabel: "Copy ready" | "Watching";
 };
 
+export type MarketHeatIntentState = {
+  selectedRowId: string | null;
+};
+
+export type MarketHeatIntentPanel = {
+  actionLabel: "Watch hand" | "Copy hand";
+  closeLabel: "Cancel";
+  detailLabel: "No copy prepared" | "Prepared copy";
+  signatureLabel: "Copy waits for a ready mint" | "Ready for user signature";
+  statusLabel: "Copy ready" | "Watching";
+  title: string;
+};
+
 export type MarketHeatPreview = {
   title: "Market Heat";
   modeLabel: "Testnet";
@@ -97,6 +110,45 @@ export function buildMarketHeatPreview(
       status: row.status,
       statusLabel: row.status === "copy_ready" ? "Copy ready" : "Watching",
     })),
+  };
+}
+
+export function selectMarketHeatIntent(
+  state: MarketHeatIntentState,
+  rowId: string,
+  rows: MarketHeatPreviewRow[],
+): MarketHeatIntentState {
+  if (!rows.some((row) => row.id === rowId)) {
+    return state;
+  }
+
+  return {
+    selectedRowId: rowId,
+  };
+}
+
+export function closeMarketHeatIntent(_state: MarketHeatIntentState): MarketHeatIntentState {
+  return {
+    selectedRowId: null,
+  };
+}
+
+export function buildMarketHeatIntentPanel(
+  row: MarketHeatPreviewRow | null | undefined,
+): MarketHeatIntentPanel | null {
+  if (!row) {
+    return null;
+  }
+
+  const isCopyReady = row.status === "copy_ready";
+
+  return {
+    actionLabel: row.actionLabel,
+    closeLabel: "Cancel",
+    detailLabel: isCopyReady ? "Prepared copy" : "No copy prepared",
+    signatureLabel: isCopyReady ? "Ready for user signature" : "Copy waits for a ready mint",
+    statusLabel: row.statusLabel,
+    title: `${isCopyReady ? "Copy" : "Watch"} ${row.displayName}`,
   };
 }
 
