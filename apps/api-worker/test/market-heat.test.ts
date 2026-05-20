@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { DEEPBOOK_PREDICT_TESTNET_CONFIG } from "@hot-hands/indexer";
 import worker, { type Env } from "../src/index";
+import { getTestnetMarketHeat } from "../src/market-heat";
 
 describe("testnet market heat endpoint", () => {
-  test("returns a captured read-only market heat projection for the PWA", async () => {
+  test("returns live testnet market heat from injected Predict reads", async () => {
     const response = await worker.fetch(
       new Request("https://api.hot-hands.test/testnet/market-heat"),
-      {} as Env
+      { fetch: createLivePredictFetch() } as unknown as Env
     );
 
     expect(response.status).toBe(200);
@@ -13,12 +15,118 @@ describe("testnet market heat endpoint", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
 
     const body = await response.json();
-    expect(body).toMatchObject({
-      source: "captured_testnet",
-      title: expect.any(String),
-      mode: expect.any(String),
-      detail: expect.any(String)
+    expect(body.source).toBe("live_testnet");
+    expect(typeof body.title).toBe("string");
+    expect(body.mode).toBe("testnet");
+    expect(typeof body.detail).toBe("string");
+    expect(body.rows).toBeArray();
+    expect(body.rows[0].id).toContain("live-");
+    expect(body.rows[0].wallet).toBe("0xtrader-hot");
+    expect(body.rows[0].manager).toBe("manager-btc-72k");
+    expect(body.rows[0].market).toBe("BTC-USD");
+    expect(body.rows[0].side).toBe("UP");
+    expect(typeof body.rows[0].observedMint).toBe("number");
+    expect(typeof body.rows[0].heatScore).toBe("number");
+    expect(typeof body.rows[0].preparedCopies).toBe("number");
+    expect(body.rows[0].status).toMatch(/^(copy_ready|watching)$/);
+    expect(body.rows[0].observedMint).toBeGreaterThan(0);
+    expect(body.rows[0].heatScore).toBeGreaterThan(0);
+  });
+
+  test("falls back to captured read-only market heat when live Predict reads fail", async () => {
+    const projection = await getTestnetMarketHeat({
+      fetchImpl: async () => {
+        throw new Error("network unavailable");
+      }
     });
+
+    expect(projection.source).toBe("captured_testnet");
+    expect(projection.rows.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("uses recent public positions when the active oracle trade feed is quiet", async () => {
+    const projection = await getTestnetMarketHeat({
+      fetchImpl: createLivePredictFetch({ quietOracleTrades: true })
+    });
+
+    expect(projection.source).toBe("live_testnet");
+    expect(projection.rows[0]).toMatchObject({
+      wallet: "0xtrader-position",
+      manager: "manager-btc-positions",
+      market: "BTC-USD",
+      side: "DOWN"
+    });
+    expect(projection.rows[0].observedMint).toBeGreaterThan(0);
+  });
+
+  test("normalizes high precision live strikes into readable BTC prices", async () => {
+    const projection = await getTestnetMarketHeat({
+      fetchImpl: createLivePredictFetch({
+        quietOracleTrades: true,
+        positionStrike: "78098000000000",
+        positionCost: "8000000"
+      })
+    });
+
+    expect(projection.source).toBe("live_testnet");
+    expect(projection.rows[0].observedMint).toBe(78098);
+    expect(projection.rows[0].heatScore).toBeLessThanOrEqual(99);
+  });
+
+  test("keeps a captured read-only market heat projection shape for the PWA", async () => {
+    const projection = await getTestnetMarketHeat({
+      fetchImpl: async () => jsonResponse([], 500)
+    });
+
+    expect(projection.source).toBe("captured_testnet");
+    expect(typeof projection.title).toBe("string");
+    expect(typeof projection.mode).toBe("string");
+    expect(typeof projection.detail).toBe("string");
+    expect(projection.rows).toBeArray();
+    expect(projection.rows.length).toBeGreaterThanOrEqual(2);
+    expect(Object.keys(projection.rows[0]).sort()).toEqual([
+      "heatScore",
+      "id",
+      "manager",
+      "market",
+      "observedMint",
+      "preparedCopies",
+      "side",
+      "status",
+      "wallet"
+    ]);
+    expect(projection.rows[0]).toEqual({
+      id: expect.any(String),
+      wallet: expect.any(String),
+      manager: expect.any(String),
+      market: expect.any(String),
+      side: expect.stringMatching(/^(UP|DOWN)$/),
+      observedMint: expect.any(Number),
+      heatScore: expect.any(Number),
+      preparedCopies: expect.any(Number),
+      status: expect.stringMatching(/^(copy_ready|watching)$/)
+    });
+  });
+
+  test("worker falls back to captured read-only market heat when live Predict reads fail", async () => {
+    const response = await worker.fetch(
+      new Request("https://api.hot-hands.test/testnet/market-heat"),
+      {
+        fetch: async () => {
+          throw new Error("network unavailable");
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("content-type")).toContain("application/json");
+
+    const body = await response.json();
+    expect(body.source).toBe("captured_testnet");
+    expect(typeof body.title).toBe("string");
+    expect(typeof body.mode).toBe("string");
+    expect(typeof body.detail).toBe("string");
     expect(body.rows).toBeArray();
     expect(body.rows.length).toBeGreaterThanOrEqual(2);
     expect(Object.keys(body.rows[0]).sort()).toEqual([
@@ -58,3 +166,137 @@ describe("testnet market heat endpoint", () => {
     expect(response.headers.get("access-control-allow-methods")).toContain("GET");
   });
 });
+
+function createLivePredictFetch(
+  {
+    quietOracleTrades = false,
+    positionStrike = "73000000000",
+    positionCost = "800000"
+  }: {
+    quietOracleTrades?: boolean;
+    positionStrike?: string;
+    positionCost?: string;
+  } = {}
+): typeof fetch {
+  return async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.endsWith("/status")) {
+      return jsonResponse({
+        status: "OK",
+        latest_onchain_checkpoint: 100,
+        max_checkpoint_lag: 2
+      });
+    }
+
+    if (url.endsWith("/state")) {
+      return jsonResponse({
+        predict_id: DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId,
+        quote_assets: [DEEPBOOK_PREDICT_TESTNET_CONFIG.quoteAssetType]
+      });
+    }
+
+    if (url.endsWith("/oracles")) {
+      return jsonResponse([
+        btcOracle({ oracle_id: "btc-live", expiry: 1_779_158_400, status: "active" })
+      ]);
+    }
+
+    if (url.endsWith("/prices/latest")) {
+      return jsonResponse({
+        oracle_id: "btc-live",
+        spot: 72_000_000_000,
+        checkpoint: 101
+      });
+    }
+
+    if (url.endsWith("/trades/btc-live")) {
+      if (quietOracleTrades) {
+        return jsonResponse([]);
+      }
+
+      return jsonResponse([
+        liveTrade({
+          digest: "0xmintdigest",
+          event_seq: 7,
+          kind: "minted",
+          trader: "0xtrader-hot",
+          manager_id: "manager-btc-72k",
+          strike: "72000000000",
+          is_up: true,
+          quantity: "3",
+          cost: "1200000",
+          timestamp_ms: "1779070800000"
+        }),
+        liveTrade({
+          digest: "0xwarmer",
+          event_seq: 8,
+          kind: "minted",
+          trader: "0xtrader-warm",
+          manager_id: "manager-btc-70k",
+          strike: "70000000000",
+          is_up: false,
+          quantity: "1",
+          cost: "400000",
+          timestamp_ms: "1779070700000"
+        })
+      ]);
+    }
+
+    if (url.endsWith("/positions/minted")) {
+      if (quietOracleTrades) {
+        return jsonResponse([
+          liveTrade({
+            digest: "0xpositionmint",
+            event_seq: 9,
+            trader: "0xtrader-position",
+            manager_id: "manager-btc-positions",
+            oracle_id: "btc-quiet-position",
+            strike: positionStrike,
+            is_up: false,
+            quantity: "2",
+            cost: positionCost,
+            timestamp_ms: "1779071000000"
+          })
+        ]);
+      }
+
+      return jsonResponse([]);
+    }
+
+    if (url.endsWith("/positions/redeemed")) {
+      return jsonResponse([]);
+    }
+
+    return jsonResponse({ error: "not_found" }, 404);
+  };
+}
+
+function btcOracle(overrides: Record<string, unknown>) {
+  return {
+    predict_id: DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId,
+    oracle_id: "btc-live",
+    underlying_asset: "BTC",
+    expiry: 1,
+    min_strike: 50_000_000_000,
+    tick_size: 1_000_000,
+    status: "settled",
+    ...overrides
+  };
+}
+
+function liveTrade(overrides: Record<string, unknown>) {
+  return {
+    oracle_id: "btc-live",
+    expiry: "1779158400",
+    checkpoint: "4242",
+    ...overrides
+  };
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" }
+  });
+}

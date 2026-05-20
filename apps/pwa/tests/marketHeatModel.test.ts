@@ -113,6 +113,36 @@ describe("market heat preview model", () => {
     });
   });
 
+  test("labels live testnet API rows without extra copy", async () => {
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      fetcher: async () =>
+        Response.json({
+          mode: "testnet",
+          source: "live_testnet",
+          rows: [
+            {
+              id: "live-0x3333",
+              wallet: "0x3333444455556666777788889999000011112222",
+              manager: "manager 0xabcd...0003",
+              market: "BTC-USD",
+              side: "DOWN",
+              observedMint: 69000,
+              heatScore: 88,
+              preparedCopies: 3,
+              status: "watching",
+            },
+          ],
+        }),
+    });
+
+    expect(preview.sourceLabel).toBe("Live Testnet");
+    expect(preview.rows[0]).toMatchObject({
+      market: "BTC-USD DOWN",
+      statusLabel: "Watching",
+    });
+  });
+
   test("uses captured rows when no API URL is configured", async () => {
     const preview = await loadMarketHeatPreview({
       apiBaseUrl: "",

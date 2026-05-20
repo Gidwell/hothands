@@ -1,8 +1,4 @@
 import { defineConfig, devices } from "@playwright/test";
-import { existsSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 const pwaPort = Number(process.env.HOT_HANDS_E2E_WORKER_LIVE_PWA_PORT ?? 4175);
 const workerPort = Number(
@@ -10,11 +6,6 @@ const workerPort = Number(
 );
 const baseURL = `http://127.0.0.1:${pwaPort}`;
 const workerBaseURL = `http://127.0.0.1:${workerPort}`;
-const packageRoot = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(packageRoot, "../..");
-const apiWorkerRoot = path.join(repoRoot, "apps/api-worker");
-const wranglerBin = path.join(repoRoot, "node_modules/wrangler/bin/wrangler.js");
-const nodeBin = resolveNodeBin();
 
 export default defineConfig({
   testDir: "./tests",
@@ -29,27 +20,10 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: [
-        shellQuote(nodeBin),
-        shellQuote(wranglerBin),
-        "--cwd",
-        shellQuote(apiWorkerRoot),
-        "dev",
-        "--ip",
-        "127.0.0.1",
-        "--port",
-        String(workerPort),
-        "--local",
-        "--log-level",
-        "error",
-        "--show-interactive-dev-session=false",
-      ].join(" "),
-      env: {
-        WRANGLER_SEND_METRICS: "false",
-      },
+      command: "bun run support/worker-live-server.ts",
       url: `${workerBaseURL}/health`,
       reuseExistingServer: false,
-      timeout: 120_000,
+      timeout: 30_000,
     },
     {
       command: `bun run --cwd ../../apps/pwa dev -- --host 127.0.0.1 --port ${pwaPort}`,
@@ -70,23 +44,3 @@ export default defineConfig({
     },
   ],
 });
-
-function shellQuote(value: string): string {
-  return JSON.stringify(value);
-}
-
-function resolveNodeBin(): string {
-  if (process.env.HOT_HANDS_E2E_NODE_PATH) {
-    return process.env.HOT_HANDS_E2E_NODE_PATH;
-  }
-
-  const codexBundledNode = path.join(
-    os.homedir(),
-    ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node",
-  );
-  if (existsSync(codexBundledNode)) {
-    return codexBundledNode;
-  }
-
-  return "node";
-}

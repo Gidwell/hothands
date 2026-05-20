@@ -12,6 +12,7 @@
     "test:worker": "bun test test"
   },
   "dependencies": {
+    "@hot-hands/indexer": "workspace:*",
     "@hot-hands/shared": "workspace:*"
   },
   "devDependencies": {

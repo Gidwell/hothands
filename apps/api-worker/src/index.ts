@@ -18,10 +18,11 @@ import {
   type TableState
 } from "./table-state";
 import { createTableActivityBroadcast } from "./table-activity";
-import { getCapturedTestnetMarketHeat } from "./market-heat";
+import { getTestnetMarketHeat } from "./market-heat";
 
 export interface Env {
   TABLE_ROOM: DurableObjectNamespace;
+  fetch?: typeof fetch;
 }
 
 const JSON_HEADERS = {
@@ -57,7 +58,7 @@ export default {
         return json({ error: "method_not_allowed" }, 405);
       }
 
-      return json(getCapturedTestnetMarketHeat());
+      return json(await getTestnetMarketHeat({ fetchImpl: env.fetch ?? fetch }));
     }
 
     const tableMatch = url.pathname.match(

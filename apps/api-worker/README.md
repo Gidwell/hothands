@@ -60,20 +60,21 @@ activity without a translation layer.
 ## Stage 3 Testnet Read Projection
 
 `GET /testnet/market-heat` returns the PWA's compact read-only Testnet mode
-projection. The current response is deterministic captured DeepBook Predict
-activity labelled with `source: "captured_testnet"`; it is a contract for the
-PWA fetch/fallback path, not live polling yet.
+projection. The route first tries live DeepBook Predict public testnet reads via
+the indexer package and returns `source: "live_testnet"` when recent activity is
+available. If Predict reads fail or return no usable rows, the route falls back
+to deterministic captured activity labelled with `source: "captured_testnet"`.
 
 Rows use the browser-facing input shape:
 
 ```json
 {
-  "id": "captured-alpha-cruz-btc-up-67k",
-  "wallet": "0x7a2c...4f91",
-  "manager": "Alpha Cruz",
+  "id": "live-0xmanager-0xwallet-mint:digest:2",
+  "wallet": "0xwallet",
+  "manager": "0xmanager",
   "market": "BTC-USD",
   "side": "UP",
-  "observedMint": 67000,
+  "observedMint": 78098,
   "heatScore": 91,
   "preparedCopies": 14,
   "status": "copy_ready"
