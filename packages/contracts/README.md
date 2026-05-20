@@ -5,6 +5,8 @@ Sui Move package for the minimal social proof layer.
 MVP events:
 
 - `ProfileCreated`
+- `ExternalTraderWatched`
+- `WatchRuleArmed`
 - `SignalPosted`
 - `CopyRuleArmed`
 - `CopyReceipt`
@@ -22,8 +24,8 @@ Current scope:
   DUSDC quote type constants pinned to `predict-testnet-4-16`
 - expose Move target strings for manager creation, manager deposit, market key
   construction, and mint
-- serialize a conservative copy-next binary mint intent for tests and future
-  wallet integration. The existing-manager mint plan builds
+- serialize a conservative copied binary mint intent for tests and future wallet
+  integration. The existing-manager mint plan builds
   `market_key::new(oracle_id, expiry, strike, is_up)` and then calls
   `predict::mint(predict, manager, oracle, key, quantity, clock)`
 - build SDK transactions for `predict::create_manager`,

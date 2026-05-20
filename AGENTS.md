@@ -2,14 +2,14 @@
 
 This file is the operating manual for human and AI contributors.
 
-Last updated: May 14, 2026
+Last updated: May 19, 2026
 
 ## Prime Directive
 
 Build a thin, verified end-to-end loop first:
 
 ```text
-leader signal -> follower arms copy -> copy transaction -> settlement -> hot score update
+DeepBook trader heats up -> follower arms watch -> observed mint -> prepared copy -> user signs -> settlement -> hot score update
 ```
 
 Everything else supports that loop.
@@ -68,6 +68,8 @@ Owns:
 - `packages/indexer`
 - scoring engine
 - signal resolution
+- DeepBook Predict trade-history normalization
+- external wallet heat scoring
 - hot table cache
 - fixture-based score tests
 
@@ -174,6 +176,9 @@ Until implementation exists, scripts may be placeholders. Replace placeholders a
 
 - Do not write every heartbeat to Postgres.
 - Do not build automatic custodial copy trading for MVP.
+- Do not imply external wallet watches are pre-trade signals; they are reactive
+  copies of observed DeepBook Predict mints unless a Hot Hands-native signal
+  exists.
 - Do not hardcode provisional DeepBook IDs outside shared config.
 - Do not make fixture data indistinguishable from live testnet data.
 - Do not reintroduce literal craps/dice/rail language into product UI or docs unless the user explicitly asks for that motif.

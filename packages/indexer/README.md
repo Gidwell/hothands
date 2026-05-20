@@ -25,17 +25,23 @@ Next testnet read checkpoint:
 - keep range endpoints available for later with `/ranges/minted` and
   `/ranges/redeemed`
 
-These rows are raw DeepBook Predict activity, not Hot Hands social records. A
-mint row has the trader address, manager ID, oracle ID, expiry, strike,
-direction, quantity, cost, and ask price. A redeem row adds payout, bid price,
-and settlement state. The first UI pass should label these as "Testnet trades"
-and use them for activity/trader discovery only; true Hot Hands copy reputation
-still needs our signal/copy receipt layer plus settlement-aware scoring.
+These rows are raw DeepBook Predict activity, not Hot Hands-native social
+records. A mint row has the trader address, manager ID, oracle ID, expiry,
+strike, direction, quantity, cost, and ask price. A redeem row adds payout, bid
+price, and settlement state.
+
+The first UI pass should label these as "Testnet trades" or "Market Heat" and
+use them for activity/trader discovery. Users can still watch an external
+trader's next observed mint and receive a prepared copy transaction, but that is
+reactive copy from public activity. Hot Hands-native reputation requires watch
+rules, copy receipts, native signals when present, and settlement-aware scoring.
 
 Primary responsibilities:
 
 - Predict server polling/replay adapters
 - DeepBook Predict trade-history normalization
+- external wallet heat scoring
+- watch-rule matching inputs
 - Sui event/checkpoint adapters for oracle updates
 - Hot Hands event indexing
 - signal resolution

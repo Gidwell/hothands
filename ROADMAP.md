@@ -21,7 +21,7 @@ Checkpoint:
 Exit test:
 
 ```bash
-rg "leader signal -> follower arms copy"
+rg "DeepBook trader heats up -> follower arms watch"
 rg "Do not write every heartbeat"
 ```
 
@@ -138,13 +138,15 @@ Target: May 20-25
 Status: In progress. Read canary and transaction-builder checkpoint are green on
 `codex/deepbook-predict-tx-builders`.
 
-Goal: retire the largest external integration risk.
+Goal: make the app feel alive with real DeepBook Predict activity before Hot
+Hands-native leaders exist.
 
 Stage 2 carry-forward:
 
 - Keep simulated realtime mode green while adding testnet mode.
 - Start with current official DeepBook Predict docs and shared config constants before writing transaction code.
-- Preserve the mobile e2e copy loop as the product baseline; Stage 3 should add proof of real testnet execution without breaking the local demo.
+- Preserve the mobile e2e copy loop as the product baseline; Stage 3 should add
+  proof of real testnet activity without breaking the local demo.
 
 Deliverables:
 
@@ -152,8 +154,10 @@ Deliverables:
 - Read active BTC oracles from the public Predict server.
 - Read recent Predict mints/redeems and per-oracle trade history from the
   public server.
-- Add a PWA testnet-read mode that renders real BTC trade activity with copy
-  disabled or preview-only.
+- Normalize external trader/manager activity into provisional `Market Heat`.
+- Add a PWA testnet-read mode that renders real BTC trade activity and lets a
+  user watch a trader's next observed mint with copy disabled, preview-only, or
+  user-signed depending on wallet readiness.
 - Keep the first `verify:testnet` checkpoint non-funded: Predict server reads
   plus Sui dev-inspect.
 - Build valid SDK transactions for manager creation, quote deposit, and Predict
@@ -185,19 +189,22 @@ Risk:
 - Testnet token access may require manual faucet/request flow.
 - `create_manager` can be dev-inspected without funds, but deposit and mint
   dry-runs need gas, DUSDC, an existing `PredictManager`, and a live oracle.
-- Public Predict trade rows are protocol activity, not Hot Hands social proof;
-  leaderboard and hot-hand claims must stay provisional until signal/copy
-  records and settlement-aware scoring are linked.
+- Public Predict trade rows are protocol activity, not Hot Hands-native social
+  proof. Label rankings as `Market Heat` until watch rules, copy receipts, and
+  settlement-aware scoring are linked.
 
-## Stage 4: Hot Hands Contracts
+## Stage 4: Hot Hands Watch And Proof Contracts
 
 Target: May 23-28
 
-Goal: create the minimal onchain social proof layer.
+Goal: create the minimal proof layer for watched external trades and later
+native signals.
 
 Deliverables:
 
 - `ProfileCreated`
+- `ExternalTraderWatched`
+- `WatchRuleArmed`
 - `SignalPosted`
 - `CopyRuleArmed`
 - `CopyReceipt`
@@ -215,7 +222,7 @@ bun run move:test
 bun run test:contracts
 ```
 
-## Stage 5: Real Copy Next Signal
+## Stage 5: Real Watch Next Trade
 
 Target: May 27-June 4
 
@@ -223,17 +230,20 @@ Goal: complete the core user loop end to end.
 
 Deliverables:
 
-- Leader posts real signal.
-- Follower arms copy rule.
-- Backend prepares follower copy transaction.
+- Follower watches a hot external Predict trader or manager.
+- Backend detects that trader's next BTC UP/DOWN mint.
+- Backend prepares follower copy transaction using sizing and freshness guards.
 - Follower signs and executes DeepBook Predict mint.
-- Copy receipt links follower, leader, signal, and trade.
-- Settlement updates both profiles.
+- Copy receipt links follower, watched trader, source mint, and copied mint.
+- Redeem/settlement updates external wallet heat and follower copy result.
+- Hot Hands-native signal copy remains supported as a later lower-latency path.
 
 TDD:
 
+- watch rule matching tests
 - copy sizing tests
 - max-cost guard tests
+- observed-mint freshness tests
 - prepared transaction snapshot tests
 - e2e test with mocked wallet
 
@@ -288,6 +298,8 @@ Goal: make "who is hot?" trustworthy.
 
 Deliverables:
 
+- external wallet market heat score
+- observed trade normalization
 - signal resolution worker
 - hot score snapshots
 - current streak

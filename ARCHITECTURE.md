@@ -40,7 +40,9 @@ Responsibilities:
 - Consume shared deterministic replay frames in fixture mode.
 - Connect wallet or zkLogin flow.
 - Subscribe to table WebSocket.
-- Arm copy-next-signal rules.
+- Arm watch-next-trade rules for external Predict traders.
+- Arm copy-next-signal rules for Hot Hands-native leaders after native signals
+  exist.
 - Sign and execute prepared copy transactions.
 - Show hot tables, trader cards, copy tray, and settlement moments.
 
@@ -97,6 +99,9 @@ Stage 2 note:
 Durable data:
 
 - users and profiles
+- watched external traders
+- watch rules
+- observed Predict trades
 - signals
 - copy rules
 - copy receipts
@@ -111,6 +116,8 @@ Responsibilities:
 
 - Poll or stream DeepBook Predict data.
 - Index Hot Hands events.
+- Normalize public Predict mints, redeems, and per-oracle trades.
+- Compute external wallet market heat before Hot Hands-native reputation exists.
 - Resolve signals when oracles settle.
 - Compute trader, table, and squad score snapshots.
 - Maintain hot-feed cache.
@@ -156,8 +163,13 @@ Testnet trade read mode:
 - Raw `trader` and `manager_id` values can seed provisional trader cards, but
   they are not Hot Hands identities yet.
 - Raw mint/redeem activity can support a "who is active" or "who is pressing"
-  feed. Do not present it as final ROI, copy reputation, or copy receipts until
-  Hot Hands signal records and settlement-aware scoring are linked.
+  feed and provisional `Market Heat` rankings.
+- A user can arm a watch against an external trader or manager. When the indexer
+  observes the next matching Predict mint, the backend can prepare a user-signed
+  copy transaction. This is reactive copy of an observed mint, not pre-trade
+  execution.
+- Do not present external wallet heat as final Hot Hands reputation until Hot
+  Hands signal records, copy receipts, and settlement-aware scoring are linked.
 - Keep fixture/replay mode visually distinct from testnet mode so demos do not
   blur simulated copy behavior with real testnet market activity.
 
@@ -179,14 +191,17 @@ Integration sequence:
 2. Validate response shape and config overrides without requiring credentials.
 3. Select market and strike.
 4. Read recent testnet mints/redeems and per-oracle trade history.
-5. Render a PWA testnet-read mode with copy disabled or preview-only.
-6. Build and snapshot SDK transactions for manager setup, quote deposit, and
+5. Normalize external trader and manager activity into `Market Heat`.
+6. Render a PWA testnet-read mode with watch/copy controls clearly labeled as
+   reactive and user-signed.
+7. Build and snapshot SDK transactions for manager setup, quote deposit, and
    mint payloads.
-7. Find or create user `PredictManager`.
-8. Ensure DUSDC deposit.
-9. Execute with user signature.
-10. Read back indexed mint event.
-11. Link event to Hot Hands signal or copy receipt.
+8. Find or create user `PredictManager`.
+9. Ensure DUSDC deposit.
+10. Prepare a copy when a watched external trader's next mint appears.
+11. Execute with user signature.
+12. Read back indexed mint event.
+13. Link event to a Hot Hands watch rule or native signal/copy receipt.
 
 ## Realtime Presence
 

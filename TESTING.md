@@ -56,8 +56,8 @@ Expected checks:
 - open mobile viewport
 - enter hot table
 - see spectators
-- arm copy-next-signal
-- receive fake signal
+- arm one-shot copy intent
+- receive fixture signal or observed trade
 - execute fake copy
 - settle fake market
 - assert streak and leaderboard update
@@ -164,7 +164,8 @@ Next checkpoints:
 
 - Predict trade-history parsing for `/positions/minted`, `/positions/redeemed`,
   and `/trades/:oracle_id`
-- PWA testnet-read mode using captured Predict trade rows
+- external wallet `Market Heat` scoring from captured Predict trade rows
+- PWA testnet-read mode with watch-next-trade controls using captured Predict rows
 - direct onchain reads around wallet flows
 - `PredictManager` find/create
 - DUSDC deposit and small mint on testnet
@@ -175,6 +176,9 @@ Next checkpoints:
 - `verify:perf` is still a placeholder; no fanout or heartbeat load harness yet.
 - `verify:testnet` dev-inspects manager creation, but deposit and mint dry-runs
   still require funded testnet wallet objects.
+- Watch-next-trade is reactive for external traders. E2E should assert the UI
+  does not imply pre-trade execution unless the source is a Hot Hands-native
+  signal.
 - Worker-backed realtime proof is local Wrangler only, not deployed Cloudflare
   infrastructure.
 - Visual regression screenshots are not wired into `verify:visual`.

@@ -1,16 +1,21 @@
 # Hot Hands
 
-Hot Hands is a mobile-first social prediction market app for DeepBook Predict. The core loop is simple: watch live BTC prediction tables, find traders with a hot hand, arm a copy-next-signal rule, and execute the copy trade with your own chosen amount.
+Hot Hands is a mobile-first social copy layer for DeepBook Predict. The core loop is simple: discover real BTC UP/DOWN wallets that are heating up, arm a watch on their next DeepBook Predict trade, and copy with your own chosen amount after Hot Hands prepares the transaction.
 
 This repository now has the Stage 1 fake-data vertical slice, the Stage 2 simulated realtime loop, and the first Stage 3 DeepBook Predict testnet bridge: deterministic mobile replay, worker-shaped table activity, an in-process socket contract, optional PWA live-mode checks, a local Wrangler-backed worker smoke, a Predict server read canary, and Sui SDK transaction builders for manager creation, quote deposit, and copied mint.
 
 ## Product Loop
 
-1. A leader posts a pre-trade signal for an active BTC UP/DOWN market.
-2. Spectators gather around the table and can arm copy-next-signal rules.
-3. When the leader signal becomes actionable, followers receive a prepared copy trade.
-4. The follower signs and executes the copy on DeepBook Predict testnet once the transaction-builder path is verified.
-5. Hot Hands emits social proof, resolves the signal after settlement, and updates streaks, ROI, PnL, copy volume, and table heat.
+1. Hot Hands reads real DeepBook Predict mints/redeems and finds active BTC traders.
+2. The home page ranks provisional hot wallets by recent activity, realized performance, streak, and size.
+3. A user arms "watch next trade" for a trader address or `PredictManager`.
+4. When that trader mints a new BTC UP/DOWN position, Hot Hands prepares a copy transaction with the user's sizing rules.
+5. The user signs and executes their own DeepBook Predict mint.
+6. Hot Hands tracks the copied trade through redeem/settlement and updates wallet heat, copy volume, and eventually native reputation.
+
+Hot Hands-native pre-trade signals remain the richer social layer after this
+external-wallet loop is working. They should improve attribution and latency,
+but the MVP should not wait for native leaders before the app feels alive.
 
 ## Planned Stack
 

@@ -1,36 +1,40 @@
 # Hot Hands Product Spec
 
-Last updated: May 14, 2026
+Last updated: May 19, 2026
 
 ## One-Line Pitch
 
-Hot Hands is the live social layer for DeepBook Predict: find traders who are heating up, watch the table form around them, and copy their next BTC signal with your own amount.
+Hot Hands is the live social copy layer for DeepBook Predict: find wallets heating up in real BTC UP/DOWN markets, watch their next trade, and copy with your own amount.
 
 ## Product Principles
 
 - The app should feel like a live social market floor: high-energy and communal, but always grounded in BTC UP/DOWN prediction language.
 - Avoid literal craps/dice/table-game terminology unless the feature truly maps to prediction markets.
-- The home page should answer: who is hot, who is watching, who is armed, and what can I copy right now?
+- The home page should answer: which real Predict wallets are hot, who is watching them, who is armed, and what can I copy right now?
 - Copying should be explicit and user-signed for MVP.
 - Onchain state should prove important social and trading artifacts, but ephemeral liveness should stay offchain.
 - The testnet demo must work even if public data is noisy, slow, or quiet.
+- External wallet watching is the first live-data loop. Hot Hands-native
+  pre-trade signals are a later upgrade, not the dependency that makes the app
+  feel alive.
 
 ## Stage 1 Learnings
 
 - Shared deterministic fixtures should be the source of truth for local demos, UI replay, e2e tests, and scoring checks. Avoid separate PWA-only demo stories.
 - Demo scenarios should each prove a product point: `opening-night` for the happy path, `trap-streak` for high win rate with negative ROI, and `hot-hand-swing` for leaderboard movement.
 - Spectator and heartbeat activity makes the app feel live, but it should remain ephemeral and cheap unless it becomes a meaningful table event.
-- The strongest Stage 1 UX was copy-next-signal, not automatic custody. Keep copy explicit and user-sized until a later delegated-trading design is deliberately chosen.
+- The strongest Stage 1 UX was arming a one-shot copy intent, not automatic custody. Keep copy explicit and user-sized until a later delegated-trading design is deliberately chosen.
 - Fixture, replay, and live testnet modes must stay visually and technically distinguishable so judges understand what proof they are seeing.
 
 ## MVP User Stories
 
-- As a spectator, I can enter a live BTC table and see who else is watching.
-- As a follower, I can arm a copy-next-signal rule for a trader.
-- As a leader, I can post a public signal with market, direction, strike, expiry, confidence, and optional thesis.
-- As a follower, I can execute a prepared copy trade when a leader posts a signal.
-- As any user, I can see current hot hands ranked by streak, ROI, PnL, and copy demand.
-- As a judge, I can watch a deterministic demo that shows spectators, signals, copy activity, settlement, and changing leaderboards.
+- As a spectator, I can enter a live BTC table and see real DeepBook Predict activity.
+- As a follower, I can watch a hot trader address or `PredictManager`.
+- As a follower, I can arm a watch-next-trade rule with my own sizing limits.
+- As a follower, I can receive a prepared copy transaction when the watched trader mints a new BTC UP/DOWN position.
+- As any user, I can see current market heat ranked by realized performance, activity, streak, size, and copy demand.
+- As a judge, I can watch a deterministic demo and a live testnet-read mode that clearly distinguish fixture copy behavior from real Predict wallet activity.
+- Later, as a Hot Hands-native leader, I can post a public pre-trade signal with market, direction, strike, expiry, confidence, and optional thesis.
 
 ## Non-MVP
 
@@ -62,13 +66,70 @@ table_id = btc:15m
 Table roles:
 
 - `spectator`: connected and watching.
-- `armed`: has a copy-next-signal rule ready.
-- `leader`: has posted signals or is being followed.
+- `armed`: has a watch-next-trade or native copy rule ready.
+- `watched trader`: external address or manager being followed from Predict activity.
+- `leader`: Hot Hands-native profile that has posted signals or attracted followers.
 - `copier`: executed a copy trade.
 
-## Signals
+## External Wallet Watches
+
+The first live MVP watches public DeepBook Predict activity.
+
+Source rows:
+
+- `/positions/minted`
+- `/positions/redeemed`
+- `/trades/:oracle_id`
+
+A watched trade is an observed Predict mint, not a pre-trade call.
+
+Required normalized fields:
+
+- `trade_id`
+- `trader`
+- `manager_id`
+- `oracle_id`
+- `expiry_ms`
+- `strike`
+- `is_up`
+- `quantity`
+- `cost`
+- `ask_price`
+- `checkpoint`
+- `checkpoint_timestamp_ms`
+
+Watch rule fields:
+
+- `rule_id`
+- `follower`
+- `watched_trader`
+- `watched_manager_id`
+- `max_cost`
+- `sizing_mode`
+- `sizing_value`
+- `filters`
+- `expires_at_ms`
+- `status`
+
+Execution flow:
+
+1. Follower arms a watch-next-trade rule.
+2. Indexer observes a new Predict mint by the watched trader or manager.
+3. Backend validates market, size, freshness, and user constraints.
+4. Backend prepares a DeepBook Predict mint transaction using follower size rules.
+5. Follower signs and executes.
+6. Hot Hands records the copy relationship and tracks redeem/settlement.
+
+MVP copy is reactive. Do not imply Hot Hands saw or executed the external
+trader's intent before it landed on DeepBook Predict.
+
+## Hot Hands-Native Signals
 
 A signal is a public pre-trade call.
+
+Native signals are a later, stronger attribution layer. They can reduce copy
+latency and support squads, thesis, confidence, and creator reputation, but
+they are not required for the first real-data MVP.
 
 Required fields:
 
@@ -107,15 +168,21 @@ Anti-gaming rules:
 - Clip extreme ROI contributions.
 - Weight scores by sample size.
 
-## Copy Next Signal
+## Copy Semantics
 
 MVP copy is explicit and user-signed.
 
-Copy rule fields:
+Two MVP-compatible copy sources:
+
+- `watch_next_trade`: reactive copy of a public external Predict mint.
+- `copy_next_signal`: copy of a Hot Hands-native pre-trade signal.
+
+Shared copy rule fields:
 
 - `rule_id`
 - `follower`
-- `leader`
+- `source_kind`
+- `source_id`
 - `max_cost`
 - `sizing_mode`
 - `sizing_value`
@@ -128,19 +195,27 @@ Sizing modes:
 - `percent_of_leader`
 - `max_affordable`
 
-Execution flow:
-
-1. Follower arms a copy rule.
-2. Leader posts a signal.
-3. Backend prepares a DeepBook Predict transaction using follower size constraints.
-4. Follower signs and executes.
-5. Hot Hands emits or records a `CopyReceipt`.
-
 ## Scoring
 
 Hot score should make the table feel alive while resisting obvious gaming.
 
-Inputs:
+Use two score labels until Hot Hands-native proof exists:
+
+- `Market Heat`: inferred from raw DeepBook Predict activity.
+- `Hot Hands Reputation`: earned from Hot Hands-native signals, copy receipts,
+  and linked settlement outcomes.
+
+Market Heat inputs:
+
+- recent mints
+- recent realized PnL from redeems or settled positions
+- recent ROI where cost/payout are known
+- activity freshness
+- trade size
+- sample size
+- spam penalties
+
+Hot Hands Reputation inputs:
 
 - current resolved win streak
 - recent realized PnL
@@ -180,6 +255,12 @@ Fully deterministic local mode with fake oracle, fake signals, fake spectators, 
 ### Replay Mode
 
 Recorded DeepBook Predict testnet data replayed through the same UI and realtime channels. Used as a fallback if testnet is slow during judging.
+
+### Live Testnet Read Mode
+
+Reads public DeepBook Predict mints/redeems/trades and renders real wallet
+activity. Copy can be disabled, preview-only, or user-signed depending on the
+wallet-flow milestone.
 
 ### Live Testnet Bot Mode
 
