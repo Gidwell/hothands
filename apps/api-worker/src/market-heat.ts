@@ -27,6 +27,7 @@ export interface MarketHeatRow {
   strike: number;
   expiryMs: number;
   intervalLabel: string;
+  observedAtMs: number;
   heatScore: number;
   status: "copy_ready" | "watching";
 }
@@ -124,6 +125,7 @@ function mapHeatTraderToRow(
   const heatScore = Math.min(99, Math.max(0, Math.round(trader.hotScore)));
   const strike = latestEvent?.strike ?? trader.observedVolume;
   const expiryMs = latestEvent?.expiryMs ?? trader.lastSeenMs;
+  const observedAtMs = latestEvent?.timestampMs ?? trader.lastSeenMs;
   const intervalLabel = latestEvent
     ? formatIntervalLabel(latestEvent, oraclesById.get(latestEvent.oracleId))
     : "Next";
@@ -137,6 +139,7 @@ function mapHeatTraderToRow(
     strike: normalizeStrike(strike),
     expiryMs,
     intervalLabel,
+    observedAtMs,
     heatScore,
     status: latestMint ? "copy_ready" : "watching"
   };
@@ -208,6 +211,7 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
       strike: 67_000,
       expiryMs: 1_779_158_400_000,
       intervalLabel: "15m",
+      observedAtMs: 1_779_157_500_000,
       heatScore: 91,
       status: "copy_ready"
     },
@@ -220,6 +224,7 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
       strike: 66_000,
       expiryMs: 1_779_158_400_000,
       intervalLabel: "1h",
+      observedAtMs: 1_779_154_800_000,
       heatScore: 84,
       status: "watching"
     },
@@ -232,6 +237,7 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
       strike: 68_000,
       expiryMs: 1_779_158_400_000,
       intervalLabel: "1d",
+      observedAtMs: 1_779_151_200_000,
       heatScore: 78,
       status: "copy_ready"
     }

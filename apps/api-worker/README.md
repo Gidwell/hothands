@@ -79,15 +79,17 @@ Rows use the browser-facing input shape:
   "strike": 78098,
   "expiryMs": 1779340500000,
   "intervalLabel": "15m",
+  "observedAtMs": 1779340200000,
   "heatScore": 91,
   "status": "copy_ready"
 }
 ```
 
-`status: "copy_ready"` means a recent mint exists and the PWA can present
-`Copy now` for a user-signed copy. `status: "watching"` means the row is still
-copyable as `Copy next`, but the app waits for the trader's next observed mint.
-Heat ranks rows; it does not gate copying.
+`observedAtMs` is the latest trade or position event time displayed by the PWA
+as a compact relative label. `status: "copy_ready"` means a recent mint exists
+and the PWA can present `Copy now` for a user-signed copy. `status: "watching"`
+means the row is still copyable as `Copy next`, but the app waits for the
+trader's next observed mint. Heat ranks rows; it does not gate copying.
 
 ### Local Commands
 

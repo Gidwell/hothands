@@ -10,7 +10,9 @@ import {
 
 describe("market heat preview model", () => {
   test("builds a compact external wallet watch preview from captured rows", () => {
-    const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS);
+    const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
+      nowMs: 1_779_165_600_000,
+    });
 
     expect(preview).toEqual({
       title: "Market Heat",
@@ -29,7 +31,7 @@ describe("market heat preview model", () => {
           heatScore: 92,
           actionLabel: "Copy now",
           status: "copy_ready",
-          statusLabel: "Mint seen",
+          statusLabel: "2h ago",
         },
         {
           id: "external-0x28b7",
@@ -41,7 +43,7 @@ describe("market heat preview model", () => {
           heatScore: 87,
           actionLabel: "Copy next",
           status: "watching",
-          statusLabel: "Next mint",
+          statusLabel: "4h ago",
         },
         {
           id: "external-0x6f09",
@@ -53,14 +55,16 @@ describe("market heat preview model", () => {
           heatScore: 81,
           actionLabel: "Copy next",
           status: "watching",
-          statusLabel: "Next mint",
+          statusLabel: "1d ago",
         },
       ],
     });
   });
 
   test("selects and closes a next-mint row without implying a ready signature", () => {
-    const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 3);
+    const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 3, {
+      nowMs: 1_779_165_600_000,
+    });
     const selected = selectMarketHeatIntent(
       { selectedRowId: null },
       "external-0x28b7",
@@ -74,21 +78,23 @@ describe("market heat preview model", () => {
       closeLabel: "Cancel",
       detailLabel: "Next observed mint",
       signatureLabel: "We'll prepare the next mint for your signature",
-      statusLabel: "Next mint",
+      statusLabel: "4h ago",
       title: "Copy 0x28b7...4c10",
     });
     expect(closeMarketHeatIntent(selected)).toEqual({ selectedRowId: null });
   });
 
   test("labels copy-now intent only when an observed mint is available", () => {
-    const [copyReadyRow] = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS).rows;
+    const [copyReadyRow] = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
+      nowMs: 1_779_165_600_000,
+    }).rows;
 
     expect(buildMarketHeatIntentPanel(copyReadyRow)).toEqual({
       actionLabel: "Copy now",
       closeLabel: "Cancel",
       detailLabel: "Recent mint",
       signatureLabel: "Ready for user signature",
-      statusLabel: "Mint seen",
+      statusLabel: "2h ago",
       title: "Copy 0x84d2...91af",
     });
   });
@@ -97,6 +103,7 @@ describe("market heat preview model", () => {
     const calls: string[] = [];
     const preview = await loadMarketHeatPreview({
       apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_000_000,
       fetcher: async (url) => {
         calls.push(String(url));
 
@@ -113,6 +120,7 @@ describe("market heat preview model", () => {
               strike: 3400,
               expiryMs: 1_779_158_400_000,
               intervalLabel: "1h",
+              observedAtMs: 1_779_165_000_000,
               heatScore: 74,
               status: "watching",
             },
@@ -131,7 +139,7 @@ describe("market heat preview model", () => {
       strikeLabel: "Strike 3.4K",
       intervalLabel: "1h",
       actionLabel: "Copy next",
-      statusLabel: "Next mint",
+      statusLabel: "just now",
     });
   });
 
@@ -145,6 +153,7 @@ describe("market heat preview model", () => {
       strike: 70_000 + index,
       expiryMs: 1_779_158_400_000,
       intervalLabel: "15m",
+      observedAtMs: 1_779_165_000_000 - index * 60_000,
       heatScore: 99 - index,
       status: index % 2 === 0 ? ("copy_ready" as const) : ("watching" as const),
     }));
@@ -155,6 +164,7 @@ describe("market heat preview model", () => {
   test("keeps captured testnet API source labels compact", async () => {
     const preview = await loadMarketHeatPreview({
       apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_000_000,
       fetcher: async () =>
         Response.json({
           mode: "testnet",
@@ -169,6 +179,7 @@ describe("market heat preview model", () => {
               strike: 67000,
               expiryMs: 1_779_158_400_000,
               intervalLabel: "15m",
+              observedAtMs: 1_779_165_000_000,
               heatScore: 91,
               status: "copy_ready",
             },
@@ -188,6 +199,7 @@ describe("market heat preview model", () => {
   test("labels live testnet API rows without extra copy", async () => {
     const preview = await loadMarketHeatPreview({
       apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_000_000,
       fetcher: async () =>
         Response.json({
           mode: "testnet",
@@ -202,6 +214,7 @@ describe("market heat preview model", () => {
               strike: 69000,
               expiryMs: 1_779_158_400_000,
               intervalLabel: "1d",
+              observedAtMs: 1_779_165_000_000,
               heatScore: 88,
               status: "watching",
             },
@@ -214,7 +227,7 @@ describe("market heat preview model", () => {
       market: "BTC-USD DOWN",
       intervalLabel: "1d",
       actionLabel: "Copy next",
-      statusLabel: "Next mint",
+      statusLabel: "just now",
     });
   });
 

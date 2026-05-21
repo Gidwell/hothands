@@ -13,6 +13,7 @@ const watchingOnlyRows: MarketHeatPreviewRowInput[] = [
     strike: 6_200,
     expiryMs: 1_779_158_400_000,
     intervalLabel: "1h",
+    observedAtMs: 1_779_158_000_000,
     heatScore: 84,
     status: "watching",
   },

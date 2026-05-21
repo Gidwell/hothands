@@ -28,6 +28,7 @@ describe("testnet market heat endpoint", () => {
     expect(typeof body.rows[0].strike).toBe("number");
     expect(typeof body.rows[0].expiryMs).toBe("number");
     expect(typeof body.rows[0].intervalLabel).toBe("string");
+    expect(body.rows[0].observedAtMs).toBe(1_779_070_800_000);
     expect(typeof body.rows[0].heatScore).toBe("number");
     expect(body.rows[0].status).toMatch(/^(copy_ready|watching)$/);
     expect(body.rows[0].strike).toBeGreaterThan(0);
@@ -97,6 +98,7 @@ describe("testnet market heat endpoint", () => {
       "intervalLabel",
       "manager",
       "market",
+      "observedAtMs",
       "side",
       "status",
       "strike",
@@ -110,6 +112,7 @@ describe("testnet market heat endpoint", () => {
       side: expect.stringMatching(/^(UP|DOWN)$/),
       expiryMs: expect.any(Number),
       intervalLabel: expect.any(String),
+      observedAtMs: expect.any(Number),
       heatScore: expect.any(Number),
       strike: expect.any(Number),
       status: expect.stringMatching(/^(copy_ready|watching)$/)
@@ -144,6 +147,7 @@ describe("testnet market heat endpoint", () => {
       "intervalLabel",
       "manager",
       "market",
+      "observedAtMs",
       "side",
       "status",
       "strike",
@@ -157,6 +161,7 @@ describe("testnet market heat endpoint", () => {
       side: expect.stringMatching(/^(UP|DOWN)$/),
       expiryMs: expect.any(Number),
       intervalLabel: expect.any(String),
+      observedAtMs: expect.any(Number),
       heatScore: expect.any(Number),
       strike: expect.any(Number),
       status: expect.stringMatching(/^(copy_ready|watching)$/)

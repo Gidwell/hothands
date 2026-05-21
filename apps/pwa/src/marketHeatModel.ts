@@ -9,6 +9,7 @@ export type MarketHeatPreviewRowInput = {
   strike: number;
   expiryMs: number;
   intervalLabel: string;
+  observedAtMs: number;
   heatScore: number;
   status: MarketHeatStatus;
 };
@@ -23,7 +24,7 @@ export type MarketHeatPreviewRow = {
   heatScore: number;
   actionLabel: "Copy now" | "Copy next";
   status: MarketHeatStatus;
-  statusLabel: "Mint seen" | "Next mint";
+  statusLabel: string;
 };
 
 export type MarketHeatIntentState = {
@@ -35,7 +36,7 @@ export type MarketHeatIntentPanel = {
   closeLabel: "Cancel";
   detailLabel: "Next observed mint" | "Recent mint";
   signatureLabel: "We'll prepare the next mint for your signature" | "Ready for user signature";
-  statusLabel: "Mint seen" | "Next mint";
+  statusLabel: string;
   title: string;
 };
 
@@ -51,6 +52,11 @@ export type MarketHeatPreview = {
 export type LoadMarketHeatPreviewOptions = {
   apiBaseUrl?: string;
   fetcher?: typeof fetch;
+  nowMs?: number;
+};
+
+export type BuildMarketHeatPreviewOptions = {
+  nowMs?: number;
 };
 
 export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
@@ -63,6 +69,7 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
     strike: 12_400,
     expiryMs: 1_779_158_400_000,
     intervalLabel: "15m",
+    observedAtMs: 1_779_158_400_000,
     heatScore: 92,
     status: "copy_ready",
   },
@@ -75,6 +82,7 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
     strike: 7_800,
     expiryMs: 1_779_158_400_000,
     intervalLabel: "1h",
+    observedAtMs: 1_779_151_200_000,
     heatScore: 87,
     status: "watching",
   },
@@ -87,6 +95,7 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
     strike: 4_200,
     expiryMs: 1_779_158_400_000,
     intervalLabel: "1d",
+    observedAtMs: 1_779_079_200_000,
     heatScore: 81,
     status: "watching",
   },
@@ -95,6 +104,7 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
 export function buildMarketHeatPreview(
   rows: MarketHeatPreviewRowInput[] = MARKET_HEAT_PREVIEW_ROWS,
   limit = 8,
+  { nowMs = Date.now() }: BuildMarketHeatPreviewOptions = {},
 ): MarketHeatPreview {
   return {
     title: "Market Heat",
@@ -112,7 +122,7 @@ export function buildMarketHeatPreview(
       heatScore: row.heatScore,
       actionLabel: row.status === "copy_ready" ? "Copy now" : "Copy next",
       status: row.status,
-      statusLabel: row.status === "copy_ready" ? "Mint seen" : "Next mint",
+      statusLabel: formatTradeTime(row.observedAtMs, nowMs),
     })),
   };
 }
@@ -161,33 +171,34 @@ export function buildMarketHeatIntentPanel(
 export async function loadMarketHeatPreview({
   apiBaseUrl,
   fetcher = fetch,
+  nowMs = Date.now(),
 }: LoadMarketHeatPreviewOptions = {}): Promise<MarketHeatPreview> {
   const normalizedBaseUrl = apiBaseUrl?.trim();
 
   if (!normalizedBaseUrl) {
-    return buildMarketHeatPreview();
+    return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, { nowMs });
   }
 
   try {
     const response = await fetcher(buildMarketHeatUrl(normalizedBaseUrl));
 
     if (!response.ok) {
-      return buildMarketHeatPreview();
+      return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, { nowMs });
     }
 
     const payload: unknown = await response.json();
     const rows = parseMarketHeatRows(payload);
 
     if (!rows) {
-      return buildMarketHeatPreview();
+      return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, { nowMs });
     }
 
     return {
-      ...buildMarketHeatPreview(rows),
+      ...buildMarketHeatPreview(rows, 8, { nowMs }),
       sourceLabel: formatMarketHeatSource(payload),
     };
   } catch {
-    return buildMarketHeatPreview();
+    return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, { nowMs });
   }
 }
 
@@ -231,9 +242,38 @@ function isMarketHeatRowInput(value: unknown): value is MarketHeatPreviewRowInpu
     isNonNegativeNumber(value.strike) &&
     isNonNegativeNumber(value.expiryMs) &&
     isNonEmptyString(value.intervalLabel) &&
+    isNonNegativeNumber(value.observedAtMs) &&
     isNonNegativeNumber(value.heatScore) &&
     (value.status === "copy_ready" || value.status === "watching")
   );
+}
+
+function formatTradeTime(observedAtMs: number, nowMs: number): string {
+  const elapsedMs = Math.max(0, nowMs - observedAtMs);
+  const elapsedMinutes = Math.floor(elapsedMs / 60_000);
+
+  if (elapsedMinutes < 1) {
+    return "just now";
+  }
+
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes}m ago`;
+  }
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${elapsedHours}h ago`;
+  }
+
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  if (elapsedDays < 30) {
+    return `${elapsedDays}d ago`;
+  }
+
+  return new Date(observedAtMs).toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "short",
+  });
 }
 
 function formatMarketHeatSource(payload: unknown): string {
