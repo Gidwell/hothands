@@ -25,12 +25,18 @@ describe("testnet market heat endpoint", () => {
     expect(body.rows[0].manager).toBe("manager-btc-72k");
     expect(body.rows[0].market).toBe("BTC-USD");
     expect(body.rows[0].side).toBe("UP");
-    expect(typeof body.rows[0].observedMint).toBe("number");
+    expect(typeof body.rows[0].strike).toBe("number");
+    expect(typeof body.rows[0].expiryMs).toBe("number");
+    expect(typeof body.rows[0].intervalLabel).toBe("string");
     expect(typeof body.rows[0].heatScore).toBe("number");
-    expect(typeof body.rows[0].preparedCopies).toBe("number");
     expect(body.rows[0].status).toMatch(/^(copy_ready|watching)$/);
-    expect(body.rows[0].observedMint).toBeGreaterThan(0);
+    expect(body.rows[0].strike).toBeGreaterThan(0);
     expect(body.rows[0].heatScore).toBeGreaterThan(0);
+    expect(body.rows.find((row: { wallet: string }) => row.wallet === "0xtrader-warm")).toMatchObject({
+      heatScore: 15,
+      intervalLabel: "15m",
+      status: "copy_ready"
+    });
   });
 
   test("falls back to captured read-only market heat when live Predict reads fail", async () => {
@@ -56,7 +62,7 @@ describe("testnet market heat endpoint", () => {
       market: "BTC-USD",
       side: "DOWN"
     });
-    expect(projection.rows[0].observedMint).toBeGreaterThan(0);
+    expect(projection.rows[0].strike).toBeGreaterThan(0);
   });
 
   test("normalizes high precision live strikes into readable BTC prices", async () => {
@@ -69,7 +75,7 @@ describe("testnet market heat endpoint", () => {
     });
 
     expect(projection.source).toBe("live_testnet");
-    expect(projection.rows[0].observedMint).toBe(78098);
+    expect(projection.rows[0].strike).toBe(78098);
     expect(projection.rows[0].heatScore).toBeLessThanOrEqual(99);
   });
 
@@ -85,14 +91,15 @@ describe("testnet market heat endpoint", () => {
     expect(projection.rows).toBeArray();
     expect(projection.rows.length).toBeGreaterThanOrEqual(2);
     expect(Object.keys(projection.rows[0]).sort()).toEqual([
+      "expiryMs",
       "heatScore",
       "id",
+      "intervalLabel",
       "manager",
       "market",
-      "observedMint",
-      "preparedCopies",
       "side",
       "status",
+      "strike",
       "wallet"
     ]);
     expect(projection.rows[0]).toEqual({
@@ -101,9 +108,10 @@ describe("testnet market heat endpoint", () => {
       manager: expect.any(String),
       market: expect.any(String),
       side: expect.stringMatching(/^(UP|DOWN)$/),
-      observedMint: expect.any(Number),
+      expiryMs: expect.any(Number),
+      intervalLabel: expect.any(String),
       heatScore: expect.any(Number),
-      preparedCopies: expect.any(Number),
+      strike: expect.any(Number),
       status: expect.stringMatching(/^(copy_ready|watching)$/)
     });
   });
@@ -130,14 +138,15 @@ describe("testnet market heat endpoint", () => {
     expect(body.rows).toBeArray();
     expect(body.rows.length).toBeGreaterThanOrEqual(2);
     expect(Object.keys(body.rows[0]).sort()).toEqual([
+      "expiryMs",
       "heatScore",
       "id",
+      "intervalLabel",
       "manager",
       "market",
-      "observedMint",
-      "preparedCopies",
       "side",
       "status",
+      "strike",
       "wallet"
     ]);
     expect(body.rows[0]).toEqual({
@@ -146,9 +155,10 @@ describe("testnet market heat endpoint", () => {
       manager: expect.any(String),
       market: expect.any(String),
       side: expect.stringMatching(/^(UP|DOWN)$/),
-      observedMint: expect.any(Number),
+      expiryMs: expect.any(Number),
+      intervalLabel: expect.any(String),
       heatScore: expect.any(Number),
-      preparedCopies: expect.any(Number),
+      strike: expect.any(Number),
       status: expect.stringMatching(/^(copy_ready|watching)$/)
     });
   });
@@ -198,7 +208,12 @@ function createLivePredictFetch(
 
     if (url.endsWith("/oracles")) {
       return jsonResponse([
-        btcOracle({ oracle_id: "btc-live", expiry: 1_779_158_400, status: "active" })
+        btcOracle({
+          oracle_id: "btc-live",
+          expiry: 1_779_158_400,
+          activated_at: 1_779_157_500,
+          status: "active"
+        })
       ]);
     }
 

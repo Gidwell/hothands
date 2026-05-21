@@ -485,8 +485,8 @@ export function MarketHeatPreview({
             </div>
             <div className="trader-row-metrics" aria-label={`${row.displayName} market heat stats`}>
               <span>{row.market}</span>
-              <span>{row.observedMint} mint</span>
-              <span>{row.preparedCopies} prep</span>
+              <span>{row.strikeLabel}</span>
+              <span>Exp {row.intervalLabel}</span>
             </div>
             {intentPanel ? (
               <div
@@ -515,7 +515,7 @@ export function MarketHeatPreview({
                 <div className="market-heat-intent-meta" aria-label={`${row.displayName} intent`}>
                   <span>{intentPanel.statusLabel}</span>
                   <span>{intentPanel.detailLabel}</span>
-                  <span>{row.market}</span>
+                  <span>Exp {row.intervalLabel}</span>
                 </div>
               </div>
             ) : null}

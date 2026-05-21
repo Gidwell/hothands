@@ -8,34 +8,35 @@ test("mobile market heat mode opens watch and copy intent panels", async ({ page
   const preview = page.getByTestId("market-heat-preview");
   await expect(preview).toBeVisible();
   await expect(preview).toContainText("BTC-USD");
-  await expect(preview).toContainText("Copy hand");
-  await expect(preview).toContainText("Watch hand");
+  await expect(preview).toContainText("Copy now");
+  await expect(preview).toContainText("Copy next");
+  await expect(preview).toContainText("Strike");
 
   const rows = page.getByTestId("market-heat-row");
   await expect(rows.first()).toBeVisible();
   await expect(rows.first()).toContainText("BTC-USD");
 
-  const watchOnlyRow = rows.filter({ hasText: "Watch hand" });
+  const watchOnlyRow = rows.filter({ hasText: "Copy next" });
   await expect(watchOnlyRow).toHaveCount(1);
   await watchOnlyRow.getByTestId("market-heat-row-action").click();
 
   const intentPanel = page.getByTestId("market-heat-intent-panel");
   await expect(intentPanel).toBeVisible();
-  await expect(intentPanel).toContainText("Watch hand");
-  await expect(intentPanel).toContainText("Copy waits for a ready mint");
-  await expect(intentPanel).toContainText("No copy prepared");
+  await expect(intentPanel).toContainText("Copy next");
+  await expect(intentPanel).toContainText("We'll prepare the next mint for your signature");
+  await expect(intentPanel).toContainText("Next observed mint");
 
   await intentPanel.getByTestId("close-market-heat-intent").click();
   await expect(intentPanel).toHaveCount(0);
 
-  const copyReadyRow = rows.filter({ hasText: "Copy hand" });
+  const copyReadyRow = rows.filter({ hasText: "Copy now" });
   await expect(copyReadyRow).toHaveCount(1);
   await copyReadyRow.getByTestId("market-heat-row-action").click();
 
   await expect(intentPanel).toBeVisible();
-  await expect(intentPanel).toContainText("Copy hand");
+  await expect(intentPanel).toContainText("Copy now");
   await expect(intentPanel).toContainText("Ready for user signature");
-  await expect(intentPanel).toContainText("Prepared copy");
+  await expect(intentPanel).toContainText("Recent mint");
 });
 
 test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", async ({ page }) => {

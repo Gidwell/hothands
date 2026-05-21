@@ -48,8 +48,8 @@ test("mobile Testnet market heat mode renders worker API rows", async ({
 
   const rows = page.getByTestId("market-heat-row");
   await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toContainText("67.0K mint");
-  await expect(rows.first()).toContainText("Copy hand");
-  await expect(rows.nth(1)).toContainText("66.0K mint");
-  await expect(rows.nth(1)).toContainText("Watch hand");
+  await expect(rows.first()).toContainText("Strike 67.0K");
+  await expect(rows.first()).toContainText("Copy now");
+  await expect(rows.nth(1)).toContainText("Strike 66.0K");
+  await expect(rows.nth(1)).toContainText("Copy next");
 });

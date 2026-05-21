@@ -64,6 +64,8 @@ projection. The route first tries live DeepBook Predict public testnet reads via
 the indexer package and returns `source: "live_testnet"` when recent activity is
 available. If Predict reads fail or return no usable rows, the route falls back
 to deterministic captured activity labelled with `source: "captured_testnet"`.
+Live rows are ranked from the recent BTC Predict event stream, so different
+expiry buckets can appear together.
 
 Rows use the browser-facing input shape:
 
@@ -74,12 +76,18 @@ Rows use the browser-facing input shape:
   "manager": "0xmanager",
   "market": "BTC-USD",
   "side": "UP",
-  "observedMint": 78098,
+  "strike": 78098,
+  "expiryMs": 1779340500000,
+  "intervalLabel": "15m",
   "heatScore": 91,
-  "preparedCopies": 14,
   "status": "copy_ready"
 }
 ```
+
+`status: "copy_ready"` means a recent mint exists and the PWA can present
+`Copy now` for a user-signed copy. `status: "watching"` means the row is still
+copyable as `Copy next`, but the app waits for the trader's next observed mint.
+Heat ranks rows; it does not gate copying.
 
 ### Local Commands
 

@@ -10,9 +10,10 @@ const watchingOnlyRows: MarketHeatPreviewRowInput[] = [
     manager: "manager 0xaaaa...0000",
     market: "BTC-USD",
     side: "DOWN",
-    observedMint: 6_200,
+    strike: 6_200,
+    expiryMs: 1_779_158_400_000,
+    intervalLabel: "1h",
     heatScore: 84,
-    preparedCopies: 0,
     status: "watching",
   },
 ];
@@ -31,9 +32,9 @@ describe("MarketHeatPreview component", () => {
     );
 
     expect(html).toContain('data-testid="market-heat-intent-panel"');
-    expect(html).toContain("Watch 0xaaaa...0000");
-    expect(html).toContain("No copy prepared");
-    expect(html).toContain("Copy waits for a ready mint");
+    expect(html).toContain("Copy 0xaaaa...0000");
+    expect(html).toContain("Next observed mint");
+    expect(html).toContain("We&#x27;ll prepare the next mint for your signature");
     expect(html).not.toContain("Ready for user signature");
   });
 });

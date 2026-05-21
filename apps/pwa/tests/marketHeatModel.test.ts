@@ -15,7 +15,7 @@ describe("market heat preview model", () => {
     expect(preview).toEqual({
       title: "Market Heat",
       modeLabel: "Testnet",
-      actionLabel: "Watch hand",
+      actionLabel: "Copy",
       detailLabel: "Observed Predict mints",
       sourceLabel: "Captured",
       rows: [
@@ -24,30 +24,30 @@ describe("market heat preview model", () => {
           displayName: "0x84d2...91af",
           manager: "manager 0xb795...3125",
           market: "BTC-USD UP",
-          observedMint: "12.4K",
+          strikeLabel: "Strike 12.4K",
+          intervalLabel: "15m",
           heatScore: 92,
-          preparedCopies: 18,
-          actionLabel: "Copy hand",
+          actionLabel: "Copy now",
           status: "copy_ready",
-          statusLabel: "Copy ready",
+          statusLabel: "Mint seen",
         },
         {
           id: "external-0x28b7",
           displayName: "0x28b7...4c10",
           manager: "manager 0x43af...e64",
           market: "BTC-USD DOWN",
-          observedMint: "7.8K",
+          strikeLabel: "Strike 7.8K",
+          intervalLabel: "1h",
           heatScore: 87,
-          preparedCopies: 11,
-          actionLabel: "Watch hand",
+          actionLabel: "Copy next",
           status: "watching",
-          statusLabel: "Watching",
+          statusLabel: "Next mint",
         },
       ],
     });
   });
 
-  test("selects and closes a row without promoting watch-only rows to copy intent", () => {
+  test("selects and closes a next-mint row without implying a ready signature", () => {
     const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 3);
     const selected = selectMarketHeatIntent(
       { selectedRowId: null },
@@ -58,25 +58,25 @@ describe("market heat preview model", () => {
 
     expect(selected.selectedRowId).toBe("external-0x28b7");
     expect(buildMarketHeatIntentPanel(watchingRow)).toEqual({
-      actionLabel: "Watch hand",
+      actionLabel: "Copy next",
       closeLabel: "Cancel",
-      detailLabel: "No copy prepared",
-      signatureLabel: "Copy waits for a ready mint",
-      statusLabel: "Watching",
-      title: "Watch 0x28b7...4c10",
+      detailLabel: "Next observed mint",
+      signatureLabel: "We'll prepare the next mint for your signature",
+      statusLabel: "Next mint",
+      title: "Copy 0x28b7...4c10",
     });
     expect(closeMarketHeatIntent(selected)).toEqual({ selectedRowId: null });
   });
 
-  test("labels copy intent only when an observed mint has a prepared copy", () => {
+  test("labels copy-now intent only when an observed mint is available", () => {
     const [copyReadyRow] = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS).rows;
 
     expect(buildMarketHeatIntentPanel(copyReadyRow)).toEqual({
-      actionLabel: "Copy hand",
+      actionLabel: "Copy now",
       closeLabel: "Cancel",
-      detailLabel: "Prepared copy",
+      detailLabel: "Recent mint",
       signatureLabel: "Ready for user signature",
-      statusLabel: "Copy ready",
+      statusLabel: "Mint seen",
       title: "Copy 0x84d2...91af",
     });
   });
@@ -98,9 +98,10 @@ describe("market heat preview model", () => {
               manager: "manager 0xabcd...0001",
               market: "BTC-USD",
               side: "DOWN",
-              observedMint: 3400,
+              strike: 3400,
+              expiryMs: 1_779_158_400_000,
+              intervalLabel: "1h",
               heatScore: 74,
-              preparedCopies: 5,
               status: "watching",
             },
           ],
@@ -115,8 +116,10 @@ describe("market heat preview model", () => {
       id: "external-0x1111",
       displayName: "0x1111...0000",
       market: "BTC-USD DOWN",
-      observedMint: "3.4K",
-      statusLabel: "Watching",
+      strikeLabel: "Strike 3.4K",
+      intervalLabel: "1h",
+      actionLabel: "Copy next",
+      statusLabel: "Next mint",
     });
   });
 
@@ -134,9 +137,10 @@ describe("market heat preview model", () => {
               manager: "manager 0xabcd...0002",
               market: "BTC-USD",
               side: "UP",
-              observedMint: 67000,
+              strike: 67000,
+              expiryMs: 1_779_158_400_000,
+              intervalLabel: "15m",
               heatScore: 91,
-              preparedCopies: 14,
               status: "copy_ready",
             },
           ],
@@ -146,7 +150,9 @@ describe("market heat preview model", () => {
     expect(preview.sourceLabel).toBe("Captured");
     expect(preview.rows[0]).toMatchObject({
       market: "BTC-USD UP",
-      actionLabel: "Copy hand",
+      strikeLabel: "Strike 67.0K",
+      intervalLabel: "15m",
+      actionLabel: "Copy now",
     });
   });
 
@@ -164,9 +170,10 @@ describe("market heat preview model", () => {
               manager: "manager 0xabcd...0003",
               market: "BTC-USD",
               side: "DOWN",
-              observedMint: 69000,
+              strike: 69000,
+              expiryMs: 1_779_158_400_000,
+              intervalLabel: "1d",
               heatScore: 88,
-              preparedCopies: 3,
               status: "watching",
             },
           ],
@@ -176,7 +183,9 @@ describe("market heat preview model", () => {
     expect(preview.sourceLabel).toBe("Live Testnet");
     expect(preview.rows[0]).toMatchObject({
       market: "BTC-USD DOWN",
-      statusLabel: "Watching",
+      intervalLabel: "1d",
+      actionLabel: "Copy next",
+      statusLabel: "Next mint",
     });
   });
 

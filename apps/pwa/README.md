@@ -21,3 +21,6 @@ Testnet mode:
   `/testnet/market-heat` and falls back to captured rows if the request fails
 - source labels stay compact (`Captured`, `API testnet`) so the first screen
   stays scan-friendly
+- market heat rows show wallet, direction, strike, expiry bucket, and heat
+- `Copy now` means a recent mint can be prepared for user signature; `Copy next`
+  means the wallet can be watched for the next mint

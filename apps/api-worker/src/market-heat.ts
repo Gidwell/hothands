@@ -3,7 +3,8 @@ import {
   createPredictReadCanary,
   createPredictTradeHistoryClient,
   type MarketHeatTrader,
-  type PredictNormalizedTradeEvent
+  type PredictNormalizedTradeEvent,
+  type PredictOracleState
 } from "@hot-hands/indexer";
 
 export interface MarketHeatProjection {
@@ -23,9 +24,10 @@ export interface MarketHeatRow {
   manager: string;
   market: string;
   side: "UP" | "DOWN";
-  observedMint: number;
+  strike: number;
+  expiryMs: number;
+  intervalLabel: string;
   heatScore: number;
-  preparedCopies: number;
   status: "copy_ready" | "watching";
 }
 
@@ -70,11 +72,12 @@ async function getLiveTestnetMarketHeat(fetchImpl: typeof fetch): Promise<Market
       client.listRedeemedPositions()
     ]).then((groups) => groups.flat())
   );
-  const activeOracleEvents = allEvents.filter((event) => event.oracleId === oracle.oracle_id);
-  const events = activeOracleEvents.length > 0 ? activeOracleEvents : allEvents;
-  const heat = computeMarketHeat(events);
+  const oraclesById = new Map(
+    canary.btcOracles.map((btcOracle) => [btcOracle.oracle_id, btcOracle])
+  );
+  const heat = computeMarketHeat(allEvents);
   const rows = heat.slice(0, 8).map((trader, index) =>
-    mapHeatTraderToRow(trader, events, index)
+    mapHeatTraderToRow(trader, allEvents, oraclesById, index)
   );
 
   return {
@@ -100,8 +103,14 @@ function dedupeEvents(events: PredictNormalizedTradeEvent[]): PredictNormalizedT
 function mapHeatTraderToRow(
   trader: MarketHeatTrader,
   events: PredictNormalizedTradeEvent[],
+  oraclesById: Map<string, PredictOracleState>,
   index: number
 ): MarketHeatRow {
+  const traderEvents = [...events]
+    .filter(
+      (event) => event.actor === trader.trader && event.managerId === trader.managerId
+    )
+    .sort((left, right) => right.timestampMs - left.timestampMs);
   const latestMint = [...events]
     .filter(
       (event) =>
@@ -110,19 +119,26 @@ function mapHeatTraderToRow(
         event.managerId === trader.managerId
     )
     .sort((left, right) => right.timestampMs - left.timestampMs)[0];
+  const latestEvent = latestMint ?? traderEvents[0];
 
   const heatScore = Math.min(99, Math.max(0, Math.round(trader.hotScore)));
+  const strike = latestEvent?.strike ?? trader.observedVolume;
+  const expiryMs = latestEvent?.expiryMs ?? trader.lastSeenMs;
+  const intervalLabel = latestEvent
+    ? formatIntervalLabel(latestEvent, oraclesById.get(latestEvent.oracleId))
+    : "Next";
 
   return {
     id: `live-${trader.managerId}-${shortWallet(trader.trader)}-${latestMint?.eventId ?? index}`,
     wallet: trader.trader,
     manager: trader.managerId,
     market: "BTC-USD",
-    side: latestMint?.isUp === false ? "DOWN" : "UP",
-    observedMint: normalizeObservedMint(latestMint?.strike ?? trader.observedVolume),
+    side: latestEvent?.isUp === false ? "DOWN" : "UP",
+    strike: normalizeStrike(strike),
+    expiryMs,
+    intervalLabel,
     heatScore,
-    preparedCopies: Math.max(1, Math.round(heatScore / 7)),
-    status: heatScore >= 20 ? "copy_ready" : "watching"
+    status: latestMint ? "copy_ready" : "watching"
   };
 }
 
@@ -130,7 +146,7 @@ function shortWallet(wallet: string): string {
   return wallet.replace(/^0x/, "").slice(0, 10) || "unknown";
 }
 
-function normalizeObservedMint(value: number): number {
+function normalizeStrike(value: number): number {
   if (value >= 1_000_000_000_000) {
     return Math.round(value / 1_000_000_000);
   }
@@ -140,6 +156,40 @@ function normalizeObservedMint(value: number): number {
   }
 
   return Math.round(value);
+}
+
+function formatIntervalLabel(
+  event: PredictNormalizedTradeEvent,
+  oracle: PredictOracleState | undefined
+): string {
+  const intervalMs =
+    oracle?.activated_at && oracle.expiry > oracle.activated_at
+      ? normalizeEpochMs(oracle.expiry) - normalizeEpochMs(oracle.activated_at)
+      : event.expiryMs - event.timestampMs;
+
+  return formatDurationLabel(intervalMs);
+}
+
+function formatDurationLabel(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return "Exp";
+  }
+
+  const minutes = Math.max(1, Math.round(durationMs / 60_000));
+  if (minutes < 90) {
+    const roundedMinutes = minutes > 20 ? Math.round(minutes / 15) * 15 : minutes;
+    return `${roundedMinutes}m`;
+  }
+
+  if (minutes < 36 * 60) {
+    return `${Math.round(minutes / 60)}h`;
+  }
+
+  return `${Math.round(minutes / (24 * 60))}d`;
+}
+
+function normalizeEpochMs(value: number): number {
+  return value < 1_000_000_000_000 ? value * 1000 : value;
 }
 
 const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
@@ -155,9 +205,10 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
       manager: "Alpha Cruz",
       market: "BTC-USD",
       side: "UP",
-      observedMint: 67_000,
+      strike: 67_000,
+      expiryMs: 1_779_158_400_000,
+      intervalLabel: "15m",
       heatScore: 91,
-      preparedCopies: 14,
       status: "copy_ready"
     },
     {
@@ -166,9 +217,10 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
       manager: "Mina Park",
       market: "BTC-USD",
       side: "DOWN",
-      observedMint: 66_000,
+      strike: 66_000,
+      expiryMs: 1_779_158_400_000,
+      intervalLabel: "1h",
       heatScore: 84,
-      preparedCopies: 9,
       status: "watching"
     },
     {
@@ -177,9 +229,10 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
       manager: "Vee Moss",
       market: "BTC-USD",
       side: "UP",
-      observedMint: 68_000,
+      strike: 68_000,
+      expiryMs: 1_779_158_400_000,
+      intervalLabel: "1d",
       heatScore: 78,
-      preparedCopies: 6,
       status: "copy_ready"
     }
   ]

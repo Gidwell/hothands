@@ -40,6 +40,7 @@ export type PredictReadCanaryResult = {
   quoteAssets: string[];
   btcOracleCount: number;
   activeBtcOracleCount: number;
+  btcOracles: PredictOracleState[];
   selectedBtcOracle: PredictOracleState | null;
   latestPrice: PredictLatestPrice | null;
 };
@@ -265,6 +266,7 @@ export function createPredictReadCanary({
         quoteAssets: state.quote_assets,
         btcOracleCount: btcOracles.length,
         activeBtcOracleCount: btcOracles.filter((oracle) => oracle.status === "active").length,
+        btcOracles,
         selectedBtcOracle,
         latestPrice,
       };

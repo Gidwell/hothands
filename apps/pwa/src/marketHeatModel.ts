@@ -6,9 +6,10 @@ export type MarketHeatPreviewRowInput = {
   manager: string;
   market: string;
   side: "UP" | "DOWN";
-  observedMint: number;
+  strike: number;
+  expiryMs: number;
+  intervalLabel: string;
   heatScore: number;
-  preparedCopies: number;
   status: MarketHeatStatus;
 };
 
@@ -17,12 +18,12 @@ export type MarketHeatPreviewRow = {
   displayName: string;
   manager: string;
   market: string;
-  observedMint: string;
+  strikeLabel: string;
+  intervalLabel: string;
   heatScore: number;
-  preparedCopies: number;
-  actionLabel: "Watch hand" | "Copy hand";
+  actionLabel: "Copy now" | "Copy next";
   status: MarketHeatStatus;
-  statusLabel: "Copy ready" | "Watching";
+  statusLabel: "Mint seen" | "Next mint";
 };
 
 export type MarketHeatIntentState = {
@@ -30,18 +31,18 @@ export type MarketHeatIntentState = {
 };
 
 export type MarketHeatIntentPanel = {
-  actionLabel: "Watch hand" | "Copy hand";
+  actionLabel: "Copy now" | "Copy next";
   closeLabel: "Cancel";
-  detailLabel: "No copy prepared" | "Prepared copy";
-  signatureLabel: "Copy waits for a ready mint" | "Ready for user signature";
-  statusLabel: "Copy ready" | "Watching";
+  detailLabel: "Next observed mint" | "Recent mint";
+  signatureLabel: "We'll prepare the next mint for your signature" | "Ready for user signature";
+  statusLabel: "Mint seen" | "Next mint";
   title: string;
 };
 
 export type MarketHeatPreview = {
   title: "Market Heat";
   modeLabel: "Testnet";
-  actionLabel: "Watch hand";
+  actionLabel: "Copy";
   detailLabel: "Observed Predict mints";
   sourceLabel: string;
   rows: MarketHeatPreviewRow[];
@@ -59,9 +60,10 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
     manager: "manager 0xb795...3125",
     market: "BTC-USD",
     side: "UP",
-    observedMint: 12_400,
+    strike: 12_400,
+    expiryMs: 1_779_158_400_000,
+    intervalLabel: "15m",
     heatScore: 92,
-    preparedCopies: 18,
     status: "copy_ready",
   },
   {
@@ -70,9 +72,10 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
     manager: "manager 0x43af...e64",
     market: "BTC-USD",
     side: "DOWN",
-    observedMint: 7_800,
+    strike: 7_800,
+    expiryMs: 1_779_158_400_000,
+    intervalLabel: "1h",
     heatScore: 87,
-    preparedCopies: 11,
     status: "watching",
   },
   {
@@ -81,9 +84,10 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
     manager: "manager 0xc873...028a",
     market: "BTC-USD",
     side: "UP",
-    observedMint: 4_200,
+    strike: 4_200,
+    expiryMs: 1_779_158_400_000,
+    intervalLabel: "1d",
     heatScore: 81,
-    preparedCopies: 7,
     status: "watching",
   },
 ];
@@ -95,7 +99,7 @@ export function buildMarketHeatPreview(
   return {
     title: "Market Heat",
     modeLabel: "Testnet",
-    actionLabel: "Watch hand",
+    actionLabel: "Copy",
     detailLabel: "Observed Predict mints",
     sourceLabel: "Captured",
     rows: rows.slice(0, limit).map((row) => ({
@@ -103,12 +107,12 @@ export function buildMarketHeatPreview(
       displayName: formatWallet(row.wallet),
       manager: row.manager,
       market: `${row.market} ${row.side}`,
-      observedMint: formatMint(row.observedMint),
+      strikeLabel: `Strike ${formatMint(row.strike)}`,
+      intervalLabel: row.intervalLabel,
       heatScore: row.heatScore,
-      preparedCopies: row.preparedCopies,
-      actionLabel: row.status === "copy_ready" ? "Copy hand" : "Watch hand",
+      actionLabel: row.status === "copy_ready" ? "Copy now" : "Copy next",
       status: row.status,
-      statusLabel: row.status === "copy_ready" ? "Copy ready" : "Watching",
+      statusLabel: row.status === "copy_ready" ? "Mint seen" : "Next mint",
     })),
   };
 }
@@ -145,10 +149,12 @@ export function buildMarketHeatIntentPanel(
   return {
     actionLabel: row.actionLabel,
     closeLabel: "Cancel",
-    detailLabel: isCopyReady ? "Prepared copy" : "No copy prepared",
-    signatureLabel: isCopyReady ? "Ready for user signature" : "Copy waits for a ready mint",
+    detailLabel: isCopyReady ? "Recent mint" : "Next observed mint",
+    signatureLabel: isCopyReady
+      ? "Ready for user signature"
+      : "We'll prepare the next mint for your signature",
     statusLabel: row.statusLabel,
-    title: `${isCopyReady ? "Copy" : "Watch"} ${row.displayName}`,
+    title: `Copy ${row.displayName}`,
   };
 }
 
@@ -222,9 +228,10 @@ function isMarketHeatRowInput(value: unknown): value is MarketHeatPreviewRowInpu
     isNonEmptyString(value.manager) &&
     isNonEmptyString(value.market) &&
     (value.side === "UP" || value.side === "DOWN") &&
-    isNonNegativeNumber(value.observedMint) &&
+    isNonNegativeNumber(value.strike) &&
+    isNonNegativeNumber(value.expiryMs) &&
+    isNonEmptyString(value.intervalLabel) &&
     isNonNegativeNumber(value.heatScore) &&
-    isNonNegativeNumber(value.preparedCopies) &&
     (value.status === "copy_ready" || value.status === "watching")
   );
 }
