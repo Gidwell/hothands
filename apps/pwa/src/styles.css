@@ -457,6 +457,15 @@ button {
   margin-top: 8px;
 }
 
+.market-heat-list {
+  align-content: start;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 212, 209, 0.45) transparent;
+}
+
 .section-heading {
   display: flex;
   align-items: baseline;
@@ -608,8 +617,8 @@ button {
 
 .market-heat-row {
   display: grid;
-  gap: 6px;
-  padding: 8px 9px;
+  gap: 4px;
+  padding: 6px 8px;
   border: 1px solid rgba(100, 212, 209, 0.28);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.04);
@@ -632,7 +641,7 @@ button {
   margin: 0;
   overflow: hidden;
   color: #aeb9b5;
-  font-size: 0.7rem;
+  font-size: 0.62rem;
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -640,7 +649,7 @@ button {
 
 .market-heat-main button {
   padding: 0 5px;
-  font-size: 0.66rem;
+  font-size: 0.64rem;
 }
 
 .inline-watch-panel {

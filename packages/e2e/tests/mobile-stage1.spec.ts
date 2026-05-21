@@ -17,8 +17,10 @@ test("mobile market heat mode opens watch and copy intent panels", async ({ page
   await expect(rows.first()).toContainText("BTC-USD");
 
   const watchOnlyRow = rows.filter({ hasText: "Copy next" });
-  await expect(watchOnlyRow).toHaveCount(1);
-  await watchOnlyRow.getByTestId("market-heat-row-action").click();
+  await expect(async () => {
+    expect(await watchOnlyRow.count()).toBeGreaterThanOrEqual(1);
+  }).toPass();
+  await watchOnlyRow.first().getByTestId("market-heat-row-action").click();
 
   const intentPanel = page.getByTestId("market-heat-intent-panel");
   await expect(intentPanel).toBeVisible();
@@ -30,8 +32,10 @@ test("mobile market heat mode opens watch and copy intent panels", async ({ page
   await expect(intentPanel).toHaveCount(0);
 
   const copyReadyRow = rows.filter({ hasText: "Copy now" });
-  await expect(copyReadyRow).toHaveCount(1);
-  await copyReadyRow.getByTestId("market-heat-row-action").click();
+  await expect(async () => {
+    expect(await copyReadyRow.count()).toBeGreaterThanOrEqual(1);
+  }).toPass();
+  await copyReadyRow.first().getByTestId("market-heat-row-action").click();
 
   await expect(intentPanel).toBeVisible();
   await expect(intentPanel).toContainText("Copy now");

@@ -43,6 +43,18 @@ describe("market heat preview model", () => {
           status: "watching",
           statusLabel: "Next mint",
         },
+        {
+          id: "external-0x6f09",
+          displayName: "0x6f09...aa35",
+          manager: "manager 0xc873...028a",
+          market: "BTC-USD UP",
+          strikeLabel: "Strike 4.2K",
+          intervalLabel: "1d",
+          heatScore: 81,
+          actionLabel: "Copy next",
+          status: "watching",
+          statusLabel: "Next mint",
+        },
       ],
     });
   });
@@ -121,6 +133,23 @@ describe("market heat preview model", () => {
       actionLabel: "Copy next",
       statusLabel: "Next mint",
     });
+  });
+
+  test("keeps the full compact market heat feed available for scrolling", () => {
+    const rows = Array.from({ length: 8 }, (_, index) => ({
+      id: `external-${index}`,
+      wallet: `0x${String(index).repeat(40)}`,
+      manager: `manager-${index}`,
+      market: "BTC-USD",
+      side: index % 2 === 0 ? ("UP" as const) : ("DOWN" as const),
+      strike: 70_000 + index,
+      expiryMs: 1_779_158_400_000,
+      intervalLabel: "15m",
+      heatScore: 99 - index,
+      status: index % 2 === 0 ? ("copy_ready" as const) : ("watching" as const),
+    }));
+
+    expect(buildMarketHeatPreview(rows).rows).toHaveLength(8);
   });
 
   test("keeps captured testnet API source labels compact", async () => {

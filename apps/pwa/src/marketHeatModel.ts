@@ -94,7 +94,7 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
 
 export function buildMarketHeatPreview(
   rows: MarketHeatPreviewRowInput[] = MARKET_HEAT_PREVIEW_ROWS,
-  limit = 2,
+  limit = 8,
 ): MarketHeatPreview {
   return {
     title: "Market Heat",
