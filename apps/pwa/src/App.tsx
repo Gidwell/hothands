@@ -54,6 +54,10 @@ const quickAmounts = [100, 250, 500, 1_000];
 const MARKET_HEAT_REFRESH_MS = 10_000;
 type PreviewMode = "replay" | "market";
 
+export function getInitialPreviewMode(apiBaseUrl: string | undefined): PreviewMode {
+  return apiBaseUrl ? "market" : "replay";
+}
+
 function traderCopyStatus(
   isSelected: boolean,
   isExpanded: boolean,
@@ -674,7 +678,10 @@ function HotTraderList({
 export function App() {
   const [scenario, setScenario] = useState(() => createReplayScenario("opening-night"));
   const [replayState, setReplayState] = useState(() => createInitialReplayState(scenario));
-  const [previewMode, setPreviewMode] = useState<PreviewMode>("replay");
+  const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
+  const [previewMode, setPreviewMode] = useState<PreviewMode>(() =>
+    getInitialPreviewMode(realtimeApiBaseUrl),
+  );
   const [liveActivitySnapshotState, setLiveActivitySnapshotState] = useState<{
     key: string;
     snapshot: LiveActivityModeSnapshot;
@@ -691,7 +698,6 @@ export function App() {
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
   const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
   const copyState = replayState.copy;
-  const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
   const liveActivityKey = `${scenario.id}:${scenario.tableId}:${realtimeApiBaseUrl ?? ""}`;
   const realtimeTrace = useMemo(
     () => produceRealtimeActivityTraceById(scenario.id),

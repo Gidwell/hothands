@@ -35,7 +35,7 @@ The launcher starts:
 - API: `http://127.0.0.1:8789`
 - Market heat API: `http://127.0.0.1:8789/testnet/market-heat`
 
-In the app, switch to `Testnet` to see live DeepBook Predict market heat rows.
+With `dev:testnet`, the app opens directly in `Testnet` mode and shows live DeepBook Predict market heat rows.
 If public testnet reads fail, the API falls back to captured rows and labels the
 source as `Captured`. Market Heat opens in `Latest` order and refreshes while
 Testnet mode is open so live public trades are easier to watch, with a `Heat`
