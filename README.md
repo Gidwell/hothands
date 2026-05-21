@@ -60,6 +60,19 @@ Port overrides:
 HOT_HANDS_TESTNET_API_PORT=8790 HOT_HANDS_TESTNET_PWA_PORT=5177 bun run dev:testnet
 ```
 
+## Current Demo Status
+
+What is live today:
+
+- `Testnet` reads public DeepBook Predict testnet activity through the local API.
+- `Latest` shows the newest observed active trader rows first and refreshes every 10 seconds while the app is open.
+- Rows are grouped by trader/manager, so a repeat trade moves that row upward instead of creating a duplicate feed item.
+
+What is still in progress:
+
+- `Heat` is a provisional activity/performance score, not the final settled reputation model.
+- `Copy hand` and `Watch hand` show the prepared user flow, but full signed copy mints still require funded testnet wallet objects and final wallet transaction wiring.
+
 ## Product Loop
 
 1. Hot Hands reads real DeepBook Predict mints/redeems and finds active BTC traders.
