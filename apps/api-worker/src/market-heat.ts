@@ -76,8 +76,8 @@ async function getLiveTestnetMarketHeat(fetchImpl: typeof fetch): Promise<Market
   const oraclesById = new Map(
     canary.btcOracles.map((btcOracle) => [btcOracle.oracle_id, btcOracle])
   );
-  const heat = computeMarketHeat(allEvents);
-  const rows = heat.slice(0, 8).map((trader, index) =>
+  const heat = selectMarketHeatCandidates(computeMarketHeat(allEvents));
+  const rows = heat.map((trader, index) =>
     mapHeatTraderToRow(trader, allEvents, oraclesById, index)
   );
 
@@ -99,6 +99,28 @@ function dedupeEvents(events: PredictNormalizedTradeEvent[]): PredictNormalizedT
   }
 
   return [...byId.values()];
+}
+
+function selectMarketHeatCandidates(traders: MarketHeatTrader[]): MarketHeatTrader[] {
+  const candidates = new Map<string, MarketHeatTrader>();
+  const add = (trader: MarketHeatTrader) => {
+    candidates.set(`${trader.trader}:${trader.managerId}`, trader);
+  };
+  const candidateLimit = 24;
+  const perModeLimit = Math.ceil(candidateLimit / 2);
+
+  traders.slice(0, perModeLimit).forEach(add);
+  [...traders]
+    .sort(
+      (left, right) =>
+        right.lastSeenMs - left.lastSeenMs ||
+        right.hotScore - left.hotScore ||
+        left.trader.localeCompare(right.trader)
+    )
+    .slice(0, perModeLimit)
+    .forEach(add);
+
+  return [...candidates.values()].slice(0, candidateLimit);
 }
 
 function mapHeatTraderToRow(

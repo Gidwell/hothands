@@ -1,4 +1,5 @@
 export type MarketHeatStatus = "copy_ready" | "watching";
+export type MarketHeatSortMode = "latest" | "heat";
 
 export type MarketHeatPreviewRowInput = {
   id: string;
@@ -21,6 +22,7 @@ export type MarketHeatPreviewRow = {
   market: string;
   strikeLabel: string;
   intervalLabel: string;
+  observedAtMs: number;
   heatScore: number;
   actionLabel: "Copy now" | "Copy next";
   status: MarketHeatStatus;
@@ -58,6 +60,8 @@ export type LoadMarketHeatPreviewOptions = {
 export type BuildMarketHeatPreviewOptions = {
   nowMs?: number;
 };
+
+const MARKET_HEAT_CANDIDATE_LIMIT = 24;
 
 export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
   {
@@ -103,7 +107,7 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
 
 export function buildMarketHeatPreview(
   rows: MarketHeatPreviewRowInput[] = MARKET_HEAT_PREVIEW_ROWS,
-  limit = 8,
+  limit = 24,
   { nowMs = Date.now() }: BuildMarketHeatPreviewOptions = {},
 ): MarketHeatPreview {
   return {
@@ -112,19 +116,29 @@ export function buildMarketHeatPreview(
     actionLabel: "Copy",
     detailLabel: "Observed Predict mints",
     sourceLabel: "Captured",
-    rows: rows.slice(0, limit).map((row) => ({
+    rows: sortMarketHeatInputs(rows)
+      .slice(0, limit)
+      .map((row) => ({
       id: row.id,
       displayName: formatWallet(row.wallet),
       manager: row.manager,
       market: `${row.market} ${row.side}`,
       strikeLabel: `Strike ${formatMint(row.strike)}`,
       intervalLabel: row.intervalLabel,
+      observedAtMs: row.observedAtMs,
       heatScore: row.heatScore,
       actionLabel: row.status === "copy_ready" ? "Copy now" : "Copy next",
       status: row.status,
       statusLabel: formatTradeTime(row.observedAtMs, nowMs),
     })),
   };
+}
+
+export function sortMarketHeatRows(
+  rows: MarketHeatPreviewRow[],
+  sortMode: MarketHeatSortMode,
+): MarketHeatPreviewRow[] {
+  return [...rows].sort((left, right) => compareMarketHeatRows(left, right, sortMode));
 }
 
 export function selectMarketHeatIntent(
@@ -176,29 +190,37 @@ export async function loadMarketHeatPreview({
   const normalizedBaseUrl = apiBaseUrl?.trim();
 
   if (!normalizedBaseUrl) {
-    return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, { nowMs });
+    return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, MARKET_HEAT_CANDIDATE_LIMIT, {
+      nowMs,
+    });
   }
 
   try {
     const response = await fetcher(buildMarketHeatUrl(normalizedBaseUrl));
 
     if (!response.ok) {
-      return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, { nowMs });
+      return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, MARKET_HEAT_CANDIDATE_LIMIT, {
+        nowMs,
+      });
     }
 
     const payload: unknown = await response.json();
     const rows = parseMarketHeatRows(payload);
 
     if (!rows) {
-      return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, { nowMs });
+      return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, MARKET_HEAT_CANDIDATE_LIMIT, {
+        nowMs,
+      });
     }
 
     return {
-      ...buildMarketHeatPreview(rows, 8, { nowMs }),
+      ...buildMarketHeatPreview(rows, MARKET_HEAT_CANDIDATE_LIMIT, { nowMs }),
       sourceLabel: formatMarketHeatSource(payload),
     };
   } catch {
-    return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, { nowMs });
+    return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, MARKET_HEAT_CANDIDATE_LIMIT, {
+      nowMs,
+    });
   }
 }
 
@@ -216,6 +238,30 @@ function formatMint(value: number): string {
   }
 
   return value.toLocaleString();
+}
+
+function sortMarketHeatInputs(rows: MarketHeatPreviewRowInput[]): MarketHeatPreviewRowInput[] {
+  return [...rows].sort((left, right) => compareMarketHeatRows(left, right, "latest"));
+}
+
+function compareMarketHeatRows(
+  left: Pick<MarketHeatPreviewRow, "heatScore" | "id" | "observedAtMs">,
+  right: Pick<MarketHeatPreviewRow, "heatScore" | "id" | "observedAtMs">,
+  sortMode: MarketHeatSortMode,
+): number {
+  if (sortMode === "heat") {
+    return (
+      right.heatScore - left.heatScore ||
+      right.observedAtMs - left.observedAtMs ||
+      left.id.localeCompare(right.id)
+    );
+  }
+
+  return (
+    right.observedAtMs - left.observedAtMs ||
+    right.heatScore - left.heatScore ||
+    left.id.localeCompare(right.id)
+  );
 }
 
 function parseMarketHeatRows(payload: unknown): MarketHeatPreviewRowInput[] | null {

@@ -6,6 +6,7 @@ import {
   closeMarketHeatIntent,
   loadMarketHeatPreview,
   selectMarketHeatIntent,
+  sortMarketHeatRows,
 } from "../src/marketHeatModel";
 
 describe("market heat preview model", () => {
@@ -28,6 +29,7 @@ describe("market heat preview model", () => {
           market: "BTC-USD UP",
           strikeLabel: "Strike 12.4K",
           intervalLabel: "15m",
+          observedAtMs: 1_779_158_400_000,
           heatScore: 92,
           actionLabel: "Copy now",
           status: "copy_ready",
@@ -40,6 +42,7 @@ describe("market heat preview model", () => {
           market: "BTC-USD DOWN",
           strikeLabel: "Strike 7.8K",
           intervalLabel: "1h",
+          observedAtMs: 1_779_151_200_000,
           heatScore: 87,
           actionLabel: "Copy next",
           status: "watching",
@@ -52,6 +55,7 @@ describe("market heat preview model", () => {
           market: "BTC-USD UP",
           strikeLabel: "Strike 4.2K",
           intervalLabel: "1d",
+          observedAtMs: 1_779_079_200_000,
           heatScore: 81,
           actionLabel: "Copy next",
           status: "watching",
@@ -159,6 +163,111 @@ describe("market heat preview model", () => {
     }));
 
     expect(buildMarketHeatPreview(rows).rows).toHaveLength(8);
+  });
+
+  test("keeps extra market heat API candidates for client-side sorting", async () => {
+    const rows = Array.from({ length: 12 }, (_, index) => ({
+      id: `api-candidate-${index}`,
+      wallet: `0x${String(index % 10).repeat(40)}`,
+      manager: `manager-${index}`,
+      market: "BTC-USD",
+      side: index % 2 === 0 ? ("UP" as const) : ("DOWN" as const),
+      strike: 70_000 + index,
+      expiryMs: 1_779_158_400_000,
+      intervalLabel: "15m",
+      observedAtMs: 1_779_165_000_000 - index * 60_000,
+      heatScore: 99 - index,
+      status: index % 2 === 0 ? ("copy_ready" as const) : ("watching" as const),
+    }));
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_000_000,
+      fetcher: async () =>
+        Response.json({
+          mode: "testnet",
+          source: "live_testnet",
+          rows,
+        }),
+    });
+
+    expect(preview.rows).toHaveLength(12);
+  });
+
+  test("orders market heat by latest observed trade by default", () => {
+    const preview = buildMarketHeatPreview(
+      [
+        {
+          id: "older-hot",
+          wallet: "0x9999222233334444555566667777888899990000",
+          manager: "manager-hot",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_000,
+          expiryMs: 1_779_158_400_000,
+          intervalLabel: "15m",
+          observedAtMs: 1_779_164_000_000,
+          heatScore: 99,
+          status: "copy_ready",
+        },
+        {
+          id: "newer-warm",
+          wallet: "0x1111222233334444555566667777888899990000",
+          manager: "manager-warm",
+          market: "BTC-USD",
+          side: "DOWN",
+          strike: 71_000,
+          expiryMs: 1_779_158_400_000,
+          intervalLabel: "15m",
+          observedAtMs: 1_779_165_000_000,
+          heatScore: 12,
+          status: "watching",
+        },
+      ],
+      8,
+      { nowMs: 1_779_165_000_000 },
+    );
+
+    expect(preview.rows.map((row) => row.id)).toEqual(["newer-warm", "older-hot"]);
+  });
+
+  test("can reorder market heat rows by heat score", () => {
+    const preview = buildMarketHeatPreview(
+      [
+        {
+          id: "newer-warm",
+          wallet: "0x1111222233334444555566667777888899990000",
+          manager: "manager-warm",
+          market: "BTC-USD",
+          side: "DOWN",
+          strike: 71_000,
+          expiryMs: 1_779_158_400_000,
+          intervalLabel: "15m",
+          observedAtMs: 1_779_165_000_000,
+          heatScore: 12,
+          status: "watching",
+        },
+        {
+          id: "older-hot",
+          wallet: "0x9999222233334444555566667777888899990000",
+          manager: "manager-hot",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_000,
+          expiryMs: 1_779_158_400_000,
+          intervalLabel: "15m",
+          observedAtMs: 1_779_164_000_000,
+          heatScore: 99,
+          status: "copy_ready",
+        },
+      ],
+      8,
+      { nowMs: 1_779_165_000_000 },
+    );
+
+    expect(sortMarketHeatRows(preview.rows, "heat").map((row) => row.id)).toEqual([
+      "older-hot",
+      "newer-warm",
+    ]);
   });
 
   test("keeps captured testnet API source labels compact", async () => {

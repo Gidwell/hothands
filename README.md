@@ -37,7 +37,8 @@ The launcher starts:
 
 In the app, switch to `Testnet` to see live DeepBook Predict market heat rows.
 If public testnet reads fail, the API falls back to captured rows and labels the
-source as `Captured`.
+source as `Captured`. Market Heat opens in `Latest` order so live public trades
+are easier to watch, with a `Heat` toggle for the provisional score ranking.
 
 Useful checks:
 

@@ -23,5 +23,7 @@ Testnet mode:
   stays scan-friendly
 - market heat rows show wallet, direction, strike, expiry bucket, latest trade
   time, and heat
+- rows default to `Latest` ordering so testers can watch new public trades
+  arrive; the `Heat` toggle preserves the provisional score ranking
 - `Copy now` means a recent mint can be prepared for user signature; `Copy next`
   means the wallet can be watched for the next mint

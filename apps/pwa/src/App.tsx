@@ -43,9 +43,11 @@ import {
   closeMarketHeatIntent,
   loadMarketHeatPreview,
   selectMarketHeatIntent,
+  sortMarketHeatRows,
   type MarketHeatIntentState,
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
+  type MarketHeatSortMode,
 } from "./marketHeatModel";
 
 const quickAmounts = [100, 250, 500, 1_000];
@@ -430,21 +432,45 @@ function ActiveSignalStrip({
 export function MarketHeatPreview({
   rows,
   sourceLabel,
+  sortMode,
   selectedRowId,
+  onSortModeChange,
   onSelectRow,
   onCloseIntent,
 }: {
   rows: MarketHeatPreviewRow[];
   sourceLabel: string;
+  sortMode: MarketHeatSortMode;
   selectedRowId: string | null;
+  onSortModeChange: (sortMode: MarketHeatSortMode) => void;
   onSelectRow: (rowId: string) => void;
   onCloseIntent: () => void;
 }) {
   return (
     <section className="market-heat-list" aria-label="Market Heat" data-testid="market-heat-preview">
-      <div className="section-heading">
-        <p>Market Heat</p>
-        <span>{sourceLabel}</span>
+      <div className="section-heading market-heat-heading">
+        <div className="market-heat-heading-title">
+          <p>Market Heat</p>
+          <span>{sourceLabel}</span>
+        </div>
+        <div className="market-heat-sort" aria-label="Market heat sort">
+          <button
+            type="button"
+            aria-pressed={sortMode === "latest"}
+            data-testid="market-heat-sort-latest"
+            onClick={() => onSortModeChange("latest")}
+          >
+            Latest
+          </button>
+          <button
+            type="button"
+            aria-pressed={sortMode === "heat"}
+            data-testid="market-heat-sort-heat"
+            onClick={() => onSortModeChange("heat")}
+          >
+            Heat
+          </button>
+        </div>
       </div>
       {rows.map((row) => {
         const isSelected = row.id === selectedRowId;
@@ -655,6 +681,8 @@ export function App() {
   const [marketHeatPreview, setMarketHeatPreview] = useState<MarketHeatPreviewModel>(() =>
     buildMarketHeatPreview(),
   );
+  const [marketHeatSortMode, setMarketHeatSortMode] =
+    useState<MarketHeatSortMode>("latest");
   const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
     selectedRowId: null,
   });
@@ -686,6 +714,10 @@ export function App() {
 
     return [...frozenTraders, ...newTraders];
   }, [frozenTraderOrder, replayTraders]);
+  const sortedMarketHeatRows = useMemo(
+    () => sortMarketHeatRows(marketHeatPreview.rows, marketHeatSortMode).slice(0, 8),
+    [marketHeatPreview.rows, marketHeatSortMode],
+  );
   const frame = useMemo(
     () => getReplayFrame(replayState, scenario, market),
     [replayState, scenario],
@@ -883,9 +915,11 @@ export function App() {
         />
         {previewMode === "market" ? (
           <MarketHeatPreview
-            rows={marketHeatPreview.rows}
+            rows={sortedMarketHeatRows}
             sourceLabel={marketHeatPreview.sourceLabel}
+            sortMode={marketHeatSortMode}
             selectedRowId={marketHeatIntent.selectedRowId}
+            onSortModeChange={setMarketHeatSortMode}
             onSelectRow={handleMarketHeatSelect}
             onCloseIntent={handleMarketHeatClose}
           />

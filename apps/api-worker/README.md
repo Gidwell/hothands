@@ -65,7 +65,9 @@ the indexer package and returns `source: "live_testnet"` when recent activity is
 available. If Predict reads fail or return no usable rows, the route falls back
 to deterministic captured activity labelled with `source: "captured_testnet"`.
 Live rows are ranked from the recent BTC Predict event stream, so different
-expiry buckets can appear together.
+expiry buckets can appear together. The endpoint returns a bounded candidate set
+that includes both high-heat traders and recent traders so the PWA can switch
+between `Latest` and `Heat` ordering without refetching.
 
 Rows use the browser-facing input shape:
 

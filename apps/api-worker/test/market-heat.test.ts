@@ -66,6 +66,19 @@ describe("testnet market heat endpoint", () => {
     expect(projection.rows[0].strike).toBeGreaterThan(0);
   });
 
+  test("keeps recent lower-heat positions available for latest ordering", async () => {
+    const projection = await getTestnetMarketHeat({
+      fetchImpl: createLivePredictFetch({
+        extraOlderHotTradeCount: 12,
+        includeRecentPosition: true,
+        positionCost: "200000"
+      })
+    });
+
+    expect(projection.source).toBe("live_testnet");
+    expect(projection.rows.some((row) => row.wallet === "0xtrader-position")).toBe(true);
+  });
+
   test("normalizes high precision live strikes into readable BTC prices", async () => {
     const projection = await getTestnetMarketHeat({
       fetchImpl: createLivePredictFetch({
@@ -185,10 +198,14 @@ describe("testnet market heat endpoint", () => {
 function createLivePredictFetch(
   {
     quietOracleTrades = false,
+    extraOlderHotTradeCount = 0,
+    includeRecentPosition = false,
     positionStrike = "73000000000",
     positionCost = "800000"
   }: {
     quietOracleTrades?: boolean;
+    extraOlderHotTradeCount?: number;
+    includeRecentPosition?: boolean;
     positionStrike?: string;
     positionCost?: string;
   } = {}
@@ -259,12 +276,26 @@ function createLivePredictFetch(
           quantity: "1",
           cost: "400000",
           timestamp_ms: "1779070700000"
-        })
+        }),
+        ...Array.from({ length: extraOlderHotTradeCount }, (_, index) =>
+          liveTrade({
+            digest: `0xextrahot${index}`,
+            event_seq: 20 + index,
+            kind: "minted",
+            trader: `0xtrader-hot-${index}`,
+            manager_id: `manager-btc-extra-hot-${index}`,
+            strike: "72000000000",
+            is_up: true,
+            quantity: "5",
+            cost: "2000000",
+            timestamp_ms: String(1_779_060_000_000 - index * 1000)
+          })
+        )
       ]);
     }
 
     if (url.endsWith("/positions/minted")) {
-      if (quietOracleTrades) {
+      if (quietOracleTrades || includeRecentPosition) {
         return jsonResponse([
           liveTrade({
             digest: "0xpositionmint",

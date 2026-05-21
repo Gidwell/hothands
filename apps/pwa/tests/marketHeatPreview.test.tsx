@@ -26,7 +26,9 @@ describe("MarketHeatPreview component", () => {
       <MarketHeatPreview
         rows={[row]}
         sourceLabel="Captured"
+        sortMode="latest"
         selectedRowId={row.id}
+        onSortModeChange={() => undefined}
         onSelectRow={() => undefined}
         onCloseIntent={() => undefined}
       />,
@@ -36,6 +38,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Copy 0xaaaa...0000");
     expect(html).toContain("Next observed mint");
     expect(html).toContain("We&#x27;ll prepare the next mint for your signature");
+    expect(html).toContain('data-testid="market-heat-sort-latest"');
+    expect(html).toContain('aria-pressed="true"');
     expect(html).not.toContain("Ready for user signature");
   });
 });
