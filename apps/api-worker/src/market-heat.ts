@@ -79,7 +79,7 @@ async function getLiveTestnetMarketHeat(fetchImpl: typeof fetch): Promise<Market
   const heat = selectMarketHeatCandidates(computeMarketHeat(allEvents));
   const rows = heat.map((trader, index) =>
     mapHeatTraderToRow(trader, allEvents, oraclesById, index)
-  );
+  ).sort(compareMarketHeatRowsByLatest);
 
   return {
     source: "live_testnet",
@@ -106,7 +106,7 @@ function selectMarketHeatCandidates(traders: MarketHeatTrader[]): MarketHeatTrad
   const add = (trader: MarketHeatTrader) => {
     candidates.set(`${trader.trader}:${trader.managerId}`, trader);
   };
-  const candidateLimit = 24;
+  const candidateLimit = 48;
   const perModeLimit = Math.ceil(candidateLimit / 2);
 
   traders.slice(0, perModeLimit).forEach(add);
@@ -121,6 +121,14 @@ function selectMarketHeatCandidates(traders: MarketHeatTrader[]): MarketHeatTrad
     .forEach(add);
 
   return [...candidates.values()].slice(0, candidateLimit);
+}
+
+function compareMarketHeatRowsByLatest(left: MarketHeatRow, right: MarketHeatRow): number {
+  return (
+    right.observedAtMs - left.observedAtMs ||
+    right.heatScore - left.heatScore ||
+    left.wallet.localeCompare(right.wallet)
+  );
 }
 
 function mapHeatTraderToRow(

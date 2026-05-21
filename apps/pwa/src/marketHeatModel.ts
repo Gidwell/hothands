@@ -61,7 +61,7 @@ export type BuildMarketHeatPreviewOptions = {
   nowMs?: number;
 };
 
-const MARKET_HEAT_CANDIDATE_LIMIT = 24;
+const MARKET_HEAT_CANDIDATE_LIMIT = 48;
 
 export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
   {

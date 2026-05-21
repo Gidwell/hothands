@@ -51,6 +51,7 @@ import {
 } from "./marketHeatModel";
 
 const quickAmounts = [100, 250, 500, 1_000];
+const MARKET_HEAT_REFRESH_MS = 10_000;
 type PreviewMode = "replay" | "market";
 
 function traderCopyStatus(
@@ -779,17 +780,39 @@ export function App() {
 
   useEffect(() => {
     let isCurrent = true;
+    let isRefreshing = false;
 
-    loadMarketHeatPreview({ apiBaseUrl: realtimeApiBaseUrl }).then((preview) => {
-      if (isCurrent) {
-        setMarketHeatPreview(preview);
+    const refreshMarketHeat = async () => {
+      if (isRefreshing) {
+        return;
       }
-    });
+
+      isRefreshing = true;
+      try {
+        const preview = await loadMarketHeatPreview({ apiBaseUrl: realtimeApiBaseUrl });
+        if (isCurrent) {
+          setMarketHeatPreview(preview);
+        }
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    void refreshMarketHeat();
+
+    if (previewMode !== "market" || !realtimeApiBaseUrl) {
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    const refreshTimer = window.setInterval(refreshMarketHeat, MARKET_HEAT_REFRESH_MS);
 
     return () => {
       isCurrent = false;
+      window.clearInterval(refreshTimer);
     };
-  }, [realtimeApiBaseUrl]);
+  }, [previewMode, realtimeApiBaseUrl]);
 
   useEffect(() => {
     liveActivityModeRef.current?.updateReplayActivity(replayActivity);

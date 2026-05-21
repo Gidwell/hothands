@@ -64,10 +64,10 @@ projection. The route first tries live DeepBook Predict public testnet reads via
 the indexer package and returns `source: "live_testnet"` when recent activity is
 available. If Predict reads fail or return no usable rows, the route falls back
 to deterministic captured activity labelled with `source: "captured_testnet"`.
-Live rows are ranked from the recent BTC Predict event stream, so different
-expiry buckets can appear together. The endpoint returns a bounded candidate set
-that includes both high-heat traders and recent traders so the PWA can switch
-between `Latest` and `Heat` ordering without refetching.
+Live rows are returned newest-first from the recent BTC Predict event stream, so
+different expiry buckets can appear together. The endpoint returns a bounded
+candidate set that includes the latest traders plus high-heat traders so the PWA
+can switch between `Latest` and `Heat` ordering without losing the live tape.
 
 Rows use the browser-facing input shape:
 

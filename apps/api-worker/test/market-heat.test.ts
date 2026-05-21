@@ -76,6 +76,10 @@ describe("testnet market heat endpoint", () => {
     });
 
     expect(projection.source).toBe("live_testnet");
+    expect(projection.rows[0]).toMatchObject({
+      wallet: "0xtrader-position",
+      heatScore: expect.any(Number)
+    });
     expect(projection.rows.some((row) => row.wallet === "0xtrader-position")).toBe(true);
   });
 
