@@ -4,6 +4,60 @@ Hot Hands is a mobile-first social copy layer for DeepBook Predict. The core loo
 
 This repository now has the Stage 1 fake-data vertical slice, the Stage 2 simulated realtime loop, and the first Stage 3 DeepBook Predict testnet bridge: deterministic mobile replay, worker-shaped table activity, an in-process socket contract, optional PWA live-mode checks, a local Wrangler-backed worker smoke, a Predict server read canary, and Sui SDK transaction builders for manager creation, quote deposit, and copied mint.
 
+## Testnet Quickstart
+
+Prerequisites:
+
+- Bun installed locally
+- Chromium installed for Playwright only if you plan to run browser tests
+
+Install dependencies:
+
+```bash
+bun install
+```
+
+Start the local testnet API and PWA together:
+
+```bash
+bun run dev:testnet
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5176
+```
+
+The launcher starts:
+
+- PWA: `http://127.0.0.1:5176`
+- API: `http://127.0.0.1:8789`
+- Market heat API: `http://127.0.0.1:8789/testnet/market-heat`
+
+In the app, switch to `Testnet` to see live DeepBook Predict market heat rows.
+If public testnet reads fail, the API falls back to captured rows and labels the
+source as `Captured`.
+
+Useful checks:
+
+```bash
+bun run verify:fast
+bun run verify:testnet
+```
+
+Install the Playwright browser before running e2e checks on a fresh machine:
+
+```bash
+bunx playwright install chromium
+```
+
+Port overrides:
+
+```bash
+HOT_HANDS_TESTNET_API_PORT=8790 HOT_HANDS_TESTNET_PWA_PORT=5177 bun run dev:testnet
+```
+
 ## Product Loop
 
 1. Hot Hands reads real DeepBook Predict mints/redeems and finds active BTC traders.
