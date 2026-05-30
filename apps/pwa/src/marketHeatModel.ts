@@ -19,12 +19,14 @@ export type MarketHeatPreviewRow = {
   id: string;
   displayName: string;
   manager: string;
-  market: string;
+  pairLabel: string;
+  side: "UP" | "DOWN";
   strikeLabel: string;
   intervalLabel: string;
+  expiryTimeLabel: string;
   observedAtMs: number;
   heatScore: number;
-  actionLabel: "Copy now" | "Copy next";
+  actionLabel: "Copy now" | "Watch next";
   status: MarketHeatStatus;
   statusLabel: string;
 };
@@ -34,19 +36,21 @@ export type MarketHeatIntentState = {
 };
 
 export type MarketHeatIntentPanel = {
-  actionLabel: "Copy now" | "Copy next";
+  actionLabel: "Copy now" | "Watch next";
   closeLabel: "Cancel";
   detailLabel: "Next observed mint" | "Recent mint";
-  signatureLabel: "We'll prepare the next mint for your signature" | "Ready for user signature";
+  signatureLabel:
+    | "We'll watch this wallet and prepare the next mint for your signature"
+    | "Ready for your wallet signature";
   statusLabel: string;
   title: string;
 };
 
 export type MarketHeatPreview = {
-  title: "Market Heat";
+  title: "Alpha Feed";
   modeLabel: "Testnet";
   actionLabel: "Copy";
-  detailLabel: "Observed Predict mints";
+  detailLabel: "Live BTC Predict mints";
   sourceLabel: string;
   rows: MarketHeatPreviewRow[];
 };
@@ -111,26 +115,32 @@ export function buildMarketHeatPreview(
   { nowMs = Date.now() }: BuildMarketHeatPreviewOptions = {},
 ): MarketHeatPreview {
   return {
-    title: "Market Heat",
+    title: "Alpha Feed",
     modeLabel: "Testnet",
     actionLabel: "Copy",
-    detailLabel: "Observed Predict mints",
+    detailLabel: "Live BTC Predict mints",
     sourceLabel: "Captured",
     rows: sortMarketHeatInputs(rows)
       .slice(0, limit)
-      .map((row) => ({
-      id: row.id,
-      displayName: formatWallet(row.wallet),
-      manager: row.manager,
-      market: `${row.market} ${row.side}`,
-      strikeLabel: `Strike ${formatMint(row.strike)}`,
-      intervalLabel: row.intervalLabel,
-      observedAtMs: row.observedAtMs,
-      heatScore: row.heatScore,
-      actionLabel: row.status === "copy_ready" ? "Copy now" : "Copy next",
-      status: row.status,
-      statusLabel: formatTradeTime(row.observedAtMs, nowMs),
-    })),
+      .map((row) => {
+        const isActionableCopy = row.status === "copy_ready" && row.expiryMs > nowMs;
+
+        return {
+          id: row.id,
+          displayName: formatWallet(row.wallet),
+          manager: formatManager(row.manager),
+          pairLabel: formatPair(row.market),
+          side: row.side,
+          strikeLabel: `Strike ${formatMint(row.strike)}`,
+          intervalLabel: row.intervalLabel,
+          expiryTimeLabel: formatExpiryTime(row.expiryMs),
+          observedAtMs: row.observedAtMs,
+          heatScore: row.heatScore,
+          actionLabel: isActionableCopy ? "Copy now" : "Watch next",
+          status: isActionableCopy ? "copy_ready" : "watching",
+          statusLabel: formatTradeTime(row.observedAtMs, nowMs),
+        };
+      }),
   };
 }
 
@@ -175,10 +185,10 @@ export function buildMarketHeatIntentPanel(
     closeLabel: "Cancel",
     detailLabel: isCopyReady ? "Recent mint" : "Next observed mint",
     signatureLabel: isCopyReady
-      ? "Ready for user signature"
-      : "We'll prepare the next mint for your signature",
+      ? "Ready for your wallet signature"
+      : "We'll watch this wallet and prepare the next mint for your signature",
     statusLabel: row.statusLabel,
-    title: `Copy ${row.displayName}`,
+    title: `${isCopyReady ? "Copy" : "Watch"} ${row.displayName}`,
   };
 }
 
@@ -232,12 +242,50 @@ function formatWallet(wallet: string): string {
   return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
 }
 
+function formatManager(manager: string): string {
+  const normalized = manager.replace(/^manager\s+/i, "").trim();
+
+  if (!normalized) {
+    return "Manager unknown";
+  }
+
+  if (normalized.includes("...")) {
+    return `Manager ${normalized}`;
+  }
+
+  if (normalized.startsWith("0x") && normalized.length > 14) {
+    return `Manager ${formatWallet(normalized)}`;
+  }
+
+  return manager;
+}
+
+function formatPair(market: string): string {
+  return market.replace("-", "/");
+}
+
 function formatMint(value: number): string {
   if (value >= 1_000) {
     return `${(value / 1_000).toFixed(1)}K`;
   }
 
   return value.toLocaleString();
+}
+
+function formatExpiryTime(expiryMs: number): string {
+  if (!Number.isFinite(expiryMs) || expiryMs <= 0) {
+    return "Expiry unknown";
+  }
+
+  const expiry = new Date(expiryMs);
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][
+    expiry.getUTCMonth()
+  ];
+  const day = String(expiry.getUTCDate());
+  const hour = String(expiry.getUTCHours()).padStart(2, "0");
+  const minute = String(expiry.getUTCMinutes()).padStart(2, "0");
+
+  return `${month} ${day}, ${hour}:${minute} UTC`;
 }
 
 function sortMarketHeatInputs(rows: MarketHeatPreviewRowInput[]): MarketHeatPreviewRowInput[] {

@@ -28,6 +28,8 @@ describe("MarketHeatPreview component", () => {
         sourceLabel="Captured"
         sortMode="latest"
         selectedRowId={row.id}
+        copyAmount={25}
+        onAmountSet={() => undefined}
         onSortModeChange={() => undefined}
         onSelectRow={() => undefined}
         onCloseIntent={() => undefined}
@@ -35,11 +37,12 @@ describe("MarketHeatPreview component", () => {
     );
 
     expect(html).toContain('data-testid="market-heat-intent-panel"');
-    expect(html).toContain("Copy 0xaaaa...0000");
+    expect(html).toContain("Watch 0xaaaa...0000");
     expect(html).toContain("Next observed mint");
-    expect(html).toContain("We&#x27;ll prepare the next mint for your signature");
+    expect(html).toContain("We&#x27;ll watch this wallet and prepare the next mint for your signature");
+    expect(html).toContain("Hot Hands prepares the transaction");
     expect(html).toContain('data-testid="market-heat-sort-latest"');
     expect(html).toContain('aria-pressed="true"');
-    expect(html).not.toContain("Ready for user signature");
+    expect(html).not.toContain("Ready for your wallet signature");
   });
 });

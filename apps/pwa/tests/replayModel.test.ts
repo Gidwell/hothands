@@ -55,7 +55,7 @@ describe("live replay model", () => {
       status: "Copy ready",
       copyReceipt: {
         leader: "Mira Vale",
-        amount: "$250",
+        amount: "$25",
         state: "Disarmed",
       },
     });
@@ -79,7 +79,7 @@ describe("live replay model", () => {
       copyReceipt: {
         state: "Signal landed",
         settlement: "Confirm copy",
-        summary: "Mira Vale's signal landed. Confirm to submit up to $250.",
+        summary: "Mira Vale's signal landed. Confirm to submit up to $25.",
       },
     });
 
@@ -91,10 +91,10 @@ describe("live replay model", () => {
       status: "Copy executed",
       copyReceipt: {
         label: "Copied receipt",
-        amount: "$250",
+        amount: "$25",
         state: "Copied once",
         settlement: "Submitted once",
-        summary: "$250 copied once from Mira Vale. Re-arm to copy another future signal.",
+        summary: "$25 copied once from Mira Vale. Re-arm to copy another future signal.",
       },
     });
 
@@ -103,7 +103,7 @@ describe("live replay model", () => {
       phase: "settled",
       status: "Settlement posted",
       settlement: {
-        amount: "$250",
+        amount: "$25",
         pnl: "+$40",
         status: "Filled",
       },
@@ -165,7 +165,7 @@ describe("live replay model", () => {
       available: "$1,250",
       pnl: "+$0",
       pnlTone: "flat",
-      copyValue: "$250",
+      copyValue: "$25",
       status: "Flat",
       detail: "No active copy. Mira Vale selected.",
     });
@@ -173,27 +173,27 @@ describe("live replay model", () => {
     state = updateReplayCopy(state, (copyState) => toggleCopyArmed(copyState));
     frame = getReplayFrame(state, scenario, market);
     expect(getReplayAccountSummary(state, frame)).toMatchObject({
-      available: "$1,000",
+      available: "$1,225",
       pnl: "+$0",
-      copyValue: "$250",
+      copyValue: "$25",
       status: "Armed",
-      detail: "$250 reserved for Mira Vale's next BTC-USD signal.",
+      detail: "$25 reserved for Mira Vale's next BTC-USD signal.",
     });
 
     state = advanceReplay(state, scenario);
     frame = getReplayFrame(state, scenario, market);
     expect(getReplayAccountSummary(state, frame)).toMatchObject({
-      available: "$1,000",
+      available: "$1,225",
       status: "Confirm",
-      detail: "Confirm before submitting up to $250.",
+      detail: "Confirm before submitting up to $25.",
     });
 
     state = advanceReplay(state, scenario);
     frame = getReplayFrame(state, scenario, market);
     expect(getReplayAccountSummary(state, frame)).toMatchObject({
-      available: "$1,000",
+      available: "$1,225",
       status: "Pending",
-      detail: "$250 copy submitted. Settlement pending.",
+      detail: "$25 copy submitted. Settlement pending.",
     });
 
     state = advanceReplay(state, scenario);
@@ -204,9 +204,9 @@ describe("live replay model", () => {
       available: "$1,290",
       pnl: "+$40",
       pnlTone: "positive",
-      copyValue: "$250",
+      copyValue: "$25",
       status: "Settled",
-      detail: "$250 settled for +$40.",
+      detail: "$25 settled for +$40.",
     });
   });
 

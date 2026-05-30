@@ -20,10 +20,10 @@ export type CopyMarket = {
   pair: string;
 };
 
-export const COPY_AMOUNT_MIN = 25;
+export const COPY_AMOUNT_MIN = 10;
 export const COPY_AMOUNT_MAX = 1_000;
 export const COPY_AMOUNT_STEP = 50;
-export const COPY_AMOUNT_DEFAULT = 250;
+export const COPY_AMOUNT_DEFAULT = 25;
 
 export function createInitialCopyState(traders: Trader[]): CopyTableState {
   return {

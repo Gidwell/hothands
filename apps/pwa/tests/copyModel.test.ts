@@ -14,9 +14,9 @@ describe("copy interaction model", () => {
   test("clamps and steps copy amount in fixed copy chips", () => {
     const state = createInitialCopyState(traders);
 
-    expect(state.copyAmount).toBe(250);
-    expect(stepCopyAmount(state, -1).copyAmount).toBe(200);
-    expect(stepCopyAmount(setCopyAmount(state, 11), -1).copyAmount).toBe(25);
+    expect(state.copyAmount).toBe(25);
+    expect(stepCopyAmount(state, -1).copyAmount).toBe(10);
+    expect(stepCopyAmount(setCopyAmount(state, 11), -1).copyAmount).toBe(10);
     expect(stepCopyAmount(setCopyAmount(state, 5_000), 1).copyAmount).toBe(1_000);
   });
 

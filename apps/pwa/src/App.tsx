@@ -50,12 +50,20 @@ import {
   type MarketHeatSortMode,
 } from "./marketHeatModel";
 
-const quickAmounts = [100, 250, 500, 1_000];
+const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
 type PreviewMode = "replay" | "market";
 
 export function getInitialPreviewMode(apiBaseUrl: string | undefined): PreviewMode {
   return apiBaseUrl ? "market" : "replay";
+}
+
+function formatQuickAmount(amount: number): string {
+  return amount === COPY_AMOUNT_MAX ? "MAX" : formatCopyAmount(amount);
+}
+
+function walletAvatarLabel(displayName: string): string {
+  return displayName.replace(/^0x/, "").slice(0, 2).toUpperCase() || "HH";
 }
 
 function traderCopyStatus(
@@ -192,7 +200,7 @@ function TraderRow({
                 key={amount}
                 onClick={() => onAmountSet(amount)}
               >
-                {formatCopyAmount(amount)}
+                {formatQuickAmount(amount)}
               </button>
             ))}
           </div>
@@ -296,20 +304,21 @@ function SpectatorRail({
   activityStatus: LiveActivityModeStatus;
   activityStatusLabel: string;
 }) {
-  const latestActivity = activity[0] ?? "Waiting for the next BTC signal";
+  const latestActivity = activity[0] ?? "Waiting for live BTC activity";
 
   return (
     <section
       className="spectator-rail"
-      aria-label="Live activity"
+      aria-label="Live testnet activity"
       data-source={activitySource}
       data-status={activityStatus}
       data-testid="spectator-rail"
     >
       <div className="spectator-copy">
+        <span>Live status</span>
         <strong>{spectatorCount.toLocaleString()}</strong>
         <span>
-          watching /{" "}
+          wallets watched /{" "}
           <span
             className="activity-source-status"
             data-testid="activity-connection-status"
@@ -340,7 +349,7 @@ function ModeSwitch({
         aria-pressed={mode === "replay"}
         onClick={() => onModeChange("replay")}
       >
-        Replay
+        Demo
       </button>
       <button
         type="button"
@@ -391,11 +400,16 @@ function ActiveSignalStrip({
     >
       <div className="signal-strip-top">
         <div>
-          <p>{mode === "market" ? "External wallets" : frame.status}</p>
+          <p>{mode === "market" ? "Testnet Alpha" : frame.status}</p>
+          <strong>
+            {mode === "market"
+              ? "Live Predict wallets"
+              : frame.latestSignal}
+          </strong>
         </div>
         <span>
           {mode === "market"
-            ? "User-signed"
+            ? "User signs every copy"
             : receiptState === "Disarmed"
             ? `Ready / ${formatCopyAmount(copyAmount)}`
             : `${receiptState} / ${formatCopyAmount(copyAmount)}`}
@@ -406,7 +420,7 @@ function ActiveSignalStrip({
           aria-expanded={isDemoOpen}
           onClick={() => setIsDemoOpen((isOpen) => !isOpen)}
         >
-          Demo
+          Tools
         </button>
       </div>
       <ModeSwitch mode={mode} onModeChange={onModeChange} />
@@ -414,7 +428,7 @@ function ActiveSignalStrip({
         <div>
           <strong>
             {mode === "market"
-              ? "Observed Predict mints"
+              ? "Observed BTC UP/DOWN mints"
               : frame.latestSignal}
           </strong>
         </div>
@@ -439,6 +453,8 @@ export function MarketHeatPreview({
   sourceLabel,
   sortMode,
   selectedRowId,
+  copyAmount,
+  onAmountSet,
   onSortModeChange,
   onSelectRow,
   onCloseIntent,
@@ -447,16 +463,18 @@ export function MarketHeatPreview({
   sourceLabel: string;
   sortMode: MarketHeatSortMode;
   selectedRowId: string | null;
+  copyAmount: number;
+  onAmountSet: (amount: number) => void;
   onSortModeChange: (sortMode: MarketHeatSortMode) => void;
   onSelectRow: (rowId: string) => void;
   onCloseIntent: () => void;
 }) {
   return (
-    <section className="market-heat-list" aria-label="Market Heat" data-testid="market-heat-preview">
+    <section className="market-heat-list" aria-label="Alpha Feed" data-testid="market-heat-preview">
       <div className="section-heading market-heat-heading">
         <div className="market-heat-heading-title">
-          <p>Market Heat</p>
-          <span>{sourceLabel}</span>
+          <p>Alpha Feed</p>
+          <span>{sourceLabel} BTC markets</span>
         </div>
         <div className="market-heat-sort" aria-label="Market heat sort">
           <button
@@ -480,11 +498,12 @@ export function MarketHeatPreview({
       {rows.map((row) => {
         const isSelected = row.id === selectedRowId;
         const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
+        const sideClass = row.side.toLowerCase();
 
         return (
           <article
             aria-current={isSelected ? "true" : undefined}
-            className={`market-heat-row market-heat-row-${row.status} ${
+            className={`market-heat-row market-heat-row-${row.status} market-heat-row-${sideClass} ${
               isSelected ? "market-heat-row-selected" : ""
             }`}
             data-testid="market-heat-row"
@@ -492,16 +511,15 @@ export function MarketHeatPreview({
             onClick={() => onSelectRow(row.id)}
           >
             <div className="market-heat-main">
+              <div className="wallet-avatar" aria-hidden="true">
+                {walletAvatarLabel(row.displayName)}
+              </div>
               <div className="market-heat-identity">
                 <div className="trader-title-row">
                   <h2>{row.displayName}</h2>
                   <span>{row.statusLabel}</span>
                 </div>
                 <p>{row.manager}</p>
-              </div>
-              <div className="trader-row-score">
-                <strong>{row.heatScore}</strong>
-                <span>Heat</span>
               </div>
               <button
                 type="button"
@@ -514,10 +532,26 @@ export function MarketHeatPreview({
                 {row.actionLabel}
               </button>
             </div>
+            <div className="alpha-call-line">
+              <div>
+                <span>{row.pairLabel}</span>
+                <strong className={`direction-pill direction-pill-${sideClass}`}>{row.side}</strong>
+              </div>
+              <span>{row.intervalLabel} market</span>
+            </div>
             <div className="trader-row-metrics" aria-label={`${row.displayName} market heat stats`}>
-              <span>{row.market}</span>
-              <span>{row.strikeLabel}</span>
-              <span>Exp {row.intervalLabel}</span>
+              <span>
+                <small>Strike</small>
+                {row.strikeLabel.replace("Strike ", "")}
+              </span>
+              <span>
+                <small>Expiry</small>
+                {row.expiryTimeLabel}
+              </span>
+              <span>
+                <small>Heat</small>
+                {row.heatScore}
+              </span>
             </div>
             {intentPanel ? (
               <div
@@ -544,10 +578,37 @@ export function MarketHeatPreview({
                   </button>
                 </div>
                 <div className="market-heat-intent-meta" aria-label={`${row.displayName} intent`}>
-                  <span>{intentPanel.statusLabel}</span>
-                  <span>{intentPanel.detailLabel}</span>
-                  <span>Exp {row.intervalLabel}</span>
+                  <span>
+                    <small>Stake</small>
+                    {formatCopyAmount(copyAmount)}
+                  </span>
+                  <span>
+                    <small>Signal</small>
+                    {intentPanel.detailLabel}
+                  </span>
+                  <span>
+                    <small>Expiry</small>
+                    {row.expiryTimeLabel}
+                  </span>
                 </div>
+                <div className="chip-row" aria-label="Quick stake amounts">
+                  {quickAmounts.map((amount) => (
+                    <button
+                      type="button"
+                      className={copyAmount === amount ? "selected-chip" : ""}
+                      key={amount}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onAmountSet(amount);
+                      }}
+                    >
+                      {formatQuickAmount(amount)}
+                    </button>
+                  ))}
+                </div>
+                <p className="signature-note">
+                  Hot Hands prepares the transaction. You approve and sign it in your own wallet.
+                </p>
               </div>
             ) : null}
           </article>
@@ -564,14 +625,13 @@ function MarketHeader() {
         <span aria-hidden="true" />
         <div>
           <h1>Hot Hands</h1>
-          <p>
-            {market.pair} / {market.expiry}
-          </p>
+          <p>BTC Up/Down on DeepBook Predict</p>
         </div>
       </div>
       <div className="market-price">
+        <span>BTC/USD</span>
         <strong>{market.price}</strong>
-        <span>{market.move}</span>
+        <em>{market.move}</em>
       </div>
     </header>
   );
@@ -590,7 +650,7 @@ function AccountSummary({
     >
       <div className="account-summary-main">
         <div className="account-pnl" data-testid="account-pnl">
-          <p>{summary.title}</p>
+          <p>Session PNL</p>
           <strong>{summary.pnl}</strong>
         </div>
         <div className="account-value">
@@ -608,7 +668,7 @@ function AccountSummary({
           <strong>{summary.copyValue}</strong>
         </div>
         <div>
-          <span>State</span>
+          <span>Position</span>
           <strong>{summary.status}</strong>
         </div>
       </div>
@@ -948,6 +1008,8 @@ export function App() {
             sourceLabel={marketHeatPreview.sourceLabel}
             sortMode={marketHeatSortMode}
             selectedRowId={marketHeatIntent.selectedRowId}
+            copyAmount={copyState.copyAmount}
+            onAmountSet={handleAmountSet}
             onSortModeChange={setMarketHeatSortMode}
             onSelectRow={handleMarketHeatSelect}
             onCloseIntent={handleMarketHeatClose}
