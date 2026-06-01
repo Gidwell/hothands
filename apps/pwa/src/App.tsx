@@ -53,6 +53,7 @@ import {
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
+const MARKET_HEAT_PAGE_SIZE = 8;
 type PreviewMode = "replay" | "market";
 
 export function getInitialPreviewMode(apiBaseUrl: string | undefined): PreviewMode {
@@ -454,10 +455,13 @@ export function MarketHeatPreview({
   sourceLabel,
   sortMode,
   showExpired,
+  canShowMore,
   selectedRowId,
   copyAmount,
+  showMoreLabel,
   onAmountSet,
   onShowExpiredChange,
+  onShowMore,
   onSortModeChange,
   onSelectRow,
   onCloseIntent,
@@ -466,10 +470,13 @@ export function MarketHeatPreview({
   sourceLabel: string;
   sortMode: MarketHeatSortMode;
   showExpired: boolean;
+  canShowMore: boolean;
   selectedRowId: string | null;
   copyAmount: number;
+  showMoreLabel: string;
   onAmountSet: (amount: number) => void;
   onShowExpiredChange: (showExpired: boolean) => void;
+  onShowMore: () => void;
   onSortModeChange: (sortMode: MarketHeatSortMode) => void;
   onSelectRow: (rowId: string) => void;
   onCloseIntent: () => void;
@@ -630,6 +637,16 @@ export function MarketHeatPreview({
           </article>
         );
       })}
+      {canShowMore ? (
+        <button
+          type="button"
+          className="market-heat-show-more"
+          data-testid="market-heat-show-more"
+          onClick={onShowMore}
+        >
+          {showMoreLabel}
+        </button>
+      ) : null}
     </section>
   );
 }
@@ -772,6 +789,8 @@ export function App() {
   const [marketHeatSortMode, setMarketHeatSortMode] =
     useState<MarketHeatSortMode>("latest");
   const [marketHeatShowExpired, setMarketHeatShowExpired] = useState(false);
+  const [marketHeatVisibleLimit, setMarketHeatVisibleLimit] =
+    useState(MARKET_HEAT_PAGE_SIZE);
   const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
     selectedRowId: null,
   });
@@ -802,15 +821,29 @@ export function App() {
 
     return [...frozenTraders, ...newTraders];
   }, [frozenTraderOrder, replayTraders]);
-  const sortedMarketHeatRows = useMemo(
-    () =>
-      selectVisibleMarketHeatRows(marketHeatPreview.rows, {
-        nowMs: Date.now(),
-        showExpired: marketHeatShowExpired,
-        sortMode: marketHeatSortMode,
-      }),
-    [marketHeatPreview.rows, marketHeatShowExpired, marketHeatSortMode],
+  const marketHeatNowMs = Date.now();
+  const sortedMarketHeatRows = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
+    limit: marketHeatVisibleLimit,
+    nowMs: marketHeatNowMs,
+    showExpired: marketHeatShowExpired,
+    sortMode: marketHeatSortMode,
+  });
+  const marketHeatVisibleTotal = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
+    limit: Number.MAX_SAFE_INTEGER,
+    nowMs: marketHeatNowMs,
+    showExpired: marketHeatShowExpired,
+    sortMode: marketHeatSortMode,
+  }).length;
+  const marketHeatRemainingCount = Math.max(
+    0,
+    marketHeatVisibleTotal - sortedMarketHeatRows.length,
   );
+  const marketHeatShowMoreCount = Math.min(
+    MARKET_HEAT_PAGE_SIZE,
+    marketHeatRemainingCount,
+  );
+  const marketHeatShowMoreLabel =
+    marketHeatShowMoreCount === 1 ? "Show 1 more" : `Show ${marketHeatShowMoreCount} more`;
   const frame = useMemo(
     () => getReplayFrame(replayState, scenario, market),
     [replayState, scenario],
@@ -1001,6 +1034,17 @@ export function App() {
   const handleMarketHeatClose = () => {
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
   };
+  const handleMarketHeatSortModeChange = (sortMode: MarketHeatSortMode) => {
+    setMarketHeatSortMode(sortMode);
+    setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
+  };
+  const handleMarketHeatShowExpiredChange = (showExpired: boolean) => {
+    setMarketHeatShowExpired(showExpired);
+    setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
+  };
+  const handleMarketHeatShowMore = () => {
+    setMarketHeatVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
+  };
 
   return (
     <main className="app-shell" data-testid="app-shell">
@@ -1034,11 +1078,14 @@ export function App() {
             sourceLabel={marketHeatPreview.sourceLabel}
             sortMode={marketHeatSortMode}
             showExpired={marketHeatShowExpired}
+            canShowMore={marketHeatRemainingCount > 0}
             selectedRowId={marketHeatIntent.selectedRowId}
             copyAmount={copyState.copyAmount}
+            showMoreLabel={marketHeatShowMoreLabel}
             onAmountSet={handleAmountSet}
-            onShowExpiredChange={setMarketHeatShowExpired}
-            onSortModeChange={setMarketHeatSortMode}
+            onShowExpiredChange={handleMarketHeatShowExpiredChange}
+            onShowMore={handleMarketHeatShowMore}
+            onSortModeChange={handleMarketHeatSortModeChange}
             onSelectRow={handleMarketHeatSelect}
             onCloseIntent={handleMarketHeatClose}
           />

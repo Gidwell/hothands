@@ -474,6 +474,15 @@ button {
   box-shadow: 0 4px 12px rgba(34, 48, 64, 0.08);
 }
 
+.market-heat-show-more {
+  min-height: 38px;
+  border: 1px solid #dbe4ef;
+  color: #344054;
+  background: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
 .market-heat-row,
 .trader-row {
   display: grid;

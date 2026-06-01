@@ -29,9 +29,12 @@ describe("MarketHeatPreview component", () => {
         sortMode="latest"
         selectedRowId={row.id}
         showExpired={false}
+        canShowMore={false}
         copyAmount={25}
+        showMoreLabel="Show more"
         onAmountSet={() => undefined}
         onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
         onSortModeChange={() => undefined}
         onSelectRow={() => undefined}
         onCloseIntent={() => undefined}
@@ -48,5 +51,37 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Show expired");
     expect(html).toContain('aria-pressed="true"');
     expect(html).not.toContain("Ready for your wallet signature");
+  });
+
+  test("renders a bottom show-more control when more feed rows are available", () => {
+    const rows = buildMarketHeatPreview(
+      Array.from({ length: 10 }, (_, index) => ({
+        ...watchingOnlyRows[0],
+        id: `external-watch-${index}`,
+        observedAtMs: 1_779_158_000_000 - index * 60_000,
+      })),
+      10,
+    ).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={rows.slice(0, 8)}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        selectedRowId={null}
+        showExpired={false}
+        canShowMore={true}
+        copyAmount={25}
+        showMoreLabel="Show 2 more"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onSelectRow={() => undefined}
+        onCloseIntent={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="market-heat-show-more"');
+    expect(html).toContain("Show 2 more");
   });
 });
