@@ -19,6 +19,22 @@ const watchingOnlyRows: MarketHeatPreviewRowInput[] = [
   },
 ];
 
+const copyReadyRows: MarketHeatPreviewRowInput[] = [
+  {
+    id: "external-copy",
+    wallet: "0xbbbb222233334444555566667777888899990000",
+    manager: "manager 0xbbbb...0000",
+    market: "BTC-USD",
+    side: "UP",
+    strike: 7_100,
+    expiryMs: 1_779_165_600_000,
+    intervalLabel: "2h",
+    observedAtMs: 1_779_158_000_000,
+    heatScore: 94,
+    status: "copy_ready",
+  },
+];
+
 describe("MarketHeatPreview component", () => {
   test("renders a compact inline watch panel for the selected row", () => {
     const [row] = buildMarketHeatPreview(watchingOnlyRows, 1).rows;
@@ -36,6 +52,7 @@ describe("MarketHeatPreview component", () => {
         onShowExpiredChange={() => undefined}
         onShowMore={() => undefined}
         onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
         onCloseIntent={() => undefined}
       />,
@@ -53,6 +70,36 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Show expired");
     expect(html).toContain('aria-pressed="true"');
     expect(html).not.toContain("Ready for your wallet signature");
+  });
+
+  test("requires an explicit wallet handoff after selecting copy amount", () => {
+    const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        selectedRowId={row.id}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={375}
+        showMoreLabel="Show more"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onCloseIntent={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Stake</small>$375");
+    expect(html).toContain('data-testid="market-heat-wallet-submit"');
+    expect(html).toContain("Send to wallet");
+    expect(html).toContain("No wallet request until you tap Send to wallet");
   });
 
   test("renders a bottom show-more control when more feed rows are available", () => {
@@ -78,6 +125,7 @@ describe("MarketHeatPreview component", () => {
         onShowExpiredChange={() => undefined}
         onShowMore={() => undefined}
         onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
         onCloseIntent={() => undefined}
       />,

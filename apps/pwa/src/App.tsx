@@ -506,12 +506,14 @@ export function MarketHeatPreview({
   showExpired,
   canShowMore,
   selectedRowId,
+  walletSubmitRowId = null,
   copyAmount,
   showMoreLabel,
   onAmountSet,
   onShowExpiredChange,
   onShowMore,
   onSortModeChange,
+  onWalletSubmit,
   onSelectRow,
   onCloseIntent,
 }: {
@@ -521,12 +523,14 @@ export function MarketHeatPreview({
   showExpired: boolean;
   canShowMore: boolean;
   selectedRowId: string | null;
+  walletSubmitRowId?: string | null;
   copyAmount: number;
   showMoreLabel: string;
   onAmountSet: (amount: number) => void;
   onShowExpiredChange: (showExpired: boolean) => void;
   onShowMore: () => void;
   onSortModeChange: (sortMode: MarketHeatSortMode) => void;
+  onWalletSubmit: (rowId: string) => void;
   onSelectRow: (rowId: string) => void;
   onCloseIntent: () => void;
 }) {
@@ -571,6 +575,8 @@ export function MarketHeatPreview({
         const isSelected = row.id === selectedRowId;
         const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
         const sideClass = row.side.toLowerCase();
+        const isWalletSubmitReady = row.status === "copy_ready";
+        const didSubmitToWallet = walletSubmitRowId === row.id;
 
         return (
           <article
@@ -669,8 +675,30 @@ export function MarketHeatPreview({
                   onAmountSet={onAmountSet}
                   stopPropagation={true}
                 />
+                {isWalletSubmitReady ? (
+                  <div className="wallet-submit-row">
+                    <button
+                      type="button"
+                      className="wallet-submit-button"
+                      data-testid="market-heat-wallet-submit"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onWalletSubmit(row.id);
+                      }}
+                    >
+                      Send to wallet
+                    </button>
+                    {didSubmitToWallet ? (
+                      <span className="wallet-submit-status" aria-live="polite">
+                        Wallet request started
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 <p className="signature-note">
-                  Hot Hands prepares the transaction. You approve and sign it in your own wallet.
+                  {isWalletSubmitReady
+                    ? "No wallet request until you tap Send to wallet. Hot Hands prepares the transaction first; you approve in your wallet."
+                    : "Hot Hands prepares the transaction when the next mint appears. No wallet request until a copy is ready."}
                 </p>
               </div>
             ) : null}
@@ -834,6 +862,8 @@ export function App() {
   const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
     selectedRowId: null,
   });
+  const [marketHeatWalletSubmitRowId, setMarketHeatWalletSubmitRowId] =
+    useState<string | null>(null);
   const liveActivityModeRef = useRef<LiveActivityModeController | null>(null);
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
   const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
@@ -1020,6 +1050,7 @@ export function App() {
   };
 
   const handleAmountSet = (amount: number) => {
+    setMarketHeatWalletSubmitRowId(null);
     setReplayState((state) => updateReplayCopy(state, (copy) => setCopyAmount(copy, amount)));
   };
 
@@ -1062,10 +1093,12 @@ export function App() {
 
     if (mode !== "market") {
       setMarketHeatIntent((state) => closeMarketHeatIntent(state));
+      setMarketHeatWalletSubmitRowId(null);
     }
   };
 
   const handleMarketHeatSelect = (rowId: string) => {
+    setMarketHeatWalletSubmitRowId(null);
     setMarketHeatIntent((state) =>
       selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
     );
@@ -1073,6 +1106,13 @@ export function App() {
 
   const handleMarketHeatClose = () => {
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
+    setMarketHeatWalletSubmitRowId(null);
+  };
+  const handleMarketHeatWalletSubmit = (rowId: string) => {
+    setMarketHeatIntent((state) =>
+      selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
+    );
+    setMarketHeatWalletSubmitRowId(rowId);
   };
   const handleMarketHeatSortModeChange = (sortMode: MarketHeatSortMode) => {
     setMarketHeatSortMode(sortMode);
@@ -1120,12 +1160,14 @@ export function App() {
             showExpired={marketHeatShowExpired}
             canShowMore={marketHeatRemainingCount > 0}
             selectedRowId={marketHeatIntent.selectedRowId}
+            walletSubmitRowId={marketHeatWalletSubmitRowId}
             copyAmount={copyState.copyAmount}
             showMoreLabel={marketHeatShowMoreLabel}
             onAmountSet={handleAmountSet}
             onShowExpiredChange={handleMarketHeatShowExpiredChange}
             onShowMore={handleMarketHeatShowMore}
             onSortModeChange={handleMarketHeatSortModeChange}
+            onWalletSubmit={handleMarketHeatWalletSubmit}
             onSelectRow={handleMarketHeatSelect}
             onCloseIntent={handleMarketHeatClose}
           />

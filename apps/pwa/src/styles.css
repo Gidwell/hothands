@@ -268,6 +268,7 @@ button {
 .close-copy-button,
 .chip-row button,
 .arm-button,
+.wallet-submit-button,
 .demo-buttons button {
   min-height: 32px;
   border-radius: 8px;
@@ -754,6 +755,27 @@ button {
   font-size: 0.92rem;
   font-weight: 900;
   outline: none;
+}
+
+.wallet-submit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.wallet-submit-button {
+  min-height: 40px;
+  color: #ffffff;
+  background: #111827;
+  box-shadow: 0 10px 18px rgba(17, 24, 39, 0.16);
+}
+
+.wallet-submit-status {
+  color: #07813f;
+  font-size: 0.72rem;
+  font-weight: 950;
+  white-space: nowrap;
 }
 
 .signature-note {
