@@ -328,7 +328,18 @@ export function TradeTicket({
                           {returnPreview.profitLabel}
                         </span>
                       </>
-                    ) : null}
+                    ) : (
+                      <>
+                        <span className="metric-muted">
+                          <small>Est. payout</small>
+                          Quote needed
+                        </span>
+                        <span className="metric-muted">
+                          <small>Max profit</small>
+                          Quote needed
+                        </span>
+                      </>
+                    )}
                     <span>
                       <small>Strike</small>
                       {market.strikeLabel}

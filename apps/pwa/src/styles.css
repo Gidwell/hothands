@@ -631,6 +631,10 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.trade-ticket-metrics .metric-muted {
+  color: #667085;
+}
+
 .trade-ticket-metrics small {
   color: #667085;
   font-size: 0.62rem;

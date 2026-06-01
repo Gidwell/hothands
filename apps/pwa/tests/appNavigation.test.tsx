@@ -145,4 +145,56 @@ describe("mobile app navigation", () => {
     expect(html.indexOf("Trade this market")).toBeLessThan(html.indexOf("4h left"));
     expect(html).toContain("Send to wallet");
   });
+
+  test("keeps return fields visible when a trade market still needs a quote", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[
+          {
+            id: "btc-2h-72000",
+            oracleId: "0xoracle2h",
+            pairLabel: "BTC/USD",
+            intervalLabel: "2h",
+            roundLabel: "2h round",
+            expiryMs: 1_779_172_200_000,
+            expiryTimeLabel: "May 18, 23:30 PDT",
+            timeRemainingLabel: "2h left",
+            strike: 72_000,
+            strikeLabel: "$72,000",
+            moneynessLabel: "+$950 vs spot",
+            activityLabel: "No recent trades",
+            uniqueWalletCount: 0,
+            tradeCount: 0,
+            distinctStrikeCount: 0,
+            volumeUsd: 0,
+            volumeLabel: "$0",
+            up: {
+              walletCount: 0,
+              tradeCount: 0,
+              volumeUsd: 0,
+              volumeLabel: "$0",
+            },
+            down: {
+              walletCount: 0,
+              tradeCount: 0,
+              volumeUsd: 0,
+              volumeLabel: "$0",
+            },
+          },
+        ]}
+        copyAmount={25}
+        selectedMarketId="btc-2h-72000"
+        selectedSide="UP"
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Spend</small>$25");
+    expect(html).toContain("Est. payout</small>Quote needed");
+    expect(html).toContain("Max profit</small>Quote needed");
+    expect(html).toContain("Send to wallet");
+  });
 });
