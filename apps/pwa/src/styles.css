@@ -702,6 +702,11 @@ button {
   gap: 8px;
 }
 
+.copy-amount-controls {
+  display: grid;
+  gap: 8px;
+}
+
 .chip-row button {
   padding: 0 6px;
   color: #344054;
@@ -715,6 +720,40 @@ button {
   border-color: #aa99ff;
   color: #6246ea;
   background: #efeafe;
+}
+
+.custom-copy-amount {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: #42526b;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.custom-copy-amount-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #dbe5ee;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #667085;
+}
+
+.custom-copy-amount-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  color: #111827;
+  background: transparent;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 900;
+  outline: none;
 }
 
 .signature-note {

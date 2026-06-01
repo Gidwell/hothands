@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import {
   COPY_AMOUNT_MAX,
   COPY_AMOUNT_MIN,
@@ -62,6 +62,62 @@ export function getInitialPreviewMode(apiBaseUrl: string | undefined): PreviewMo
 
 function formatQuickAmount(amount: number): string {
   return amount === COPY_AMOUNT_MAX ? "MAX" : formatCopyAmount(amount);
+}
+
+function CopyAmountControls({
+  ariaLabel,
+  copyAmount,
+  onAmountSet,
+  stopPropagation = false,
+}: {
+  ariaLabel: string;
+  copyAmount: number;
+  onAmountSet: (amount: number) => void;
+  stopPropagation?: boolean;
+}) {
+  const stopEvent = (event: SyntheticEvent) => {
+    if (stopPropagation) {
+      event.stopPropagation();
+    }
+  };
+
+  return (
+    <div className="copy-amount-controls">
+      <div className="chip-row" aria-label={ariaLabel}>
+        {quickAmounts.map((amount) => (
+          <button
+            type="button"
+            className={copyAmount === amount ? "selected-chip" : ""}
+            key={amount}
+            onClick={(event) => {
+              stopEvent(event);
+              onAmountSet(amount);
+            }}
+          >
+            {formatQuickAmount(amount)}
+          </button>
+        ))}
+      </div>
+      <label className="custom-copy-amount">
+        <span>Custom</span>
+        <span className="custom-copy-amount-field">
+          <span aria-hidden="true">$</span>
+          <input
+            aria-label="Custom copy amount"
+            data-testid="custom-copy-amount"
+            inputMode="numeric"
+            min={COPY_AMOUNT_MIN}
+            max={COPY_AMOUNT_MAX}
+            step="1"
+            type="number"
+            value={copyAmount}
+            onClick={stopEvent}
+            onChange={(event) => onAmountSet(Number(event.currentTarget.value))}
+          />
+        </span>
+      </label>
+    </div>
+  );
 }
 
 function walletAvatarLabel(displayName: string): string {
@@ -194,18 +250,11 @@ function TraderRow({
               Close
             </button>
           </div>
-          <div className="chip-row" aria-label="Quick copy amounts">
-            {quickAmounts.map((amount) => (
-              <button
-                type="button"
-                className={copyAmount === amount ? "selected-chip" : ""}
-                key={amount}
-                onClick={() => onAmountSet(amount)}
-              >
-                {formatQuickAmount(amount)}
-              </button>
-            ))}
-          </div>
+          <CopyAmountControls
+            ariaLabel="Quick copy amounts"
+            copyAmount={copyAmount}
+            onAmountSet={onAmountSet}
+          />
           <button
             type="button"
             className={`arm-button ${receiptState !== "Disarmed" ? "armed" : ""}`}
@@ -614,21 +663,12 @@ export function MarketHeatPreview({
                     {row.expiryTimeLabel}
                   </span>
                 </div>
-                <div className="chip-row" aria-label="Quick stake amounts">
-                  {quickAmounts.map((amount) => (
-                    <button
-                      type="button"
-                      className={copyAmount === amount ? "selected-chip" : ""}
-                      key={amount}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onAmountSet(amount);
-                      }}
-                    >
-                      {formatQuickAmount(amount)}
-                    </button>
-                  ))}
-                </div>
+                <CopyAmountControls
+                  ariaLabel="Quick stake amounts"
+                  copyAmount={copyAmount}
+                  onAmountSet={onAmountSet}
+                  stopPropagation={true}
+                />
                 <p className="signature-note">
                   Hot Hands prepares the transaction. You approve and sign it in your own wallet.
                 </p>

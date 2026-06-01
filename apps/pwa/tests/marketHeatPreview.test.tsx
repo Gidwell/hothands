@@ -44,6 +44,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain('data-testid="market-heat-intent-panel"');
     expect(html).toContain("Watch 0xaaaa...0000");
     expect(html).toContain("Next observed mint");
+    expect(html).toContain('data-testid="custom-copy-amount"');
+    expect(html).toContain('aria-label="Custom copy amount"');
     expect(html).toContain("We&#x27;ll watch this wallet and prepare the next mint for your signature");
     expect(html).toContain("Hot Hands prepares the transaction");
     expect(html).toContain('data-testid="market-heat-sort-latest"');
