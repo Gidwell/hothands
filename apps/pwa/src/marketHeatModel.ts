@@ -81,7 +81,7 @@ export type BuildMarketHeatPreviewOptions = {
   timeZone?: string;
 };
 
-const MARKET_HEAT_CANDIDATE_LIMIT = 48;
+const MARKET_HEAT_CANDIDATE_LIMIT = 96;
 const CAPTURED_ROW_BASE_AGE_MS = 5 * 60_000;
 const CAPTURED_ROW_AGE_STEP_MS = 15 * 60_000;
 const CAPTURED_MARKET_PRICE: MarketHeatPriceInput = {

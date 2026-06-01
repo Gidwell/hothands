@@ -88,6 +88,36 @@ describe("testnet market heat endpoint", () => {
     expect(projection.rows.some((row) => row.wallet === "0xtrader-position")).toBe(true);
   });
 
+  test("keeps repeat trader mints as separate latest activity rows", async () => {
+    const projection = await getTestnetMarketHeat({
+      fetchImpl: createLivePredictFetch({
+        includeRepeatTraderMints: true
+      })
+    });
+
+    expect(projection.source).toBe("live_testnet");
+    expect(projection.rows.slice(0, 2).map((row) => row.id)).toEqual([
+      expect.stringContaining("mint:0xrepeat-newer:10"),
+      expect.stringContaining("mint:0xrepeat-older:9")
+    ]);
+    expect(projection.rows.slice(0, 2)).toEqual([
+      expect.objectContaining({
+        wallet: "0xtrader-repeat",
+        manager: "manager-btc-repeat",
+        observedAtMs: 1_779_071_050_000,
+        strike: 71_500,
+        status: "copy_ready"
+      }),
+      expect.objectContaining({
+        wallet: "0xtrader-repeat",
+        manager: "manager-btc-repeat",
+        observedAtMs: 1_779_071_000_000,
+        strike: 71_400,
+        status: "copy_ready"
+      })
+    ]);
+  });
+
   test("normalizes high precision live strikes into readable BTC prices", async () => {
     const projection = await getTestnetMarketHeat({
       fetchImpl: createLivePredictFetch({
@@ -219,12 +249,14 @@ function createLivePredictFetch(
     quietOracleTrades = false,
     extraOlderHotTradeCount = 0,
     includeRecentPosition = false,
+    includeRepeatTraderMints = false,
     positionStrike = "73000000000",
     positionCost = "800000"
   }: {
     quietOracleTrades?: boolean;
     extraOlderHotTradeCount?: number;
     includeRecentPosition?: boolean;
+    includeRepeatTraderMints?: boolean;
     positionStrike?: string;
     positionCost?: string;
   } = {}
@@ -272,6 +304,34 @@ function createLivePredictFetch(
       }
 
       return jsonResponse([
+        ...(includeRepeatTraderMints
+          ? [
+              liveTrade({
+                digest: "0xrepeat-newer",
+                event_seq: 10,
+                kind: "minted",
+                trader: "0xtrader-repeat",
+                manager_id: "manager-btc-repeat",
+                strike: "71500000000",
+                is_up: true,
+                quantity: "1",
+                cost: "200000",
+                timestamp_ms: "1779071050000"
+              }),
+              liveTrade({
+                digest: "0xrepeat-older",
+                event_seq: 9,
+                kind: "minted",
+                trader: "0xtrader-repeat",
+                manager_id: "manager-btc-repeat",
+                strike: "71400000000",
+                is_up: false,
+                quantity: "1",
+                cost: "200000",
+                timestamp_ms: "1779071000000"
+              })
+            ]
+          : []),
         liveTrade({
           digest: "0xmintdigest",
           event_seq: 7,

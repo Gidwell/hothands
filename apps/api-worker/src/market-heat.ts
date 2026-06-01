@@ -44,6 +44,9 @@ export interface TestnetMarketHeatOptions {
   mode?: "live" | "captured";
 }
 
+const LATEST_ACTIVITY_ROW_LIMIT = 48;
+const HEAT_ACCOUNT_ROW_LIMIT = 48;
+
 export function getCapturedTestnetMarketHeat(): MarketHeatProjection {
   return CAPTURED_TESTNET_MARKET_HEAT;
 }
@@ -83,10 +86,16 @@ async function getLiveTestnetMarketHeat(fetchImpl: typeof fetch): Promise<Market
   const oraclesById = new Map(
     canary.btcOracles.map((btcOracle) => [btcOracle.oracle_id, btcOracle])
   );
-  const heat = selectMarketHeatCandidates(computeMarketHeat(allEvents));
-  const rows = heat.map((trader, index) =>
-    mapHeatTraderToRow(trader, allEvents, oraclesById, index)
-  ).sort(compareMarketHeatRowsByLatest);
+  const heat = computeMarketHeat(allEvents);
+  const heatByTrader = new Map(
+    heat.map((trader) => [traderKey(trader.trader, trader.managerId), trader])
+  );
+  const latestRows = selectLatestActivityRows(allEvents)
+    .map((event) => mapTradeEventToRow(event, heatByTrader, oraclesById));
+  const heatRows = selectHeatAccountCandidates(heat)
+    .map((trader, index) => mapHeatTraderToRow(trader, allEvents, oraclesById, index));
+  const rows = mergeMarketHeatRows([...latestRows, ...heatRows])
+    .sort(compareMarketHeatRowsByLatest);
 
   return {
     source: "live_testnet",
@@ -113,26 +122,36 @@ function dedupeEvents(events: PredictNormalizedTradeEvent[]): PredictNormalizedT
   return [...byId.values()];
 }
 
-function selectMarketHeatCandidates(traders: MarketHeatTrader[]): MarketHeatTrader[] {
-  const candidates = new Map<string, MarketHeatTrader>();
-  const add = (trader: MarketHeatTrader) => {
-    candidates.set(`${trader.trader}:${trader.managerId}`, trader);
-  };
-  const candidateLimit = 48;
-  const perModeLimit = Math.ceil(candidateLimit / 2);
+function selectLatestActivityRows(
+  events: PredictNormalizedTradeEvent[]
+): PredictNormalizedTradeEvent[] {
+  return [...events]
+    .sort(compareEventsByLatest)
+    .slice(0, LATEST_ACTIVITY_ROW_LIMIT);
+}
 
-  traders.slice(0, perModeLimit).forEach(add);
-  [...traders]
-    .sort(
-      (left, right) =>
-        right.lastSeenMs - left.lastSeenMs ||
-        right.hotScore - left.hotScore ||
-        left.trader.localeCompare(right.trader)
-    )
-    .slice(0, perModeLimit)
-    .forEach(add);
+function compareEventsByLatest(
+  left: PredictNormalizedTradeEvent,
+  right: PredictNormalizedTradeEvent
+): number {
+  return (
+    right.timestampMs - left.timestampMs ||
+    left.eventId.localeCompare(right.eventId)
+  );
+}
 
-  return [...candidates.values()].slice(0, candidateLimit);
+function selectHeatAccountCandidates(traders: MarketHeatTrader[]): MarketHeatTrader[] {
+  return traders.slice(0, HEAT_ACCOUNT_ROW_LIMIT);
+}
+
+function mergeMarketHeatRows(rows: MarketHeatRow[]): MarketHeatRow[] {
+  const byId = new Map<string, MarketHeatRow>();
+
+  for (const row of rows) {
+    byId.set(row.id, byId.get(row.id) ?? row);
+  }
+
+  return [...byId.values()];
 }
 
 function compareMarketHeatRowsByLatest(left: MarketHeatRow, right: MarketHeatRow): number {
@@ -185,6 +204,38 @@ function mapHeatTraderToRow(
     heatScore,
     status: latestMint ? "copy_ready" : "watching"
   };
+}
+
+function mapTradeEventToRow(
+  event: PredictNormalizedTradeEvent,
+  heatByTrader: Map<string, MarketHeatTrader>,
+  oraclesById: Map<string, PredictOracleState>
+): MarketHeatRow {
+  const heatScore = Math.min(
+    99,
+    Math.max(
+      0,
+      Math.round(heatByTrader.get(traderKey(event.actor, event.managerId))?.hotScore ?? 0)
+    )
+  );
+
+  return {
+    id: `live-${event.managerId}-${shortWallet(event.actor)}-${event.eventId}`,
+    wallet: event.actor,
+    manager: event.managerId,
+    market: "BTC-USD",
+    side: event.isUp === false ? "DOWN" : "UP",
+    strike: normalizeStrike(event.strike),
+    expiryMs: event.expiryMs,
+    intervalLabel: formatIntervalLabel(event, oraclesById.get(event.oracleId)),
+    observedAtMs: event.timestampMs,
+    heatScore,
+    status: event.kind === "mint" ? "copy_ready" : "watching"
+  };
+}
+
+function traderKey(trader: string, managerId: string): string {
+  return `${trader}:${managerId}`;
 }
 
 function shortWallet(wallet: string): string {

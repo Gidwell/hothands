@@ -192,7 +192,7 @@ describe("market heat preview model", () => {
   });
 
   test("keeps extra market heat API candidates for client-side sorting", async () => {
-    const rows = Array.from({ length: 12 }, (_, index) => ({
+    const rows = Array.from({ length: 60 }, (_, index) => ({
       id: `api-candidate-${index}`,
       wallet: `0x${String(index % 10).repeat(40)}`,
       manager: `manager-${index}`,
@@ -216,7 +216,7 @@ describe("market heat preview model", () => {
         }),
     });
 
-    expect(preview.rows).toHaveLength(12);
+    expect(preview.rows).toHaveLength(60);
   });
 
   test("orders market heat by latest observed trade by default", () => {
