@@ -844,7 +844,7 @@ function parseAvailableMarket(
   }
 
   return {
-    id: isNonEmptyString(value.id) ? value.id : `${oracleId}-${expiryMs}-${strike}`,
+    id: isNonEmptyString(value.id) ? value.id : `${oracleId}-${expiryMs}`,
     oracleId,
     pairLabel: formatPair(market),
     intervalLabel,

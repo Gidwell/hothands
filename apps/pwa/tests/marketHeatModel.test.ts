@@ -189,7 +189,7 @@ describe("market heat preview model", () => {
     });
     expect(preview.availableMarkets).toEqual([
       {
-        id: "0xoracle15-1779165900000-71000",
+        id: "0xoracle15-1779165900000",
         oracleId: "0xoracle15",
         pairLabel: "BTC/USD",
         intervalLabel: "15m",
@@ -200,7 +200,7 @@ describe("market heat preview model", () => {
         status: "active",
       },
       {
-        id: "0xoracle2h-1779172200000-72000",
+        id: "0xoracle2h-1779172200000",
         oracleId: "0xoracle2h",
         pairLabel: "BTC/USD",
         intervalLabel: "2h",
@@ -223,6 +223,63 @@ describe("market heat preview model", () => {
       expiryTimeLabel: "May 18, 19:40 PDT",
       actionLabel: "Watch next",
       statusLabel: "just now",
+    });
+  });
+
+  test("keeps parsed trade market ids stable when live strike candidates update", async () => {
+    const expiryMs = 1_779_165_900_000;
+    const loadForStrike = (strikeCandidatePrice: number) =>
+      loadMarketHeatPreview({
+        apiBaseUrl: "https://api.hot-hands.test/",
+        nowMs: 1_779_165_000_000,
+        fetcher: async () =>
+          Response.json({
+            mode: "testnet",
+            source: "live_testnet",
+            marketPrice: {
+              market: "BTC-USD",
+              price: strikeCandidatePrice,
+              source: "live_testnet",
+            },
+            markets: [
+              {
+                oracleId: "0xoracle15",
+                market: "BTC-USD",
+                intervalLabel: "15m",
+                expiryMs,
+                strikeCandidatePrice,
+                status: "active",
+              },
+            ],
+            rows: [
+              {
+                id: "external-0x1111",
+                oracleId: "0xoracle15",
+                wallet: "0x1111222233334444555566667777888899990000",
+                manager: "manager 0xabcd...0001",
+                market: "BTC-USD",
+                side: "UP",
+                strike: strikeCandidatePrice,
+                expiryMs,
+                intervalLabel: "15m",
+                observedAtMs: 1_779_165_000_000,
+                heatScore: 74,
+                status: "copy_ready",
+              },
+            ],
+          }),
+      });
+
+    const first = await loadForStrike(71_000);
+    const updated = await loadForStrike(71_050);
+
+    expect(first.availableMarkets?.[0]).toMatchObject({
+      id: "0xoracle15-1779165900000",
+      strikeLabel: "$71,000",
+    });
+    expect(updated.availableMarkets?.[0]).toMatchObject({
+      id: "0xoracle15-1779165900000",
+      strikeLabel: "$71,050",
     });
   });
 
@@ -276,7 +333,7 @@ describe("market heat preview model", () => {
       ),
       availableMarkets: [
         {
-          id: "0xoracle15-1779165900000-71100",
+          id: "0xoracle15-1779165900000",
           oracleId: "0xoracle15",
           pairLabel: "BTC/USD",
           intervalLabel: "15m",
@@ -291,7 +348,7 @@ describe("market heat preview model", () => {
 
     expect(buildTradeMarketLadder(preview, { nowMs })).toEqual([
       {
-        id: "0xoracle15-1779165900000-71100",
+        id: "0xoracle15-1779165900000",
         oracleId: "0xoracle15",
         pairLabel: "BTC/USD",
         intervalLabel: "15m",
