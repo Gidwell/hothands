@@ -37,8 +37,10 @@ export type MarketHeatAvailableMarketInput = {
   oracleId?: unknown;
   market?: unknown;
   intervalLabel?: unknown;
+  expiry?: unknown;
   expiryMs?: unknown;
   strike?: unknown;
+  strikeCandidate?: unknown;
   strikeCandidatePrice?: unknown;
   latestPrice?: unknown;
   status?: unknown;
@@ -49,9 +51,11 @@ export type MarketHeatAvailableMarket = {
   oracleId: string;
   pairLabel: string;
   intervalLabel: string;
+  expiry: number;
   expiryMs: number;
   expiryTimeLabel: string;
   strike: number;
+  strikeRaw: number;
   strikeLabel: string;
   status: string;
 };
@@ -143,10 +147,12 @@ export type TradeMarketLadderRow = {
   pairLabel: string;
   intervalLabel: string;
   roundLabel: string;
+  expiry: number;
   expiryMs: number;
   expiryTimeLabel: string;
   timeRemainingLabel: string;
   strike: number;
+  strikeRaw: number;
   strikeLabel: string;
   moneynessLabel: string;
   activityLabel: string;
@@ -157,6 +163,31 @@ export type TradeMarketLadderRow = {
   volumeLabel: string;
   up: TradeMarketSideSummary;
   down: TradeMarketSideSummary;
+};
+
+export type TradeQuoteSide = "UP" | "DOWN";
+
+export type TradeQuote = {
+  source: string;
+  market: string;
+  oracleId: string;
+  expiry: string;
+  strike: string;
+  side: TradeQuoteSide;
+  requestedSpendUsd: number;
+  costUsd: number;
+  payoutUsd: number;
+  maxProfitUsd: number;
+  effectivePrice: number;
+  quoteStatus: "ready";
+};
+
+export type LoadTradeQuoteOptions = {
+  apiBaseUrl?: string;
+  fetcher?: typeof fetch;
+  market: TradeMarketLadderRow;
+  side: TradeQuoteSide;
+  spendUsd: number;
 };
 
 const MARKET_HEAT_CANDIDATE_LIMIT = 96;
@@ -281,9 +312,11 @@ export function selectTradeMarkets(
         oracleId: row.id,
         pairLabel: row.pairLabel,
         intervalLabel: row.intervalLabel,
+        expiry: row.expiryMs,
         expiryMs: row.expiryMs,
         expiryTimeLabel: row.expiryTimeLabel,
         strike,
+        strikeRaw: strike,
         strikeLabel: formatStrike(strike),
         status: "active",
       };
@@ -326,10 +359,12 @@ export function buildTradeMarketLadder(
         pairLabel: market.pairLabel,
         intervalLabel: market.intervalLabel,
         roundLabel: `${market.intervalLabel} round`,
+        expiry: market.expiry,
         expiryMs: market.expiryMs,
         expiryTimeLabel: market.expiryTimeLabel,
         timeRemainingLabel: formatTimeRemaining(market.expiryMs, nowMs),
         strike: market.strike,
+        strikeRaw: market.strikeRaw,
         strikeLabel: market.strikeLabel,
         moneynessLabel: formatMoneyness(
           market.strike - parseFormattedUsd(preview.marketPrice.priceLabel),
@@ -464,8 +499,53 @@ export async function loadMarketHeatPreview({
   }
 }
 
+export async function loadTradeQuote({
+  apiBaseUrl,
+  fetcher = fetch,
+  market,
+  side,
+  spendUsd,
+}: LoadTradeQuoteOptions): Promise<TradeQuote | null> {
+  const normalizedBaseUrl = apiBaseUrl?.trim();
+
+  if (!normalizedBaseUrl) {
+    return null;
+  }
+
+  const response = await fetcher(
+    buildTradeQuoteUrl(normalizedBaseUrl, market, side, spendUsd),
+  );
+  if (!response.ok) {
+    return null;
+  }
+
+  return parseTradeQuote(await response.json());
+}
+
 function buildMarketHeatUrl(apiBaseUrl: string): string {
   return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/market-heat`;
+}
+
+function buildTradeQuoteUrl(
+  apiBaseUrl: string,
+  market: TradeMarketLadderRow,
+  side: TradeQuoteSide,
+  spendUsd: number,
+): string {
+  const url = new URL(`${apiBaseUrl.replace(/\/+$/, "")}/testnet/quote`);
+  const estimatedPrice =
+    side === "UP" ? market.up.estimatedPrice : market.down.estimatedPrice;
+
+  url.searchParams.set("oracleId", market.oracleId);
+  url.searchParams.set("expiry", String(market.expiry));
+  url.searchParams.set("strike", String(market.strikeRaw));
+  url.searchParams.set("side", side);
+  url.searchParams.set("spendUsd", String(spendUsd));
+  if (estimatedPrice !== undefined) {
+    url.searchParams.set("estimatedPrice", String(estimatedPrice));
+  }
+
+  return url.toString();
 }
 
 function buildCapturedMarketHeatPreview(
@@ -847,16 +927,22 @@ function parseAvailableMarket(
   const oracleId = isNonEmptyString(value.oracleId) ? value.oracleId : null;
   const market = isNonEmptyString(value.market) ? value.market : marketPrice.market;
   const intervalLabel = isNonEmptyString(value.intervalLabel) ? value.intervalLabel : null;
-  const expiryMs = isNonNegativeNumber(value.expiryMs) ? value.expiryMs : null;
+  const expiry = firstNonNegativeNumber([value.expiry, value.expiryMs]);
+  const expiryMs = expiry === null ? null : normalizeEpochMs(expiry);
   const status = isNonEmptyString(value.status) ? value.status : "active";
   const strike = firstNonNegativeNumber([
-    value.strike,
     value.strikeCandidatePrice,
+    value.strike,
     value.latestPrice,
     marketPrice.price,
   ]);
+  const strikeRaw = firstNonNegativeNumber([
+    value.strikeCandidate,
+    value.strike,
+    strike,
+  ]);
 
-  if (!oracleId || !intervalLabel || expiryMs === null || strike === null) {
+  if (!oracleId || !intervalLabel || expiry === null || expiryMs === null || strike === null || strikeRaw === null) {
     return null;
   }
 
@@ -865,11 +951,51 @@ function parseAvailableMarket(
     oracleId,
     pairLabel: formatPair(market),
     intervalLabel,
+    expiry,
     expiryMs,
     expiryTimeLabel: formatExpiryTime(expiryMs, timeZone),
     strike,
+    strikeRaw,
     strikeLabel: formatStrike(strike),
     status,
+  };
+}
+
+function parseTradeQuote(payload: unknown): TradeQuote | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  if (
+    !isNonEmptyString(payload.source) ||
+    !isNonEmptyString(payload.market) ||
+    !isNonEmptyString(payload.oracleId) ||
+    !isNonEmptyString(payload.expiry) ||
+    !isNonEmptyString(payload.strike) ||
+    (payload.side !== "UP" && payload.side !== "DOWN") ||
+    !isNonNegativeNumber(payload.requestedSpendUsd) ||
+    !isNonNegativeNumber(payload.costUsd) ||
+    !isNonNegativeNumber(payload.payoutUsd) ||
+    !isNonNegativeNumber(payload.maxProfitUsd) ||
+    !isNonNegativeNumber(payload.effectivePrice) ||
+    payload.quoteStatus !== "ready"
+  ) {
+    return null;
+  }
+
+  return {
+    source: payload.source,
+    market: payload.market,
+    oracleId: payload.oracleId,
+    expiry: payload.expiry,
+    strike: payload.strike,
+    side: payload.side,
+    requestedSpendUsd: payload.requestedSpendUsd,
+    costUsd: payload.costUsd,
+    payoutUsd: payload.payoutUsd,
+    maxProfitUsd: payload.maxProfitUsd,
+    effectivePrice: payload.effectivePrice,
+    quoteStatus: payload.quoteStatus,
   };
 }
 
@@ -928,6 +1054,10 @@ function formatMarketPriceSource(source: string): string {
 function parseFormattedUsd(value: string): number {
   const parsed = Number(value.replace(/[$,]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeEpochMs(value: number): number {
+  return value < 10_000_000_000 ? value * 1000 : value;
 }
 
 function formatCompactLabel(value: string): string {

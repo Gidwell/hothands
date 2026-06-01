@@ -5,6 +5,7 @@ import {
   buildMarketHeatPreview,
   closeMarketHeatIntent,
   loadMarketHeatPreview,
+  loadTradeQuote,
   buildTradeMarketLadder,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
@@ -148,7 +149,9 @@ describe("market heat preview model", () => {
               oracleId: "0xoracle15",
               market: "BTC-USD",
               intervalLabel: "15m",
+              expiry: 1_779_165_900_000,
               expiryMs: 1_779_165_900_000,
+              strikeCandidate: 71_000_000_000,
               strikeCandidatePrice: 71_000,
               status: "active",
             },
@@ -156,7 +159,9 @@ describe("market heat preview model", () => {
               oracleId: "0xoracle2h",
               market: "BTC-USD",
               intervalLabel: "2h",
+              expiry: 1_779_172_200_000,
               expiryMs: 1_779_172_200_000,
+              strikeCandidate: 72_000_000_000,
               strikeCandidatePrice: 72_000,
               status: "active",
             },
@@ -193,9 +198,11 @@ describe("market heat preview model", () => {
         oracleId: "0xoracle15",
         pairLabel: "BTC/USD",
         intervalLabel: "15m",
+        expiry: 1_779_165_900_000,
         expiryMs: 1_779_165_900_000,
         expiryTimeLabel: "May 18, 21:45 PDT",
         strike: 71_000,
+        strikeRaw: 71_000_000_000,
         strikeLabel: "$71,000",
         status: "active",
       },
@@ -204,9 +211,11 @@ describe("market heat preview model", () => {
         oracleId: "0xoracle2h",
         pairLabel: "BTC/USD",
         intervalLabel: "2h",
+        expiry: 1_779_172_200_000,
         expiryMs: 1_779_172_200_000,
         expiryTimeLabel: "May 18, 23:30 PDT",
         strike: 72_000,
+        strikeRaw: 72_000_000_000,
         strikeLabel: "$72,000",
         status: "active",
       },
@@ -246,7 +255,9 @@ describe("market heat preview model", () => {
                 oracleId: "0xoracle15",
                 market: "BTC-USD",
                 intervalLabel: "15m",
+                expiry: expiryMs,
                 expiryMs,
+                strikeCandidate: strikeCandidatePrice * 1_000_000,
                 strikeCandidatePrice,
                 status: "active",
               },
@@ -280,6 +291,84 @@ describe("market heat preview model", () => {
     expect(updated.availableMarkets?.[0]).toMatchObject({
       id: "0xoracle15-1779165900000",
       strikeLabel: "$71,050",
+    });
+  });
+
+  test("loads a trade quote for the selected ladder row and spend amount", async () => {
+    const nowMs = 1_779_165_000_000;
+    const expiryMs = nowMs + 15 * 60_000;
+    const [market] = buildTradeMarketLadder(
+      {
+        ...buildMarketHeatPreview([], 8, {
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71_050,
+            source: "live_testnet",
+          },
+          nowMs,
+          timeZone: "America/Los_Angeles",
+        }),
+        availableMarkets: [
+          {
+            id: "0xoracle15-1779165900000",
+            oracleId: "0xoracle15",
+            pairLabel: "BTC/USD",
+            intervalLabel: "15m",
+            expiry: 1_779_165_900_000,
+            expiryMs,
+            expiryTimeLabel: "May 18, 21:15 PDT",
+            strike: 71_100,
+            strikeRaw: 71_100_000_000,
+            strikeLabel: "$71,100",
+            status: "active",
+          },
+        ],
+      },
+      { nowMs },
+    );
+    const calls: string[] = [];
+
+    const quote = await loadTradeQuote({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      market,
+      side: "UP",
+      spendUsd: 25,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        return Response.json({
+          source: "live_testnet",
+          market: "BTC-USD",
+          oracleId: "0xoracle15",
+          expiry: "1779165900000",
+          strike: "71100000000",
+          side: "UP",
+          requestedSpendUsd: 25,
+          costUsd: 24.98,
+          payoutUsd: 49.96,
+          maxProfitUsd: 24.98,
+          effectivePrice: 0.5,
+          quoteStatus: "ready",
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/quote?oracleId=0xoracle15&expiry=1779165900000&strike=71100000000&side=UP&spendUsd=25",
+    ]);
+    expect(quote).toEqual({
+      source: "live_testnet",
+      market: "BTC-USD",
+      oracleId: "0xoracle15",
+      expiry: "1779165900000",
+      strike: "71100000000",
+      side: "UP",
+      requestedSpendUsd: 25,
+      costUsd: 24.98,
+      payoutUsd: 49.96,
+      maxProfitUsd: 24.98,
+      effectivePrice: 0.5,
+      quoteStatus: "ready",
     });
   });
 
@@ -339,9 +428,11 @@ describe("market heat preview model", () => {
           oracleId: "0xoracle15",
           pairLabel: "BTC/USD",
           intervalLabel: "15m",
+          expiry: expiryMs,
           expiryMs,
           expiryTimeLabel: "May 18, 21:15 PDT",
           strike: 71_100,
+          strikeRaw: 71_100_000_000,
           strikeLabel: "$71,100",
           status: "active",
         },
@@ -355,10 +446,12 @@ describe("market heat preview model", () => {
         pairLabel: "BTC/USD",
         intervalLabel: "15m",
         roundLabel: "15m round",
+        expiry: expiryMs,
         expiryMs,
         expiryTimeLabel: "May 18, 21:15 PDT",
         timeRemainingLabel: "15m left",
         strike: 71_100,
+        strikeRaw: 71_100_000_000,
         strikeLabel: "$71,100",
         moneynessLabel: "+$50 vs spot",
         activityLabel: "2 wallets · 2 trades · $23.75",

@@ -42,6 +42,7 @@ import {
   buildMarketHeatPreview,
   buildTradeMarketLadder,
   closeMarketHeatIntent,
+  loadTradeQuote,
   loadMarketHeatPreview,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
@@ -50,6 +51,7 @@ import {
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
   type MarketHeatSortMode,
+  type TradeQuote,
   type TradeMarketLadderRow,
 } from "./marketHeatModel";
 
@@ -59,6 +61,7 @@ const MARKET_HEAT_PAGE_SIZE = 8;
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade";
 export type TradeSide = "UP" | "DOWN";
+type TradeQuoteStatus = "idle" | "loading" | "ready" | "error";
 
 export function getInitialPreviewMode(apiBaseUrl: string | undefined): PreviewMode {
   return apiBaseUrl ? "market" : "replay";
@@ -123,6 +126,13 @@ function formatUsdValue(amount: number): string {
 function formatSignedUsdValue(amount: number): string {
   const prefix = amount >= 0 ? "+" : "-";
   return `${prefix}${formatUsdValue(Math.abs(amount))}`;
+}
+
+function buildReturnPreviewFromQuote(quote: TradeQuote): ReturnPreview {
+  return {
+    payoutLabel: formatUsdValue(quote.payoutUsd),
+    profitLabel: formatSignedUsdValue(quote.maxProfitUsd),
+  };
 }
 
 function CopyAmountControls({
@@ -217,6 +227,8 @@ export function TradeTicket({
   marketRows,
   selectedMarketId,
   selectedSide,
+  quote = null,
+  quoteStatus = "idle",
   walletSubmitted = false,
   onAmountSet,
   onMarketChange,
@@ -227,6 +239,8 @@ export function TradeTicket({
   marketRows: TradeMarketLadderRow[];
   selectedMarketId: string;
   selectedSide: TradeSide;
+  quote?: TradeQuote | null;
+  quoteStatus?: TradeQuoteStatus;
   walletSubmitted?: boolean;
   onAmountSet: (amount: number) => void;
   onMarketChange: (marketId: string) => void;
@@ -242,7 +256,9 @@ export function TradeTicket({
       ? selectedMarket.up
       : selectedMarket.down
     : null;
-  const returnPreview = buildReturnPreview(copyAmount, selectedSideSummary?.estimatedPrice);
+  const returnPreview = quote
+    ? buildReturnPreviewFromQuote(quote)
+    : buildReturnPreview(copyAmount, selectedSideSummary?.estimatedPrice);
 
   return (
     <section className="trade-ticket" aria-label="Trade" data-testid="trade-view">
@@ -317,7 +333,29 @@ export function TradeTicket({
                       <small>Spend</small>
                       {formatCopyAmount(copyAmount)}
                     </span>
-                    {returnPreview ? (
+                    {quoteStatus === "loading" ? (
+                      <>
+                        <span className="metric-muted">
+                          <small>Est. payout</small>
+                          Quoting...
+                        </span>
+                        <span className="metric-muted">
+                          <small>Max profit</small>
+                          Quoting...
+                        </span>
+                      </>
+                    ) : quoteStatus === "error" ? (
+                      <>
+                        <span className="metric-muted">
+                          <small>Est. payout</small>
+                          Quote unavailable
+                        </span>
+                        <span className="metric-muted">
+                          <small>Max profit</small>
+                          Quote unavailable
+                        </span>
+                      </>
+                    ) : returnPreview ? (
                       <>
                         <span>
                           <small>Est. payout</small>
@@ -1112,6 +1150,15 @@ export function App() {
   const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
   const [selectedTradeMarketId, setSelectedTradeMarketId] = useState<string | null>(null);
   const [tradeWalletSubmitted, setTradeWalletSubmitted] = useState(false);
+  const [tradeQuoteState, setTradeQuoteState] = useState<{
+    key: string | null;
+    status: TradeQuoteStatus;
+    quote: TradeQuote | null;
+  }>({
+    key: null,
+    status: "idle",
+    quote: null,
+  });
   const [previewMode, setPreviewMode] = useState<PreviewMode>(() =>
     getInitialPreviewMode(realtimeApiBaseUrl),
   );
@@ -1169,6 +1216,24 @@ export function App() {
   const tradeMarketRows = buildTradeMarketLadder(marketHeatPreview, {
     nowMs: marketHeatNowMs,
   });
+  const selectedTradeMarket =
+    tradeMarketRows.find((marketRow) => marketRow.id === selectedTradeMarketId) ??
+    tradeMarketRows[0] ??
+    null;
+  const tradeQuoteKey = selectedTradeMarket
+    ? [
+        selectedTradeMarket.id,
+        selectedTradeMarket.oracleId,
+        selectedTradeMarket.expiry,
+        selectedTradeMarket.strikeRaw,
+        tradeSide,
+        copyState.copyAmount,
+      ].join(":")
+    : null;
+  const activeTradeQuote =
+    tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.quote : null;
+  const activeTradeQuoteStatus =
+    tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.status : "idle";
   const marketHeatVisibleTotal = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
     limit: Number.MAX_SAFE_INTEGER,
     nowMs: marketHeatNowMs,
@@ -1283,6 +1348,76 @@ export function App() {
   useEffect(() => {
     liveActivityModeRef.current?.updateReplayActivity(replayActivity);
   }, [replayActivity]);
+
+  useEffect(() => {
+    if (
+      activeView !== "trade" ||
+      previewMode !== "market" ||
+      !realtimeApiBaseUrl ||
+      !selectedTradeMarket ||
+      !tradeQuoteKey
+    ) {
+      setTradeQuoteState({
+        key: null,
+        status: "idle",
+        quote: null,
+      });
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setTradeQuoteState({
+      key: tradeQuoteKey,
+      status: "loading",
+      quote: null,
+    });
+
+    void loadTradeQuote({
+      apiBaseUrl: realtimeApiBaseUrl,
+      market: selectedTradeMarket,
+      side: tradeSide,
+      spendUsd: copyState.copyAmount,
+    })
+      .then((quote) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setTradeQuoteState({
+          key: tradeQuoteKey,
+          status: quote ? "ready" : "error",
+          quote,
+        });
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setTradeQuoteState({
+          key: tradeQuoteKey,
+          status: "error",
+          quote: null,
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [
+    copyState.copyAmount,
+    activeView,
+    previewMode,
+    realtimeApiBaseUrl,
+    selectedTradeMarket?.expiry,
+    selectedTradeMarket?.id,
+    selectedTradeMarket?.oracleId,
+    selectedTradeMarket?.strikeRaw,
+    selectedTradeMarket?.up.estimatedPrice,
+    selectedTradeMarket?.down.estimatedPrice,
+    tradeQuoteKey,
+    tradeSide,
+  ]);
 
   useEffect(() => {
     if (!replayState.isPlaying) {
@@ -1475,8 +1610,10 @@ export function App() {
             <TradeTicket
               copyAmount={copyState.copyAmount}
               marketRows={tradeMarketRows}
-              selectedMarketId={selectedTradeMarketId ?? tradeMarketRows[0]?.id ?? ""}
+              selectedMarketId={selectedTradeMarket?.id ?? ""}
               selectedSide={tradeSide}
+              quote={activeTradeQuote}
+              quoteStatus={activeTradeQuoteStatus}
               walletSubmitted={tradeWalletSubmitted}
               onAmountSet={handleAmountSet}
               onMarketChange={handleTradeMarketChange}

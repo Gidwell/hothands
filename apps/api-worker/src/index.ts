@@ -19,10 +19,16 @@ import {
 } from "./table-state";
 import { createTableActivityBroadcast } from "./table-activity";
 import { getTestnetMarketHeat } from "./market-heat";
+import {
+  getTestnetPredictQuote,
+  type InspectPredictQuoteQuantity,
+  type PredictQuoteRequest
+} from "./predict-quote";
 
 export interface Env {
   TABLE_ROOM: DurableObjectNamespace;
   fetch?: typeof fetch;
+  inspectPredictQuoteQuantity?: InspectPredictQuoteQuantity;
 }
 
 const JSON_HEADERS = {
@@ -61,6 +67,28 @@ export default {
       return json(await getTestnetMarketHeat({ fetchImpl: env.fetch ?? fetch }));
     }
 
+    if (url.pathname === "/testnet/quote") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      try {
+        return json(
+          await getTestnetPredictQuote(parsePredictQuoteRequest(url), {
+            inspectQuantity: env.inspectPredictQuoteQuantity
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "quote_failed",
+            message: error instanceof Error ? error.message : "Unable to quote trade."
+          },
+          400
+        );
+      }
+    }
+
     const tableMatch = url.pathname.match(
       /^\/tables\/([^/]+)(?:\/(summary|ws|activity))?$/
     );
@@ -71,6 +99,7 @@ export default {
           routes: [
             "/health",
             "/testnet/market-heat",
+            "/testnet/quote",
             "/tables/:tableId/summary",
             "/tables/:tableId/ws",
             "/tables/:tableId/activity"
@@ -339,6 +368,26 @@ export class TableRoom implements DurableObject {
 function tableRoom(env: Env, tableId: string): DurableObjectStub {
   const id = env.TABLE_ROOM.idFromName(tableId);
   return env.TABLE_ROOM.get(id);
+}
+
+function parsePredictQuoteRequest(url: URL): PredictQuoteRequest {
+  return {
+    oracleId: requireSearchParam(url, "oracleId"),
+    expiry: requireSearchParam(url, "expiry"),
+    strike: requireSearchParam(url, "strike"),
+    side: requireSearchParam(url, "side"),
+    spendUsd: requireSearchParam(url, "spendUsd"),
+    estimatedPrice: url.searchParams.get("estimatedPrice")
+  };
+}
+
+function requireSearchParam(url: URL, name: string): string {
+  const value = url.searchParams.get(name);
+  if (!value) {
+    throw new Error(`${name} is required.`);
+  }
+
+  return value;
 }
 
 function json(body: unknown, status = 200): Response {

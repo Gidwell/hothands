@@ -1,4 +1,8 @@
 import { getTestnetMarketHeat } from "./market-heat";
+import {
+  getTestnetPredictQuote,
+  type InspectPredictQuoteQuantity
+} from "./predict-quote";
 
 interface BunServer {
   readonly url: URL;
@@ -19,6 +23,7 @@ declare const Bun: BunRuntime;
 
 export interface TestnetDevServerFetchOptions {
   fetchImpl?: typeof fetch;
+  inspectPredictQuoteQuantity?: InspectPredictQuoteQuantity;
 }
 
 export interface TestnetDevServerOptions extends TestnetDevServerFetchOptions {
@@ -43,7 +48,8 @@ const CORS_HEADERS = {
 };
 
 export function createTestnetDevServerFetch({
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  inspectPredictQuoteQuantity
 }: TestnetDevServerFetchOptions = {}): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -67,10 +73,32 @@ export function createTestnetDevServerFetch({
       return json(await getTestnetMarketHeat({ fetchImpl }));
     }
 
+    if (url.pathname === "/testnet/quote") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      try {
+        return json(
+          await getTestnetPredictQuote(parsePredictQuoteRequest(url), {
+            inspectQuantity: inspectPredictQuoteQuantity
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "quote_failed",
+            message: error instanceof Error ? error.message : "Unable to quote trade."
+          },
+          400
+        );
+      }
+    }
+
     return json(
       {
         error: "not_found",
-        routes: ["/health", "/testnet/market-heat"]
+        routes: ["/health", "/testnet/market-heat", "/testnet/quote"]
       },
       404
     );
@@ -87,6 +115,26 @@ export function createTestnetDevServer({
     port,
     fetch: createTestnetDevServerFetch({ fetchImpl })
   });
+}
+
+function parsePredictQuoteRequest(url: URL) {
+  return {
+    oracleId: requireSearchParam(url, "oracleId"),
+    expiry: requireSearchParam(url, "expiry"),
+    strike: requireSearchParam(url, "strike"),
+    side: requireSearchParam(url, "side"),
+    spendUsd: requireSearchParam(url, "spendUsd"),
+    estimatedPrice: url.searchParams.get("estimatedPrice")
+  };
+}
+
+function requireSearchParam(url: URL, name: string): string {
+  const value = url.searchParams.get(name);
+  if (!value) {
+    throw new Error(`${name} is required.`);
+  }
+
+  return value;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -108,5 +156,5 @@ if ((import.meta as { main?: boolean }).main) {
   });
 
   console.log(`Testnet API dev server listening on ${server.url}`);
-  console.log("Routes: GET /health, GET /testnet/market-heat");
+  console.log("Routes: GET /health, GET /testnet/market-heat, GET /testnet/quote");
 }

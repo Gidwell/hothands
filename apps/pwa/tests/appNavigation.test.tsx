@@ -24,10 +24,12 @@ describe("mobile app navigation", () => {
             pairLabel: "BTC/USD",
             intervalLabel: "15m",
             roundLabel: "15m round",
+            expiry: 1_779_165_900_000,
             expiryMs: 1_779_165_900_000,
             expiryTimeLabel: "May 18, 21:45 PDT",
             timeRemainingLabel: "15m left",
             strike: 71_000,
+            strikeRaw: 71_000_000_000,
             strikeLabel: "$71,000",
             moneynessLabel: "-$50 vs spot",
             activityLabel: "3 wallets · 5 trades · $42.25",
@@ -56,10 +58,12 @@ describe("mobile app navigation", () => {
             pairLabel: "BTC/USD",
             intervalLabel: "2h",
             roundLabel: "2h round",
+            expiry: 1_779_172_200_000,
             expiryMs: 1_779_172_200_000,
             expiryTimeLabel: "May 18, 23:30 PDT",
             timeRemainingLabel: "2h left",
             strike: 72_000,
+            strikeRaw: 72_000_000_000,
             strikeLabel: "$72,000",
             moneynessLabel: "+$950 vs spot",
             activityLabel: "No recent trades",
@@ -88,10 +92,12 @@ describe("mobile app navigation", () => {
             pairLabel: "BTC/USD",
             intervalLabel: "4h",
             roundLabel: "4h round",
+            expiry: 1_779_179_400_000,
             expiryMs: 1_779_179_400_000,
             expiryTimeLabel: "May 19, 01:30 PDT",
             timeRemainingLabel: "4h left",
             strike: 73_000,
+            strikeRaw: 73_000_000_000,
             strikeLabel: "$73,000",
             moneynessLabel: "+$1,950 vs spot",
             activityLabel: "1 wallet · 1 trade · $8.00",
@@ -156,10 +162,12 @@ describe("mobile app navigation", () => {
             pairLabel: "BTC/USD",
             intervalLabel: "2h",
             roundLabel: "2h round",
+            expiry: 1_779_172_200_000,
             expiryMs: 1_779_172_200_000,
             expiryTimeLabel: "May 18, 23:30 PDT",
             timeRemainingLabel: "2h left",
             strike: 72_000,
+            strikeRaw: 72_000_000_000,
             strikeLabel: "$72,000",
             moneynessLabel: "+$950 vs spot",
             activityLabel: "No recent trades",
@@ -196,5 +204,74 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Est. payout</small>Quote needed");
     expect(html).toContain("Max profit</small>Quote needed");
     expect(html).toContain("Send to wallet");
+  });
+
+  test("renders a live quote result in the trade ticket", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[
+          {
+            id: "btc-2h-72000",
+            oracleId: "0xoracle2h",
+            pairLabel: "BTC/USD",
+            intervalLabel: "2h",
+            roundLabel: "2h round",
+            expiry: 1_779_172_200_000,
+            expiryMs: 1_779_172_200_000,
+            expiryTimeLabel: "May 18, 23:30 PDT",
+            timeRemainingLabel: "2h left",
+            strike: 72_000,
+            strikeRaw: 72_000_000_000,
+            strikeLabel: "$72,000",
+            moneynessLabel: "+$950 vs spot",
+            activityLabel: "No recent trades",
+            uniqueWalletCount: 0,
+            tradeCount: 0,
+            distinctStrikeCount: 0,
+            volumeUsd: 0,
+            volumeLabel: "$0",
+            up: {
+              walletCount: 0,
+              tradeCount: 0,
+              volumeUsd: 0,
+              volumeLabel: "$0",
+            },
+            down: {
+              walletCount: 0,
+              tradeCount: 0,
+              volumeUsd: 0,
+              volumeLabel: "$0",
+            },
+          },
+        ]}
+        copyAmount={25}
+        selectedMarketId="btc-2h-72000"
+        selectedSide="UP"
+        quote={{
+          source: "live_testnet",
+          market: "BTC-USD",
+          oracleId: "0xoracle2h",
+          expiry: "1779172200000",
+          strike: "72000000000",
+          side: "UP",
+          requestedSpendUsd: 25,
+          costUsd: 24.98,
+          payoutUsd: 49.96,
+          maxProfitUsd: 24.98,
+          effectivePrice: 0.5,
+          quoteStatus: "ready",
+        }}
+        quoteStatus="ready"
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Spend</small>$25");
+    expect(html).toContain("Est. payout</small>$49.96");
+    expect(html).toContain("Max profit</small>+$24.98");
+    expect(html).not.toContain("Quote needed");
   });
 });

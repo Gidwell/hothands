@@ -323,6 +323,68 @@ describe("testnet market heat endpoint", () => {
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(response.headers.get("access-control-allow-methods")).toContain("GET");
   });
+
+  test("quotes a selected trade amount from DeepBook Predict dev-inspect reads", async () => {
+    const inspectedQuantities: string[] = [];
+    const response = await worker.fetch(
+      new Request(
+        "https://api.hot-hands.test/testnet/quote?oracleId=0xabc123&expiry=1779158400000&strike=72000000000&side=UP&spendUsd=25&estimatedPrice=0.5"
+      ),
+      {
+        inspectPredictQuoteQuantity: async ({ quantity }) => {
+          inspectedQuantities.push(quantity.toString());
+
+          return {
+            cost: quantity / 2n,
+            redeemPayout: quantity / 3n
+          };
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    const body = await response.json();
+    expect(inspectedQuantities.length).toBeGreaterThan(0);
+    expect(body).toMatchObject({
+      source: "live_testnet",
+      market: "BTC-USD",
+      oracleId: "0xabc123",
+      expiry: "1779158400000",
+      strike: "72000000000",
+      side: "UP",
+      requestedSpendUsd: 25,
+      costUsd: 25,
+      payoutUsd: 50,
+      maxProfitUsd: 25,
+      effectivePrice: 0.5,
+      quoteStatus: "ready"
+    });
+  });
+
+  test("rejects malformed testnet quote requests without inspecting Predict", async () => {
+    let inspectCount = 0;
+    const response = await worker.fetch(
+      new Request(
+        "https://api.hot-hands.test/testnet/quote?oracleId=not-an-id&expiry=1779158400000&strike=72000000000&side=UP&spendUsd=25"
+      ),
+      {
+        inspectPredictQuoteQuantity: async () => {
+          inspectCount += 1;
+          return { cost: 1n, redeemPayout: 1n };
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(400);
+    expect(inspectCount).toBe(0);
+
+    const body = await response.json();
+    expect(body).toMatchObject({
+      error: "quote_failed"
+    });
+  });
 });
 
 function createLivePredictFetch(
