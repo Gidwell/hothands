@@ -6,6 +6,7 @@ import {
   closeMarketHeatIntent,
   loadMarketHeatPreview,
   selectMarketHeatIntent,
+  selectVisibleMarketHeatRows,
   sortMarketHeatRows,
 } from "../src/marketHeatModel";
 
@@ -36,6 +37,7 @@ describe("market heat preview model", () => {
           side: "UP",
           strikeLabel: "Strike $12,400",
           intervalLabel: "15m",
+          expiryMs: 1_779_158_400_000,
           expiryTimeLabel: "May 18, 19:40 PDT",
           observedAtMs: 1_779_158_400_000,
           heatScore: 92,
@@ -51,6 +53,7 @@ describe("market heat preview model", () => {
           side: "DOWN",
           strikeLabel: "Strike $7,800",
           intervalLabel: "1h",
+          expiryMs: 1_779_158_400_000,
           expiryTimeLabel: "May 18, 19:40 PDT",
           observedAtMs: 1_779_151_200_000,
           heatScore: 87,
@@ -66,6 +69,7 @@ describe("market heat preview model", () => {
           side: "UP",
           strikeLabel: "Strike $4,200",
           intervalLabel: "1d",
+          expiryMs: 1_779_158_400_000,
           expiryTimeLabel: "May 18, 19:40 PDT",
           observedAtMs: 1_779_079_200_000,
           heatScore: 81,
@@ -294,6 +298,63 @@ describe("market heat preview model", () => {
       "older-hot",
       "newer-warm",
     ]);
+  });
+
+  test("hides expired market rows before latest and heat sorting unless requested", () => {
+    const preview = buildMarketHeatPreview(
+      [
+        {
+          id: "expired-hot",
+          wallet: "0x9999222233334444555566667777888899990000",
+          manager: "manager-hot",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_000,
+          expiryMs: 1_779_164_000_000,
+          intervalLabel: "15m",
+          observedAtMs: 1_779_165_000_000,
+          heatScore: 99,
+          status: "copy_ready",
+        },
+        {
+          id: "live-warm",
+          wallet: "0x1111222233334444555566667777888899990000",
+          manager: "manager-warm",
+          market: "BTC-USD",
+          side: "DOWN",
+          strike: 71_000,
+          expiryMs: 1_779_166_000_000,
+          intervalLabel: "15m",
+          observedAtMs: 1_779_164_000_000,
+          heatScore: 12,
+          status: "watching",
+        },
+      ],
+      8,
+      { nowMs: 1_779_165_000_000 },
+    );
+
+    expect(
+      selectVisibleMarketHeatRows(preview.rows, {
+        nowMs: 1_779_165_000_000,
+        showExpired: false,
+        sortMode: "latest",
+      }).map((row) => row.id),
+    ).toEqual(["live-warm"]);
+    expect(
+      selectVisibleMarketHeatRows(preview.rows, {
+        nowMs: 1_779_165_000_000,
+        showExpired: false,
+        sortMode: "heat",
+      }).map((row) => row.id),
+    ).toEqual(["live-warm"]);
+    expect(
+      selectVisibleMarketHeatRows(preview.rows, {
+        nowMs: 1_779_165_000_000,
+        showExpired: true,
+        sortMode: "heat",
+      }).map((row) => row.id),
+    ).toEqual(["expired-hot", "live-warm"]);
   });
 
   test("keeps captured testnet API source labels compact", async () => {

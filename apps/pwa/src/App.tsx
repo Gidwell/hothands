@@ -43,7 +43,7 @@ import {
   closeMarketHeatIntent,
   loadMarketHeatPreview,
   selectMarketHeatIntent,
-  sortMarketHeatRows,
+  selectVisibleMarketHeatRows,
   type MarketHeatIntentState,
   type MarketHeatPrice,
   type MarketHeatPreview as MarketHeatPreviewModel,
@@ -453,9 +453,11 @@ export function MarketHeatPreview({
   rows,
   sourceLabel,
   sortMode,
+  showExpired,
   selectedRowId,
   copyAmount,
   onAmountSet,
+  onShowExpiredChange,
   onSortModeChange,
   onSelectRow,
   onCloseIntent,
@@ -463,9 +465,11 @@ export function MarketHeatPreview({
   rows: MarketHeatPreviewRow[];
   sourceLabel: string;
   sortMode: MarketHeatSortMode;
+  showExpired: boolean;
   selectedRowId: string | null;
   copyAmount: number;
   onAmountSet: (amount: number) => void;
+  onShowExpiredChange: (showExpired: boolean) => void;
   onSortModeChange: (sortMode: MarketHeatSortMode) => void;
   onSelectRow: (rowId: string) => void;
   onCloseIntent: () => void;
@@ -477,23 +481,34 @@ export function MarketHeatPreview({
           <p>Alpha Feed</p>
           <span>{sourceLabel} BTC markets</span>
         </div>
-        <div className="market-heat-sort" aria-label="Market heat sort">
-          <button
-            type="button"
-            aria-pressed={sortMode === "latest"}
-            data-testid="market-heat-sort-latest"
-            onClick={() => onSortModeChange("latest")}
-          >
-            Latest
-          </button>
-          <button
-            type="button"
-            aria-pressed={sortMode === "heat"}
-            data-testid="market-heat-sort-heat"
-            onClick={() => onSortModeChange("heat")}
-          >
-            Heat
-          </button>
+        <div className="market-heat-controls">
+          <label className="market-heat-expired-toggle">
+            <input
+              type="checkbox"
+              checked={showExpired}
+              data-testid="market-heat-show-expired"
+              onChange={(event) => onShowExpiredChange(event.currentTarget.checked)}
+            />
+            <span>Show expired</span>
+          </label>
+          <div className="market-heat-sort" aria-label="Market heat sort">
+            <button
+              type="button"
+              aria-pressed={sortMode === "latest"}
+              data-testid="market-heat-sort-latest"
+              onClick={() => onSortModeChange("latest")}
+            >
+              Latest
+            </button>
+            <button
+              type="button"
+              aria-pressed={sortMode === "heat"}
+              data-testid="market-heat-sort-heat"
+              onClick={() => onSortModeChange("heat")}
+            >
+              Heat
+            </button>
+          </div>
         </div>
       </div>
       {rows.map((row) => {
@@ -756,6 +771,7 @@ export function App() {
   );
   const [marketHeatSortMode, setMarketHeatSortMode] =
     useState<MarketHeatSortMode>("latest");
+  const [marketHeatShowExpired, setMarketHeatShowExpired] = useState(false);
   const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
     selectedRowId: null,
   });
@@ -787,8 +803,13 @@ export function App() {
     return [...frozenTraders, ...newTraders];
   }, [frozenTraderOrder, replayTraders]);
   const sortedMarketHeatRows = useMemo(
-    () => sortMarketHeatRows(marketHeatPreview.rows, marketHeatSortMode).slice(0, 8),
-    [marketHeatPreview.rows, marketHeatSortMode],
+    () =>
+      selectVisibleMarketHeatRows(marketHeatPreview.rows, {
+        nowMs: Date.now(),
+        showExpired: marketHeatShowExpired,
+        sortMode: marketHeatSortMode,
+      }),
+    [marketHeatPreview.rows, marketHeatShowExpired, marketHeatSortMode],
   );
   const frame = useMemo(
     () => getReplayFrame(replayState, scenario, market),
@@ -1012,9 +1033,11 @@ export function App() {
             rows={sortedMarketHeatRows}
             sourceLabel={marketHeatPreview.sourceLabel}
             sortMode={marketHeatSortMode}
+            showExpired={marketHeatShowExpired}
             selectedRowId={marketHeatIntent.selectedRowId}
             copyAmount={copyState.copyAmount}
             onAmountSet={handleAmountSet}
+            onShowExpiredChange={setMarketHeatShowExpired}
             onSortModeChange={setMarketHeatSortMode}
             onSelectRow={handleMarketHeatSelect}
             onCloseIntent={handleMarketHeatClose}

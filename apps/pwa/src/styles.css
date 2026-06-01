@@ -422,6 +422,34 @@ button {
   min-width: 0;
 }
 
+.market-heat-controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.market-heat-expired-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  color: #667085;
+  background: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.market-heat-expired-toggle input {
+  width: 13px;
+  height: 13px;
+  accent-color: #6246ea;
+}
+
 .market-heat-sort {
   display: grid;
   flex: 0 0 auto;

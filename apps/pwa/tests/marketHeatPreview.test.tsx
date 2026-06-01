@@ -28,8 +28,10 @@ describe("MarketHeatPreview component", () => {
         sourceLabel="Captured"
         sortMode="latest"
         selectedRowId={row.id}
+        showExpired={false}
         copyAmount={25}
         onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
         onSortModeChange={() => undefined}
         onSelectRow={() => undefined}
         onCloseIntent={() => undefined}
@@ -42,6 +44,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("We&#x27;ll watch this wallet and prepare the next mint for your signature");
     expect(html).toContain("Hot Hands prepares the transaction");
     expect(html).toContain('data-testid="market-heat-sort-latest"');
+    expect(html).toContain('data-testid="market-heat-show-expired"');
+    expect(html).toContain("Show expired");
     expect(html).toContain('aria-pressed="true"');
     expect(html).not.toContain("Ready for your wallet signature");
   });

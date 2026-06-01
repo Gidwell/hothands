@@ -35,6 +35,7 @@ export type MarketHeatPreviewRow = {
   side: "UP" | "DOWN";
   strikeLabel: string;
   intervalLabel: string;
+  expiryMs: number;
   expiryTimeLabel: string;
   observedAtMs: number;
   heatScore: number;
@@ -79,6 +80,13 @@ export type BuildMarketHeatPreviewOptions = {
   marketPrice?: MarketHeatPriceInput;
   nowMs?: number;
   timeZone?: string;
+};
+
+export type SelectVisibleMarketHeatRowsOptions = {
+  limit?: number;
+  nowMs?: number;
+  showExpired?: boolean;
+  sortMode: MarketHeatSortMode;
 };
 
 const MARKET_HEAT_CANDIDATE_LIMIT = 96;
@@ -161,6 +169,7 @@ export function buildMarketHeatPreview(
           side: row.side,
           strikeLabel: `Strike ${formatStrike(row.strike)}`,
           intervalLabel: row.intervalLabel,
+          expiryMs: row.expiryMs,
           expiryTimeLabel: formatExpiryTime(row.expiryMs, timeZone),
           observedAtMs: row.observedAtMs,
           heatScore: row.heatScore,
@@ -177,6 +186,22 @@ export function sortMarketHeatRows(
   sortMode: MarketHeatSortMode,
 ): MarketHeatPreviewRow[] {
   return [...rows].sort((left, right) => compareMarketHeatRows(left, right, sortMode));
+}
+
+export function selectVisibleMarketHeatRows(
+  rows: MarketHeatPreviewRow[],
+  {
+    limit = 8,
+    nowMs = Date.now(),
+    showExpired = false,
+    sortMode,
+  }: SelectVisibleMarketHeatRowsOptions,
+): MarketHeatPreviewRow[] {
+  const eligibleRows = showExpired
+    ? rows
+    : rows.filter((row) => row.expiryMs > nowMs);
+
+  return sortMarketHeatRows(eligibleRows, sortMode).slice(0, limit);
 }
 
 export function selectMarketHeatIntent(
