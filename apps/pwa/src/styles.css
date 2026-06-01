@@ -474,7 +474,7 @@ button:disabled {
 }
 
 .trade-side-toggle,
-.trade-intervals {
+.trade-market-ladder {
   display: grid;
   gap: 8px;
 }
@@ -503,31 +503,110 @@ button:disabled {
   background: #fee2e2;
 }
 
-.trade-intervals {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.trade-market-ladder {
+  padding-right: 2px;
 }
 
-.trade-intervals button {
+.trade-ladder-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.trade-ladder-heading small {
+  color: #12a150;
+  font-size: 0.68rem;
+}
+
+.trade-market-item {
   display: grid;
-  gap: 2px;
-  place-items: center;
-  min-height: 38px;
+  gap: 6px;
+}
+
+.trade-market-row {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 1.35fr;
+  gap: 8px;
+  align-items: center;
+  min-height: 66px;
+  padding: 8px;
   border: 1px solid #dbe5ee;
+  border-radius: 8px;
   color: #42526b;
   background: #ffffff;
-  font-size: 0.82rem;
+  text-align: left;
   line-height: 1.05;
 }
 
-.trade-intervals button[aria-pressed="true"] {
+.trade-market-row[aria-pressed="true"] {
   border-color: #111827;
-  color: #ffffff;
-  background: #111827;
+  color: #111827;
+  background: #eef6ff;
+  box-shadow: inset 3px 0 0 #111827;
 }
 
-.trade-intervals small {
+.trade-row-ticket {
+  display: grid;
+  gap: 8px;
+  margin-left: 8px;
+  padding: 8px;
+  border: 1px solid #dbe5ee;
+  border-left: 3px solid #111827;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.trade-row-ticket-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.trade-row-ticket-heading strong {
+  color: #111827;
+  font-size: 0.82rem;
+  font-weight: 950;
+}
+
+.trade-row-ticket-heading small {
+  color: #667085;
   font-size: 0.66rem;
   font-weight: 850;
+  text-align: right;
+}
+
+.trade-market-row > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.trade-market-row strong {
+  color: #111827;
+  font-size: 0.78rem;
+  font-weight: 950;
+  overflow-wrap: anywhere;
+}
+
+.trade-market-row small {
+  color: #667085;
+  font-size: 0.64rem;
+  font-weight: 850;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.trade-market-flow strong {
+  color: #344054;
+  font-size: 0.7rem;
+}
+
+.trade-market-flow small {
+  color: #475467;
 }
 
 .trade-ticket-metrics {

@@ -51,9 +51,18 @@ describe("testnet market heat endpoint", () => {
     expect(body.rows[0].status).toMatch(/^(copy_ready|watching)$/);
     expect(body.rows[0].strike).toBeGreaterThan(0);
     expect(body.rows[0].heatScore).toBeGreaterThan(0);
+    expect(body.rows[0]).toMatchObject({
+      oracleId: "btc-live",
+      quantity: 3,
+      cost: 1_200_000,
+      costUsd: 1.2
+    });
     expect(body.rows.find((row: { wallet: string }) => row.wallet === "0xtrader-warm")).toMatchObject({
       heatScore: 15,
       intervalLabel: "15m",
+      quantity: 1,
+      cost: 400_000,
+      costUsd: 0.4,
       status: "copy_ready"
     });
   });
@@ -178,6 +187,11 @@ describe("testnet market heat endpoint", () => {
 
     expect(projection.source).toBe("live_testnet");
     expect(projection.rows[0].strike).toBe(78098);
+    expect(projection.rows[0]).toMatchObject({
+      quantity: 2,
+      cost: 8_000_000,
+      costUsd: 8
+    });
     expect(projection.rows[0].heatScore).toBeLessThanOrEqual(99);
   });
 
@@ -199,6 +213,8 @@ describe("testnet market heat endpoint", () => {
     expect(projection.rows).toBeArray();
     expect(projection.rows.length).toBeGreaterThanOrEqual(2);
     expect(Object.keys(projection.rows[0]).sort()).toEqual([
+      "cost",
+      "costUsd",
       "expiryMs",
       "heatScore",
       "id",
@@ -206,6 +222,8 @@ describe("testnet market heat endpoint", () => {
       "manager",
       "market",
       "observedAtMs",
+      "oracleId",
+      "quantity",
       "side",
       "status",
       "strike",
@@ -216,7 +234,11 @@ describe("testnet market heat endpoint", () => {
       wallet: expect.any(String),
       manager: expect.any(String),
       market: expect.any(String),
+      oracleId: expect.any(String),
       side: expect.stringMatching(/^(UP|DOWN)$/),
+      quantity: expect.any(Number),
+      cost: expect.any(Number),
+      costUsd: expect.any(Number),
       expiryMs: expect.any(Number),
       intervalLabel: expect.any(String),
       observedAtMs: expect.any(Number),
@@ -254,6 +276,8 @@ describe("testnet market heat endpoint", () => {
     expect(body.rows).toBeArray();
     expect(body.rows.length).toBeGreaterThanOrEqual(2);
     expect(Object.keys(body.rows[0]).sort()).toEqual([
+      "cost",
+      "costUsd",
       "expiryMs",
       "heatScore",
       "id",
@@ -261,6 +285,8 @@ describe("testnet market heat endpoint", () => {
       "manager",
       "market",
       "observedAtMs",
+      "oracleId",
+      "quantity",
       "side",
       "status",
       "strike",
@@ -271,7 +297,11 @@ describe("testnet market heat endpoint", () => {
       wallet: expect.any(String),
       manager: expect.any(String),
       market: expect.any(String),
+      oracleId: expect.any(String),
       side: expect.stringMatching(/^(UP|DOWN)$/),
+      quantity: expect.any(Number),
+      cost: expect.any(Number),
+      costUsd: expect.any(Number),
       expiryMs: expect.any(Number),
       intervalLabel: expect.any(String),
       observedAtMs: expect.any(Number),

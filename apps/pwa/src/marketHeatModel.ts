@@ -3,10 +3,14 @@ export type MarketHeatSortMode = "latest" | "heat";
 
 export type MarketHeatPreviewRowInput = {
   id: string;
+  oracleId?: string;
   wallet: string;
   manager: string;
   market: string;
   side: "UP" | "DOWN";
+  quantity?: number;
+  cost?: number;
+  costUsd?: number;
   strike: number;
   expiryMs: number;
   intervalLabel: string;
@@ -54,10 +58,16 @@ export type MarketHeatAvailableMarket = {
 
 export type MarketHeatPreviewRow = {
   id: string;
+  oracleId?: string;
+  wallet: string;
   displayName: string;
   manager: string;
   pairLabel: string;
   side: "UP" | "DOWN";
+  quantity?: number;
+  cost?: number;
+  costUsd?: number;
+  strike: number;
   strikeLabel: string;
   intervalLabel: string;
   expiryMs: number;
@@ -117,6 +127,35 @@ export type SelectVisibleMarketHeatRowsOptions = {
 
 export type SelectTradeMarketsOptions = {
   nowMs?: number;
+};
+
+export type TradeMarketSideSummary = {
+  walletCount: number;
+  tradeCount: number;
+  volumeUsd: number;
+  volumeLabel: string;
+};
+
+export type TradeMarketLadderRow = {
+  id: string;
+  oracleId: string;
+  pairLabel: string;
+  intervalLabel: string;
+  roundLabel: string;
+  expiryMs: number;
+  expiryTimeLabel: string;
+  timeRemainingLabel: string;
+  strike: number;
+  strikeLabel: string;
+  moneynessLabel: string;
+  activityLabel: string;
+  uniqueWalletCount: number;
+  tradeCount: number;
+  distinctStrikeCount: number;
+  volumeUsd: number;
+  volumeLabel: string;
+  up: TradeMarketSideSummary;
+  down: TradeMarketSideSummary;
 };
 
 const MARKET_HEAT_CANDIDATE_LIMIT = 96;
@@ -190,13 +229,23 @@ export function buildMarketHeatPreview(
       .slice(0, limit)
       .map((row) => {
         const isActionableCopy = row.status === "copy_ready" && row.expiryMs > nowMs;
+        const oracleId = isNonEmptyString(row.oracleId) ? row.oracleId : undefined;
+        const quantity = optionalNonNegativeNumber(row.quantity);
+        const cost = optionalNonNegativeNumber(row.cost);
+        const costUsd = normalizeCostUsd(row);
 
         return {
           id: row.id,
+          ...(oracleId === undefined ? {} : { oracleId }),
+          wallet: row.wallet,
           displayName: formatWallet(row.wallet),
           manager: formatManager(row.manager),
           pairLabel: formatPair(row.market),
           side: row.side,
+          ...(quantity === undefined ? {} : { quantity }),
+          ...(cost === undefined ? {} : { cost }),
+          ...(costUsd === undefined ? {} : { costUsd }),
+          strike: row.strike,
           strikeLabel: `Strike ${formatStrike(row.strike)}`,
           intervalLabel: row.intervalLabel,
           expiryMs: row.expiryMs,
@@ -251,6 +300,55 @@ export function selectTradeMarkets(
       (left, right) =>
         left.expiryMs - right.expiryMs ||
         left.strike - right.strike ||
+        left.id.localeCompare(right.id),
+    );
+}
+
+export function buildTradeMarketLadder(
+  preview: MarketHeatPreview,
+  { nowMs = Date.now() }: SelectTradeMarketsOptions = {},
+): TradeMarketLadderRow[] {
+  return selectTradeMarkets(preview, { nowMs })
+    .map((market) => {
+      const activityRows = preview.rows.filter((row) => isActivityForMarket(row, market));
+      const up = summarizeTradeMarketSide(activityRows, "UP");
+      const down = summarizeTradeMarketSide(activityRows, "DOWN");
+      const wallets = new Set(activityRows.map((row) => row.wallet));
+      const strikes = new Set(activityRows.map((row) => row.strike));
+      const volumeUsd = roundUsd(up.volumeUsd + down.volumeUsd);
+      const volumeLabel = formatUsdAmount(volumeUsd);
+      const tradeCount = activityRows.length;
+
+      return {
+        id: market.id,
+        oracleId: market.oracleId,
+        pairLabel: market.pairLabel,
+        intervalLabel: market.intervalLabel,
+        roundLabel: `${market.intervalLabel} round`,
+        expiryMs: market.expiryMs,
+        expiryTimeLabel: market.expiryTimeLabel,
+        timeRemainingLabel: formatTimeRemaining(market.expiryMs, nowMs),
+        strike: market.strike,
+        strikeLabel: market.strikeLabel,
+        moneynessLabel: formatMoneyness(
+          market.strike - parseFormattedUsd(preview.marketPrice.priceLabel),
+        ),
+        activityLabel: formatTradeMarketActivity(wallets.size, tradeCount, volumeLabel),
+        uniqueWalletCount: wallets.size,
+        tradeCount,
+        distinctStrikeCount: strikes.size,
+        volumeUsd,
+        volumeLabel,
+        up,
+        down,
+      };
+    })
+    .sort(
+      (left, right) =>
+        left.expiryMs - right.expiryMs ||
+        right.tradeCount - left.tradeCount ||
+        Math.abs(left.strike - parseFormattedUsd(preview.marketPrice.priceLabel)) -
+          Math.abs(right.strike - parseFormattedUsd(preview.marketPrice.priceLabel)) ||
         left.id.localeCompare(right.id),
     );
 }
@@ -386,6 +484,112 @@ function buildMarketHeatPrice(price: MarketHeatPriceInput): MarketHeatPrice {
     priceLabel: formatUsd(price.price),
     statusLabel: formatMarketPriceSource(price.source),
   };
+}
+
+function isActivityForMarket(
+  row: MarketHeatPreviewRow,
+  market: MarketHeatAvailableMarket,
+): boolean {
+  if (row.oracleId && row.oracleId === market.oracleId) {
+    return true;
+  }
+
+  return (
+    row.pairLabel === market.pairLabel &&
+    row.expiryMs === market.expiryMs &&
+    row.intervalLabel === market.intervalLabel
+  );
+}
+
+function summarizeTradeMarketSide(
+  rows: MarketHeatPreviewRow[],
+  side: "UP" | "DOWN",
+): TradeMarketSideSummary {
+  const sideRows = rows.filter((row) => row.side === side);
+  const volumeUsd = roundUsd(
+    sideRows.reduce((total, row) => total + (row.costUsd ?? 0), 0),
+  );
+
+  return {
+    walletCount: new Set(sideRows.map((row) => row.wallet)).size,
+    tradeCount: sideRows.length,
+    volumeUsd,
+    volumeLabel: formatUsdAmount(volumeUsd),
+  };
+}
+
+function normalizeCostUsd(row: MarketHeatPreviewRowInput): number | undefined {
+  if (isNonNegativeNumber(row.costUsd)) {
+    return roundUsd(row.costUsd);
+  }
+
+  if (isNonNegativeNumber(row.cost)) {
+    return roundUsd(row.cost / 1_000_000);
+  }
+
+  return undefined;
+}
+
+function roundUsd(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function formatTradeMarketActivity(
+  walletCount: number,
+  tradeCount: number,
+  volumeLabel: string,
+): string {
+  if (tradeCount === 0) {
+    return "No recent trades";
+  }
+
+  return `${walletCount} ${pluralize(walletCount, "wallet")} · ${tradeCount} ${pluralize(
+    tradeCount,
+    "trade",
+  )} · ${volumeLabel}`;
+}
+
+function formatTimeRemaining(expiryMs: number, nowMs: number): string {
+  const remainingMs = expiryMs - nowMs;
+
+  if (remainingMs <= 0) {
+    return "Expired";
+  }
+
+  const minutes = Math.ceil(remainingMs / 60_000);
+  if (minutes < 60) {
+    return `${minutes}m left`;
+  }
+
+  if (minutes < 36 * 60) {
+    return `${Math.ceil(minutes / 60)}h left`;
+  }
+
+  return `${Math.ceil(minutes / (24 * 60))}d left`;
+}
+
+function formatMoneyness(diff: number): string {
+  if (!Number.isFinite(diff) || diff === 0) {
+    return "At spot";
+  }
+
+  const prefix = diff > 0 ? "+" : "-";
+  return `${prefix}${formatUsdAmount(Math.abs(diff))} vs spot`;
+}
+
+function formatUsdAmount(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "$0";
+  }
+
+  return `$${value.toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+  })}`;
+}
+
+function pluralize(count: number, noun: string): string {
+  return count === 1 ? noun : `${noun}s`;
 }
 
 function refreshCapturedRows(
@@ -731,6 +935,10 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isNonNegativeNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function optionalNonNegativeNumber(value: unknown): number | undefined {
+  return isNonNegativeNumber(value) ? value : undefined;
 }
 
 function firstNonNegativeNumber(values: unknown[]): number | null {

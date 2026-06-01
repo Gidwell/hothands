@@ -5,6 +5,7 @@ import {
   buildMarketHeatPreview,
   closeMarketHeatIntent,
   loadMarketHeatPreview,
+  buildTradeMarketLadder,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
   sortMarketHeatRows,
@@ -31,10 +32,12 @@ describe("market heat preview model", () => {
       rows: [
         {
           id: "external-0x84d2",
+          wallet: "0x84d2f193f73f9d5f2bb0fe47238bc8c2441b91af",
           displayName: "0x84d2...91af",
           manager: "Manager 0xb795...3125",
           pairLabel: "BTC/USD",
           side: "UP",
+          strike: 12_400,
           strikeLabel: "Strike $12,400",
           intervalLabel: "15m",
           expiryMs: 1_779_158_400_000,
@@ -47,10 +50,12 @@ describe("market heat preview model", () => {
         },
         {
           id: "external-0x28b7",
+          wallet: "0x28b7a9cd430a1d7ec8c90f0cb74b212ad8934c10",
           displayName: "0x28b7...4c10",
           manager: "Manager 0x43af...e64",
           pairLabel: "BTC/USD",
           side: "DOWN",
+          strike: 7_800,
           strikeLabel: "Strike $7,800",
           intervalLabel: "1h",
           expiryMs: 1_779_158_400_000,
@@ -63,10 +68,12 @@ describe("market heat preview model", () => {
         },
         {
           id: "external-0x6f09",
+          wallet: "0x6f098d1adf9c8b603452dc72cb9096da0c82aa35",
           displayName: "0x6f09...aa35",
           manager: "Manager 0xc873...028a",
           pairLabel: "BTC/USD",
           side: "UP",
+          strike: 4_200,
           strikeLabel: "Strike $4,200",
           intervalLabel: "1d",
           expiryMs: 1_779_158_400_000,
@@ -217,6 +224,104 @@ describe("market heat preview model", () => {
       actionLabel: "Watch next",
       statusLabel: "just now",
     });
+  });
+
+  test("builds trade ladder rows with market activity and moneyness", () => {
+    const nowMs = 1_779_165_000_000;
+    const expiryMs = nowMs + 15 * 60_000;
+    const preview = {
+      ...buildMarketHeatPreview(
+        [
+          {
+            id: "mint-a",
+            oracleId: "0xoracle15",
+            wallet: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            manager: "manager-a",
+            market: "BTC-USD",
+            side: "UP" as const,
+            strike: 71_000,
+            expiryMs,
+            intervalLabel: "15m",
+            observedAtMs: nowMs - 60_000,
+            heatScore: 90,
+            status: "copy_ready" as const,
+            costUsd: 14.25,
+          },
+          {
+            id: "mint-b",
+            oracleId: "0xoracle15",
+            wallet: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            manager: "manager-b",
+            market: "BTC-USD",
+            side: "DOWN" as const,
+            strike: 70_900,
+            expiryMs,
+            intervalLabel: "15m",
+            observedAtMs: nowMs - 2 * 60_000,
+            heatScore: 80,
+            status: "copy_ready" as const,
+            cost: 9_500_000,
+          },
+        ],
+        8,
+        {
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71_050,
+            source: "live_testnet",
+          },
+          nowMs,
+          timeZone: "America/Los_Angeles",
+        },
+      ),
+      availableMarkets: [
+        {
+          id: "0xoracle15-1779165900000-71100",
+          oracleId: "0xoracle15",
+          pairLabel: "BTC/USD",
+          intervalLabel: "15m",
+          expiryMs,
+          expiryTimeLabel: "May 18, 21:15 PDT",
+          strike: 71_100,
+          strikeLabel: "$71,100",
+          status: "active",
+        },
+      ],
+    };
+
+    expect(buildTradeMarketLadder(preview, { nowMs })).toEqual([
+      {
+        id: "0xoracle15-1779165900000-71100",
+        oracleId: "0xoracle15",
+        pairLabel: "BTC/USD",
+        intervalLabel: "15m",
+        roundLabel: "15m round",
+        expiryMs,
+        expiryTimeLabel: "May 18, 21:15 PDT",
+        timeRemainingLabel: "15m left",
+        strike: 71_100,
+        strikeLabel: "$71,100",
+        moneynessLabel: "+$50 vs spot",
+        activityLabel: "2 wallets · 2 trades · $23.75",
+        uniqueWalletCount: 2,
+        tradeCount: 2,
+        distinctStrikeCount: 2,
+        volumeUsd: 23.75,
+        volumeLabel: "$23.75",
+        up: {
+          walletCount: 1,
+          tradeCount: 1,
+          volumeUsd: 14.25,
+          volumeLabel: "$14.25",
+        },
+        down: {
+          walletCount: 1,
+          tradeCount: 1,
+          volumeUsd: 9.5,
+          volumeLabel: "$9.50",
+        },
+      },
+    ]);
   });
 
   test("keeps the full compact market heat feed available for scrolling", () => {

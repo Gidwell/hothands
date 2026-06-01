@@ -46,7 +46,11 @@ export interface MarketHeatRow {
   wallet: string;
   manager: string;
   market: string;
+  oracleId?: string;
   side: "UP" | "DOWN";
+  quantity?: number;
+  cost?: number;
+  costUsd?: number;
   strike: number;
   expiryMs: number;
   intervalLabel: string;
@@ -213,7 +217,9 @@ function mapHeatTraderToRow(
     wallet: trader.trader,
     manager: trader.managerId,
     market: "BTC-USD",
+    oracleId: latestEvent?.oracleId,
     side: latestEvent?.isUp === false ? "DOWN" : "UP",
+    ...mapTradeEventMetrics(latestEvent),
     strike: normalizeStrike(strike),
     expiryMs,
     intervalLabel,
@@ -241,13 +247,29 @@ function mapTradeEventToRow(
     wallet: event.actor,
     manager: event.managerId,
     market: "BTC-USD",
+    oracleId: event.oracleId,
     side: event.isUp === false ? "DOWN" : "UP",
+    ...mapTradeEventMetrics(event),
     strike: normalizeStrike(event.strike),
     expiryMs: event.expiryMs,
     intervalLabel: formatIntervalLabel(event, oraclesById.get(event.oracleId)),
     observedAtMs: event.timestampMs,
     heatScore,
     status: event.kind === "mint" ? "copy_ready" : "watching"
+  };
+}
+
+function mapTradeEventMetrics(
+  event: PredictNormalizedTradeEvent | undefined
+): Pick<MarketHeatRow, "quantity" | "cost" | "costUsd"> {
+  if (!event) {
+    return {};
+  }
+
+  return {
+    quantity: event.quantity,
+    cost: event.cost,
+    costUsd: event.cost === undefined ? undefined : event.cost / 1_000_000
   };
 }
 
@@ -351,7 +373,11 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
       wallet: "0x7a2c...4f91",
       manager: "Alpha Cruz",
       market: "BTC-USD",
+      oracleId: "captured-btc-15m",
       side: "UP",
+      quantity: 4,
+      cost: 2_400_000,
+      costUsd: 2.4,
       strike: 67_000,
       expiryMs: 1_779_158_400_000,
       intervalLabel: "15m",
@@ -364,7 +390,11 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
       wallet: "0x55e9...c812",
       manager: "Mina Park",
       market: "BTC-USD",
+      oracleId: "captured-btc-1h",
       side: "DOWN",
+      quantity: 2,
+      cost: 900_000,
+      costUsd: 0.9,
       strike: 66_000,
       expiryMs: 1_779_158_400_000,
       intervalLabel: "1h",
@@ -377,7 +407,11 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
       wallet: "0xb183...9d0a",
       manager: "Vee Moss",
       market: "BTC-USD",
+      oracleId: "captured-btc-1d",
       side: "UP",
+      quantity: 1,
+      cost: 500_000,
+      costUsd: 0.5,
       strike: 68_000,
       expiryMs: 1_779_158_400_000,
       intervalLabel: "1d",
