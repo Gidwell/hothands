@@ -311,7 +311,9 @@ describe("market heat preview model", () => {
       side: "UP",
       strikeLabel: "Strike 67.0K",
       intervalLabel: "15m",
-      actionLabel: "Watch next",
+      actionLabel: "Copy now",
+      status: "copy_ready",
+      statusLabel: "5m ago",
     });
   });
 
@@ -352,8 +354,10 @@ describe("market heat preview model", () => {
   });
 
   test("uses captured rows when no API URL is configured", async () => {
+    const nowMs = Date.UTC(2026, 5, 1, 12, 0, 0);
     const preview = await loadMarketHeatPreview({
       apiBaseUrl: "",
+      nowMs,
       fetcher: async () => {
         throw new Error("fetcher should not be called without an API URL");
       },
@@ -361,11 +365,18 @@ describe("market heat preview model", () => {
 
     expect(preview.sourceLabel).toBe("Captured");
     expect(preview.rows[0]?.id).toBe(MARKET_HEAT_PREVIEW_ROWS[0]?.id);
+    expect(preview.rows[0]).toMatchObject({
+      actionLabel: "Copy now",
+      status: "copy_ready",
+      statusLabel: "5m ago",
+    });
   });
 
   test("falls back to captured rows when the testnet API request fails", async () => {
+    const nowMs = Date.UTC(2026, 5, 1, 12, 0, 0);
     const preview = await loadMarketHeatPreview({
       apiBaseUrl: "https://api.hot-hands.test",
+      nowMs,
       fetcher: async () => {
         throw new Error("offline");
       },
@@ -373,5 +384,6 @@ describe("market heat preview model", () => {
 
     expect(preview.sourceLabel).toBe("Captured");
     expect(preview.rows[0]?.id).toBe(MARKET_HEAT_PREVIEW_ROWS[0]?.id);
+    expect(preview.rows[0]?.actionLabel).toBe("Copy now");
   });
 });

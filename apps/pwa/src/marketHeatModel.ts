@@ -66,6 +66,8 @@ export type BuildMarketHeatPreviewOptions = {
 };
 
 const MARKET_HEAT_CANDIDATE_LIMIT = 48;
+const CAPTURED_ROW_BASE_AGE_MS = 5 * 60_000;
+const CAPTURED_ROW_AGE_STEP_MS = 15 * 60_000;
 
 export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
   {
@@ -200,42 +202,87 @@ export async function loadMarketHeatPreview({
   const normalizedBaseUrl = apiBaseUrl?.trim();
 
   if (!normalizedBaseUrl) {
-    return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, MARKET_HEAT_CANDIDATE_LIMIT, {
-      nowMs,
-    });
+    return buildCapturedMarketHeatPreview(nowMs);
   }
 
   try {
     const response = await fetcher(buildMarketHeatUrl(normalizedBaseUrl));
 
     if (!response.ok) {
-      return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, MARKET_HEAT_CANDIDATE_LIMIT, {
-        nowMs,
-      });
+      return buildCapturedMarketHeatPreview(nowMs);
     }
 
     const payload: unknown = await response.json();
     const rows = parseMarketHeatRows(payload);
 
     if (!rows) {
-      return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, MARKET_HEAT_CANDIDATE_LIMIT, {
-        nowMs,
-      });
+      return buildCapturedMarketHeatPreview(nowMs);
     }
 
+    const sourceLabel = formatMarketHeatSource(payload);
+    const previewRows =
+      sourceLabel === "Captured" ? refreshCapturedRows(rows, nowMs) : rows;
+
     return {
-      ...buildMarketHeatPreview(rows, MARKET_HEAT_CANDIDATE_LIMIT, { nowMs }),
-      sourceLabel: formatMarketHeatSource(payload),
+      ...buildMarketHeatPreview(previewRows, MARKET_HEAT_CANDIDATE_LIMIT, { nowMs }),
+      sourceLabel,
     };
   } catch {
-    return buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, MARKET_HEAT_CANDIDATE_LIMIT, {
-      nowMs,
-    });
+    return buildCapturedMarketHeatPreview(nowMs);
   }
 }
 
 function buildMarketHeatUrl(apiBaseUrl: string): string {
   return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/market-heat`;
+}
+
+function buildCapturedMarketHeatPreview(nowMs: number): MarketHeatPreview {
+  return buildMarketHeatPreview(
+    refreshCapturedRows(MARKET_HEAT_PREVIEW_ROWS, nowMs),
+    MARKET_HEAT_CANDIDATE_LIMIT,
+    { nowMs },
+  );
+}
+
+function refreshCapturedRows(
+  rows: MarketHeatPreviewRowInput[],
+  nowMs: number,
+): MarketHeatPreviewRowInput[] {
+  return rows.map((row, index) => {
+    const observedAtMs =
+      nowMs - CAPTURED_ROW_BASE_AGE_MS - index * CAPTURED_ROW_AGE_STEP_MS;
+    const durationMs = durationMsFromIntervalLabel(row.intervalLabel);
+
+    return {
+      ...row,
+      observedAtMs,
+      expiryMs:
+        row.status === "copy_ready"
+          ? nowMs + Math.max(durationMs / 2, 5 * 60_000)
+          : observedAtMs + durationMs,
+    };
+  });
+}
+
+function durationMsFromIntervalLabel(intervalLabel: string): number {
+  const match = /^(\d+)\s*([mhd])$/i.exec(intervalLabel.trim());
+
+  if (!match) {
+    return 15 * 60_000;
+  }
+
+  const value = Number(match[1]);
+  const unit = match[2].toLowerCase();
+
+  if (unit === "d") {
+    return value * 24 * 60 * 60_000;
+  }
+
+  if (unit === "h") {
+    return value * 60 * 60_000;
+  }
+
+  return value * 60_000;
 }
 
 function formatWallet(wallet: string): string {

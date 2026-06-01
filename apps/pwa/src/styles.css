@@ -42,7 +42,7 @@ button {
   width: min(100%, 430px);
   height: min(900px, calc(100vh - 20px));
   overflow-y: auto;
-  padding: 18px;
+  padding: 12px;
   border: 1px solid #d8e2ec;
   border-radius: 28px;
   background: #f8fafc;
@@ -71,8 +71,8 @@ button {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
-  min-height: 78px;
-  padding: 14px;
+  min-height: 58px;
+  padding: 10px;
 }
 
 .market-live {
@@ -84,8 +84,8 @@ button {
 
 .market-live > span {
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 8px;
   background: #6246ea;
   position: relative;
@@ -94,10 +94,10 @@ button {
 .market-live > span::after {
   content: "";
   position: absolute;
-  left: 8px;
-  top: 8px;
-  width: 16px;
-  height: 16px;
+  left: 7px;
+  top: 7px;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
   background: #ffffff;
   transform: skew(-18deg) rotate(-18deg);
@@ -112,7 +112,7 @@ button {
 }
 
 .market-strip h1 {
-  font-size: 1.72rem;
+  font-size: 1.52rem;
   font-style: italic;
   font-weight: 950;
 }
@@ -157,9 +157,9 @@ button {
 
 .account-summary {
   display: grid;
-  gap: 12px;
-  margin-top: 12px;
-  padding: 14px;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 10px;
 }
 
 .account-summary-main {
@@ -173,7 +173,7 @@ button {
   display: block;
   margin-top: 2px;
   color: #111827;
-  font-size: 2rem;
+  font-size: 1.48rem;
   line-height: 1;
 }
 
@@ -194,7 +194,7 @@ button {
 
 .account-value strong {
   color: #111827;
-  font-size: 1.1rem;
+  font-size: 1rem;
 }
 
 .account-summary-stats {
@@ -215,23 +215,23 @@ button {
 .account-summary-stats div {
   display: grid;
   gap: 2px;
-  min-height: 58px;
-  padding: 10px;
+  min-height: 38px;
+  padding: 6px;
   align-content: center;
 }
 
 .account-summary-stats strong {
   overflow-wrap: anywhere;
   color: #111827;
-  font-size: 0.96rem;
+  font-size: 0.86rem;
   line-height: 1.05;
 }
 
 .active-signal-strip {
   display: grid;
-  gap: 12px;
-  margin-top: 12px;
-  padding: 14px;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 10px;
 }
 
 .signal-strip-top {
@@ -247,7 +247,7 @@ button {
   margin-top: 2px;
   overflow: hidden;
   color: #111827;
-  font-size: 1rem;
+  font-size: 0.9rem;
   line-height: 1.12;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -269,7 +269,7 @@ button {
 .chip-row button,
 .arm-button,
 .demo-buttons button {
-  min-height: 36px;
+  min-height: 32px;
   border-radius: 8px;
   font-weight: 900;
 }
@@ -284,7 +284,7 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
-  padding: 4px;
+  padding: 3px;
   border-radius: 8px;
   background: #eef3f8;
 }
@@ -313,7 +313,7 @@ button {
   min-width: 0;
   overflow: hidden;
   color: #111827;
-  font-size: 0.92rem;
+  font-size: 0.84rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -353,8 +353,8 @@ button {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 12px;
   align-items: center;
-  margin-top: 12px;
-  padding: 12px 14px;
+  margin-top: 8px;
+  padding: 8px 10px;
 }
 
 .spectator-copy {
@@ -364,7 +364,7 @@ button {
 
 .spectator-copy strong {
   color: #111827;
-  font-size: 1.28rem;
+  font-size: 1.08rem;
   line-height: 1;
 }
 
@@ -380,7 +380,7 @@ button {
   min-width: 0;
   overflow: hidden;
   color: #42526b;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 800;
   text-align: right;
 }
@@ -388,8 +388,8 @@ button {
 .trader-list,
 .market-heat-list {
   display: grid;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .market-heat-list {
@@ -405,7 +405,7 @@ button {
 }
 
 .section-heading p {
-  font-size: 1.32rem;
+  font-size: 1.16rem;
   font-weight: 950;
 }
 
@@ -449,8 +449,8 @@ button {
 .market-heat-row,
 .trader-row {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 8px;
+  padding: 12px;
 }
 
 .market-heat-row {
@@ -470,7 +470,7 @@ button {
 .trader-row-main {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   min-width: 0;
 }
@@ -479,8 +479,8 @@ button {
 .trader-avatar {
   display: grid;
   place-items: center;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   border: 1px solid #dbe5ee;
   border-radius: 999px;
   color: #ffffff;
@@ -511,7 +511,7 @@ button {
 .trader-title-row h2 {
   min-width: 0;
   overflow: hidden;
-  font-size: 1.04rem;
+  font-size: 0.98rem;
   font-weight: 950;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -534,8 +534,8 @@ button {
 
 .market-heat-main button,
 .trader-row-main button {
-  min-width: 86px;
-  padding: 0 12px;
+  min-width: 74px;
+  padding: 0 10px;
   color: #ffffff;
   background: #6246ea;
   font-size: 0.78rem;
@@ -552,7 +552,7 @@ button {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .alpha-call-line span {
@@ -592,12 +592,12 @@ button {
 .market-heat-intent-meta span {
   display: grid;
   gap: 3px;
-  min-height: 58px;
-  padding: 9px;
+  min-height: 38px;
+  padding: 5px;
   align-content: center;
   overflow: hidden;
   color: #111827;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 950;
   line-height: 1.1;
   text-overflow: ellipsis;
@@ -752,6 +752,7 @@ button {
   .account-summary,
   .active-signal-strip,
   .spectator-rail,
+  .trader-row,
   .market-heat-row {
     padding: 12px;
   }
@@ -770,18 +771,15 @@ button {
     text-align: left;
   }
 
-  .trader-row-metrics,
   .market-heat-intent-meta {
     grid-template-columns: 1fr;
   }
 
-  .market-heat-main,
-  .trader-row-main {
+  .market-heat-main {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
-  .market-heat-main button,
-  .trader-row-main button {
+  .market-heat-main button {
     grid-column: 1 / -1;
     width: 100%;
   }

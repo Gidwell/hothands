@@ -7,16 +7,17 @@ test("mobile market heat mode opens watch and copy intent panels", async ({ page
 
   const preview = page.getByTestId("market-heat-preview");
   await expect(preview).toBeVisible();
-  await expect(preview).toContainText("BTC-USD");
+  await expect(preview).toContainText("Alpha Feed");
+  await expect(preview).toContainText("BTC/USD");
   await expect(preview).toContainText("Copy now");
-  await expect(preview).toContainText("Copy next");
+  await expect(preview).toContainText("Watch next");
   await expect(preview).toContainText("Strike");
 
   const rows = page.getByTestId("market-heat-row");
   await expect(rows.first()).toBeVisible();
-  await expect(rows.first()).toContainText("BTC-USD");
+  await expect(rows.first()).toContainText("BTC/USD");
 
-  const watchOnlyRow = rows.filter({ hasText: "Copy next" });
+  const watchOnlyRow = rows.filter({ hasText: "Watch next" });
   await expect(async () => {
     expect(await watchOnlyRow.count()).toBeGreaterThanOrEqual(1);
   }).toPass();
@@ -24,8 +25,8 @@ test("mobile market heat mode opens watch and copy intent panels", async ({ page
 
   const intentPanel = page.getByTestId("market-heat-intent-panel");
   await expect(intentPanel).toBeVisible();
-  await expect(intentPanel).toContainText("Copy next");
-  await expect(intentPanel).toContainText("We'll prepare the next mint for your signature");
+  await expect(intentPanel).toContainText("Watch next");
+  await expect(intentPanel).toContainText("We'll watch this wallet and prepare the next mint for your signature");
   await expect(intentPanel).toContainText("Next observed mint");
 
   await intentPanel.getByTestId("close-market-heat-intent").click();
@@ -39,7 +40,7 @@ test("mobile market heat mode opens watch and copy intent panels", async ({ page
 
   await expect(intentPanel).toBeVisible();
   await expect(intentPanel).toContainText("Copy now");
-  await expect(intentPanel).toContainText("Ready for user signature");
+  await expect(intentPanel).toContainText("Ready for your wallet signature");
   await expect(intentPanel).toContainText("Recent mint");
 });
 
@@ -49,7 +50,7 @@ test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", asy
   await expect(page.getByTestId("market-header")).toBeVisible();
   await expect(page.getByTestId("active-signal-strip")).toBeVisible();
   await expect(page.getByTestId("session-pnl")).toBeVisible();
-  await expect(page.getByTestId("session-pnl")).toContainText("My Session");
+  await expect(page.getByTestId("session-pnl")).toContainText("Session PNL");
   await expect(page.getByTestId("session-pnl")).toContainText("+$0");
   await expect(page.getByTestId("active-signal-strip").getByText("Copy ready")).toBeVisible();
   await expect(page.getByTestId("inline-copy-panel")).toHaveCount(0);
@@ -86,9 +87,10 @@ test("mobile stage 1.5 discovery keeps hot traders and inline copy visible", asy
   await expect(inlineCopyPanel).toBeVisible();
   await expect(inlineCopyPanel.getByTestId("arm-copy-button")).toBeVisible();
   await expect(inlineCopyPanel.getByTestId("close-copy-panel")).toBeVisible();
-  await expect(inlineCopyPanel.getByRole("button", { name: "$100" })).toBeVisible();
-  await expect(inlineCopyPanel.getByRole("button", { name: "$250" })).toBeVisible();
-  await expect(inlineCopyPanel.getByRole("button", { name: "$500" })).toBeVisible();
+  await expect(inlineCopyPanel.getByRole("button", { name: "$10" })).toBeVisible();
+  await expect(inlineCopyPanel.getByRole("button", { name: "$25" })).toBeVisible();
+  await expect(inlineCopyPanel.getByRole("button", { name: "$50" })).toBeVisible();
+  await expect(inlineCopyPanel.getByRole("button", { name: "MAX" })).toBeVisible();
 
   const frozenOrder = await traderNames(hotTraderRows);
   await openDemoControls(page);
@@ -130,7 +132,7 @@ test("mobile stage 1 one-shot copy loop reaches settlement and leaderboard updat
   const miraTrader = page.getByTestId("hot-trader-row").filter({ hasText: "Mira Vale" });
 
   await expect(page.getByTestId("market-header")).toBeVisible();
-  await expect(page.getByTestId("market-header")).toContainText("BTC-USD");
+  await expect(page.getByTestId("market-header")).toContainText("BTC/USD");
   await expect(signalStrip).toBeVisible();
   await expect(page.getByTestId("session-pnl")).toContainText("+$0");
   await expect(page.getByTestId("session-pnl")).toContainText("Flat");
@@ -138,7 +140,7 @@ test("mobile stage 1 one-shot copy loop reaches settlement and leaderboard updat
   await expect(page.getByTestId("session-pnl")).not.toContainText("Copy max");
 
   await expect(page.getByTestId("spectator-rail")).toBeVisible();
-  await expect(page.getByTestId("spectator-rail")).toContainText("watching");
+  await expect(page.getByTestId("spectator-rail")).toContainText("wallets watched");
 
   await expect(page.getByTestId("scenario-selector")).toBeHidden();
   await expect(page.getByTestId("replay-next")).toBeHidden();
@@ -153,14 +155,14 @@ test("mobile stage 1 one-shot copy loop reaches settlement and leaderboard updat
   const inlineCopyPanel = page.getByTestId("inline-copy-panel");
   await expect(inlineCopyPanel).toBeVisible();
 
-  await page.getByRole("button", { name: "$500" }).click();
-  await expect(inlineCopyPanel).toContainText("$500");
+  await page.getByRole("button", { name: "$50" }).click();
+  await expect(inlineCopyPanel).toContainText("$50");
 
   await inlineCopyPanel.getByTestId("arm-copy-button").click();
   await expect(inlineCopyPanel.getByTestId("arm-copy-button")).not.toHaveText(/pause copy/i);
   await expectOneShotArmedCopy(page);
   await expect(page.getByTestId("session-pnl")).toContainText("Armed");
-  await expect(page.getByTestId("session-pnl")).toContainText("$500");
+  await expect(page.getByTestId("session-pnl")).toContainText("$50");
   await expect(miraTrader).toContainText("Armed");
 
   await page.getByTestId("replay-next").click();
@@ -185,7 +187,7 @@ test("mobile stage 1 one-shot copy loop reaches settlement and leaderboard updat
 });
 
 function demoAffordance(page: Page) {
-  return page.getByRole("button", { name: /demo/i });
+  return page.getByRole("button", { name: "Tools" });
 }
 
 async function openDemoControls(page: Page) {
