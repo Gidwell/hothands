@@ -64,7 +64,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain('data-testid="custom-copy-amount"');
     expect(html).toContain('aria-label="Custom copy amount"');
     expect(html).toContain("We&#x27;ll watch this wallet and prepare the next mint for your signature");
-    expect(html).toContain("Hot Hands prepares the transaction");
+    expect(html).not.toContain("Manager 0xaaaa...0000");
+    expect(html).not.toContain("Hot Hands prepares the transaction");
     expect(html).toContain('data-testid="market-heat-sort-latest"');
     expect(html).toContain('data-testid="market-heat-show-expired"');
     expect(html).toContain("Show expired");
@@ -99,7 +100,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Stake</small>$375");
     expect(html).toContain('data-testid="market-heat-wallet-submit"');
     expect(html).toContain("Send to wallet");
-    expect(html).toContain("No wallet request until you tap Send to wallet");
+    expect(html).not.toContain("Manager 0xbbbb...0000");
+    expect(html).not.toContain("No wallet request until you tap Send to wallet");
   });
 
   test("renders a bottom show-more control when more feed rows are available", () => {

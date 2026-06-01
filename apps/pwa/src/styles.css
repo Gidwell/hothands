@@ -126,7 +126,6 @@ button {
 .account-summary-stats span,
 .section-heading span,
 .trader-identity p,
-.market-heat-identity p,
 .inline-copy-summary p,
 .spectator-copy span {
   margin: 0;
@@ -562,7 +561,6 @@ button {
   font-weight: 900;
 }
 
-.market-heat-identity p,
 .trader-identity p {
   min-width: 0;
   overflow: hidden;
@@ -776,14 +774,6 @@ button {
   font-size: 0.72rem;
   font-weight: 950;
   white-space: nowrap;
-}
-
-.signature-note {
-  margin: 0;
-  color: #667085;
-  font-size: 0.78rem;
-  font-weight: 800;
-  line-height: 1.35;
 }
 
 .amount-stepper {

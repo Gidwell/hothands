@@ -597,7 +597,6 @@ export function MarketHeatPreview({
                   <h2>{row.displayName}</h2>
                   <span>{row.statusLabel}</span>
                 </div>
-                <p>{row.manager}</p>
               </div>
               <button
                 type="button"
@@ -695,11 +694,6 @@ export function MarketHeatPreview({
                     ) : null}
                   </div>
                 ) : null}
-                <p className="signature-note">
-                  {isWalletSubmitReady
-                    ? "No wallet request until you tap Send to wallet. Hot Hands prepares the transaction first; you approve in your wallet."
-                    : "Hot Hands prepares the transaction when the next mint appears. No wallet request until a copy is ready."}
-                </p>
               </div>
             ) : null}
           </article>
