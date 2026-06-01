@@ -13,10 +13,17 @@ export interface MarketHeatProjection {
   mode: "testnet";
   detail: string;
   capturedAt: string;
+  marketPrice: MarketHeatPrice;
   rows: MarketHeatRow[];
 }
 
 export type MarketHeatSource = "captured_testnet" | "live_testnet";
+
+export interface MarketHeatPrice {
+  market: "BTC-USD";
+  price: number;
+  source: MarketHeatSource;
+}
 
 export interface MarketHeatRow {
   id: string;
@@ -87,6 +94,11 @@ async function getLiveTestnetMarketHeat(fetchImpl: typeof fetch): Promise<Market
     mode: "testnet",
     detail: "Live DeepBook Predict BTC market heat from the public testnet server.",
     capturedAt: new Date().toISOString(),
+    marketPrice: {
+      market: "BTC-USD",
+      price: normalizeStrike(canary.latestPrice?.spot ?? 0),
+      source: "live_testnet"
+    },
     rows
   };
 }
@@ -231,6 +243,11 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
   mode: "testnet",
   detail: "Captured DeepBook Predict mint activity for read-only PWA testnet mode.",
   capturedAt: "2026-05-19T16:00:00.000Z",
+  marketPrice: {
+    market: "BTC-USD",
+    price: 102_480,
+    source: "captured_testnet"
+  },
   rows: [
     {
       id: "captured-alpha-cruz-btc-up-67k",

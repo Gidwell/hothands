@@ -21,6 +21,11 @@ describe("market heat preview model", () => {
       actionLabel: "Copy",
       detailLabel: "Live BTC Predict mints",
       sourceLabel: "Captured",
+      marketPrice: {
+        marketLabel: "BTC/USD",
+        priceLabel: "$102,480",
+        statusLabel: "Captured",
+      },
       rows: [
         {
           id: "external-0x84d2",
@@ -120,6 +125,11 @@ describe("market heat preview model", () => {
         return Response.json({
           mode: "testnet",
           source: "api",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71234,
+            source: "live_testnet",
+          },
           rows: [
             {
               id: "external-0x1111",
@@ -141,6 +151,11 @@ describe("market heat preview model", () => {
 
     expect(calls).toEqual(["https://api.hot-hands.test/testnet/market-heat"]);
     expect(preview.sourceLabel).toBe("API testnet");
+    expect(preview.marketPrice).toEqual({
+      marketLabel: "BTC/USD",
+      priceLabel: "$71,234",
+      statusLabel: "Live Testnet",
+    });
     expect(preview.rows).toHaveLength(1);
     expect(preview.rows[0]).toMatchObject({
       id: "external-0x1111",

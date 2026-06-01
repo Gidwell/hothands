@@ -19,6 +19,11 @@ describe("testnet market heat endpoint", () => {
     expect(typeof body.title).toBe("string");
     expect(body.mode).toBe("testnet");
     expect(typeof body.detail).toBe("string");
+    expect(body.marketPrice).toEqual({
+      market: "BTC-USD",
+      price: 72000,
+      source: "live_testnet"
+    });
     expect(body.rows).toBeArray();
     expect(body.rows[0].id).toContain("live-");
     expect(body.rows[0].wallet).toBe("0xtrader-hot");
@@ -106,6 +111,11 @@ describe("testnet market heat endpoint", () => {
     expect(typeof projection.title).toBe("string");
     expect(typeof projection.mode).toBe("string");
     expect(typeof projection.detail).toBe("string");
+    expect(projection.marketPrice).toEqual({
+      market: "BTC-USD",
+      price: 102480,
+      source: "captured_testnet"
+    });
     expect(projection.rows).toBeArray();
     expect(projection.rows.length).toBeGreaterThanOrEqual(2);
     expect(Object.keys(projection.rows[0]).sort()).toEqual([
@@ -155,6 +165,11 @@ describe("testnet market heat endpoint", () => {
     expect(typeof body.title).toBe("string");
     expect(typeof body.mode).toBe("string");
     expect(typeof body.detail).toBe("string");
+    expect(body.marketPrice).toEqual({
+      market: "BTC-USD",
+      price: 102480,
+      source: "captured_testnet"
+    });
     expect(body.rows).toBeArray();
     expect(body.rows.length).toBeGreaterThanOrEqual(2);
     expect(Object.keys(body.rows[0]).sort()).toEqual([

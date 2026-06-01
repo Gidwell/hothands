@@ -45,6 +45,7 @@ import {
   selectMarketHeatIntent,
   sortMarketHeatRows,
   type MarketHeatIntentState,
+  type MarketHeatPrice,
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
   type MarketHeatSortMode,
@@ -618,7 +619,11 @@ export function MarketHeatPreview({
   );
 }
 
-function MarketHeader() {
+function MarketHeader({
+  price,
+}: {
+  price: MarketHeatPrice;
+}) {
   return (
     <header className="market-strip" data-testid="market-header">
       <div className="market-live">
@@ -629,9 +634,9 @@ function MarketHeader() {
         </div>
       </div>
       <div className="market-price">
-        <span>BTC/USD</span>
-        <strong>{market.price}</strong>
-        <em>{market.move}</em>
+        <span>{price.marketLabel}</span>
+        <strong>{price.priceLabel}</strong>
+        <em>{price.statusLabel}</em>
       </div>
     </header>
   );
@@ -979,7 +984,7 @@ export function App() {
   return (
     <main className="app-shell" data-testid="app-shell">
       <section className="phone-frame" aria-label="Hot Hands market shell">
-        <MarketHeader />
+        <MarketHeader price={marketHeatPreview.marketPrice} />
         <AccountSummary summary={accountSummary} />
         <ActiveSignalStrip
           frame={frame}

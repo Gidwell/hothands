@@ -15,6 +15,18 @@ export type MarketHeatPreviewRowInput = {
   status: MarketHeatStatus;
 };
 
+export type MarketHeatPriceInput = {
+  market: string;
+  price: number;
+  source: string;
+};
+
+export type MarketHeatPrice = {
+  marketLabel: string;
+  priceLabel: string;
+  statusLabel: string;
+};
+
 export type MarketHeatPreviewRow = {
   id: string;
   displayName: string;
@@ -52,6 +64,7 @@ export type MarketHeatPreview = {
   actionLabel: "Copy";
   detailLabel: "Live BTC Predict mints";
   sourceLabel: string;
+  marketPrice: MarketHeatPrice;
   rows: MarketHeatPreviewRow[];
 };
 
@@ -62,12 +75,18 @@ export type LoadMarketHeatPreviewOptions = {
 };
 
 export type BuildMarketHeatPreviewOptions = {
+  marketPrice?: MarketHeatPriceInput;
   nowMs?: number;
 };
 
 const MARKET_HEAT_CANDIDATE_LIMIT = 48;
 const CAPTURED_ROW_BASE_AGE_MS = 5 * 60_000;
 const CAPTURED_ROW_AGE_STEP_MS = 15 * 60_000;
+const CAPTURED_MARKET_PRICE: MarketHeatPriceInput = {
+  market: "BTC-USD",
+  price: 102_480,
+  source: "captured_testnet",
+};
 
 export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
   {
@@ -114,7 +133,7 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
 export function buildMarketHeatPreview(
   rows: MarketHeatPreviewRowInput[] = MARKET_HEAT_PREVIEW_ROWS,
   limit = 24,
-  { nowMs = Date.now() }: BuildMarketHeatPreviewOptions = {},
+  { marketPrice = CAPTURED_MARKET_PRICE, nowMs = Date.now() }: BuildMarketHeatPreviewOptions = {},
 ): MarketHeatPreview {
   return {
     title: "Alpha Feed",
@@ -122,6 +141,7 @@ export function buildMarketHeatPreview(
     actionLabel: "Copy",
     detailLabel: "Live BTC Predict mints",
     sourceLabel: "Captured",
+    marketPrice: buildMarketHeatPrice(marketPrice),
     rows: sortMarketHeatInputs(rows)
       .slice(0, limit)
       .map((row) => {
@@ -222,9 +242,13 @@ export async function loadMarketHeatPreview({
     const sourceLabel = formatMarketHeatSource(payload);
     const previewRows =
       sourceLabel === "Captured" ? refreshCapturedRows(rows, nowMs) : rows;
+    const marketPrice = parseMarketHeatPrice(payload) ?? CAPTURED_MARKET_PRICE;
 
     return {
-      ...buildMarketHeatPreview(previewRows, MARKET_HEAT_CANDIDATE_LIMIT, { nowMs }),
+      ...buildMarketHeatPreview(previewRows, MARKET_HEAT_CANDIDATE_LIMIT, {
+        marketPrice,
+        nowMs,
+      }),
       sourceLabel,
     };
   } catch {
@@ -240,8 +264,16 @@ function buildCapturedMarketHeatPreview(nowMs: number): MarketHeatPreview {
   return buildMarketHeatPreview(
     refreshCapturedRows(MARKET_HEAT_PREVIEW_ROWS, nowMs),
     MARKET_HEAT_CANDIDATE_LIMIT,
-    { nowMs },
+    { marketPrice: CAPTURED_MARKET_PRICE, nowMs },
   );
+}
+
+function buildMarketHeatPrice(price: MarketHeatPriceInput): MarketHeatPrice {
+  return {
+    marketLabel: formatPair(price.market),
+    priceLabel: formatUsd(price.price),
+    statusLabel: formatMarketPriceSource(price.source),
+  };
 }
 
 function refreshCapturedRows(
@@ -319,6 +351,10 @@ function formatMint(value: number): string {
   return value.toLocaleString();
 }
 
+function formatUsd(value: number): string {
+  return `$${Math.round(value).toLocaleString("en-US")}`;
+}
+
 function formatExpiryTime(expiryMs: number): string {
   if (!Number.isFinite(expiryMs) || expiryMs <= 0) {
     return "Expiry unknown";
@@ -367,6 +403,20 @@ function parseMarketHeatRows(payload: unknown): MarketHeatPreviewRowInput[] | nu
   const rows = payload.rows.filter(isMarketHeatRowInput);
 
   return rows.length > 0 ? rows : null;
+}
+
+function parseMarketHeatPrice(payload: unknown): MarketHeatPriceInput | null {
+  if (!isRecord(payload) || !isRecord(payload.marketPrice)) {
+    return null;
+  }
+
+  const { market, price, source } = payload.marketPrice;
+
+  if (!isNonEmptyString(market) || !isNonNegativeNumber(price) || !isNonEmptyString(source)) {
+    return null;
+  }
+
+  return { market, price, source };
 }
 
 function isMarketHeatRowInput(value: unknown): value is MarketHeatPreviewRowInput {
@@ -431,6 +481,14 @@ function formatMarketHeatSource(payload: unknown): string {
   const mode = isNonEmptyString(payload.mode) ? payload.mode.toLowerCase() : "";
 
   return mode && !source.toLowerCase().includes(mode) ? `${source} ${mode}` : source;
+}
+
+function formatMarketPriceSource(source: string): string {
+  if (source === "captured_testnet") {
+    return "Captured";
+  }
+
+  return formatCompactLabel(source);
 }
 
 function formatCompactLabel(value: string): string {
