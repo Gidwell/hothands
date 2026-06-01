@@ -134,6 +134,7 @@ export type TradeMarketSideSummary = {
   tradeCount: number;
   volumeUsd: number;
   volumeLabel: string;
+  estimatedPrice?: number;
 };
 
 export type TradeMarketLadderRow = {
@@ -509,13 +510,25 @@ function summarizeTradeMarketSide(
   const volumeUsd = roundUsd(
     sideRows.reduce((total, row) => total + (row.costUsd ?? 0), 0),
   );
+  const payoutUsd = sideRows.reduce((total, row) => total + normalizeQuantityUsd(row), 0);
+  const estimatedPrice =
+    volumeUsd > 0 && payoutUsd > 0 ? roundPrice(volumeUsd / payoutUsd) : undefined;
 
   return {
     walletCount: new Set(sideRows.map((row) => row.wallet)).size,
     tradeCount: sideRows.length,
     volumeUsd,
     volumeLabel: formatUsdAmount(volumeUsd),
+    ...(estimatedPrice === undefined ? {} : { estimatedPrice }),
   };
+}
+
+function normalizeQuantityUsd(row: MarketHeatPreviewRow): number {
+  if (!isNonNegativeNumber(row.quantity) || row.quantity === 0) {
+    return 0;
+  }
+
+  return row.quantity / 1_000_000;
 }
 
 function normalizeCostUsd(row: MarketHeatPreviewRowInput): number | undefined {
@@ -532,6 +545,10 @@ function normalizeCostUsd(row: MarketHeatPreviewRowInput): number | undefined {
 
 function roundUsd(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function roundPrice(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
 }
 
 function formatTradeMarketActivity(

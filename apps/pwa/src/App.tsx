@@ -68,6 +68,63 @@ function formatQuickAmount(amount: number): string {
   return amount === COPY_AMOUNT_MAX ? "MAX" : formatCopyAmount(amount);
 }
 
+type ReturnPreview = {
+  payoutLabel: string;
+  profitLabel: string;
+};
+
+function buildReturnPreview(spendUsd: number, estimatedPrice: number | undefined): ReturnPreview | null {
+  if (
+    !Number.isFinite(spendUsd) ||
+    spendUsd <= 0 ||
+    estimatedPrice === undefined ||
+    !Number.isFinite(estimatedPrice) ||
+    estimatedPrice <= 0
+  ) {
+    return null;
+  }
+
+  const payoutUsd = spendUsd / estimatedPrice;
+  const profitUsd = payoutUsd - spendUsd;
+
+  if (!Number.isFinite(payoutUsd) || !Number.isFinite(profitUsd)) {
+    return null;
+  }
+
+  return {
+    payoutLabel: formatUsdValue(payoutUsd),
+    profitLabel: formatSignedUsdValue(profitUsd),
+  };
+}
+
+function estimatePriceFromRow(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd" | "quantity">): number | undefined {
+  const costUsd =
+    row.costUsd ??
+    (row.cost === undefined || !Number.isFinite(row.cost) ? undefined : row.cost / 1_000_000);
+  const payoutUsd =
+    row.quantity === undefined || !Number.isFinite(row.quantity) || row.quantity <= 0
+      ? undefined
+      : row.quantity / 1_000_000;
+
+  if (costUsd === undefined || costUsd <= 0 || payoutUsd === undefined || payoutUsd <= 0) {
+    return undefined;
+  }
+
+  return costUsd / payoutUsd;
+}
+
+function formatUsdValue(amount: number): string {
+  return `$${amount.toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+  })}`;
+}
+
+function formatSignedUsdValue(amount: number): string {
+  const prefix = amount >= 0 ? "+" : "-";
+  return `${prefix}${formatUsdValue(Math.abs(amount))}`;
+}
+
 function CopyAmountControls({
   ariaLabel,
   copyAmount,
@@ -180,6 +237,12 @@ export function TradeTicket({
     marketRows.find((market) => market.id === selectedMarketId) ??
     marketRows[0] ??
     null;
+  const selectedSideSummary = selectedMarket
+    ? selectedSide === "UP"
+      ? selectedMarket.up
+      : selectedMarket.down
+    : null;
+  const returnPreview = buildReturnPreview(copyAmount, selectedSideSummary?.estimatedPrice);
 
   return (
     <section className="trade-ticket" aria-label="Trade" data-testid="trade-view">
@@ -251,9 +314,21 @@ export function TradeTicket({
                   </div>
                   <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
                     <span>
-                      <small>Stake</small>
+                      <small>Spend</small>
                       {formatCopyAmount(copyAmount)}
                     </span>
+                    {returnPreview ? (
+                      <>
+                        <span>
+                          <small>Est. payout</small>
+                          {returnPreview.payoutLabel}
+                        </span>
+                        <span>
+                          <small>Max profit</small>
+                          {returnPreview.profitLabel}
+                        </span>
+                      </>
+                    ) : null}
                     <span>
                       <small>Strike</small>
                       {market.strikeLabel}
@@ -264,7 +339,7 @@ export function TradeTicket({
                     </span>
                   </div>
                   <CopyAmountControls
-                    ariaLabel="Trade stake amounts"
+                    ariaLabel="Trade spend amounts"
                     copyAmount={copyAmount}
                     onAmountSet={onAmountSet}
                   />
@@ -748,6 +823,7 @@ export function MarketHeatPreview({
         const sideClass = row.side.toLowerCase();
         const isWalletSubmitReady = row.status === "copy_ready";
         const didSubmitToWallet = walletSubmitRowId === row.id;
+        const returnPreview = buildReturnPreview(copyAmount, estimatePriceFromRow(row));
 
         return (
           <article
@@ -827,9 +903,21 @@ export function MarketHeatPreview({
                 </div>
                 <div className="market-heat-intent-meta" aria-label={`${row.displayName} intent`}>
                   <span>
-                    <small>Stake</small>
+                    <small>Spend</small>
                     {formatCopyAmount(copyAmount)}
                   </span>
+                  {returnPreview ? (
+                    <>
+                      <span>
+                        <small>Est. payout</small>
+                        {returnPreview.payoutLabel}
+                      </span>
+                      <span>
+                        <small>Max profit</small>
+                        {returnPreview.profitLabel}
+                      </span>
+                    </>
+                  ) : null}
                   <span>
                     <small>Signal</small>
                     {intentPanel.detailLabel}
@@ -840,7 +928,7 @@ export function MarketHeatPreview({
                   </span>
                 </div>
                 <CopyAmountControls
-                  ariaLabel="Quick stake amounts"
+                  ariaLabel="Quick spend amounts"
                   copyAmount={copyAmount}
                   onAmountSet={onAmountSet}
                   stopPropagation={true}

@@ -41,6 +41,7 @@ describe("mobile app navigation", () => {
               tradeCount: 3,
               volumeUsd: 24,
               volumeLabel: "$24.00",
+              estimatedPrice: 0.4,
             },
             down: {
               walletCount: 1,
@@ -72,6 +73,7 @@ describe("mobile app navigation", () => {
               tradeCount: 0,
               volumeUsd: 0,
               volumeLabel: "$0",
+              estimatedPrice: 0.4,
             },
             down: {
               walletCount: 0,
@@ -133,7 +135,9 @@ describe("mobile app navigation", () => {
     expect(html).toContain("UP 2 wallets");
     expect(html).toContain("DOWN 1 wallet");
     expect(html).not.toContain("1d");
-    expect(html).toContain("Stake</small>$100");
+    expect(html).toContain("Spend</small>$100");
+    expect(html).toContain("Est. payout</small>$250");
+    expect(html).toContain("Max profit</small>+$150");
     expect(html).toContain("Strike</small>$72,000");
     expect(html).toContain("Expiry</small>May 18, 23:30 PDT");
     expect(html).toContain("Trade this market");

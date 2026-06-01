@@ -302,6 +302,7 @@ describe("market heat preview model", () => {
             observedAtMs: nowMs - 60_000,
             heatScore: 90,
             status: "copy_ready" as const,
+            quantity: 30_000_000,
             costUsd: 14.25,
           },
           {
@@ -317,6 +318,7 @@ describe("market heat preview model", () => {
             observedAtMs: nowMs - 2 * 60_000,
             heatScore: 80,
             status: "copy_ready" as const,
+            quantity: 20_000_000,
             cost: 9_500_000,
           },
         ],
@@ -370,12 +372,14 @@ describe("market heat preview model", () => {
           tradeCount: 1,
           volumeUsd: 14.25,
           volumeLabel: "$14.25",
+          estimatedPrice: 0.475,
         },
         down: {
           walletCount: 1,
           tradeCount: 1,
           volumeUsd: 9.5,
           volumeLabel: "$9.50",
+          estimatedPrice: 0.475,
         },
       },
     ]);

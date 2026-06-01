@@ -29,6 +29,8 @@ const copyReadyRows: MarketHeatPreviewRowInput[] = [
     strike: 7_100,
     expiryMs: 1_779_165_600_000,
     intervalLabel: "2h",
+    quantity: 1_000_000,
+    cost: 400_000,
     observedAtMs: 1_779_158_000_000,
     heatScore: 94,
     status: "copy_ready",
@@ -97,7 +99,9 @@ describe("MarketHeatPreview component", () => {
       />,
     );
 
-    expect(html).toContain("Stake</small>$375");
+    expect(html).toContain("Spend</small>$375");
+    expect(html).toContain("Est. payout</small>$937.50");
+    expect(html).toContain("Max profit</small>+$562.50");
     expect(html).toContain('data-testid="market-heat-wallet-submit"');
     expect(html).toContain("Send to wallet");
     expect(html).not.toContain("Manager 0xbbbb...0000");
