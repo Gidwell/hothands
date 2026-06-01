@@ -3,6 +3,7 @@ import {
   createPredictReadCanary,
   createPredictTradeHistoryClient,
   type MarketHeatTrader,
+  type PredictAvailableBtcMarket,
   type PredictNormalizedTradeEvent,
   type PredictOracleState
 } from "@hot-hands/indexer";
@@ -14,6 +15,7 @@ export interface MarketHeatProjection {
   detail: string;
   capturedAt: string;
   marketPrice: MarketHeatPrice;
+  markets: MarketHeatTradeMarket[];
   rows: MarketHeatRow[];
 }
 
@@ -23,6 +25,20 @@ export interface MarketHeatPrice {
   market: "BTC-USD";
   price: number;
   source: MarketHeatSource;
+}
+
+export interface MarketHeatTradeMarket {
+  oracleId: string;
+  market: "BTC-USD";
+  expiry: number;
+  expiryMs: number;
+  intervalLabel: string;
+  active: boolean;
+  status: string;
+  strikeCandidate: number | null;
+  strikeCandidatePrice: number | null;
+  latestPrice: number | null;
+  latestPriceLabel: string | null;
 }
 
 export interface MarketHeatRow {
@@ -108,6 +124,7 @@ async function getLiveTestnetMarketHeat(fetchImpl: typeof fetch): Promise<Market
       price: normalizeStrike(canary.latestPrice?.spot ?? 0),
       source: "live_testnet"
     },
+    markets: canary.availableBtcMarkets.map(mapAvailableBtcMarket),
     rows
   };
 }
@@ -254,6 +271,34 @@ function normalizeStrike(value: number): number {
   return Math.round(value);
 }
 
+function mapAvailableBtcMarket(market: PredictAvailableBtcMarket): MarketHeatTradeMarket {
+  const latestPrice = market.latestPrice ? normalizeStrike(market.latestPrice.spot) : null;
+  const strikeCandidatePrice =
+    market.strikeCandidate === null ? null : normalizeStrike(market.strikeCandidate);
+
+  return {
+    oracleId: market.oracleId,
+    market: "BTC-USD",
+    expiry: market.expiry,
+    expiryMs: market.expiryMs,
+    intervalLabel: market.intervalLabel,
+    active: market.active,
+    status: market.status,
+    strikeCandidate: market.strikeCandidate,
+    strikeCandidatePrice,
+    latestPrice,
+    latestPriceLabel: formatPriceLabel(latestPrice)
+  };
+}
+
+function formatPriceLabel(price: number | null): string | null {
+  if (price === null) {
+    return null;
+  }
+
+  return `$${Math.round(price).toLocaleString("en-US")}`;
+}
+
 function formatIntervalLabel(
   event: PredictNormalizedTradeEvent,
   oracle: PredictOracleState | undefined
@@ -299,6 +344,7 @@ const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {
     price: 102_480,
     source: "captured_testnet"
   },
+  markets: [],
   rows: [
     {
       id: "captured-alpha-cruz-btc-up-67k",

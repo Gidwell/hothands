@@ -27,6 +27,31 @@ export type MarketHeatPrice = {
   statusLabel: string;
 };
 
+export type MarketHeatAvailableMarketInput = {
+  [key: string]: unknown;
+  id?: unknown;
+  oracleId?: unknown;
+  market?: unknown;
+  intervalLabel?: unknown;
+  expiryMs?: unknown;
+  strike?: unknown;
+  strikeCandidatePrice?: unknown;
+  latestPrice?: unknown;
+  status?: unknown;
+};
+
+export type MarketHeatAvailableMarket = {
+  id: string;
+  oracleId: string;
+  pairLabel: string;
+  intervalLabel: string;
+  expiryMs: number;
+  expiryTimeLabel: string;
+  strike: number;
+  strikeLabel: string;
+  status: string;
+};
+
 export type MarketHeatPreviewRow = {
   id: string;
   displayName: string;
@@ -66,6 +91,7 @@ export type MarketHeatPreview = {
   detailLabel: "Live BTC Predict mints";
   sourceLabel: string;
   marketPrice: MarketHeatPrice;
+  availableMarkets?: MarketHeatAvailableMarket[];
   rows: MarketHeatPreviewRow[];
 };
 
@@ -87,6 +113,10 @@ export type SelectVisibleMarketHeatRowsOptions = {
   nowMs?: number;
   showExpired?: boolean;
   sortMode: MarketHeatSortMode;
+};
+
+export type SelectTradeMarketsOptions = {
+  nowMs?: number;
 };
 
 const MARKET_HEAT_CANDIDATE_LIMIT = 96;
@@ -179,6 +209,50 @@ export function buildMarketHeatPreview(
         };
       }),
   };
+}
+
+export function selectTradeMarkets(
+  preview: MarketHeatPreview,
+  { nowMs = Date.now() }: SelectTradeMarketsOptions = {},
+): MarketHeatAvailableMarket[] {
+  if (preview.availableMarkets !== undefined) {
+    return preview.availableMarkets;
+  }
+
+  const seen = new Set<string>();
+
+  return preview.rows
+    .filter((row) => row.expiryMs > nowMs)
+    .map((row) => {
+      const strike = parseFormattedUsd(row.strikeLabel.replace(/^Strike\s+/i, ""));
+
+      return {
+        id: `derived-${row.intervalLabel}-${row.expiryMs}-${strike}`,
+        oracleId: row.id,
+        pairLabel: row.pairLabel,
+        intervalLabel: row.intervalLabel,
+        expiryMs: row.expiryMs,
+        expiryTimeLabel: row.expiryTimeLabel,
+        strike,
+        strikeLabel: formatStrike(strike),
+        status: "active",
+      };
+    })
+    .filter((market) => {
+      const key = `${market.intervalLabel}:${market.expiryMs}:${market.strike}`;
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return market.strike > 0;
+    })
+    .sort(
+      (left, right) =>
+        left.expiryMs - right.expiryMs ||
+        left.strike - right.strike ||
+        left.id.localeCompare(right.id),
+    );
 }
 
 export function sortMarketHeatRows(
@@ -275,6 +349,7 @@ export async function loadMarketHeatPreview({
     const previewRows =
       sourceLabel === "Captured" ? refreshCapturedRows(rows, nowMs) : rows;
     const marketPrice = parseMarketHeatPrice(payload) ?? CAPTURED_MARKET_PRICE;
+    const availableMarkets = parseAvailableMarkets(payload, marketPrice, timeZone);
 
     return {
       ...buildMarketHeatPreview(previewRows, MARKET_HEAT_CANDIDATE_LIMIT, {
@@ -282,6 +357,7 @@ export async function loadMarketHeatPreview({
         nowMs,
         timeZone,
       }),
+      availableMarkets,
       sourceLabel,
     };
   } catch {
@@ -486,6 +562,38 @@ function parseMarketHeatPrice(payload: unknown): MarketHeatPriceInput | null {
   return { market, price, source };
 }
 
+function parseAvailableMarkets(
+  payload: unknown,
+  marketPrice: MarketHeatPriceInput,
+  timeZone?: string,
+): MarketHeatAvailableMarket[] | undefined {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+
+  const rawMarkets = Array.isArray(payload.markets)
+    ? payload.markets
+    : Array.isArray(payload.availableMarkets)
+      ? payload.availableMarkets
+      : undefined;
+
+  if (!rawMarkets) {
+    return undefined;
+  }
+
+  const markets = rawMarkets
+    .map((market) => parseAvailableMarket(market, marketPrice, timeZone))
+    .filter((market): market is MarketHeatAvailableMarket => market !== null)
+    .sort(
+      (left, right) =>
+        left.expiryMs - right.expiryMs ||
+        left.strike - right.strike ||
+        left.id.localeCompare(right.id),
+    );
+
+  return markets;
+}
+
 function isMarketHeatRowInput(value: unknown): value is MarketHeatPreviewRowInput {
   if (!isRecord(value)) {
     return false;
@@ -504,6 +612,44 @@ function isMarketHeatRowInput(value: unknown): value is MarketHeatPreviewRowInpu
     isNonNegativeNumber(value.heatScore) &&
     (value.status === "copy_ready" || value.status === "watching")
   );
+}
+
+function parseAvailableMarket(
+  value: unknown,
+  marketPrice: MarketHeatPriceInput,
+  timeZone?: string,
+): MarketHeatAvailableMarket | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const oracleId = isNonEmptyString(value.oracleId) ? value.oracleId : null;
+  const market = isNonEmptyString(value.market) ? value.market : marketPrice.market;
+  const intervalLabel = isNonEmptyString(value.intervalLabel) ? value.intervalLabel : null;
+  const expiryMs = isNonNegativeNumber(value.expiryMs) ? value.expiryMs : null;
+  const status = isNonEmptyString(value.status) ? value.status : "active";
+  const strike = firstNonNegativeNumber([
+    value.strike,
+    value.strikeCandidatePrice,
+    value.latestPrice,
+    marketPrice.price,
+  ]);
+
+  if (!oracleId || !intervalLabel || expiryMs === null || strike === null) {
+    return null;
+  }
+
+  return {
+    id: isNonEmptyString(value.id) ? value.id : `${oracleId}-${expiryMs}-${strike}`,
+    oracleId,
+    pairLabel: formatPair(market),
+    intervalLabel,
+    expiryMs,
+    expiryTimeLabel: formatExpiryTime(expiryMs, timeZone),
+    strike,
+    strikeLabel: formatStrike(strike),
+    status,
+  };
 }
 
 function formatTradeTime(observedAtMs: number, nowMs: number): string {
@@ -558,6 +704,11 @@ function formatMarketPriceSource(source: string): string {
   return formatCompactLabel(source);
 }
 
+function parseFormattedUsd(value: string): number {
+  const parsed = Number(value.replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function formatCompactLabel(value: string): string {
   if (value.toLowerCase() === "api") {
     return "API";
@@ -580,4 +731,14 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isNonNegativeNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function firstNonNegativeNumber(values: unknown[]): number | null {
+  for (const value of values) {
+    if (isNonNegativeNumber(value)) {
+      return value;
+    }
+  }
+
+  return null;
 }

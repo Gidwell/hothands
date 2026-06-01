@@ -30,6 +30,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
@@ -503,17 +508,26 @@ button {
 }
 
 .trade-intervals button {
+  display: grid;
+  gap: 2px;
+  place-items: center;
   min-height: 38px;
   border: 1px solid #dbe5ee;
   color: #42526b;
   background: #ffffff;
   font-size: 0.82rem;
+  line-height: 1.05;
 }
 
 .trade-intervals button[aria-pressed="true"] {
   border-color: #111827;
   color: #ffffff;
   background: #111827;
+}
+
+.trade-intervals small {
+  font-size: 0.66rem;
+  font-weight: 850;
 }
 
 .trade-ticket-metrics {

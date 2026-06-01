@@ -24,6 +24,19 @@ describe("testnet market heat endpoint", () => {
       price: 72000,
       source: "live_testnet"
     });
+    expect(body.markets[0]).toEqual({
+      oracleId: "btc-live",
+      market: "BTC-USD",
+      expiry: 1_779_158_400,
+      expiryMs: 1_779_158_400_000,
+      intervalLabel: "15m",
+      active: true,
+      status: "active",
+      strikeCandidate: 72_000_000_000,
+      strikeCandidatePrice: 72000,
+      latestPrice: 72000,
+      latestPriceLabel: "$72,000"
+    });
     expect(body.rows).toBeArray();
     expect(body.rows[0].id).toContain("live-");
     expect(body.rows[0].wallet).toBe("0xtrader-hot");
@@ -43,6 +56,42 @@ describe("testnet market heat endpoint", () => {
       intervalLabel: "15m",
       status: "copy_ready"
     });
+  });
+
+  test("exposes active BTC Predict trade markets for the PWA Trade tab", async () => {
+    const projection = await getTestnetMarketHeat({
+      fetchImpl: createLivePredictFetch({ includeExtraActiveMarket: true })
+    });
+
+    expect(projection.source).toBe("live_testnet");
+    expect(projection.markets).toEqual([
+      {
+        oracleId: "btc-live-short",
+        market: "BTC-USD",
+        expiry: 1_779_158_100,
+        expiryMs: 1_779_158_100_000,
+        intervalLabel: "10m",
+        active: true,
+        status: "active",
+        strikeCandidate: 71_500_000_000,
+        strikeCandidatePrice: 71500,
+        latestPrice: 71500,
+        latestPriceLabel: "$71,500"
+      },
+      {
+        oracleId: "btc-live",
+        market: "BTC-USD",
+        expiry: 1_779_158_400,
+        expiryMs: 1_779_158_400_000,
+        intervalLabel: "15m",
+        active: true,
+        status: "active",
+        strikeCandidate: 72_000_000_000,
+        strikeCandidatePrice: 72000,
+        latestPrice: 72000,
+        latestPriceLabel: "$72,000"
+      }
+    ]);
   });
 
   test("falls back to captured read-only market heat when live Predict reads fail", async () => {
@@ -146,6 +195,7 @@ describe("testnet market heat endpoint", () => {
       price: 102480,
       source: "captured_testnet"
     });
+    expect(projection.markets).toEqual([]);
     expect(projection.rows).toBeArray();
     expect(projection.rows.length).toBeGreaterThanOrEqual(2);
     expect(Object.keys(projection.rows[0]).sort()).toEqual([
@@ -200,6 +250,7 @@ describe("testnet market heat endpoint", () => {
       price: 102480,
       source: "captured_testnet"
     });
+    expect(body.markets).toEqual([]);
     expect(body.rows).toBeArray();
     expect(body.rows.length).toBeGreaterThanOrEqual(2);
     expect(Object.keys(body.rows[0]).sort()).toEqual([
@@ -250,6 +301,7 @@ function createLivePredictFetch(
     extraOlderHotTradeCount = 0,
     includeRecentPosition = false,
     includeRepeatTraderMints = false,
+    includeExtraActiveMarket = false,
     positionStrike = "73000000000",
     positionCost = "800000"
   }: {
@@ -257,6 +309,7 @@ function createLivePredictFetch(
     extraOlderHotTradeCount?: number;
     includeRecentPosition?: boolean;
     includeRepeatTraderMints?: boolean;
+    includeExtraActiveMarket?: boolean;
     positionStrike?: string;
     positionCost?: string;
   } = {}
@@ -281,6 +334,16 @@ function createLivePredictFetch(
 
     if (url.endsWith("/oracles")) {
       return jsonResponse([
+        ...(includeExtraActiveMarket
+          ? [
+              btcOracle({
+                oracle_id: "btc-live-short",
+                expiry: 1_779_158_100,
+                activated_at: 1_779_157_500,
+                status: "active"
+              })
+            ]
+          : []),
         btcOracle({
           oracle_id: "btc-live",
           expiry: 1_779_158_400,
@@ -290,10 +353,12 @@ function createLivePredictFetch(
       ]);
     }
 
-    if (url.endsWith("/prices/latest")) {
+    const latestPriceMatch = url.match(/\/oracles\/([^/]+)\/prices\/latest$/);
+    if (latestPriceMatch) {
+      const oracleId = decodeURIComponent(latestPriceMatch[1]);
       return jsonResponse({
-        oracle_id: "btc-live",
-        spot: 72_000_000_000,
+        oracle_id: oracleId,
+        spot: oracleId === "btc-live-short" ? 71_500_000_000 : 72_000_000_000,
         checkpoint: 101
       });
     }

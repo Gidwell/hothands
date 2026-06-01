@@ -30,6 +30,19 @@ export type PredictLatestPrice = {
   onchain_timestamp?: number;
 };
 
+export type PredictAvailableBtcMarket = {
+  oracleId: string;
+  expiry: number;
+  expiryMs: number;
+  intervalLabel: string;
+  status: string;
+  active: boolean;
+  minStrike: number;
+  tickSize: number;
+  strikeCandidate: number | null;
+  latestPrice: PredictLatestPrice | null;
+};
+
 export type PredictReadCanaryResult = {
   ok: boolean;
   status: string;
@@ -42,6 +55,7 @@ export type PredictReadCanaryResult = {
   activeBtcOracleCount: number;
   btcOracles: PredictOracleState[];
   selectedBtcOracle: PredictOracleState | null;
+  availableBtcMarkets: PredictAvailableBtcMarket[];
   latestPrice: PredictLatestPrice | null;
 };
 
@@ -244,15 +258,21 @@ export function createPredictReadCanary({
       validatePredictState(state, config);
       const btcOracles = oracles.filter((oracle) => oracle.underlying_asset === "BTC");
       const selectedBtcOracle = selectBestBtcOracle(oracles);
-      const latestPrice = selectedBtcOracle
-        ? await fetchJson<PredictLatestPrice>(
-            fetchImpl,
-            buildPredictServerUrl(
+      const activeBtcOracles = selectActiveBtcOracles(oracles);
+      const latestPricesByOracleId = await fetchLatestPricesByOracleId(
+        fetchImpl,
+        config.serverUrl,
+        activeBtcOracles,
+      );
+      const latestPrice =
+        selectedBtcOracle === null
+          ? null
+          : latestPricesByOracleId.get(selectedBtcOracle.oracle_id) ??
+            (await fetchLatestPriceOrNull(
+              fetchImpl,
               config.serverUrl,
-              `/oracles/${selectedBtcOracle.oracle_id}/prices/latest`,
-            ),
-          )
-        : null;
+              selectedBtcOracle.oracle_id,
+            ));
 
       return {
         ok: status.status === "OK" && state.predict_id === config.predictObjectId,
@@ -268,6 +288,12 @@ export function createPredictReadCanary({
         activeBtcOracleCount: btcOracles.filter((oracle) => oracle.status === "active").length,
         btcOracles,
         selectedBtcOracle,
+        availableBtcMarkets: activeBtcOracles.map((oracle) =>
+          mapOracleToAvailableBtcMarket(
+            oracle,
+            latestPricesByOracleId.get(oracle.oracle_id) ?? null,
+          ),
+        ),
         latestPrice,
       };
     },
@@ -425,6 +451,114 @@ export function selectBestBtcOracle(
   const candidates = active.length > 0 ? active : btcOracles;
 
   return [...candidates].sort((left, right) => right.expiry - left.expiry)[0] ?? null;
+}
+
+function selectActiveBtcOracles(oracles: PredictOracleState[]): PredictOracleState[] {
+  return oracles
+    .filter(
+      (oracle) =>
+        oracle.underlying_asset === "BTC" &&
+        oracle.status === "active",
+    )
+    .sort(
+      (left, right) =>
+        left.expiry - right.expiry ||
+        left.oracle_id.localeCompare(right.oracle_id),
+    );
+}
+
+async function fetchLatestPricesByOracleId(
+  fetchImpl: typeof fetch,
+  serverUrl: string,
+  oracles: PredictOracleState[],
+): Promise<Map<string, PredictLatestPrice>> {
+  const entries = await Promise.all(
+    oracles.map(async (oracle) => {
+      const latestPrice = await fetchLatestPriceOrNull(
+        fetchImpl,
+        serverUrl,
+        oracle.oracle_id,
+      );
+
+      return latestPrice ? ([oracle.oracle_id, latestPrice] as const) : null;
+    }),
+  );
+
+  return new Map(
+    entries.filter(
+      (entry): entry is readonly [string, PredictLatestPrice] => entry !== null,
+    ),
+  );
+}
+
+async function fetchLatestPriceOrNull(
+  fetchImpl: typeof fetch,
+  serverUrl: string,
+  oracleId: string,
+): Promise<PredictLatestPrice | null> {
+  try {
+    return await fetchJson<PredictLatestPrice>(
+      fetchImpl,
+      buildPredictServerUrl(serverUrl, `/oracles/${oracleId}/prices/latest`),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function mapOracleToAvailableBtcMarket(
+  oracle: PredictOracleState,
+  latestPrice: PredictLatestPrice | null,
+): PredictAvailableBtcMarket {
+  return {
+    oracleId: oracle.oracle_id,
+    expiry: oracle.expiry,
+    expiryMs: normalizeEpochMs(oracle.expiry),
+    intervalLabel: formatOracleIntervalLabel(oracle),
+    status: oracle.status,
+    active: oracle.status === "active",
+    minStrike: oracle.min_strike,
+    tickSize: oracle.tick_size,
+    strikeCandidate: latestPrice
+      ? snapStrikeToTick(latestPrice.forward ?? latestPrice.spot, oracle)
+      : null,
+    latestPrice,
+  };
+}
+
+function snapStrikeToTick(price: number, oracle: PredictOracleState): number {
+  const tickSize = Math.max(1, oracle.tick_size);
+  const rounded = Math.round(price / tickSize) * tickSize;
+
+  return Math.max(oracle.min_strike, rounded);
+}
+
+function formatOracleIntervalLabel(oracle: PredictOracleState): string {
+  if (oracle.activated_at === undefined || oracle.expiry <= oracle.activated_at) {
+    return "Active";
+  }
+
+  return formatDurationLabel(
+    normalizeEpochMs(oracle.expiry) - normalizeEpochMs(oracle.activated_at),
+  );
+}
+
+function formatDurationLabel(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return "Exp";
+  }
+
+  const minutes = Math.max(1, Math.round(durationMs / 60_000));
+  if (minutes < 60) {
+    const roundedMinutes = minutes > 20 ? Math.round(minutes / 15) * 15 : minutes;
+    return `${roundedMinutes}m`;
+  }
+
+  if (minutes < 36 * 60) {
+    return `${Math.round(minutes / 60)}h`;
+  }
+
+  return `${Math.round(minutes / (24 * 60))}d`;
 }
 
 function validatePredictState(state: PredictState, config: PredictCanaryConfig): void {

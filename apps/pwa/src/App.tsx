@@ -42,9 +42,11 @@ import {
   buildMarketHeatPreview,
   closeMarketHeatIntent,
   loadMarketHeatPreview,
+  selectTradeMarkets,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
   type MarketHeatIntentState,
+  type MarketHeatAvailableMarket,
   type MarketHeatPrice,
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
@@ -57,9 +59,6 @@ const MARKET_HEAT_PAGE_SIZE = 8;
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade";
 export type TradeSide = "UP" | "DOWN";
-export type TradeInterval = "15m" | "1h" | "1d";
-
-const tradeIntervals: TradeInterval[] = ["15m", "1h", "1d"];
 
 export function getInitialPreviewMode(apiBaseUrl: string | undefined): PreviewMode {
   return apiBaseUrl ? "market" : "replay";
@@ -157,36 +156,45 @@ export function BottomNav({
 }
 
 export function TradeTicket({
+  availableMarkets,
   copyAmount,
-  marketPriceLabel,
-  selectedInterval,
+  selectedMarketId,
   selectedSide,
   walletSubmitted = false,
   onAmountSet,
-  onIntervalChange,
+  onMarketChange,
   onSideChange,
   onWalletSubmit,
 }: {
+  availableMarkets: MarketHeatAvailableMarket[];
   copyAmount: number;
-  marketPriceLabel: string;
-  selectedInterval: TradeInterval;
+  selectedMarketId: string;
   selectedSide: TradeSide;
   walletSubmitted?: boolean;
   onAmountSet: (amount: number) => void;
-  onIntervalChange: (interval: TradeInterval) => void;
+  onMarketChange: (marketId: string) => void;
   onSideChange: (side: TradeSide) => void;
   onWalletSubmit: () => void;
 }) {
+  const selectedMarket =
+    availableMarkets.find((market) => market.id === selectedMarketId) ??
+    availableMarkets[0] ??
+    null;
+
   return (
     <section className="trade-ticket" aria-label="Trade" data-testid="trade-view">
       <div className="section-heading">
         <p>Trade</p>
-        <span>BTC/USD</span>
+        <span>{selectedMarket?.pairLabel ?? "BTC/USD"}</span>
       </div>
       <div className="trade-ticket-panel">
         <div className="trade-ticket-title">
           <p>Make a BTC prediction</p>
-          <strong>{selectedSide} / {selectedInterval}</strong>
+          <strong>
+            {selectedMarket
+              ? `${selectedSide} / ${selectedMarket.intervalLabel}`
+              : `${selectedSide} / No active market`}
+          </strong>
         </div>
         <div className="trade-side-toggle" aria-label="Direction">
           <button
@@ -206,17 +214,22 @@ export function TradeTicket({
             DOWN
           </button>
         </div>
-        <div className="trade-intervals" aria-label="Market interval">
-          {tradeIntervals.map((interval) => (
+        <div className="trade-intervals" aria-label="Available markets">
+          {availableMarkets.length ? availableMarkets.map((market) => (
             <button
               type="button"
-              aria-pressed={selectedInterval === interval}
-              key={interval}
-              onClick={() => onIntervalChange(interval)}
+              aria-pressed={selectedMarket?.id === market.id}
+              key={market.id}
+              onClick={() => onMarketChange(market.id)}
             >
-              {interval}
+              <span>{market.intervalLabel}</span>
+              <small>{market.strikeLabel}</small>
             </button>
-          ))}
+          )) : (
+            <button type="button" aria-pressed="false" disabled>
+              No active markets
+            </button>
+          )}
         </div>
         <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
           <span>
@@ -225,11 +238,11 @@ export function TradeTicket({
           </span>
           <span>
             <small>Strike</small>
-            {marketPriceLabel}
+            {selectedMarket?.strikeLabel ?? "Unavailable"}
           </span>
           <span>
-            <small>Market</small>
-            {selectedInterval}
+            <small>Expiry</small>
+            {selectedMarket?.expiryTimeLabel ?? "Unavailable"}
           </span>
         </div>
         <CopyAmountControls
@@ -241,6 +254,7 @@ export function TradeTicket({
           type="button"
           className="trade-wallet-button"
           data-testid="trade-wallet-submit"
+          disabled={!selectedMarket}
           onClick={onWalletSubmit}
         >
           Send to wallet
@@ -971,7 +985,7 @@ export function App() {
   const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
   const [activeView, setActiveView] = useState<AppView>("feed");
   const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
-  const [tradeInterval, setTradeInterval] = useState<TradeInterval>("15m");
+  const [selectedTradeMarketId, setSelectedTradeMarketId] = useState<string | null>(null);
   const [tradeWalletSubmitted, setTradeWalletSubmitted] = useState(false);
   const [previewMode, setPreviewMode] = useState<PreviewMode>(() =>
     getInitialPreviewMode(realtimeApiBaseUrl),
@@ -1027,6 +1041,7 @@ export function App() {
     showExpired: marketHeatShowExpired,
     sortMode: marketHeatSortMode,
   });
+  const tradeMarkets = selectTradeMarkets(marketHeatPreview, { nowMs: marketHeatNowMs });
   const marketHeatVisibleTotal = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
     limit: Number.MAX_SAFE_INTEGER,
     nowMs: marketHeatNowMs,
@@ -1259,8 +1274,8 @@ export function App() {
     setTradeSide(side);
     setTradeWalletSubmitted(false);
   };
-  const handleTradeIntervalChange = (interval: TradeInterval) => {
-    setTradeInterval(interval);
+  const handleTradeMarketChange = (marketId: string) => {
+    setSelectedTradeMarketId(marketId);
     setTradeWalletSubmitted(false);
   };
 
@@ -1331,13 +1346,13 @@ export function App() {
             </>
           ) : (
             <TradeTicket
+              availableMarkets={tradeMarkets}
               copyAmount={copyState.copyAmount}
-              marketPriceLabel={marketHeatPreview.marketPrice.priceLabel}
-              selectedInterval={tradeInterval}
+              selectedMarketId={selectedTradeMarketId ?? tradeMarkets[0]?.id ?? ""}
               selectedSide={tradeSide}
               walletSubmitted={tradeWalletSubmitted}
               onAmountSet={handleAmountSet}
-              onIntervalChange={handleTradeIntervalChange}
+              onMarketChange={handleTradeMarketChange}
               onSideChange={handleTradeSideChange}
               onWalletSubmit={() => setTradeWalletSubmitted(true)}
             />

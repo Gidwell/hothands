@@ -136,6 +136,24 @@ describe("market heat preview model", () => {
             price: 71234,
             source: "live_testnet",
           },
+          markets: [
+            {
+              oracleId: "0xoracle15",
+              market: "BTC-USD",
+              intervalLabel: "15m",
+              expiryMs: 1_779_165_900_000,
+              strikeCandidatePrice: 71_000,
+              status: "active",
+            },
+            {
+              oracleId: "0xoracle2h",
+              market: "BTC-USD",
+              intervalLabel: "2h",
+              expiryMs: 1_779_172_200_000,
+              strikeCandidatePrice: 72_000,
+              status: "active",
+            },
+          ],
           rows: [
             {
               id: "external-0x1111",
@@ -162,6 +180,30 @@ describe("market heat preview model", () => {
       priceLabel: "$71,234",
       statusLabel: "Live Testnet",
     });
+    expect(preview.availableMarkets).toEqual([
+      {
+        id: "0xoracle15-1779165900000-71000",
+        oracleId: "0xoracle15",
+        pairLabel: "BTC/USD",
+        intervalLabel: "15m",
+        expiryMs: 1_779_165_900_000,
+        expiryTimeLabel: "May 18, 21:45 PDT",
+        strike: 71_000,
+        strikeLabel: "$71,000",
+        status: "active",
+      },
+      {
+        id: "0xoracle2h-1779172200000-72000",
+        oracleId: "0xoracle2h",
+        pairLabel: "BTC/USD",
+        intervalLabel: "2h",
+        expiryMs: 1_779_172_200_000,
+        expiryTimeLabel: "May 18, 23:30 PDT",
+        strike: 72_000,
+        strikeLabel: "$72,000",
+        status: "active",
+      },
+    ]);
     expect(preview.rows).toHaveLength(1);
     expect(preview.rows[0]).toMatchObject({
       id: "external-0x1111",

@@ -90,7 +90,7 @@ describe("DeepBook Predict read canary", () => {
       if (url.endsWith("/oracles")) {
         return jsonResponse([
           btcOracle({ oracle_id: "settled", expiry: 10, status: "settled" }),
-          btcOracle({ oracle_id: "active-btc", expiry: 20, status: "active" }),
+          btcOracle({ oracle_id: "active-btc", expiry: 60, activated_at: 0, status: "active" }),
         ]);
       }
 
@@ -113,10 +113,28 @@ describe("DeepBook Predict read canary", () => {
       status: "OK",
       quoteAssetEnabled: true,
       btcOracleCount: 2,
+      activeBtcOracleCount: 1,
       selectedBtcOracle: {
         oracle_id: "active-btc",
         status: "active",
       },
+      availableBtcMarkets: [
+        {
+          oracleId: "active-btc",
+          expiry: 60,
+          expiryMs: 60_000,
+          intervalLabel: "1m",
+          status: "active",
+          active: true,
+          minStrike: 50_000_000_000,
+          tickSize: 1_000_000,
+          strikeCandidate: 64_300_000_000,
+          latestPrice: {
+            oracle_id: "active-btc",
+            spot: 64_200_000_000,
+          },
+        },
+      ],
       latestPrice: {
         oracle_id: "active-btc",
         spot: 64_200_000_000,
@@ -128,6 +146,124 @@ describe("DeepBook Predict read canary", () => {
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/predicts/${DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId}/oracles`,
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/active-btc/prices/latest`,
     ]);
+  });
+
+  test("lists active BTC market candidates ordered by expiry with current strike candidates", async () => {
+    const requests: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requests.push(url);
+
+      if (url.endsWith("/status")) {
+        return jsonResponse({ status: "OK" });
+      }
+
+      if (url.endsWith("/state")) {
+        return jsonResponse({
+          predict_id: DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId,
+          quote_assets: [DEEPBOOK_PREDICT_TESTNET_CONFIG.quoteAssetType],
+        });
+      }
+
+      if (url.endsWith("/oracles")) {
+        return jsonResponse([
+          btcOracle({
+            oracle_id: "btc-15m",
+            expiry: 1_779_158_400,
+            activated_at: 1_779_157_500,
+            min_strike: 50_000_000_000,
+            tick_size: 1_000_000,
+            status: "active",
+          }),
+          btcOracle({
+            oracle_id: "btc-1h",
+            expiry: 1_779_161_100,
+            activated_at: 1_779_157_500,
+            min_strike: 50_000_000_000,
+            tick_size: 5_000_000,
+            status: "active",
+          }),
+          btcOracle({
+            oracle_id: "btc-settled",
+            expiry: 1_779_150_000,
+            status: "settled",
+          }),
+          btcOracle({
+            oracle_id: "eth-15m",
+            underlying_asset: "ETH",
+            expiry: 1_779_158_400,
+            activated_at: 1_779_157_500,
+            status: "active",
+          }),
+        ]);
+      }
+
+      if (url.endsWith("/oracles/btc-15m/prices/latest")) {
+        return jsonResponse({
+          oracle_id: "btc-15m",
+          spot: 64_202_300_000,
+          checkpoint: 101,
+        });
+      }
+
+      if (url.endsWith("/oracles/btc-1h/prices/latest")) {
+        return jsonResponse({
+          oracle_id: "btc-1h",
+          spot: 64_212_300_000,
+          forward: 64_250_500_000,
+          checkpoint: 102,
+        });
+      }
+
+      return jsonResponse({ error: "not_found" }, 404);
+    };
+
+    const result = await createPredictReadCanary({ fetchImpl }).run();
+
+    expect(result.activeBtcOracleCount).toBe(2);
+    expect(result.selectedBtcOracle?.oracle_id).toBe("btc-1h");
+    expect(result.latestPrice?.oracle_id).toBe("btc-1h");
+    expect(result.availableBtcMarkets).toEqual([
+      {
+        oracleId: "btc-15m",
+        expiry: 1_779_158_400,
+        expiryMs: 1_779_158_400_000,
+        intervalLabel: "15m",
+        status: "active",
+        active: true,
+        minStrike: 50_000_000_000,
+        tickSize: 1_000_000,
+        strikeCandidate: 64_202_000_000,
+        latestPrice: {
+          oracle_id: "btc-15m",
+          spot: 64_202_300_000,
+          checkpoint: 101,
+        },
+      },
+      {
+        oracleId: "btc-1h",
+        expiry: 1_779_161_100,
+        expiryMs: 1_779_161_100_000,
+        intervalLabel: "1h",
+        status: "active",
+        active: true,
+        minStrike: 50_000_000_000,
+        tickSize: 5_000_000,
+        strikeCandidate: 64_250_000_000,
+        latestPrice: {
+          oracle_id: "btc-1h",
+          spot: 64_212_300_000,
+          forward: 64_250_500_000,
+          checkpoint: 102,
+        },
+      },
+    ]);
+    expect(requests).toContain(
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-15m/prices/latest`,
+    );
+    expect(requests).toContain(
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-1h/prices/latest`,
+    );
   });
 });
 

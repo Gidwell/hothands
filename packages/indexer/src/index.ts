@@ -7,6 +7,7 @@ export {
   normalizePredictTradeRow,
   parsePredictCanaryConfig,
   selectBestBtcOracle,
+  type PredictAvailableBtcMarket,
   type PredictCanaryConfig,
   type PredictLatestPrice,
   type MarketHeatTrader,
