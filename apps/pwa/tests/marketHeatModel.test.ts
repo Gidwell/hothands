@@ -13,6 +13,7 @@ describe("market heat preview model", () => {
   test("builds a compact external wallet watch preview from captured rows", () => {
     const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
       nowMs: 1_779_165_600_000,
+      timeZone: "America/Los_Angeles",
     });
 
     expect(preview).toEqual({
@@ -33,9 +34,9 @@ describe("market heat preview model", () => {
           manager: "Manager 0xb795...3125",
           pairLabel: "BTC/USD",
           side: "UP",
-          strikeLabel: "Strike 12.4K",
+          strikeLabel: "Strike $12,400",
           intervalLabel: "15m",
-          expiryTimeLabel: "May 19, 02:40 UTC",
+          expiryTimeLabel: "May 18, 19:40 PDT",
           observedAtMs: 1_779_158_400_000,
           heatScore: 92,
           actionLabel: "Watch next",
@@ -48,9 +49,9 @@ describe("market heat preview model", () => {
           manager: "Manager 0x43af...e64",
           pairLabel: "BTC/USD",
           side: "DOWN",
-          strikeLabel: "Strike 7.8K",
+          strikeLabel: "Strike $7,800",
           intervalLabel: "1h",
-          expiryTimeLabel: "May 19, 02:40 UTC",
+          expiryTimeLabel: "May 18, 19:40 PDT",
           observedAtMs: 1_779_151_200_000,
           heatScore: 87,
           actionLabel: "Watch next",
@@ -63,9 +64,9 @@ describe("market heat preview model", () => {
           manager: "Manager 0xc873...028a",
           pairLabel: "BTC/USD",
           side: "UP",
-          strikeLabel: "Strike 4.2K",
+          strikeLabel: "Strike $4,200",
           intervalLabel: "1d",
-          expiryTimeLabel: "May 19, 02:40 UTC",
+          expiryTimeLabel: "May 18, 19:40 PDT",
           observedAtMs: 1_779_079_200_000,
           heatScore: 81,
           actionLabel: "Watch next",
@@ -119,6 +120,7 @@ describe("market heat preview model", () => {
     const preview = await loadMarketHeatPreview({
       apiBaseUrl: "https://api.hot-hands.test/",
       nowMs: 1_779_165_000_000,
+      timeZone: "America/Los_Angeles",
       fetcher: async (url) => {
         calls.push(String(url));
 
@@ -163,9 +165,9 @@ describe("market heat preview model", () => {
       manager: "Manager 0xabcd...0001",
       pairLabel: "BTC/USD",
       side: "DOWN",
-      strikeLabel: "Strike 3.4K",
+      strikeLabel: "Strike $3,400",
       intervalLabel: "1h",
-      expiryTimeLabel: "May 19, 02:40 UTC",
+      expiryTimeLabel: "May 18, 19:40 PDT",
       actionLabel: "Watch next",
       statusLabel: "just now",
     });
@@ -324,7 +326,7 @@ describe("market heat preview model", () => {
     expect(preview.rows[0]).toMatchObject({
       pairLabel: "BTC/USD",
       side: "UP",
-      strikeLabel: "Strike 67.0K",
+      strikeLabel: "Strike $67,000",
       intervalLabel: "15m",
       actionLabel: "Copy now",
       status: "copy_ready",

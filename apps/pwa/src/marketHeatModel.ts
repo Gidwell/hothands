@@ -72,11 +72,13 @@ export type LoadMarketHeatPreviewOptions = {
   apiBaseUrl?: string;
   fetcher?: typeof fetch;
   nowMs?: number;
+  timeZone?: string;
 };
 
 export type BuildMarketHeatPreviewOptions = {
   marketPrice?: MarketHeatPriceInput;
   nowMs?: number;
+  timeZone?: string;
 };
 
 const MARKET_HEAT_CANDIDATE_LIMIT = 48;
@@ -133,7 +135,11 @@ export const MARKET_HEAT_PREVIEW_ROWS: MarketHeatPreviewRowInput[] = [
 export function buildMarketHeatPreview(
   rows: MarketHeatPreviewRowInput[] = MARKET_HEAT_PREVIEW_ROWS,
   limit = 24,
-  { marketPrice = CAPTURED_MARKET_PRICE, nowMs = Date.now() }: BuildMarketHeatPreviewOptions = {},
+  {
+    marketPrice = CAPTURED_MARKET_PRICE,
+    nowMs = Date.now(),
+    timeZone,
+  }: BuildMarketHeatPreviewOptions = {},
 ): MarketHeatPreview {
   return {
     title: "Alpha Feed",
@@ -153,9 +159,9 @@ export function buildMarketHeatPreview(
           manager: formatManager(row.manager),
           pairLabel: formatPair(row.market),
           side: row.side,
-          strikeLabel: `Strike ${formatMint(row.strike)}`,
+          strikeLabel: `Strike ${formatStrike(row.strike)}`,
           intervalLabel: row.intervalLabel,
-          expiryTimeLabel: formatExpiryTime(row.expiryMs),
+          expiryTimeLabel: formatExpiryTime(row.expiryMs, timeZone),
           observedAtMs: row.observedAtMs,
           heatScore: row.heatScore,
           actionLabel: isActionableCopy ? "Copy now" : "Watch next",
@@ -218,25 +224,26 @@ export async function loadMarketHeatPreview({
   apiBaseUrl,
   fetcher = fetch,
   nowMs = Date.now(),
+  timeZone,
 }: LoadMarketHeatPreviewOptions = {}): Promise<MarketHeatPreview> {
   const normalizedBaseUrl = apiBaseUrl?.trim();
 
   if (!normalizedBaseUrl) {
-    return buildCapturedMarketHeatPreview(nowMs);
+    return buildCapturedMarketHeatPreview(nowMs, timeZone);
   }
 
   try {
     const response = await fetcher(buildMarketHeatUrl(normalizedBaseUrl));
 
     if (!response.ok) {
-      return buildCapturedMarketHeatPreview(nowMs);
+      return buildCapturedMarketHeatPreview(nowMs, timeZone);
     }
 
     const payload: unknown = await response.json();
     const rows = parseMarketHeatRows(payload);
 
     if (!rows) {
-      return buildCapturedMarketHeatPreview(nowMs);
+      return buildCapturedMarketHeatPreview(nowMs, timeZone);
     }
 
     const sourceLabel = formatMarketHeatSource(payload);
@@ -248,11 +255,12 @@ export async function loadMarketHeatPreview({
       ...buildMarketHeatPreview(previewRows, MARKET_HEAT_CANDIDATE_LIMIT, {
         marketPrice,
         nowMs,
+        timeZone,
       }),
       sourceLabel,
     };
   } catch {
-    return buildCapturedMarketHeatPreview(nowMs);
+    return buildCapturedMarketHeatPreview(nowMs, timeZone);
   }
 }
 
@@ -260,11 +268,14 @@ function buildMarketHeatUrl(apiBaseUrl: string): string {
   return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/market-heat`;
 }
 
-function buildCapturedMarketHeatPreview(nowMs: number): MarketHeatPreview {
+function buildCapturedMarketHeatPreview(
+  nowMs: number,
+  timeZone?: string,
+): MarketHeatPreview {
   return buildMarketHeatPreview(
     refreshCapturedRows(MARKET_HEAT_PREVIEW_ROWS, nowMs),
     MARKET_HEAT_CANDIDATE_LIMIT,
-    { marketPrice: CAPTURED_MARKET_PRICE, nowMs },
+    { marketPrice: CAPTURED_MARKET_PRICE, nowMs, timeZone },
   );
 }
 
@@ -343,32 +354,63 @@ function formatPair(market: string): string {
   return market.replace("-", "/");
 }
 
-function formatMint(value: number): string {
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(1)}K`;
+function formatStrike(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "unknown";
   }
 
-  return value.toLocaleString();
+  return `$${value.toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatUsd(value: number): string {
   return `$${Math.round(value).toLocaleString("en-US")}`;
 }
 
-function formatExpiryTime(expiryMs: number): string {
+function formatExpiryTime(expiryMs: number, timeZone?: string): string {
   if (!Number.isFinite(expiryMs) || expiryMs <= 0) {
     return "Expiry unknown";
   }
 
   const expiry = new Date(expiryMs);
-  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][
-    expiry.getUTCMonth()
-  ];
-  const day = String(expiry.getUTCDate());
-  const hour = String(expiry.getUTCHours()).padStart(2, "0");
-  const minute = String(expiry.getUTCMinutes()).padStart(2, "0");
+  const localLabel = formatExpiryWithIntl(expiry, timeZone) ?? formatExpiryWithIntl(expiry);
 
-  return `${month} ${day}, ${hour}:${minute} UTC`;
+  return localLabel ?? "Expiry unknown";
+}
+
+function formatExpiryWithIntl(expiry: Date, timeZone?: string): string | null {
+  try {
+    const options: Intl.DateTimeFormatOptions = {
+      day: "numeric",
+      hour: "2-digit",
+      hourCycle: "h23",
+      minute: "2-digit",
+      month: "short",
+      timeZoneName: "short",
+    };
+
+    if (timeZone) {
+      options.timeZone = timeZone;
+    }
+
+    const parts = new Intl.DateTimeFormat("en-US", options).formatToParts(expiry);
+    const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((part) => part.type === type)?.value;
+    const month = getPart("month");
+    const day = getPart("day");
+    const hour = getPart("hour");
+    const minute = getPart("minute");
+    const timeZoneName = getPart("timeZoneName");
+
+    if (!month || !day || !hour || !minute || !timeZoneName) {
+      return null;
+    }
+
+    return `${month} ${day}, ${hour}:${minute} ${timeZoneName}`;
+  } catch {
+    return null;
+  }
 }
 
 function sortMarketHeatInputs(rows: MarketHeatPreviewRowInput[]): MarketHeatPreviewRowInput[] {
