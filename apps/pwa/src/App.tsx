@@ -55,6 +55,11 @@ const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
 type PreviewMode = "replay" | "market";
+export type AppView = "feed" | "trade";
+export type TradeSide = "UP" | "DOWN";
+export type TradeInterval = "15m" | "1h" | "1d";
+
+const tradeIntervals: TradeInterval[] = ["15m", "1h", "1d"];
 
 export function getInitialPreviewMode(apiBaseUrl: string | undefined): PreviewMode {
   return apiBaseUrl ? "market" : "replay";
@@ -122,6 +127,132 @@ function CopyAmountControls({
 
 function walletAvatarLabel(displayName: string): string {
   return displayName.replace(/^0x/, "").slice(0, 2).toUpperCase() || "HH";
+}
+
+export function BottomNav({
+  activeView,
+  onViewChange,
+}: {
+  activeView: AppView;
+  onViewChange: (view: AppView) => void;
+}) {
+  return (
+    <nav className="bottom-nav" aria-label="Primary" data-testid="bottom-nav">
+      <button
+        type="button"
+        aria-pressed={activeView === "feed"}
+        onClick={() => onViewChange("feed")}
+      >
+        🔥 Feed
+      </button>
+      <button
+        type="button"
+        aria-pressed={activeView === "trade"}
+        onClick={() => onViewChange("trade")}
+      >
+        ↔ Trade
+      </button>
+    </nav>
+  );
+}
+
+export function TradeTicket({
+  copyAmount,
+  marketPriceLabel,
+  selectedInterval,
+  selectedSide,
+  walletSubmitted = false,
+  onAmountSet,
+  onIntervalChange,
+  onSideChange,
+  onWalletSubmit,
+}: {
+  copyAmount: number;
+  marketPriceLabel: string;
+  selectedInterval: TradeInterval;
+  selectedSide: TradeSide;
+  walletSubmitted?: boolean;
+  onAmountSet: (amount: number) => void;
+  onIntervalChange: (interval: TradeInterval) => void;
+  onSideChange: (side: TradeSide) => void;
+  onWalletSubmit: () => void;
+}) {
+  return (
+    <section className="trade-ticket" aria-label="Trade" data-testid="trade-view">
+      <div className="section-heading">
+        <p>Trade</p>
+        <span>BTC/USD</span>
+      </div>
+      <div className="trade-ticket-panel">
+        <div className="trade-ticket-title">
+          <p>Make a BTC prediction</p>
+          <strong>{selectedSide} / {selectedInterval}</strong>
+        </div>
+        <div className="trade-side-toggle" aria-label="Direction">
+          <button
+            type="button"
+            className={selectedSide === "UP" ? "trade-side-up selected" : "trade-side-up"}
+            aria-pressed={selectedSide === "UP"}
+            onClick={() => onSideChange("UP")}
+          >
+            UP
+          </button>
+          <button
+            type="button"
+            className={selectedSide === "DOWN" ? "trade-side-down selected" : "trade-side-down"}
+            aria-pressed={selectedSide === "DOWN"}
+            onClick={() => onSideChange("DOWN")}
+          >
+            DOWN
+          </button>
+        </div>
+        <div className="trade-intervals" aria-label="Market interval">
+          {tradeIntervals.map((interval) => (
+            <button
+              type="button"
+              aria-pressed={selectedInterval === interval}
+              key={interval}
+              onClick={() => onIntervalChange(interval)}
+            >
+              {interval}
+            </button>
+          ))}
+        </div>
+        <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
+          <span>
+            <small>Stake</small>
+            {formatCopyAmount(copyAmount)}
+          </span>
+          <span>
+            <small>Strike</small>
+            {marketPriceLabel}
+          </span>
+          <span>
+            <small>Market</small>
+            {selectedInterval}
+          </span>
+        </div>
+        <CopyAmountControls
+          ariaLabel="Trade stake amounts"
+          copyAmount={copyAmount}
+          onAmountSet={onAmountSet}
+        />
+        <button
+          type="button"
+          className="trade-wallet-button"
+          data-testid="trade-wallet-submit"
+          onClick={onWalletSubmit}
+        >
+          Send to wallet
+        </button>
+        {walletSubmitted ? (
+          <span className="trade-wallet-status" aria-live="polite">
+            Wallet request started
+          </span>
+        ) : null}
+      </div>
+    </section>
+  );
 }
 
 function traderCopyStatus(
@@ -838,6 +969,10 @@ export function App() {
   const [scenario, setScenario] = useState(() => createReplayScenario("opening-night"));
   const [replayState, setReplayState] = useState(() => createInitialReplayState(scenario));
   const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
+  const [activeView, setActiveView] = useState<AppView>("feed");
+  const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
+  const [tradeInterval, setTradeInterval] = useState<TradeInterval>("15m");
+  const [tradeWalletSubmitted, setTradeWalletSubmitted] = useState(false);
   const [previewMode, setPreviewMode] = useState<PreviewMode>(() =>
     getInitialPreviewMode(realtimeApiBaseUrl),
   );
@@ -1045,6 +1180,7 @@ export function App() {
 
   const handleAmountSet = (amount: number) => {
     setMarketHeatWalletSubmitRowId(null);
+    setTradeWalletSubmitted(false);
     setReplayState((state) => updateReplayCopy(state, (copy) => setCopyAmount(copy, amount)));
   };
 
@@ -1119,68 +1255,95 @@ export function App() {
   const handleMarketHeatShowMore = () => {
     setMarketHeatVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
   };
+  const handleTradeSideChange = (side: TradeSide) => {
+    setTradeSide(side);
+    setTradeWalletSubmitted(false);
+  };
+  const handleTradeIntervalChange = (interval: TradeInterval) => {
+    setTradeInterval(interval);
+    setTradeWalletSubmitted(false);
+  };
 
   return (
     <main className="app-shell" data-testid="app-shell">
       <section className="phone-frame" aria-label="Hot Hands market shell">
-        <MarketHeader price={marketHeatPreview.marketPrice} />
-        <AccountSummary summary={accountSummary} />
-        <ActiveSignalStrip
-          frame={frame}
-          receiptState={receipt.state}
-          copyAmount={copyState.copyAmount}
-          isPlaying={replayState.isPlaying}
-          scenarioId={scenario.id}
-          mode={previewMode}
-          onReplayToggle={handleReplayToggle}
-          onReplayNext={handleReplayNext}
-          onReplayReset={handleReplayReset}
-          onScenarioChange={handleScenarioChange}
-          onModeChange={handlePreviewModeChange}
-          marketHeatSourceLabel={marketHeatPreview.sourceLabel}
-        />
-        <SpectatorRail
-          spectatorCount={spectatorCount}
-          activity={activity}
-          activitySource={liveActivitySnapshot.dataSource}
-          activityStatus={liveActivitySnapshot.status}
-          activityStatusLabel={liveActivitySnapshot.statusLabel}
-        />
-        {previewMode === "market" ? (
-          <MarketHeatPreview
-            rows={sortedMarketHeatRows}
-            sourceLabel={marketHeatPreview.sourceLabel}
-            sortMode={marketHeatSortMode}
-            showExpired={marketHeatShowExpired}
-            canShowMore={marketHeatRemainingCount > 0}
-            selectedRowId={marketHeatIntent.selectedRowId}
-            walletSubmitRowId={marketHeatWalletSubmitRowId}
-            copyAmount={copyState.copyAmount}
-            showMoreLabel={marketHeatShowMoreLabel}
-            onAmountSet={handleAmountSet}
-            onShowExpiredChange={handleMarketHeatShowExpiredChange}
-            onShowMore={handleMarketHeatShowMore}
-            onSortModeChange={handleMarketHeatSortModeChange}
-            onWalletSubmit={handleMarketHeatWalletSubmit}
-            onSelectRow={handleMarketHeatSelect}
-            onCloseIntent={handleMarketHeatClose}
-          />
-        ) : (
-          <HotTraderList
-            traders={displayedTraders}
-            selectedTraderId={copyState.selectedTraderId}
-            expandedTraderId={expandedTraderId}
-            receiptState={receipt.state}
-            copyAmount={copyState.copyAmount}
-            hotTraderId={hotTrader?.id ?? ""}
-            onCopy={handleTraderSelect}
-            onAmountStep={handleAmountStep}
-            onAmountSet={handleAmountSet}
-            onArmToggle={handleArmToggle}
-            onConfirmCopy={handleConfirmCopy}
-            onClose={handleCloseCopyPanel}
-          />
-        )}
+        <div className="app-scroll" data-testid="app-scroll">
+          <MarketHeader price={marketHeatPreview.marketPrice} />
+          <AccountSummary summary={accountSummary} />
+          {activeView === "feed" ? (
+            <>
+              <ActiveSignalStrip
+                frame={frame}
+                receiptState={receipt.state}
+                copyAmount={copyState.copyAmount}
+                isPlaying={replayState.isPlaying}
+                scenarioId={scenario.id}
+                mode={previewMode}
+                onReplayToggle={handleReplayToggle}
+                onReplayNext={handleReplayNext}
+                onReplayReset={handleReplayReset}
+                onScenarioChange={handleScenarioChange}
+                onModeChange={handlePreviewModeChange}
+                marketHeatSourceLabel={marketHeatPreview.sourceLabel}
+              />
+              <SpectatorRail
+                spectatorCount={spectatorCount}
+                activity={activity}
+                activitySource={liveActivitySnapshot.dataSource}
+                activityStatus={liveActivitySnapshot.status}
+                activityStatusLabel={liveActivitySnapshot.statusLabel}
+              />
+              {previewMode === "market" ? (
+                <MarketHeatPreview
+                  rows={sortedMarketHeatRows}
+                  sourceLabel={marketHeatPreview.sourceLabel}
+                  sortMode={marketHeatSortMode}
+                  showExpired={marketHeatShowExpired}
+                  canShowMore={marketHeatRemainingCount > 0}
+                  selectedRowId={marketHeatIntent.selectedRowId}
+                  walletSubmitRowId={marketHeatWalletSubmitRowId}
+                  copyAmount={copyState.copyAmount}
+                  showMoreLabel={marketHeatShowMoreLabel}
+                  onAmountSet={handleAmountSet}
+                  onShowExpiredChange={handleMarketHeatShowExpiredChange}
+                  onShowMore={handleMarketHeatShowMore}
+                  onSortModeChange={handleMarketHeatSortModeChange}
+                  onWalletSubmit={handleMarketHeatWalletSubmit}
+                  onSelectRow={handleMarketHeatSelect}
+                  onCloseIntent={handleMarketHeatClose}
+                />
+              ) : (
+                <HotTraderList
+                  traders={displayedTraders}
+                  selectedTraderId={copyState.selectedTraderId}
+                  expandedTraderId={expandedTraderId}
+                  receiptState={receipt.state}
+                  copyAmount={copyState.copyAmount}
+                  hotTraderId={hotTrader?.id ?? ""}
+                  onCopy={handleTraderSelect}
+                  onAmountStep={handleAmountStep}
+                  onAmountSet={handleAmountSet}
+                  onArmToggle={handleArmToggle}
+                  onConfirmCopy={handleConfirmCopy}
+                  onClose={handleCloseCopyPanel}
+                />
+              )}
+            </>
+          ) : (
+            <TradeTicket
+              copyAmount={copyState.copyAmount}
+              marketPriceLabel={marketHeatPreview.marketPrice.priceLabel}
+              selectedInterval={tradeInterval}
+              selectedSide={tradeSide}
+              walletSubmitted={tradeWalletSubmitted}
+              onAmountSet={handleAmountSet}
+              onIntervalChange={handleTradeIntervalChange}
+              onSideChange={handleTradeSideChange}
+              onWalletSubmit={() => setTradeWalletSubmitted(true)}
+            />
+          )}
+        </div>
+        <BottomNav activeView={activeView} onViewChange={setActiveView} />
       </section>
     </main>
   );
