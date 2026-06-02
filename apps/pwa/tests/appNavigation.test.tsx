@@ -61,6 +61,8 @@ describe("mobile app navigation", () => {
         positions={[
           {
             actionLabel: "Redeem",
+            closeValueLabel: "$2.41",
+            closeValueStatusLabel: "Quoted now",
             costBasisLabel: "$1.80",
             direction: "UP",
             expiry: 1_779_193_600,
@@ -111,6 +113,9 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Redeem");
     expect(html).toContain("Claim");
     expect(html).toContain("$65,000.00");
+    expect(html).toContain("Est. close");
+    expect(html).toContain("Quoted now");
+    expect(html).toContain("$2.41");
     expect(html).toContain("$4");
     expect(html).toContain("Claim value");
     expect(html).toContain("No payout");

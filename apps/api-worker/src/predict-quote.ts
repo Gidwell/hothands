@@ -13,6 +13,14 @@ export interface PredictQuoteRequest {
   estimatedPrice?: string | null;
 }
 
+export interface PredictRedeemQuoteRequest {
+  oracleId: string;
+  expiry: string;
+  strike: string;
+  side: string;
+  quantity: string;
+}
+
 export interface PredictQuote {
   source: "live_testnet";
   market: "BTC-USD";
@@ -29,6 +37,19 @@ export interface PredictQuote {
   redeemPayout: string;
   redeemPayoutUsd: number;
   effectivePrice: number;
+  quoteStatus: "ready";
+}
+
+export interface PredictRedeemQuote {
+  source: "live_testnet";
+  market: "BTC-USD";
+  oracleId: string;
+  expiry: string;
+  strike: string;
+  side: PredictQuoteSide;
+  quantity: string;
+  redeemPayout: string;
+  redeemPayoutUsd: number;
   quoteStatus: "ready";
 }
 
@@ -100,6 +121,37 @@ export async function getTestnetPredictQuote(
     redeemPayout: quote.redeemPayout.toString(),
     redeemPayoutUsd: atomicUsdToNumber(quote.redeemPayout),
     effectivePrice: Number(quote.cost) / Number(quote.quantity),
+    quoteStatus: "ready"
+  };
+}
+
+export async function getTestnetPredictRedeemQuote(
+  request: PredictRedeemQuoteRequest,
+  { inspectQuantity = inspectPredictQuantityOnTestnet }: PredictQuoteOptions = {}
+): Promise<PredictRedeemQuote> {
+  const oracleId = parseObjectId(request.oracleId, "oracleId");
+  const expiry = parsePositiveBigInt(request.expiry, "expiry");
+  const strike = parsePositiveBigInt(request.strike, "strike");
+  const side = parseSide(request.side);
+  const quantity = parsePositiveBigInt(request.quantity, "quantity");
+  const quote = await inspectQuantity({
+    oracleId,
+    expiry,
+    strike,
+    side,
+    quantity
+  });
+
+  return {
+    source: "live_testnet",
+    market: "BTC-USD",
+    oracleId,
+    expiry: expiry.toString(),
+    strike: strike.toString(),
+    side,
+    quantity: quantity.toString(),
+    redeemPayout: quote.redeemPayout.toString(),
+    redeemPayoutUsd: atomicUsdToNumber(quote.redeemPayout),
     quoteStatus: "ready"
   };
 }

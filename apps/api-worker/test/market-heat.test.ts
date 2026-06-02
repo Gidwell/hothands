@@ -123,6 +123,43 @@ describe("testnet market heat endpoint", () => {
     });
   });
 
+  test("quotes redeem value for an open portfolio position", async () => {
+    const inspectedQuantities: string[] = [];
+    const response = await worker.fetch(
+      new Request(
+        "https://api.hot-hands.test/testnet/redeem-quote?oracleId=0xabc123&expiry=1779158400000&strike=72000000000&side=DOWN&quantity=4000000"
+      ),
+      {
+        inspectPredictQuoteQuantity: async ({ quantity }) => {
+          inspectedQuantities.push(quantity.toString());
+
+          return {
+            cost: quantity / 2n,
+            redeemPayout: quantity / 3n
+          };
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    const body = await response.json();
+    expect(inspectedQuantities).toEqual(["4000000"]);
+    expect(body).toMatchObject({
+      source: "live_testnet",
+      market: "BTC-USD",
+      oracleId: "0xabc123",
+      expiry: "1779158400000",
+      strike: "72000000000",
+      side: "DOWN",
+      quantity: "4000000",
+      redeemPayout: "1333333",
+      redeemPayoutUsd: 1.333333,
+      quoteStatus: "ready"
+    });
+  });
+
   test("falls back to captured read-only market heat when live Predict reads fail", async () => {
     const projection = await getTestnetMarketHeat({
       fetchImpl: async () => {

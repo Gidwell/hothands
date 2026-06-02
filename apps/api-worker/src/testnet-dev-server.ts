@@ -1,6 +1,7 @@
 import { getTestnetMarketHeat } from "./market-heat";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
 import {
+  getTestnetPredictRedeemQuote,
   getTestnetPredictQuote,
   type InspectPredictQuoteQuantity
 } from "./predict-quote";
@@ -96,6 +97,28 @@ export function createTestnetDevServerFetch({
       }
     }
 
+    if (url.pathname === "/testnet/redeem-quote") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      try {
+        return json(
+          await getTestnetPredictRedeemQuote(parsePredictRedeemQuoteRequest(url), {
+            inspectQuantity: inspectPredictQuoteQuantity
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "redeem_quote_failed",
+            message: error instanceof Error ? error.message : "Unable to quote redeem."
+          },
+          400
+        );
+      }
+    }
+
     if (url.pathname === "/testnet/oracle-settlement") {
       if (request.method !== "GET") {
         return json({ error: "method_not_allowed" }, 405);
@@ -122,7 +145,13 @@ export function createTestnetDevServerFetch({
     return json(
       {
         error: "not_found",
-        routes: ["/health", "/testnet/market-heat", "/testnet/oracle-settlement", "/testnet/quote"]
+        routes: [
+          "/health",
+          "/testnet/market-heat",
+          "/testnet/oracle-settlement",
+          "/testnet/quote",
+          "/testnet/redeem-quote"
+        ]
       },
       404
     );
@@ -149,6 +178,16 @@ function parsePredictQuoteRequest(url: URL) {
     side: requireSearchParam(url, "side"),
     spendUsd: requireSearchParam(url, "spendUsd"),
     estimatedPrice: url.searchParams.get("estimatedPrice")
+  };
+}
+
+function parsePredictRedeemQuoteRequest(url: URL) {
+  return {
+    oracleId: requireSearchParam(url, "oracleId"),
+    expiry: requireSearchParam(url, "expiry"),
+    strike: requireSearchParam(url, "strike"),
+    side: requireSearchParam(url, "side"),
+    quantity: requireSearchParam(url, "quantity")
   };
 }
 
@@ -181,6 +220,6 @@ if ((import.meta as { main?: boolean }).main) {
 
   console.log(`Testnet API dev server listening on ${server.url}`);
   console.log(
-    "Routes: GET /health, GET /testnet/market-heat, GET /testnet/oracle-settlement, GET /testnet/quote"
+    "Routes: GET /health, GET /testnet/market-heat, GET /testnet/oracle-settlement, GET /testnet/quote, GET /testnet/redeem-quote"
   );
 }

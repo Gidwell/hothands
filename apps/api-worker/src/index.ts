@@ -21,9 +21,11 @@ import { createTableActivityBroadcast } from "./table-activity";
 import { getTestnetMarketHeat } from "./market-heat";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
 import {
+  getTestnetPredictRedeemQuote,
   getTestnetPredictQuote,
   type InspectPredictQuoteQuantity,
-  type PredictQuoteRequest
+  type PredictQuoteRequest,
+  type PredictRedeemQuoteRequest
 } from "./predict-quote";
 
 export interface Env {
@@ -90,6 +92,28 @@ export default {
       }
     }
 
+    if (url.pathname === "/testnet/redeem-quote") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      try {
+        return json(
+          await getTestnetPredictRedeemQuote(parsePredictRedeemQuoteRequest(url), {
+            inspectQuantity: env.inspectPredictQuoteQuantity
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "redeem_quote_failed",
+            message: error instanceof Error ? error.message : "Unable to quote redeem."
+          },
+          400
+        );
+      }
+    }
+
     if (url.pathname === "/testnet/oracle-settlement") {
       if (request.method !== "GET") {
         return json({ error: "method_not_allowed" }, 405);
@@ -125,6 +149,7 @@ export default {
             "/testnet/market-heat",
             "/testnet/oracle-settlement",
             "/testnet/quote",
+            "/testnet/redeem-quote",
             "/tables/:tableId/summary",
             "/tables/:tableId/ws",
             "/tables/:tableId/activity"
@@ -403,6 +428,16 @@ function parsePredictQuoteRequest(url: URL): PredictQuoteRequest {
     side: requireSearchParam(url, "side"),
     spendUsd: requireSearchParam(url, "spendUsd"),
     estimatedPrice: url.searchParams.get("estimatedPrice")
+  };
+}
+
+function parsePredictRedeemQuoteRequest(url: URL): PredictRedeemQuoteRequest {
+  return {
+    oracleId: requireSearchParam(url, "oracleId"),
+    expiry: requireSearchParam(url, "expiry"),
+    strike: requireSearchParam(url, "strike"),
+    side: requireSearchParam(url, "side"),
+    quantity: requireSearchParam(url, "quantity")
   };
 }
 

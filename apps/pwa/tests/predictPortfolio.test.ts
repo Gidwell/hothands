@@ -3,6 +3,7 @@ import {
   POSITION_MINTED_EVENT_TYPE,
   POSITION_REDEEMED_EVENT_TYPE,
   buildPortfolioPositions,
+  createPredictPortfolioCloseQuoteClient,
   createPredictPortfolioSettlementClient,
   loadPredictPortfolio,
 } from "../src/predictPortfolio";
@@ -141,6 +142,46 @@ describe("Predict portfolio", () => {
     });
   });
 
+  test("shows an estimated close value for open positions", () => {
+    const [position] = buildPortfolioPositions(
+      [
+        {
+          eventId: "mint-open",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xoracle",
+          expiry: 1_779_193_600,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 5_000_000,
+          cost: 2_250_000,
+          timestampMs: 1_779_100_000_000,
+        },
+      ],
+      {
+        nowMs: 1_779_102_000_000,
+        closeQuotes: [
+          {
+            oracleId: "0xoracle",
+            expiry: "1779193600",
+            strike: "65000000000",
+            side: "UP",
+            quantity: "5000000",
+            redeemPayout: "2410000",
+            redeemPayoutUsd: 2.41,
+            quoteStatus: "ready",
+          },
+        ],
+      },
+    );
+
+    expect(position).toMatchObject({
+      closeValueLabel: "$2.41",
+      closeValueStatusLabel: "Quoted now",
+      maxPayoutLabel: "$5",
+    });
+  });
+
   test("formats high precision live strikes without changing raw redeem input", () => {
     const [position] = buildPortfolioPositions(
       [
@@ -168,6 +209,7 @@ describe("Predict portfolio", () => {
   test("loads minted and redeemed position events for one manager", async () => {
     const queries: unknown[] = [];
     const settlementRequests: string[] = [];
+    const closeQuoteRequests: string[] = [];
     const positions = await loadPredictPortfolio({
       managerObjectId: "0xmanager",
       nowMs: 1_779_102_000_000,
@@ -178,6 +220,21 @@ describe("Predict portfolio", () => {
             oracleId,
             settlementPrice: 65_500,
             status: "active",
+          };
+        },
+      },
+      closeQuoteClient: {
+        getCloseQuote: async (position) => {
+          closeQuoteRequests.push(position.oracleId);
+          return {
+            oracleId: position.oracleId,
+            expiry: String(position.expiry),
+            strike: position.strike,
+            side: position.direction,
+            quantity: position.quantity,
+            redeemPayout: "2410000",
+            redeemPayoutUsd: 2.41,
+            quoteStatus: "ready",
           };
         },
       },
@@ -233,6 +290,8 @@ describe("Predict portfolio", () => {
     expect(positions[0]?.managerId).toBe("0xmanager");
     expect(positions[0]?.quantity).toBe("5000000");
     expect(settlementRequests).toEqual(["0xoracle"]);
+    expect(closeQuoteRequests).toEqual(["0xoracle"]);
+    expect(positions[0]?.closeValueLabel).toBe("$2.41");
   });
 
   test("loads oracle settlement details through the configured testnet API", async () => {
@@ -260,6 +319,56 @@ describe("Predict portfolio", () => {
     });
     expect(requestedUrls).toEqual([
       "https://api.hot-hands.test/testnet/oracle-settlement?oracleId=0xoracle",
+    ]);
+  });
+
+  test("loads open-position close quotes through the configured testnet API", async () => {
+    const requestedUrls: string[] = [];
+    const client = createPredictPortfolioCloseQuoteClient({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      fetcher: async (url) => {
+        requestedUrls.push(String(url));
+        return new Response(
+          JSON.stringify({
+            oracleId: "0xoracle",
+            expiry: "1779193600",
+            strike: "65000000000",
+            side: "DOWN",
+            quantity: "5000000",
+            redeemPayout: "2410000",
+            redeemPayoutUsd: 2.41,
+            quoteStatus: "ready",
+          }),
+        );
+      },
+    });
+
+    await expect(
+      client?.getCloseQuote({
+        actionLabel: "Redeem",
+        costBasisLabel: "$2.25",
+        direction: "DOWN",
+        expiry: 1_779_193_600,
+        expiryMs: 1_779_193_600_000,
+        expiryTimeLabel: "May 19, 2026, 12:26 PM",
+        id: "position",
+        isExpired: false,
+        managerId: "0xmanager",
+        maxPayoutLabel: "$5",
+        oracleId: "0xoracle",
+        quantity: "5000000",
+        statusLabel: "Open",
+        strike: "65000000000",
+        strikeLabel: "$65,000.00",
+        timeLabel: "2d left",
+      }),
+    ).resolves.toMatchObject({
+      oracleId: "0xoracle",
+      redeemPayout: "2410000",
+      redeemPayoutUsd: 2.41,
+    });
+    expect(requestedUrls).toEqual([
+      "https://api.hot-hands.test/testnet/redeem-quote?oracleId=0xoracle&expiry=1779193600&strike=65000000000&side=DOWN&quantity=5000000",
     ]);
   });
 });

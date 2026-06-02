@@ -50,4 +50,29 @@ describe("testnet API dev server harness", () => {
       maxProfitUsd: 25
     });
   });
+
+  test("serves redeem quotes for local Portfolio close previews", async () => {
+    const fetchHandler = createTestnetDevServerFetch({
+      inspectPredictQuoteQuantity: async ({ quantity }) => ({
+        cost: quantity / 2n,
+        redeemPayout: quantity / 4n
+      })
+    });
+
+    const response = await fetchHandler(
+      new Request(
+        "http://127.0.0.1:8789/testnet/redeem-quote?oracleId=0xabc123&expiry=1779158400000&strike=72000000000&side=UP&quantity=4000000"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    await expect(response.json()).resolves.toMatchObject({
+      source: "live_testnet",
+      quantity: "4000000",
+      redeemPayout: "1000000",
+      redeemPayoutUsd: 1
+    });
+  });
 });

@@ -79,6 +79,7 @@ import {
 } from "./walletBalance";
 import { findPredictManagerForOwner } from "./predictManager";
 import {
+  createPredictPortfolioCloseQuoteClient,
   createPredictPortfolioSettlementClient,
   loadPredictPortfolio,
   type PredictPortfolioPosition,
@@ -1233,26 +1234,27 @@ export function PortfolioPanel({
                   <strong>BTC/USD {position.strikeLabel}</strong>
                   <small>
                     {position.statusLabel} · {position.timeLabel}
+                    {position.closeValueStatusLabel ? ` · ${position.closeValueStatusLabel}` : ""}
                     {position.outcomeLabel ? ` · ${position.outcomeLabel}` : ""}
                   </small>
                 </div>
               </div>
               <div className="portfolio-row-metrics">
                 <span>
-                  <small>{position.isExpired ? "Claim value" : "Max payout"}</small>
+                  <small>{position.isExpired ? "Claim value" : "Est. close"}</small>
                   {position.isExpired
                     ? position.claimValueLabel ?? "Checking"
-                    : position.maxPayoutLabel}
+                    : position.closeValueLabel ?? "Checking"}
                 </span>
                 <span>
                   <small>Cost</small>
                   {position.costBasisLabel}
                 </span>
                 <span>
-                  <small>{position.isExpired ? "Settled BTC" : "Expiry"}</small>
+                  <small>{position.isExpired ? "Settled BTC" : "Max payout"}</small>
                   {position.isExpired
                     ? position.settlementPriceLabel ?? "Pending"
-                    : position.expiryTimeLabel}
+                    : position.maxPayoutLabel}
                 </span>
               </div>
               <button
@@ -2127,6 +2129,9 @@ export function App() {
     });
 
     void loadPredictPortfolio({
+      closeQuoteClient: createPredictPortfolioCloseQuoteClient({
+        apiBaseUrl: realtimeApiBaseUrl,
+      }),
       managerObjectId: activePredictManagerObjectId,
       maxPages: 12,
       settlementClient: createPredictPortfolioSettlementClient({

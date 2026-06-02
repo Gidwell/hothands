@@ -34,6 +34,7 @@ The launcher starts:
 - PWA: `http://127.0.0.1:5176`
 - API: `http://127.0.0.1:8789`
 - Market heat API: `http://127.0.0.1:8789/testnet/market-heat`
+- Open-position close quote API: `http://127.0.0.1:8789/testnet/redeem-quote`
 
 With `dev:testnet`, the app opens directly in `Testnet` mode and shows live DeepBook Predict market heat rows.
 If public testnet reads fail, the API falls back to captured rows and labels the
@@ -73,6 +74,8 @@ What is live today:
   quoted `predict::mint` transaction.
 - Portfolio reads open positions and, for settled expired positions, shows the
   oracle settlement price plus the claim value before sending the wallet action.
+- Open positions show an estimated close value from the local testnet redeem
+  quote before sending the wallet action.
 
 What is still in progress:
 

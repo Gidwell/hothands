@@ -45,6 +45,8 @@ export type PredictPortfolioPosition = {
   actionLabel: "Redeem" | "Claim";
   maxPayoutLabel: string;
   costBasisLabel: string;
+  closeValueLabel?: string;
+  closeValueStatusLabel?: "Quoted now";
   claimValueLabel?: string;
   outcomeLabel?: "Pays out" | "No payout" | "Settlement pending";
   settlementPriceLabel?: string;
@@ -68,8 +70,24 @@ export type PredictPortfolioSettlementClient = {
   getOracleSettlement(oracleId: string): Promise<PredictOracleSettlement | null>;
 };
 
+export type PredictPortfolioCloseQuote = {
+  oracleId: string;
+  expiry: string;
+  strike: string;
+  side: "UP" | "DOWN";
+  quantity: string;
+  redeemPayout: string;
+  redeemPayoutUsd: number;
+  quoteStatus: "ready";
+};
+
+export type PredictPortfolioCloseQuoteClient = {
+  getCloseQuote(position: PredictPortfolioPosition): Promise<PredictPortfolioCloseQuote | null>;
+};
+
 export type LoadPredictPortfolioOptions = {
   client?: PredictPortfolioEventClient;
+  closeQuoteClient?: PredictPortfolioCloseQuoteClient;
   limit?: number;
   managerObjectId: string;
   maxPages?: number;
@@ -94,6 +112,7 @@ export async function loadPredictPortfolio({
   managerObjectId,
   maxPages = 8,
   nowMs = Date.now(),
+  closeQuoteClient,
   settlementClient,
 }: LoadPredictPortfolioOptions): Promise<PredictPortfolioPosition[]> {
   const [mints, redeems] = await Promise.all([
@@ -116,18 +135,18 @@ export async function loadPredictPortfolio({
   ]);
 
   const events = [...mints, ...redeems];
-  if (!settlementClient) {
-    return buildPortfolioPositions(events, { nowMs });
-  }
-
   const positions = buildPortfolioPositions(events, { nowMs });
-  if (positions.length === 0) {
+  if (positions.length === 0 || (!settlementClient && !closeQuoteClient)) {
     return positions;
   }
 
-  const oracleSettlements = await loadOracleSettlements(positions, settlementClient);
+  const [oracleSettlements, closeQuotes] = await Promise.all([
+    settlementClient ? loadOracleSettlements(positions, settlementClient) : [],
+    closeQuoteClient ? loadCloseQuotes(positions, closeQuoteClient) : [],
+  ]);
 
   return buildPortfolioPositions(events, {
+    closeQuotes,
     nowMs,
     oracleSettlements,
   });
@@ -136,13 +155,21 @@ export async function loadPredictPortfolio({
 export function buildPortfolioPositions(
   events: PredictPortfolioEvent[],
   {
+    closeQuotes = [],
     nowMs = Date.now(),
     oracleSettlements = [],
-  }: { nowMs?: number; oracleSettlements?: PredictOracleSettlement[] } = {},
+  }: {
+    closeQuotes?: PredictPortfolioCloseQuote[];
+    nowMs?: number;
+    oracleSettlements?: PredictOracleSettlement[];
+  } = {},
 ): PredictPortfolioPosition[] {
   const positions = new Map<string, PortfolioAccumulator>();
   const settlementsByOracleId = new Map(
     oracleSettlements.map((settlement) => [settlement.oracleId, settlement]),
+  );
+  const closeQuotesByPositionId = new Map(
+    closeQuotes.map((quote) => [closeQuoteKey(quote), quote]),
   );
 
   for (const event of [...events].sort(compareEventsByTime)) {
@@ -180,10 +207,49 @@ export function buildPortfolioPositions(
 
   return [...positions.values()]
     .filter((position) => position.quantity > 0n)
-    .map((position) =>
-      buildPortfolioPosition(position, nowMs, settlementsByOracleId.get(position.oracleId)),
-    )
+    .map((position) => {
+      const builtPosition = buildPortfolioPosition(
+        position,
+        nowMs,
+        settlementsByOracleId.get(position.oracleId),
+      );
+      const closeQuote = closeQuotesByPositionId.get(positionCloseQuoteKey(builtPosition));
+
+      return closeQuote ? applyCloseQuote(builtPosition, closeQuote) : builtPosition;
+    })
     .sort((left, right) => right.expiryMs - left.expiryMs || left.id.localeCompare(right.id));
+}
+
+export function createPredictPortfolioCloseQuoteClient({
+  apiBaseUrl,
+  fetcher = fetch,
+}: {
+  apiBaseUrl?: string | null;
+  fetcher?: typeof fetch;
+}): PredictPortfolioCloseQuoteClient | undefined {
+  const normalizedBaseUrl = apiBaseUrl?.trim();
+  if (!normalizedBaseUrl) {
+    return undefined;
+  }
+
+  return {
+    getCloseQuote: async (position) => {
+      const url = new URL(`${normalizedBaseUrl.replace(/\/+$/, "")}/testnet/redeem-quote`);
+      url.searchParams.set("oracleId", position.oracleId);
+      url.searchParams.set("expiry", String(position.expiry));
+      url.searchParams.set("strike", position.strike);
+      url.searchParams.set("side", position.direction);
+      url.searchParams.set("quantity", position.quantity);
+
+      const response = await fetcher(url.toString());
+      if (!response.ok) {
+        return null;
+      }
+
+      const payload = (await response.json()) as unknown;
+      return parseCloseQuote(payload);
+    },
+  };
 }
 
 export function createPredictPortfolioSettlementClient({
@@ -319,6 +385,34 @@ async function loadOracleSettlements(
   return settlements.filter(
     (settlement): settlement is PredictOracleSettlement => settlement !== null,
   );
+}
+
+async function loadCloseQuotes(
+  positions: PredictPortfolioPosition[],
+  closeQuoteClient: PredictPortfolioCloseQuoteClient,
+): Promise<PredictPortfolioCloseQuote[]> {
+  const quotes = await Promise.all(
+    positions
+      .filter((position) => !position.isExpired)
+      .map((position) => closeQuoteClient.getCloseQuote(position).catch(() => null)),
+  );
+
+  return quotes.filter((quote): quote is PredictPortfolioCloseQuote => quote !== null);
+}
+
+function applyCloseQuote(
+  position: PredictPortfolioPosition,
+  quote: PredictPortfolioCloseQuote,
+): PredictPortfolioPosition {
+  if (position.isExpired || closeQuoteKey(quote) !== positionCloseQuoteKey(position)) {
+    return position;
+  }
+
+  return {
+    ...position,
+    closeValueLabel: formatDusdcBalance(quote.redeemPayout),
+    closeValueStatusLabel: "Quoted now",
+  };
 }
 
 function parsePortfolioEvent(
@@ -466,6 +560,52 @@ function settledPrice(settlement: PredictOracleSettlement | undefined): number |
   return settlement.settlementPrice;
 }
 
+function closeQuoteKey(quote: PredictPortfolioCloseQuote): string {
+  return `${quote.oracleId}:${quote.expiry}:${quote.strike}:${quote.side}:${quote.quantity}`;
+}
+
+function positionCloseQuoteKey(position: PredictPortfolioPosition): string {
+  return `${position.oracleId}:${position.expiry}:${position.strike}:${position.direction}:${position.quantity}`;
+}
+
+function parseCloseQuote(payload: unknown): PredictPortfolioCloseQuote | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const oracleId = stringValue(payload.oracleId ?? payload.oracle_id);
+  const expiry = stringValue(payload.expiry);
+  const strike = stringValue(payload.strike);
+  const side = sideValue(payload.side);
+  const quantity = stringValue(payload.quantity);
+  const redeemPayout = stringValue(payload.redeemPayout ?? payload.redeem_payout);
+  const redeemPayoutUsd = numberValue(payload.redeemPayoutUsd ?? payload.redeem_payout_usd);
+
+  if (
+    !oracleId ||
+    !expiry ||
+    !strike ||
+    !side ||
+    !quantity ||
+    !redeemPayout ||
+    redeemPayoutUsd === null ||
+    payload.quoteStatus !== "ready"
+  ) {
+    return null;
+  }
+
+  return {
+    oracleId,
+    expiry,
+    strike,
+    side,
+    quantity,
+    redeemPayout,
+    redeemPayoutUsd,
+    quoteStatus: "ready",
+  };
+}
+
 function parseOracleSettlement(payload: unknown): PredictOracleSettlement | null {
   if (!isRecord(payload)) {
     return null;
@@ -552,6 +692,10 @@ function booleanValue(value: unknown): boolean | null {
   }
 
   return null;
+}
+
+function sideValue(value: unknown): "UP" | "DOWN" | null {
+  return value === "UP" || value === "DOWN" ? value : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
