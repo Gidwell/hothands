@@ -63,6 +63,7 @@ import {
   type MarketHeatSortMode,
   type TradeQuote,
   type TradeMarketLadderRow,
+  type TradeStrikeOption,
 } from "./marketHeatModel";
 import { buildTradeMintTransaction } from "./walletTransactions";
 import { loadDusdcBalanceLabel } from "./walletBalance";
@@ -74,6 +75,12 @@ const MARKET_HEAT_PAGE_SIZE = 8;
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade";
 export type TradeSide = "UP" | "DOWN";
+export type TradeMarketSelection = {
+  marketId: string;
+  strike: number;
+  strikeLabel: string;
+  strikeRaw: number;
+};
 type TradeQuoteStatus = "idle" | "loading" | "ready" | "error";
 type WalletTransactionStatus = "idle" | "pending" | "success" | "error";
 type WalletTransactionState = {
@@ -172,6 +179,84 @@ function buildReturnPreviewFromQuote(quote: TradeQuote): ReturnPreview {
     payoutLabel: formatUsdValue(quote.payoutUsd),
     profitLabel: formatSignedUsdValue(quote.maxProfitUsd),
   };
+}
+
+function parseTradeStrikeInputValue(value: string): number | null {
+  const normalized = value.replace(/[$,\s]/g, "");
+  if (!normalized) {
+    return null;
+  }
+
+  const strike = Number(normalized);
+  return Number.isFinite(strike) && strike > 0 ? strike : null;
+}
+
+function buildTradeMarketSelection(marketId: string, option: TradeStrikeOption): TradeMarketSelection {
+  return {
+    marketId,
+    strike: option.strike,
+    strikeLabel: option.strikeLabel,
+    strikeRaw: option.strikeRaw,
+  };
+}
+
+function getTradeStrikeOptions(row: TradeMarketLadderRow): TradeStrikeOption[] {
+  if (row.strikeOptions?.length) {
+    return row.strikeOptions;
+  }
+
+  return [
+    {
+      strike: row.strike,
+      strikeLabel: row.strikeLabel,
+      strikeRaw: row.strikeRaw,
+    },
+  ];
+}
+
+function buildTradeMarketSelectionFromRow(row: TradeMarketLadderRow): TradeMarketSelection {
+  const selectedOption =
+    getTradeStrikeOptions(row).find((option) => option.strikeRaw === row.strikeRaw) ??
+    getTradeStrikeOptions(row)[0];
+
+  return {
+    marketId: row.id,
+    strike: selectedOption.strike,
+    strikeLabel: selectedOption.strikeLabel,
+    strikeRaw: selectedOption.strikeRaw,
+  };
+}
+
+function applyCustomStrikeToTradeMarket(
+  market: TradeMarketLadderRow,
+  customStrike: TradeMarketSelection | null | undefined,
+  spotPriceLabel: string,
+): TradeMarketLadderRow | null {
+  if (!customStrike || customStrike.marketId !== market.id) {
+    return market;
+  }
+
+  const spot = parseTradeStrikeInputValue(spotPriceLabel);
+
+  return {
+    ...market,
+    strike: customStrike.strike,
+    strikeLabel: customStrike.strikeLabel,
+    strikeRaw: customStrike.strikeRaw,
+    moneynessLabel:
+      spot === null
+        ? market.moneynessLabel
+        : formatTradeMoneyness(customStrike.strike - spot),
+  };
+}
+
+function formatTradeMoneyness(delta: number): string {
+  if (!Number.isFinite(delta) || Math.abs(delta) < 0.5) {
+    return "At spot";
+  }
+
+  const prefix = delta > 0 ? "+" : "-";
+  return `${prefix}${formatUsdValue(Math.abs(delta))} vs spot`;
 }
 
 function CopyAmountControls({
@@ -421,6 +506,7 @@ export function BottomNav({
 }
 
 export function TradeTicket({
+  customStrike = null,
   copyAmount,
   marketRows,
   selectedMarketId,
@@ -435,8 +521,10 @@ export function TradeTicket({
   onAmountSet,
   onMarketChange,
   onSideChange,
+  onStrikeChange = () => undefined,
   onWalletSubmit,
 }: {
+  customStrike?: TradeMarketSelection | null;
   copyAmount: number;
   marketRows: TradeMarketLadderRow[];
   selectedMarketId: string;
@@ -449,14 +537,19 @@ export function TradeTicket({
   walletStatusLabel?: string | null;
   walletSubmitted?: boolean;
   onAmountSet: (amount: number) => void;
-  onMarketChange: (marketId: string) => void;
+  onMarketChange: (selection: TradeMarketSelection) => void;
   onSideChange: (side: TradeSide) => void;
+  onStrikeChange?: (selection: TradeMarketSelection) => void;
   onWalletSubmit: () => void;
 }) {
-  const selectedMarket =
+  const baseSelectedMarket =
     marketRows.find((market) => market.id === selectedMarketId) ??
     marketRows[0] ??
     null;
+  const selectedMarket = baseSelectedMarket
+    ? applyCustomStrikeToTradeMarket(baseSelectedMarket, customStrike, "") ??
+      baseSelectedMarket
+    : null;
   const selectedSideSummary = selectedMarket
     ? selectedSide === "UP"
       ? selectedMarket.up
@@ -465,6 +558,12 @@ export function TradeTicket({
   const returnPreview = quote
     ? buildReturnPreviewFromQuote(quote)
     : buildReturnPreview(copyAmount, selectedSideSummary?.estimatedPrice);
+  const selectedCustomStrike =
+    selectedMarket && customStrike?.marketId === selectedMarket.id
+      ? customStrike
+      : selectedMarket
+        ? buildTradeMarketSelectionFromRow(selectedMarket)
+        : null;
   const hasPredictManagerObjectId = predictManagerObjectId.trim().length > 0;
   const canSubmitTrade =
     walletConnected &&
@@ -502,136 +601,166 @@ export function TradeTicket({
             <span>Pick a market</span>
             <small>Live Predict</small>
           </div>
-          {marketRows.length ? marketRows.map((market) => (
-            <div className="trade-market-item" key={market.id}>
-              <button
-                type="button"
-                className="trade-market-row"
-                aria-pressed={selectedMarket?.id === market.id}
-                onClick={() => onMarketChange(market.id)}
-              >
-                <span className="trade-market-main">
-                  <strong>{market.timeRemainingLabel}</strong>
-                  <small>{market.roundLabel}</small>
-                </span>
-                <span className="trade-market-strike">
-                  <strong>{market.strikeLabel}</strong>
-                  <small>{market.moneynessLabel}</small>
-                </span>
-                <span className="trade-market-flow">
-                  <strong>{market.activityLabel}</strong>
-                  <small>
-                    UP {market.up.walletCount} {market.up.walletCount === 1 ? "wallet" : "wallets"} · DOWN{" "}
-                    {market.down.walletCount} {market.down.walletCount === 1 ? "wallet" : "wallets"}
-                  </small>
-                </span>
-              </button>
-              {selectedMarket?.id === market.id ? (
-                <div className="trade-row-ticket" data-testid="trade-row-ticket">
-                  <div className="trade-row-ticket-heading">
-                    <strong>Trade this market</strong>
-                    <small>{selectedSide} · {market.expiryTimeLabel}</small>
-                  </div>
-                  <div className="trade-side-toggle" aria-label="Direction">
+          {marketRows.length ? marketRows.map((baseMarket) => {
+            const market =
+              applyCustomStrikeToTradeMarket(baseMarket, customStrike, "") ??
+              baseMarket;
+
+            return (
+              <div className="trade-market-item" key={baseMarket.id}>
+                <button
+                  type="button"
+                  className="trade-market-row"
+                  aria-pressed={selectedMarket?.id === market.id}
+                  onClick={() => onMarketChange(buildTradeMarketSelectionFromRow(market))}
+                >
+                  <span className="trade-market-main">
+                    <strong>{market.timeRemainingLabel}</strong>
+                    <small>{market.roundLabel}</small>
+                  </span>
+                  <span className="trade-market-strike">
+                    <strong>{market.strikeLabel}</strong>
+                    <small>{market.moneynessLabel}</small>
+                  </span>
+                  <span className="trade-market-flow">
+                    <strong>{market.activityLabel}</strong>
+                    <small>
+                      UP {market.up.walletCount}{" "}
+                      {market.up.walletCount === 1 ? "wallet" : "wallets"} · DOWN{" "}
+                      {market.down.walletCount}{" "}
+                      {market.down.walletCount === 1 ? "wallet" : "wallets"}
+                    </small>
+                  </span>
+                </button>
+                {selectedMarket?.id === market.id ? (
+                  <div className="trade-row-ticket" data-testid="trade-row-ticket">
+                    <div className="trade-row-ticket-heading">
+                      <strong>Trade this market</strong>
+                      <small>{selectedSide} · {market.expiryTimeLabel}</small>
+                    </div>
+                    <div className="trade-side-toggle" aria-label="Direction">
+                      <button
+                        type="button"
+                        className={selectedSide === "UP" ? "trade-side-up selected" : "trade-side-up"}
+                        aria-pressed={selectedSide === "UP"}
+                        onClick={() => onSideChange("UP")}
+                      >
+                        UP
+                      </button>
+                      <button
+                        type="button"
+                        className={selectedSide === "DOWN" ? "trade-side-down selected" : "trade-side-down"}
+                        aria-pressed={selectedSide === "DOWN"}
+                        onClick={() => onSideChange("DOWN")}
+                      >
+                        DOWN
+                      </button>
+                    </div>
+                    <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
+                      <span>
+                        <small>Spend</small>
+                        {formatCopyAmount(copyAmount)}
+                      </span>
+                      {quoteStatus === "loading" ? (
+                        <>
+                          <span className="metric-muted">
+                            <small>Est. payout</small>
+                            Quoting...
+                          </span>
+                          <span className="metric-muted">
+                            <small>Max profit</small>
+                            Quoting...
+                          </span>
+                        </>
+                      ) : quoteStatus === "error" ? (
+                        <>
+                          <span className="metric-muted">
+                            <small>Est. payout</small>
+                            Quote unavailable
+                          </span>
+                          <span className="metric-muted">
+                            <small>Max profit</small>
+                            Quote unavailable
+                          </span>
+                        </>
+                      ) : returnPreview ? (
+                        <>
+                          <span>
+                            <small>Est. payout</small>
+                            {returnPreview.payoutLabel}
+                          </span>
+                          <span>
+                            <small>Max profit</small>
+                            {returnPreview.profitLabel}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="metric-muted">
+                            <small>Est. payout</small>
+                            Quote needed
+                          </span>
+                          <span className="metric-muted">
+                            <small>Max profit</small>
+                            Quote needed
+                          </span>
+                        </>
+                      )}
+                      <span>
+                        <small>Strike</small>
+                        {market.strikeLabel}
+                      </span>
+                      <span>
+                        <small>Expiry</small>
+                        {market.expiryTimeLabel}
+                      </span>
+                    </div>
+                    <label className="trade-strike-select">
+                      <span>Strike</span>
+                      <select
+                        aria-label="Strike"
+                        data-testid="trade-strike-select"
+                        value={String(selectedCustomStrike?.strikeRaw ?? market.strikeRaw)}
+                        onChange={(event) => {
+                          const selectedOption = getTradeStrikeOptions(market).find(
+                            (option) => String(option.strikeRaw) === event.currentTarget.value,
+                          );
+                          if (selectedOption) {
+                            onStrikeChange(buildTradeMarketSelection(market.id, selectedOption));
+                          }
+                        }}
+                      >
+                        {getTradeStrikeOptions(market).map((option) => (
+                          <option key={option.strikeRaw} value={option.strikeRaw}>
+                            {option.strikeLabel}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <CopyAmountControls
+                      ariaLabel="Trade spend amounts"
+                      copyAmount={copyAmount}
+                      onAmountSet={onAmountSet}
+                    />
                     <button
                       type="button"
-                      className={selectedSide === "UP" ? "trade-side-up selected" : "trade-side-up"}
-                      aria-pressed={selectedSide === "UP"}
-                      onClick={() => onSideChange("UP")}
+                      className="trade-wallet-button"
+                      data-testid="trade-wallet-submit"
+                      disabled={!canSubmitTrade}
+                      onClick={onWalletSubmit}
                     >
-                      UP
+                      {tradeWalletButtonLabel}
                     </button>
-                    <button
-                      type="button"
-                      className={selectedSide === "DOWN" ? "trade-side-down selected" : "trade-side-down"}
-                      aria-pressed={selectedSide === "DOWN"}
-                      onClick={() => onSideChange("DOWN")}
-                    >
-                      DOWN
-                    </button>
+                    {walletSubmitted ? (
+                      <span className="trade-wallet-status" aria-live="polite">
+                        {walletStatusLabel ?? "Wallet request started"}
+                      </span>
+                    ) : null}
                   </div>
-                  <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
-                    <span>
-                      <small>Spend</small>
-                      {formatCopyAmount(copyAmount)}
-                    </span>
-                    {quoteStatus === "loading" ? (
-                      <>
-                        <span className="metric-muted">
-                          <small>Est. payout</small>
-                          Quoting...
-                        </span>
-                        <span className="metric-muted">
-                          <small>Max profit</small>
-                          Quoting...
-                        </span>
-                      </>
-                    ) : quoteStatus === "error" ? (
-                      <>
-                        <span className="metric-muted">
-                          <small>Est. payout</small>
-                          Quote unavailable
-                        </span>
-                        <span className="metric-muted">
-                          <small>Max profit</small>
-                          Quote unavailable
-                        </span>
-                      </>
-                    ) : returnPreview ? (
-                      <>
-                        <span>
-                          <small>Est. payout</small>
-                          {returnPreview.payoutLabel}
-                        </span>
-                        <span>
-                          <small>Max profit</small>
-                          {returnPreview.profitLabel}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="metric-muted">
-                          <small>Est. payout</small>
-                          Quote needed
-                        </span>
-                        <span className="metric-muted">
-                          <small>Max profit</small>
-                          Quote needed
-                        </span>
-                      </>
-                    )}
-                    <span>
-                      <small>Strike</small>
-                      {market.strikeLabel}
-                    </span>
-                    <span>
-                      <small>Expiry</small>
-                      {market.expiryTimeLabel}
-                    </span>
-                  </div>
-                  <CopyAmountControls
-                    ariaLabel="Trade spend amounts"
-                    copyAmount={copyAmount}
-                    onAmountSet={onAmountSet}
-                  />
-                  <button
-                    type="button"
-                    className="trade-wallet-button"
-                    data-testid="trade-wallet-submit"
-                    disabled={!canSubmitTrade}
-                    onClick={onWalletSubmit}
-                  >
-                    {tradeWalletButtonLabel}
-                  </button>
-                  {walletSubmitted ? (
-                    <span className="trade-wallet-status" aria-live="polite">
-                      {walletStatusLabel ?? "Wallet request started"}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          )) : (
+                ) : null}
+              </div>
+            );
+          }) : (
             <button type="button" className="trade-market-row" aria-pressed="false" disabled>
               No active markets
             </button>
@@ -1383,6 +1512,9 @@ export function App() {
   const [activeView, setActiveView] = useState<AppView>("feed");
   const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
   const [selectedTradeMarketId, setSelectedTradeMarketId] = useState<string | null>(null);
+  const [customTradeStrikes, setCustomTradeStrikes] = useState<
+    Record<string, TradeMarketSelection>
+  >({});
   const [tradeWalletSubmitted, setTradeWalletSubmitted] = useState(false);
   const [walletTxState, setWalletTxState] = useState<WalletTransactionState>(
     idleWalletTransactionState,
@@ -1467,10 +1599,28 @@ export function App() {
   const tradeMarketRows = buildTradeMarketLadder(marketHeatPreview, {
     nowMs: marketHeatNowMs,
   });
-  const selectedTradeMarket =
+  const baseSelectedTradeMarket =
     tradeMarketRows.find((marketRow) => marketRow.id === selectedTradeMarketId) ??
     tradeMarketRows[0] ??
     null;
+  const selectedTradeCustomStrike = baseSelectedTradeMarket
+    ? customTradeStrikes[baseSelectedTradeMarket.id] ??
+      buildTradeMarketSelectionFromRow(baseSelectedTradeMarket)
+    : null;
+  const selectedTradeMarket = baseSelectedTradeMarket
+    ? applyCustomStrikeToTradeMarket(
+        baseSelectedTradeMarket,
+        selectedTradeCustomStrike,
+        marketHeatPreview.marketPrice.priceLabel,
+      )
+    : null;
+  const displayedTradeMarketRows = tradeMarketRows.map((marketRow) => {
+    if (marketRow.id !== baseSelectedTradeMarket?.id) {
+      return marketRow;
+    }
+
+    return selectedTradeMarket ?? marketRow;
+  });
   const tradeQuoteKey = selectedTradeMarket
     ? [
         selectedTradeMarket.id,
@@ -1939,8 +2089,26 @@ export function App() {
     setTradeSide(side);
     setTradeWalletSubmitted(false);
   };
-  const handleTradeMarketChange = (marketId: string) => {
-    setSelectedTradeMarketId(marketId);
+  const handleTradeMarketChange = (selection: TradeMarketSelection) => {
+    setSelectedTradeMarketId(selection.marketId);
+    setCustomTradeStrikes((state) => {
+      if (state[selection.marketId]) {
+        return state;
+      }
+
+      return {
+        ...state,
+        [selection.marketId]: selection,
+      };
+    });
+    setTradeWalletSubmitted(false);
+  };
+  const handleTradeStrikeChange = (selection: TradeMarketSelection) => {
+    setSelectedTradeMarketId(selection.marketId);
+    setCustomTradeStrikes((state) => ({
+      ...state,
+      [selection.marketId]: selection,
+    }));
     setTradeWalletSubmitted(false);
   };
   const handleWalletConnect = async () => {
@@ -2180,9 +2348,10 @@ export function App() {
             </>
           ) : (
             <TradeTicket
+              customStrike={selectedTradeCustomStrike}
               copyAmount={copyState.copyAmount}
-              marketRows={tradeMarketRows}
-              selectedMarketId={selectedTradeMarket?.id ?? ""}
+              marketRows={displayedTradeMarketRows}
+              selectedMarketId={baseSelectedTradeMarket?.id ?? ""}
               selectedSide={tradeSide}
               quote={activeTradeQuote}
               quoteStatus={activeTradeQuoteStatus}
@@ -2194,6 +2363,7 @@ export function App() {
               onAmountSet={handleAmountSet}
               onMarketChange={handleTradeMarketChange}
               onSideChange={handleTradeSideChange}
+              onStrikeChange={handleTradeStrikeChange}
               onWalletSubmit={handleTradeWalletSubmit}
             />
           )}

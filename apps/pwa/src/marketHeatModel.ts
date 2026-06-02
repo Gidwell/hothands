@@ -141,6 +141,12 @@ export type TradeMarketSideSummary = {
   estimatedPrice?: number;
 };
 
+export type TradeStrikeOption = {
+  strike: number;
+  strikeRaw: number;
+  strikeLabel: string;
+};
+
 export type TradeMarketLadderRow = {
   id: string;
   oracleId: string;
@@ -159,6 +165,7 @@ export type TradeMarketLadderRow = {
   uniqueWalletCount: number;
   tradeCount: number;
   distinctStrikeCount: number;
+  strikeOptions?: TradeStrikeOption[];
   volumeUsd: number;
   volumeLabel: string;
   up: TradeMarketSideSummary;
@@ -356,6 +363,7 @@ export function buildTradeMarketLadder(
       const volumeUsd = roundUsd(up.volumeUsd + down.volumeUsd);
       const volumeLabel = formatUsdAmount(volumeUsd);
       const tradeCount = activityRows.length;
+      const strikeOptions = buildTradeStrikeOptions(market, activityRows);
 
       return {
         id: market.id,
@@ -377,6 +385,7 @@ export function buildTradeMarketLadder(
         uniqueWalletCount: wallets.size,
         tradeCount,
         distinctStrikeCount: strikes.size,
+        strikeOptions,
         volumeUsd,
         volumeLabel,
         up,
@@ -391,6 +400,35 @@ export function buildTradeMarketLadder(
           Math.abs(right.strike - parseFormattedUsd(preview.marketPrice.priceLabel)) ||
         left.id.localeCompare(right.id),
     );
+}
+
+function buildTradeStrikeOptions(
+  market: MarketHeatAvailableMarket,
+  activityRows: MarketHeatPreviewRow[],
+): TradeStrikeOption[] {
+  const byStrikeRaw = new Map<number, TradeStrikeOption>();
+  const addOption = (strike: number, strikeRaw = Math.round(strike * 1_000_000)) => {
+    if (!Number.isFinite(strike) || strike <= 0 || !Number.isFinite(strikeRaw) || strikeRaw <= 0) {
+      return;
+    }
+
+    byStrikeRaw.set(strikeRaw, {
+      strike,
+      strikeRaw,
+      strikeLabel: formatStrike(strike),
+    });
+  };
+
+  addOption(market.strike, market.strikeRaw);
+  for (const row of activityRows) {
+    addOption(row.strike);
+  }
+
+  return [...byStrikeRaw.values()].sort(
+    (left, right) =>
+      left.strike - right.strike ||
+      left.strikeRaw - right.strikeRaw,
+  );
 }
 
 export function sortMarketHeatRows(

@@ -466,6 +466,23 @@ describe("market heat preview model", () => {
         uniqueWalletCount: 2,
         tradeCount: 2,
         distinctStrikeCount: 2,
+        strikeOptions: [
+          {
+            strike: 70_900,
+            strikeRaw: 70_900_000_000,
+            strikeLabel: "$70,900",
+          },
+          {
+            strike: 71_000,
+            strikeRaw: 71_000_000_000,
+            strikeLabel: "$71,000",
+          },
+          {
+            strike: 71_100,
+            strikeRaw: 71_100_000_000,
+            strikeLabel: "$71,100",
+          },
+        ],
         volumeUsd: 23.75,
         volumeLabel: "$23.75",
         up: {

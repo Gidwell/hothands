@@ -154,6 +154,106 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain('data-testid="predict-manager-object-id"');
   });
 
+  test("exposes an available strike selector for the selected trade market", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[
+          {
+            id: "btc-15m-71000",
+            oracleId: "0xoracle15",
+            pairLabel: "BTC/USD",
+            intervalLabel: "15m",
+            roundLabel: "15m round",
+            expiry: 1_779_165_900_000,
+            expiryMs: 1_779_165_900_000,
+            expiryTimeLabel: "May 18, 21:45 PDT",
+            timeRemainingLabel: "15m left",
+            strike: 71_000,
+            strikeRaw: 71_000_000_000,
+            strikeLabel: "$71,000",
+            moneynessLabel: "-$50 vs spot",
+            activityLabel: "3 wallets · 5 trades · $42.25",
+            uniqueWalletCount: 3,
+            tradeCount: 5,
+            distinctStrikeCount: 2,
+            volumeUsd: 42.25,
+            volumeLabel: "$42.25",
+            strikeOptions: [
+              {
+                strike: 71_000,
+                strikeRaw: 71_000_000_000,
+                strikeLabel: "$71,000",
+              },
+              {
+                strike: 71_050,
+                strikeRaw: 71_050_000_000,
+                strikeLabel: "$71,050",
+              },
+            ],
+            up: {
+              walletCount: 2,
+              tradeCount: 3,
+              volumeUsd: 24,
+              volumeLabel: "$24.00",
+              estimatedPrice: 0.4,
+            },
+            down: {
+              walletCount: 1,
+              tradeCount: 2,
+              volumeUsd: 18.25,
+              volumeLabel: "$18.25",
+            },
+          },
+        ]}
+        copyAmount={100}
+        selectedMarketId="btc-15m-71000"
+        selectedSide="UP"
+        customStrike={{
+          marketId: "btc-15m-71000",
+          strike: 71_050,
+          strikeRaw: 71_050_000_000,
+          strikeLabel: "$71,050",
+        }}
+        onAmountSet={() => undefined}
+        onMarketChange={(selection: {
+          marketId: string;
+          strike: number;
+          strikeRaw: number;
+          strikeLabel: string;
+        }) => {
+          expect(selection).toEqual({
+            marketId: "btc-15m-71000",
+            strike: 71_050,
+            strikeRaw: 71_050_000_000,
+            strikeLabel: "$71,050",
+          });
+        }}
+        onSideChange={() => undefined}
+        onStrikeChange={(selection: {
+          marketId: string;
+          strike: number;
+          strikeRaw: number;
+          strikeLabel: string;
+        }) => {
+          expect(selection).toEqual({
+            marketId: "btc-15m-71000",
+            strike: 71_050,
+            strikeRaw: 71_050_000_000,
+            strikeLabel: "$71,050",
+          });
+        }}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="trade-strike-select"');
+    expect(html).toContain('aria-label="Strike"');
+    expect(html).toContain('<option value="71000000000">$71,000</option>');
+    expect(html).toContain('<option value="71050000000" selected="">$71,050</option>');
+    expect(html).not.toContain('data-testid="trade-custom-strike"');
+    expect(html).toContain("Strike</small>$71,050");
+  });
+
   test("prompts connected users to create a Predict account from the wallet bar", () => {
     const html = renderToStaticMarkup(
       <WalletStatusBar

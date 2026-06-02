@@ -616,7 +616,8 @@ button:disabled {
   gap: 8px;
 }
 
-.trade-ticket-metrics span {
+.trade-ticket-metrics span,
+.trade-strike-select {
   display: grid;
   gap: 3px;
   min-height: 44px;
@@ -632,15 +633,35 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.trade-strike-select {
+  grid-template-columns: minmax(0, 1fr) minmax(118px, 0.8fr);
+  align-items: center;
+  align-content: center;
+  margin: 0;
+}
+
 .trade-ticket-metrics .metric-muted {
   color: #667085;
 }
 
-.trade-ticket-metrics small {
+.trade-ticket-metrics small,
+.trade-strike-select > span:first-child {
   color: #667085;
   font-size: 0.62rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.trade-strike-select select {
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid #d8e2ec;
+  border-radius: 8px;
+  background: #ffffff;
+  min-width: 0;
+  color: #111827;
+  font-size: 0.86rem;
+  font-weight: 950;
 }
 
 .trade-wallet-button {
