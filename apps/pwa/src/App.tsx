@@ -93,6 +93,7 @@ import {
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
+const PORTFOLIO_DATA_REFRESH_MS = 15_000;
 const PORTFOLIO_TIME_REFRESH_MS = 15_000;
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "portfolio";
@@ -1229,10 +1230,32 @@ export function PortfolioPanel({
       {positions.length ? (
         <div className="portfolio-list">
           {positions.map((position) => {
+            const isExpired =
+              typeof nowMs === "number" ? position.expiryMs <= nowMs : position.isExpired;
+            const statusLabel = isExpired ? "Expired" : position.statusLabel;
             const timeLabel =
               typeof nowMs === "number"
                 ? formatPortfolioTimeRemaining(position.expiryMs, nowMs)
                 : position.timeLabel;
+            const statusParts =
+              statusLabel === timeLabel ? [statusLabel] : [statusLabel, timeLabel];
+            const statusSummary = [
+              ...statusParts,
+              !isExpired && position.closeValueStatusLabel ? position.closeValueStatusLabel : null,
+              isExpired && position.outcomeLabel ? position.outcomeLabel : null,
+            ]
+              .filter((label): label is string => Boolean(label))
+              .join(" · ");
+            const actionLabel = isExpired ? "Claim" : position.actionLabel;
+            const actionPosition = isExpired
+              ? {
+                  ...position,
+                  actionLabel,
+                  isExpired,
+                  statusLabel,
+                  timeLabel,
+                }
+              : position;
 
             return (
               <article className="portfolio-row" key={position.id}>
@@ -1242,18 +1265,14 @@ export function PortfolioPanel({
                   </span>
                   <div>
                     <strong>BTC/USD {position.strikeLabel}</strong>
-                    <small>
-                      {position.statusLabel} · {timeLabel}
-                      {position.closeValueStatusLabel ? ` · ${position.closeValueStatusLabel}` : ""}
-                      {position.outcomeLabel ? ` · ${position.outcomeLabel}` : ""}
-                    </small>
+                    <small>{statusSummary}</small>
                   </div>
                 </div>
                 <div className="portfolio-row-metrics">
                   <span>
-                    <small>{position.isExpired ? "Claim value" : "Est. close"}</small>
-                    {position.isExpired
-                      ? position.claimValueLabel ?? "Checking"
+                    <small>{isExpired ? "Claim value" : "Est. close"}</small>
+                    {isExpired
+                      ? position.claimValueLabel ?? (status === "loading" ? "Checking" : "Pending")
                       : position.closeValueLabel ?? (status === "loading" ? "Checking" : "Unavailable")}
                   </span>
                   <span>
@@ -1261,8 +1280,8 @@ export function PortfolioPanel({
                     {position.costBasisLabel}
                   </span>
                   <span>
-                    <small>{position.isExpired ? "Settled BTC" : "Max payout"}</small>
-                    {position.isExpired
+                    <small>{isExpired ? "Settled BTC" : "Max payout"}</small>
+                    {isExpired
                       ? position.settlementPriceLabel ?? "Pending"
                       : position.maxPayoutLabel}
                   </span>
@@ -1271,11 +1290,11 @@ export function PortfolioPanel({
                   type="button"
                   className="portfolio-action-button"
                   disabled={walletActionPending}
-                  onClick={() => onPositionAction(position)}
+                  onClick={() => onPositionAction(actionPosition)}
                 >
                   {walletActionPending && walletSubmittedPositionId === position.id
                     ? "Sending..."
-                    : position.actionLabel}
+                    : actionLabel}
                 </button>
                 {walletSubmittedPositionId === position.id ? (
                   <span className="portfolio-wallet-status" aria-live="polite">
@@ -2133,12 +2152,15 @@ export function App() {
     }
 
     let isCurrent = true;
-    setPredictPortfolioState({
+    setPredictPortfolioState((state) => ({
       managerObjectId: activePredictManagerObjectId,
       refreshKey: predictPortfolioRefreshKey,
       status: "loading",
-      positions: [],
-    });
+      positions:
+        state.managerObjectId === activePredictManagerObjectId
+          ? state.positions
+          : [],
+    }));
 
     void loadPredictPortfolio({
       closeQuoteClient: createPredictPortfolioCloseQuoteClient({
@@ -2341,6 +2363,18 @@ export function App() {
 
     return () => window.clearInterval(timer);
   }, [activeView]);
+
+  useEffect(() => {
+    if (activeView !== "portfolio" || !activePredictManagerObjectId) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setPredictPortfolioRefreshKey((key) => key + 1);
+    }, PORTFOLIO_DATA_REFRESH_MS);
+
+    return () => window.clearInterval(timer);
+  }, [activePredictManagerObjectId, activeView]);
 
   const handleScenarioChange = (scenarioId: ReplayScenarioId) => {
     const nextScenario = createReplayScenario(scenarioId);

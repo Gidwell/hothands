@@ -159,6 +159,49 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("1d left");
   });
 
+  test("renders just-expired portfolio rows as claimable from the current clock", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        nowMs={1_779_193_601_000}
+        positions={[
+          {
+            actionLabel: "Redeem",
+            closeValueLabel: "$2.41",
+            closeValueStatusLabel: "Quoted now",
+            costBasisLabel: "$1.80",
+            direction: "UP",
+            expiry: 1_779_193_600,
+            expiryMs: 1_779_193_600_000,
+            expiryTimeLabel: "May 18, 2026, 9:46 PM",
+            id: "position-open",
+            isExpired: false,
+            managerId: "0xmanager",
+            maxPayoutLabel: "$4",
+            oracleId: "0xoracle",
+            quantity: "4000000",
+            statusLabel: "Open",
+            strike: "65000000000",
+            strikeLabel: "$65,000.00",
+            timeLabel: "1m left",
+          },
+        ]}
+        walletActionPending={false}
+        walletStatusLabel={null}
+        walletSubmittedPositionId={null}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("<small>Expired</small>");
+    expect(html).not.toContain("Expired · Expired");
+    expect(html).toContain("Claim value");
+    expect(html).toContain("Pending");
+    expect(html).toContain("Claim</button>");
+    expect(html).not.toContain("Est. close");
+    expect(html).not.toContain("Quoted now");
+    expect(html).not.toContain("Redeem</button>");
+  });
+
   test("shows unavailable instead of indefinite checking when an open close quote is missing", () => {
     const html = renderToStaticMarkup(
       <PortfolioPanel
