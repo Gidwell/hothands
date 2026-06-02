@@ -29,3 +29,6 @@ Testnet mode:
   10 seconds; the `Heat` toggle preserves the provisional score ranking
 - `Copy now` means a recent mint can be prepared for user signature; `Copy next`
   means the wallet can be watched for the next mint
+- the Trade tab connects through Sui dApp Kit, can create a Predict account, and
+  can send a quoted `predict::mint` transaction once a `PredictManager` object id
+  is available

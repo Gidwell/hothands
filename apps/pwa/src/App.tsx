@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import {
+  useCurrentAccount,
+  useCurrentNetwork,
+  useCurrentWallet,
+  useDAppKit,
+  useWalletConnection,
+  useWallets,
+} from "@mysten/dapp-kit-react";
+import { buildCreatePredictManagerTransaction } from "@hot-hands/contracts";
+import {
   COPY_AMOUNT_MAX,
   COPY_AMOUNT_MIN,
   formatCopyAmount,
@@ -54,6 +63,7 @@ import {
   type TradeQuote,
   type TradeMarketLadderRow,
 } from "./marketHeatModel";
+import { buildTradeMintTransaction } from "./walletTransactions";
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
@@ -62,6 +72,19 @@ type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade";
 export type TradeSide = "UP" | "DOWN";
 type TradeQuoteStatus = "idle" | "loading" | "ready" | "error";
+type WalletTransactionStatus = "idle" | "pending" | "success" | "error";
+type WalletTransactionState = {
+  status: WalletTransactionStatus;
+  label: string;
+  digest: string | null;
+};
+
+const idleWalletTransactionState: WalletTransactionState = {
+  status: "idle",
+  label: "Wallet ready",
+  digest: null,
+};
+const PREDICT_MANAGER_STORAGE_KEY = "hot-hands-predict-manager-id";
 
 export function getInitialPreviewMode(apiBaseUrl: string | undefined): PreviewMode {
   return apiBaseUrl ? "market" : "replay";
@@ -195,6 +218,125 @@ function walletAvatarLabel(displayName: string): string {
   return displayName.replace(/^0x/, "").slice(0, 2).toUpperCase() || "HH";
 }
 
+function formatWalletAddress(address: string | null | undefined): string {
+  if (!address) {
+    return "Not connected";
+  }
+
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function walletErrorMessage(error: unknown): string {
+  return error instanceof Error && error.message.trim()
+    ? error.message
+    : "Wallet request failed.";
+}
+
+function walletResultDigest(result: unknown): string | null {
+  if (!result || typeof result !== "object") {
+    return null;
+  }
+
+  if ("Transaction" in result) {
+    const transaction = (result as { Transaction?: { digest?: unknown } }).Transaction;
+    return typeof transaction?.digest === "string" ? transaction.digest : null;
+  }
+
+  return null;
+}
+
+function walletResultError(result: unknown): string | null {
+  if (!result || typeof result !== "object" || !("FailedTransaction" in result)) {
+    return null;
+  }
+
+  const failed = (result as {
+    FailedTransaction?: { status?: { error?: { message?: unknown } | string | null } };
+  }).FailedTransaction;
+  const error = failed?.status?.error;
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error && typeof error === "object" && typeof error.message === "string") {
+    return error.message;
+  }
+
+  return "Transaction failed.";
+}
+
+function readStoredPredictManagerObjectId(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.localStorage.getItem(PREDICT_MANAGER_STORAGE_KEY) ?? "";
+}
+
+function WalletStatusBar({
+  accountAddress,
+  connectionStatus,
+  networkLabel,
+  txState,
+  walletCount,
+  walletName,
+  onConnect,
+  onDisconnect,
+}: {
+  accountAddress: string | null;
+  connectionStatus: string;
+  networkLabel: string;
+  txState: WalletTransactionState;
+  walletCount: number;
+  walletName: string | null;
+  onConnect: () => void;
+  onDisconnect: () => void;
+}) {
+  const isConnected = Boolean(accountAddress);
+  const connectLabel =
+    walletCount === 0
+      ? "Install wallet"
+      : connectionStatus === "connecting" || connectionStatus === "reconnecting"
+        ? "Connecting"
+        : "Connect wallet";
+
+  return (
+    <section className="wallet-status-bar" aria-label="Wallet" data-testid="wallet-status">
+      <div className="wallet-status-main">
+        <small>{networkLabel}</small>
+        <strong data-testid="wallet-address">
+          {isConnected ? formatWalletAddress(accountAddress) : "Wallet disconnected"}
+        </strong>
+        <span>{isConnected ? walletName ?? "Sui wallet" : `${walletCount} wallets found`}</span>
+      </div>
+      <div className="wallet-status-actions">
+        {isConnected ? (
+          <button type="button" data-testid="wallet-disconnect" onClick={onDisconnect}>
+            Disconnect
+          </button>
+        ) : (
+          <button
+            type="button"
+            data-testid="wallet-connect"
+            disabled={walletCount === 0 || connectionStatus === "connecting"}
+            onClick={onConnect}
+          >
+            {connectLabel}
+          </button>
+        )}
+      </div>
+      {txState.status !== "idle" ? (
+        <div className={`wallet-tx-status wallet-tx-status-${txState.status}`} aria-live="polite">
+          <span data-testid="wallet-tx-status">{txState.label}</span>
+          {txState.digest ? (
+            <small data-testid="wallet-tx-digest">{formatWalletAddress(txState.digest)}</small>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function BottomNav({
   activeView,
   onViewChange,
@@ -229,9 +371,15 @@ export function TradeTicket({
   selectedSide,
   quote = null,
   quoteStatus = "idle",
+  predictManagerObjectId = "",
+  walletActionPending = false,
+  walletConnected = false,
+  walletStatusLabel = null,
   walletSubmitted = false,
   onAmountSet,
+  onCreatePredictManager = () => undefined,
   onMarketChange,
+  onPredictManagerObjectIdChange = () => undefined,
   onSideChange,
   onWalletSubmit,
 }: {
@@ -241,9 +389,15 @@ export function TradeTicket({
   selectedSide: TradeSide;
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
+  predictManagerObjectId?: string;
+  walletActionPending?: boolean;
+  walletConnected?: boolean;
+  walletStatusLabel?: string | null;
   walletSubmitted?: boolean;
   onAmountSet: (amount: number) => void;
+  onCreatePredictManager?: () => void;
   onMarketChange: (marketId: string) => void;
+  onPredictManagerObjectIdChange?: (objectId: string) => void;
   onSideChange: (side: TradeSide) => void;
   onWalletSubmit: () => void;
 }) {
@@ -259,6 +413,22 @@ export function TradeTicket({
   const returnPreview = quote
     ? buildReturnPreviewFromQuote(quote)
     : buildReturnPreview(copyAmount, selectedSideSummary?.estimatedPrice);
+  const hasPredictManagerObjectId = predictManagerObjectId.trim().length > 0;
+  const canSubmitTrade =
+    walletConnected &&
+    hasPredictManagerObjectId &&
+    quoteStatus === "ready" &&
+    Boolean(quote) &&
+    !walletActionPending;
+  const tradeWalletButtonLabel = !walletConnected
+    ? "Connect wallet first"
+    : !hasPredictManagerObjectId
+      ? "Add Predict account"
+      : quoteStatus === "loading"
+        ? "Wait for quote"
+        : walletActionPending
+          ? "Sending..."
+          : "Send to wallet";
 
   return (
     <section className="trade-ticket" aria-label="Trade" data-testid="trade-view">
@@ -392,17 +562,42 @@ export function TradeTicket({
                     copyAmount={copyAmount}
                     onAmountSet={onAmountSet}
                   />
+                  <div className="predict-account-panel">
+                    <label className="predict-account-field">
+                      <span>Predict account</span>
+                      <input
+                        aria-label="Predict account object id"
+                        data-testid="predict-manager-object-id"
+                        placeholder="0x PredictManager object"
+                        spellCheck="false"
+                        value={predictManagerObjectId}
+                        onChange={(event) =>
+                          onPredictManagerObjectIdChange(event.currentTarget.value)
+                        }
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="predict-account-button"
+                      data-testid="create-predict-manager"
+                      disabled={!walletConnected || walletActionPending}
+                      onClick={onCreatePredictManager}
+                    >
+                      {walletActionPending ? "Sending..." : "Create account"}
+                    </button>
+                  </div>
                   <button
                     type="button"
                     className="trade-wallet-button"
                     data-testid="trade-wallet-submit"
+                    disabled={!canSubmitTrade}
                     onClick={onWalletSubmit}
                   >
-                    Send to wallet
+                    {tradeWalletButtonLabel}
                   </button>
                   {walletSubmitted ? (
                     <span className="trade-wallet-status" aria-live="polite">
-                      Wallet request started
+                      {walletStatusLabel ?? "Wallet request started"}
                     </span>
                   ) : null}
                 </div>
@@ -1143,6 +1338,12 @@ function HotTraderList({
 }
 
 export function App() {
+  const dAppKit = useDAppKit();
+  const currentAccount = useCurrentAccount();
+  const currentWallet = useCurrentWallet();
+  const currentNetwork = useCurrentNetwork();
+  const walletConnection = useWalletConnection();
+  const wallets = useWallets();
   const [scenario, setScenario] = useState(() => createReplayScenario("opening-night"));
   const [replayState, setReplayState] = useState(() => createInitialReplayState(scenario));
   const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
@@ -1150,6 +1351,12 @@ export function App() {
   const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
   const [selectedTradeMarketId, setSelectedTradeMarketId] = useState<string | null>(null);
   const [tradeWalletSubmitted, setTradeWalletSubmitted] = useState(false);
+  const [walletTxState, setWalletTxState] = useState<WalletTransactionState>(
+    idleWalletTransactionState,
+  );
+  const [predictManagerObjectId, setPredictManagerObjectId] = useState(
+    readStoredPredictManagerObjectId,
+  );
   const [tradeQuoteState, setTradeQuoteState] = useState<{
     key: string | null;
     status: TradeQuoteStatus;
@@ -1282,6 +1489,22 @@ export function App() {
   const activity = liveActivitySnapshot.activity.latestActivity
     ? [liveActivitySnapshot.activity.latestActivity.label]
     : frame.activity;
+  const isWalletActionPending = walletTxState.status === "pending";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const trimmedManagerId = predictManagerObjectId.trim();
+    if (trimmedManagerId) {
+      window.localStorage.setItem(PREDICT_MANAGER_STORAGE_KEY, trimmedManagerId);
+      return;
+    }
+
+    window.localStorage.removeItem(PREDICT_MANAGER_STORAGE_KEY);
+  }, [predictManagerObjectId]);
+
   useEffect(() => {
     const setSnapshot = (snapshot: LiveActivityModeSnapshot) => {
       setLiveActivitySnapshotState({
@@ -1453,6 +1676,7 @@ export function App() {
 
   const handleAmountStep = (direction: -1 | 1) => {
     setReplayState((state) => updateReplayCopy(state, (copy) => stepCopyAmount(copy, direction)));
+    setTradeWalletSubmitted(false);
   };
 
   const handleAmountSet = (amount: number) => {
@@ -1540,12 +1764,172 @@ export function App() {
     setSelectedTradeMarketId(marketId);
     setTradeWalletSubmitted(false);
   };
+  const handleWalletConnect = async () => {
+    const wallet = wallets[0];
+    if (!wallet) {
+      setWalletTxState({
+        status: "error",
+        label: "No compatible Sui wallet found.",
+        digest: null,
+      });
+      return;
+    }
+
+    setWalletTxState({
+      status: "pending",
+      label: `Connecting ${wallet.name}...`,
+      digest: null,
+    });
+
+    try {
+      await dAppKit.connectWallet({ wallet });
+      setWalletTxState(idleWalletTransactionState);
+    } catch (error) {
+      setWalletTxState({
+        status: "error",
+        label: walletErrorMessage(error),
+        digest: null,
+      });
+    }
+  };
+  const handleWalletDisconnect = async () => {
+    try {
+      await dAppKit.disconnectWallet();
+      setWalletTxState(idleWalletTransactionState);
+      setTradeWalletSubmitted(false);
+    } catch (error) {
+      setWalletTxState({
+        status: "error",
+        label: walletErrorMessage(error),
+        digest: null,
+      });
+    }
+  };
+  const handleCreatePredictManager = async () => {
+    if (!currentAccount) {
+      setWalletTxState({
+        status: "error",
+        label: "Connect a Sui testnet wallet first.",
+        digest: null,
+      });
+      return;
+    }
+
+    setTradeWalletSubmitted(true);
+    setWalletTxState({
+      status: "pending",
+      label: "Creating Predict account...",
+      digest: null,
+    });
+
+    try {
+      const result = await dAppKit.signAndExecuteTransaction({
+        transaction: buildCreatePredictManagerTransaction(),
+      });
+      const error = walletResultError(result);
+      if (error) {
+        setWalletTxState({
+          status: "error",
+          label: error,
+          digest: null,
+        });
+        return;
+      }
+
+      setWalletTxState({
+        status: "success",
+        label: "Predict account transaction sent. Paste the new object id when it appears.",
+        digest: walletResultDigest(result),
+      });
+    } catch (error) {
+      setWalletTxState({
+        status: "error",
+        label: walletErrorMessage(error),
+        digest: null,
+      });
+    }
+  };
+  const handleTradeWalletSubmit = async () => {
+    if (!currentAccount) {
+      setWalletTxState({
+        status: "error",
+        label: "Connect a Sui testnet wallet first.",
+        digest: null,
+      });
+      return;
+    }
+
+    if (!selectedTradeMarket || !activeTradeQuote) {
+      setWalletTxState({
+        status: "error",
+        label: "Wait for a live quote before sending.",
+        digest: null,
+      });
+      return;
+    }
+
+    if (!predictManagerObjectId.trim()) {
+      setWalletTxState({
+        status: "error",
+        label: "Create or paste a Predict account object id first.",
+        digest: null,
+      });
+      return;
+    }
+
+    setTradeWalletSubmitted(true);
+    setWalletTxState({
+      status: "pending",
+      label: "Sending trade to wallet...",
+      digest: null,
+    });
+
+    try {
+      const transaction = buildTradeMintTransaction({
+        predictManagerObjectId: predictManagerObjectId.trim(),
+        market: selectedTradeMarket,
+        quote: activeTradeQuote,
+      });
+      const result = await dAppKit.signAndExecuteTransaction({ transaction });
+      const error = walletResultError(result);
+      if (error) {
+        setWalletTxState({
+          status: "error",
+          label: error,
+          digest: null,
+        });
+        return;
+      }
+
+      setWalletTxState({
+        status: "success",
+        label: "Trade transaction sent.",
+        digest: walletResultDigest(result),
+      });
+    } catch (error) {
+      setWalletTxState({
+        status: "error",
+        label: walletErrorMessage(error),
+        digest: null,
+      });
+    }
+  };
 
   return (
     <main className="app-shell" data-testid="app-shell">
       <section className="phone-frame" aria-label="Hot Hands market shell">
         <div className="app-scroll" data-testid="app-scroll">
           <MarketHeader price={marketHeatPreview.marketPrice} />
+          <WalletStatusBar
+            accountAddress={currentAccount?.address ?? null}
+            connectionStatus={walletConnection.status}
+            networkLabel={String(currentNetwork)}
+            txState={walletTxState}
+            walletCount={wallets.length}
+            walletName={currentWallet?.name ?? null}
+            onConnect={handleWalletConnect}
+            onDisconnect={handleWalletDisconnect}
+          />
           <AccountSummary summary={accountSummary} />
           {activeView === "feed" ? (
             <>
@@ -1614,11 +1998,20 @@ export function App() {
               selectedSide={tradeSide}
               quote={activeTradeQuote}
               quoteStatus={activeTradeQuoteStatus}
+              predictManagerObjectId={predictManagerObjectId}
+              walletActionPending={isWalletActionPending}
+              walletConnected={Boolean(currentAccount)}
+              walletStatusLabel={walletTxState.label}
               walletSubmitted={tradeWalletSubmitted}
               onAmountSet={handleAmountSet}
+              onCreatePredictManager={handleCreatePredictManager}
               onMarketChange={handleTradeMarketChange}
+              onPredictManagerObjectIdChange={(objectId) => {
+                setPredictManagerObjectId(objectId);
+                setTradeWalletSubmitted(false);
+              }}
               onSideChange={handleTradeSideChange}
-              onWalletSubmit={() => setTradeWalletSubmitted(true)}
+              onWalletSubmit={handleTradeWalletSubmit}
             />
           )}
         </div>

@@ -67,11 +67,15 @@ What is live today:
 - `Testnet` reads public DeepBook Predict testnet activity through the local API.
 - `Latest` shows the newest observed active trader rows first and refreshes every 10 seconds while the app is open.
 - Rows are grouped by trader/manager, so a repeat trade moves that row upward instead of creating a duplicate feed item.
+- The PWA can connect a Sui testnet wallet, submit `predict::create_manager`,
+  and send a quoted Trade tab `predict::mint` transaction when the user supplies
+  their `PredictManager` object id.
 
 What is still in progress:
 
 - `Heat` is a provisional activity/performance score, not the final settled reputation model.
-- `Copy hand` and `Watch hand` show the prepared user flow, but full signed copy mints still require funded testnet wallet objects and final wallet transaction wiring.
+- Automatic `PredictManager` discovery, DUSDC deposit setup, and Feed tab copy
+  transactions are still in progress.
 
 ## Product Loop
 

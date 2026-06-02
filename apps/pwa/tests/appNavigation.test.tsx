@@ -149,7 +149,9 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Trade this market");
     expect(html.indexOf("2h left")).toBeLessThan(html.indexOf("Trade this market"));
     expect(html.indexOf("Trade this market")).toBeLessThan(html.indexOf("4h left"));
-    expect(html).toContain("Send to wallet");
+    expect(html).toContain("Connect wallet first");
+    expect(html).toContain('data-testid="predict-manager-object-id"');
+    expect(html).toContain('data-testid="create-predict-manager"');
   });
 
   test("keeps return fields visible when a trade market still needs a quote", () => {
@@ -203,7 +205,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Spend</small>$25");
     expect(html).toContain("Est. payout</small>Quote needed");
     expect(html).toContain("Max profit</small>Quote needed");
-    expect(html).toContain("Send to wallet");
+    expect(html).toContain("Connect wallet first");
   });
 
   test("renders a live quote result in the trade ticket", () => {
@@ -255,9 +257,13 @@ describe("mobile app navigation", () => {
           strike: "72000000000",
           side: "UP",
           requestedSpendUsd: 25,
+          cost: "24980000",
           costUsd: 24.98,
+          quantity: "49960000",
           payoutUsd: 49.96,
           maxProfitUsd: 24.98,
+          redeemPayout: "24100000",
+          redeemPayoutUsd: 24.1,
           effectivePrice: 0.5,
           quoteStatus: "ready",
         }}
@@ -273,5 +279,83 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Est. payout</small>$49.96");
     expect(html).toContain("Max profit</small>+$24.98");
     expect(html).not.toContain("Quote needed");
+  });
+
+  test("enables wallet submit only after wallet, manager, and quote are ready", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[
+          {
+            id: "btc-2h-72000",
+            oracleId: "0xoracle2h",
+            pairLabel: "BTC/USD",
+            intervalLabel: "2h",
+            roundLabel: "2h round",
+            expiry: 1_779_172_200_000,
+            expiryMs: 1_779_172_200_000,
+            expiryTimeLabel: "May 18, 23:30 PDT",
+            timeRemainingLabel: "2h left",
+            strike: 72_000,
+            strikeRaw: 72_000_000_000,
+            strikeLabel: "$72,000",
+            moneynessLabel: "+$950 vs spot",
+            activityLabel: "No recent trades",
+            uniqueWalletCount: 0,
+            tradeCount: 0,
+            distinctStrikeCount: 0,
+            volumeUsd: 0,
+            volumeLabel: "$0",
+            up: {
+              walletCount: 0,
+              tradeCount: 0,
+              volumeUsd: 0,
+              volumeLabel: "$0",
+            },
+            down: {
+              walletCount: 0,
+              tradeCount: 0,
+              volumeUsd: 0,
+              volumeLabel: "$0",
+            },
+          },
+        ]}
+        copyAmount={25}
+        selectedMarketId="btc-2h-72000"
+        selectedSide="UP"
+        quote={{
+          source: "live_testnet",
+          market: "BTC-USD",
+          oracleId: "0xoracle2h",
+          expiry: "1779172200000",
+          strike: "72000000000",
+          side: "UP",
+          requestedSpendUsd: 25,
+          cost: "24980000",
+          costUsd: 24.98,
+          quantity: "49960000",
+          payoutUsd: 49.96,
+          maxProfitUsd: 24.98,
+          redeemPayout: "24100000",
+          redeemPayoutUsd: 24.1,
+          effectivePrice: 0.5,
+          quoteStatus: "ready",
+        }}
+        quoteStatus="ready"
+        predictManagerObjectId="0x1111"
+        walletConnected={true}
+        walletStatusLabel="Trade transaction sent."
+        walletSubmitted={true}
+        onAmountSet={() => undefined}
+        onCreatePredictManager={() => undefined}
+        onMarketChange={() => undefined}
+        onPredictManagerObjectIdChange={() => undefined}
+        onSideChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain(">Send to wallet</button>");
+    expect(html).not.toContain("disabled");
+    expect(html).toContain("Trade transaction sent.");
   });
 });

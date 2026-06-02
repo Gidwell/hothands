@@ -175,9 +175,13 @@ export type TradeQuote = {
   strike: string;
   side: TradeQuoteSide;
   requestedSpendUsd: number;
+  cost: string;
   costUsd: number;
+  quantity: string;
   payoutUsd: number;
   maxProfitUsd: number;
+  redeemPayout: string;
+  redeemPayoutUsd: number;
   effectivePrice: number;
   quoteStatus: "ready";
 };
@@ -974,9 +978,13 @@ function parseTradeQuote(payload: unknown): TradeQuote | null {
     !isNonEmptyString(payload.strike) ||
     (payload.side !== "UP" && payload.side !== "DOWN") ||
     !isNonNegativeNumber(payload.requestedSpendUsd) ||
+    !isNonEmptyString(payload.cost) ||
     !isNonNegativeNumber(payload.costUsd) ||
+    !isNonEmptyString(payload.quantity) ||
     !isNonNegativeNumber(payload.payoutUsd) ||
     !isNonNegativeNumber(payload.maxProfitUsd) ||
+    !isNonEmptyString(payload.redeemPayout) ||
+    !isNonNegativeNumber(payload.redeemPayoutUsd) ||
     !isNonNegativeNumber(payload.effectivePrice) ||
     payload.quoteStatus !== "ready"
   ) {
@@ -991,9 +999,13 @@ function parseTradeQuote(payload: unknown): TradeQuote | null {
     strike: payload.strike,
     side: payload.side,
     requestedSpendUsd: payload.requestedSpendUsd,
+    cost: payload.cost,
     costUsd: payload.costUsd,
+    quantity: payload.quantity,
     payoutUsd: payload.payoutUsd,
     maxProfitUsd: payload.maxProfitUsd,
+    redeemPayout: payload.redeemPayout,
+    redeemPayoutUsd: payload.redeemPayoutUsd,
     effectivePrice: payload.effectivePrice,
     quoteStatus: payload.quoteStatus,
   };
