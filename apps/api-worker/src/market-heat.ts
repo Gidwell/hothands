@@ -52,6 +52,7 @@ export interface MarketHeatRow {
   cost?: number;
   costUsd?: number;
   strike: number;
+  strikeRaw?: number;
   expiryMs: number;
   intervalLabel: string;
   observedAtMs: number;
@@ -221,6 +222,7 @@ function mapHeatTraderToRow(
     side: latestEvent?.isUp === false ? "DOWN" : "UP",
     ...mapTradeEventMetrics(latestEvent),
     strike: normalizeStrike(strike),
+    ...(latestEvent ? { strikeRaw: latestEvent.strike } : {}),
     expiryMs,
     intervalLabel,
     observedAtMs,
@@ -251,6 +253,7 @@ function mapTradeEventToRow(
     side: event.isUp === false ? "DOWN" : "UP",
     ...mapTradeEventMetrics(event),
     strike: normalizeStrike(event.strike),
+    strikeRaw: event.strike,
     expiryMs: event.expiryMs,
     intervalLabel: formatIntervalLabel(event, oraclesById.get(event.oracleId)),
     observedAtMs: event.timestampMs,

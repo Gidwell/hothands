@@ -44,6 +44,7 @@ describe("testnet market heat endpoint", () => {
     expect(body.rows[0].market).toBe("BTC-USD");
     expect(body.rows[0].side).toBe("UP");
     expect(typeof body.rows[0].strike).toBe("number");
+    expect(typeof body.rows[0].strikeRaw).toBe("number");
     expect(typeof body.rows[0].expiryMs).toBe("number");
     expect(typeof body.rows[0].intervalLabel).toBe("string");
     expect(body.rows[0].observedAtMs).toBe(1_779_070_800_000);
@@ -55,7 +56,8 @@ describe("testnet market heat endpoint", () => {
       oracleId: "btc-live",
       quantity: 3,
       cost: 1_200_000,
-      costUsd: 1.2
+      costUsd: 1.2,
+      strikeRaw: 72_000_000_000
     });
     expect(body.rows.find((row: { wallet: string }) => row.wallet === "0xtrader-warm")).toMatchObject({
       heatScore: 15,
@@ -244,6 +246,7 @@ describe("testnet market heat endpoint", () => {
 
     expect(projection.source).toBe("live_testnet");
     expect(projection.rows[0].strike).toBe(78098);
+    expect(projection.rows[0].strikeRaw).toBe(78_098_000_000_000);
     expect(projection.rows[0]).toMatchObject({
       quantity: 2,
       cost: 8_000_000,

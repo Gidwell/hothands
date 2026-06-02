@@ -12,6 +12,7 @@ export type MarketHeatPreviewRowInput = {
   cost?: number;
   costUsd?: number;
   strike: number;
+  strikeRaw?: number;
   expiryMs: number;
   intervalLabel: string;
   observedAtMs: number;
@@ -72,6 +73,7 @@ export type MarketHeatPreviewRow = {
   cost?: number;
   costUsd?: number;
   strike: number;
+  strikeRaw?: number;
   strikeLabel: string;
   intervalLabel: string;
   expiryMs: number;
@@ -281,6 +283,7 @@ export function buildMarketHeatPreview(
         const quantity = optionalNonNegativeNumber(row.quantity);
         const cost = optionalNonNegativeNumber(row.cost);
         const costUsd = normalizeCostUsd(row);
+        const strikeRaw = optionalNonNegativeNumber(row.strikeRaw);
 
         return {
           id: row.id,
@@ -294,6 +297,7 @@ export function buildMarketHeatPreview(
           ...(cost === undefined ? {} : { cost }),
           ...(costUsd === undefined ? {} : { costUsd }),
           strike: row.strike,
+          ...(strikeRaw === undefined ? {} : { strikeRaw }),
           strikeLabel: `Strike ${formatStrike(row.strike)}`,
           intervalLabel: row.intervalLabel,
           expiryMs: row.expiryMs,
@@ -332,7 +336,7 @@ export function selectTradeMarkets(
         expiryMs: row.expiryMs,
         expiryTimeLabel: row.expiryTimeLabel,
         strike,
-        strikeRaw: strike,
+        strikeRaw: row.strikeRaw ?? strike,
         strikeLabel: formatStrike(strike),
         status: "active",
       };
@@ -433,7 +437,7 @@ export function buildTradeMarketForMarketHeatRow(
     return null;
   }
 
-  const rowStrikeRaw = Math.round(row.strike * 1_000_000);
+  const rowStrikeRaw = row.strikeRaw ?? Math.round(row.strike * 1_000_000);
   const strikeOption =
     market.strikeOptions?.find((option) => option.strikeRaw === rowStrikeRaw) ??
     market.strikeOptions?.find((option) => option.strike === row.strike) ?? {
@@ -474,7 +478,7 @@ function buildTradeStrikeOptions(
 
   addOption(market.strike, market.strikeRaw);
   for (const row of activityRows) {
-    addOption(row.strike);
+    addOption(row.strike, row.strikeRaw);
   }
 
   return [...byStrikeRaw.values()].sort(
@@ -1002,6 +1006,7 @@ function isMarketHeatRowInput(value: unknown): value is MarketHeatPreviewRowInpu
     isNonEmptyString(value.market) &&
     (value.side === "UP" || value.side === "DOWN") &&
     isNonNegativeNumber(value.strike) &&
+    (value.strikeRaw === undefined || isNonNegativeNumber(value.strikeRaw)) &&
     isNonNegativeNumber(value.expiryMs) &&
     isNonEmptyString(value.intervalLabel) &&
     isNonNegativeNumber(value.observedAtMs) &&
