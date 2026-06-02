@@ -81,6 +81,7 @@ import { findPredictManagerForOwner } from "./predictManager";
 import {
   createPredictPortfolioCloseQuoteClient,
   createPredictPortfolioSettlementClient,
+  formatPortfolioTimeRemaining,
   loadPredictPortfolio,
   type PredictPortfolioPosition,
 } from "./predictPortfolio";
@@ -92,6 +93,7 @@ import {
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
+const PORTFOLIO_TIME_REFRESH_MS = 15_000;
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "portfolio";
 export type TradeSide = "UP" | "DOWN";
@@ -1193,6 +1195,7 @@ function ActiveSignalStrip({
 
 export function PortfolioPanel({
   emptyLabel: emptyLabelOverride,
+  nowMs,
   positions,
   status = "ready",
   walletActionPending = false,
@@ -1201,6 +1204,7 @@ export function PortfolioPanel({
   onPositionAction,
 }: {
   emptyLabel?: string;
+  nowMs?: number;
   positions: PredictPortfolioPosition[];
   status?: PredictPortfolioState["status"];
   walletActionPending?: boolean;
@@ -1224,56 +1228,63 @@ export function PortfolioPanel({
       </div>
       {positions.length ? (
         <div className="portfolio-list">
-          {positions.map((position) => (
-            <article className="portfolio-row" key={position.id}>
-              <div className="portfolio-row-main">
-                <span className={position.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
-                  {position.direction}
-                </span>
-                <div>
-                  <strong>BTC/USD {position.strikeLabel}</strong>
-                  <small>
-                    {position.statusLabel} · {position.timeLabel}
-                    {position.closeValueStatusLabel ? ` · ${position.closeValueStatusLabel}` : ""}
-                    {position.outcomeLabel ? ` · ${position.outcomeLabel}` : ""}
-                  </small>
+          {positions.map((position) => {
+            const timeLabel =
+              typeof nowMs === "number"
+                ? formatPortfolioTimeRemaining(position.expiryMs, nowMs)
+                : position.timeLabel;
+
+            return (
+              <article className="portfolio-row" key={position.id}>
+                <div className="portfolio-row-main">
+                  <span className={position.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
+                    {position.direction}
+                  </span>
+                  <div>
+                    <strong>BTC/USD {position.strikeLabel}</strong>
+                    <small>
+                      {position.statusLabel} · {timeLabel}
+                      {position.closeValueStatusLabel ? ` · ${position.closeValueStatusLabel}` : ""}
+                      {position.outcomeLabel ? ` · ${position.outcomeLabel}` : ""}
+                    </small>
+                  </div>
                 </div>
-              </div>
-              <div className="portfolio-row-metrics">
-                <span>
-                  <small>{position.isExpired ? "Claim value" : "Est. close"}</small>
-                  {position.isExpired
-                    ? position.claimValueLabel ?? "Checking"
-                    : position.closeValueLabel ?? (status === "loading" ? "Checking" : "Unavailable")}
-                </span>
-                <span>
-                  <small>Cost</small>
-                  {position.costBasisLabel}
-                </span>
-                <span>
-                  <small>{position.isExpired ? "Settled BTC" : "Max payout"}</small>
-                  {position.isExpired
-                    ? position.settlementPriceLabel ?? "Pending"
-                    : position.maxPayoutLabel}
-                </span>
-              </div>
-              <button
-                type="button"
-                className="portfolio-action-button"
-                disabled={walletActionPending}
-                onClick={() => onPositionAction(position)}
-              >
-                {walletActionPending && walletSubmittedPositionId === position.id
-                  ? "Sending..."
-                  : position.actionLabel}
-              </button>
-              {walletSubmittedPositionId === position.id ? (
-                <span className="portfolio-wallet-status" aria-live="polite">
-                  {walletStatusLabel ?? "Wallet request started"}
-                </span>
-              ) : null}
-            </article>
-          ))}
+                <div className="portfolio-row-metrics">
+                  <span>
+                    <small>{position.isExpired ? "Claim value" : "Est. close"}</small>
+                    {position.isExpired
+                      ? position.claimValueLabel ?? "Checking"
+                      : position.closeValueLabel ?? (status === "loading" ? "Checking" : "Unavailable")}
+                  </span>
+                  <span>
+                    <small>Cost</small>
+                    {position.costBasisLabel}
+                  </span>
+                  <span>
+                    <small>{position.isExpired ? "Settled BTC" : "Max payout"}</small>
+                    {position.isExpired
+                      ? position.settlementPriceLabel ?? "Pending"
+                      : position.maxPayoutLabel}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="portfolio-action-button"
+                  disabled={walletActionPending}
+                  onClick={() => onPositionAction(position)}
+                >
+                  {walletActionPending && walletSubmittedPositionId === position.id
+                    ? "Sending..."
+                    : position.actionLabel}
+                </button>
+                {walletSubmittedPositionId === position.id ? (
+                  <span className="portfolio-wallet-status" aria-live="polite">
+                    {walletStatusLabel ?? "Wallet request started"}
+                  </span>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="portfolio-empty">{emptyLabel}</div>
@@ -1705,6 +1716,7 @@ export function App() {
     status: "idle",
     positions: [],
   });
+  const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
   const [tradeQuoteState, setTradeQuoteState] = useState<{
     key: string | null;
     status: TradeQuoteStatus;
@@ -2317,6 +2329,19 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [replayState.isPlaying, scenario]);
 
+  useEffect(() => {
+    if (activeView !== "portfolio") {
+      return undefined;
+    }
+
+    setPortfolioNowMs(Date.now());
+    const timer = window.setInterval(() => {
+      setPortfolioNowMs(Date.now());
+    }, PORTFOLIO_TIME_REFRESH_MS);
+
+    return () => window.clearInterval(timer);
+  }, [activeView]);
+
   const handleScenarioChange = (scenarioId: ReplayScenarioId) => {
     const nextScenario = createReplayScenario(scenarioId);
 
@@ -2866,6 +2891,7 @@ export function App() {
                     : "Create a Predict account first"
                   : "Connect wallet to see positions"
               }
+              nowMs={portfolioNowMs}
               positions={visiblePortfolioPositions}
               status={visiblePortfolioStatus}
               walletActionPending={isWalletActionPending}

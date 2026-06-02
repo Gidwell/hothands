@@ -355,7 +355,7 @@ function buildPortfolioPosition(
     direction,
     strikeLabel: formatStrike(position.strike),
     expiryTimeLabel: formatExpiryTime(expiryMs),
-    timeLabel: formatTimeRemaining(expiryMs, nowMs),
+    timeLabel: formatPortfolioTimeRemaining(expiryMs, nowMs),
     statusLabel: isExpired ? "Expired" : "Open",
     actionLabel: isExpired ? "Claim" : "Redeem",
     maxPayoutLabel: formatDusdcBalance(position.quantity),
@@ -635,7 +635,7 @@ function formatExpiryTime(expiryMs: number): string {
   }).format(new Date(expiryMs));
 }
 
-function formatTimeRemaining(expiryMs: number, nowMs: number): string {
+export function formatPortfolioTimeRemaining(expiryMs: number, nowMs: number): string {
   const remainingMs = expiryMs - nowMs;
   if (remainingMs <= 0) {
     return "Expired";
