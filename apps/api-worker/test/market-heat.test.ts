@@ -103,6 +103,26 @@ describe("testnet market heat endpoint", () => {
     ]);
   });
 
+  test("returns oracle settlement details for portfolio claim previews", async () => {
+    const response = await worker.fetch(
+      new Request(
+        "https://api.hot-hands.test/testnet/oracle-settlement?oracleId=btc-settled"
+      ),
+      { fetch: createOracleSettlementFetch() } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    await expect(response.json()).resolves.toEqual({
+      source: "live_testnet",
+      oracleId: "btc-settled",
+      status: "settled",
+      settlementPrice: 70_255_724_491_985,
+      settledAtMs: 1_780_366_507_716
+    });
+  });
+
   test("falls back to captured read-only market heat when live Predict reads fail", async () => {
     const projection = await getTestnetMarketHeat({
       fetchImpl: async () => {
@@ -553,6 +573,31 @@ function createLivePredictFetch(
 
     if (url.endsWith("/positions/redeemed")) {
       return jsonResponse([]);
+    }
+
+    return jsonResponse({ error: "not_found" }, 404);
+  };
+}
+
+function createOracleSettlementFetch(): typeof fetch {
+  return async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.endsWith("/oracles")) {
+      return jsonResponse([
+        btcOracle({
+          oracle_id: "btc-active",
+          status: "active",
+          settlement_price: null,
+          settled_at: null
+        }),
+        btcOracle({
+          oracle_id: "btc-settled",
+          status: "settled",
+          settlement_price: 70_255_724_491_985,
+          settled_at: 1_780_366_507_716
+        })
+      ]);
     }
 
     return jsonResponse({ error: "not_found" }, 404);

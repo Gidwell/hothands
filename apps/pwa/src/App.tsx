@@ -79,9 +79,14 @@ import {
 } from "./walletBalance";
 import { findPredictManagerForOwner } from "./predictManager";
 import {
+  createPredictPortfolioSettlementClient,
   loadPredictPortfolio,
   type PredictPortfolioPosition,
 } from "./predictPortfolio";
+import {
+  schedulePostWalletRefresh,
+  waitForWalletTransactionFinality,
+} from "./walletRefresh";
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
@@ -1226,21 +1231,28 @@ export function PortfolioPanel({
                 </span>
                 <div>
                   <strong>BTC/USD {position.strikeLabel}</strong>
-                  <small>{position.statusLabel} · {position.timeLabel}</small>
+                  <small>
+                    {position.statusLabel} · {position.timeLabel}
+                    {position.outcomeLabel ? ` · ${position.outcomeLabel}` : ""}
+                  </small>
                 </div>
               </div>
               <div className="portfolio-row-metrics">
                 <span>
-                  <small>Max payout</small>
-                  {position.maxPayoutLabel}
+                  <small>{position.isExpired ? "Claim value" : "Max payout"}</small>
+                  {position.isExpired
+                    ? position.claimValueLabel ?? "Checking"
+                    : position.maxPayoutLabel}
                 </span>
                 <span>
                   <small>Cost</small>
                   {position.costBasisLabel}
                 </span>
                 <span>
-                  <small>Expiry</small>
-                  {position.expiryTimeLabel}
+                  <small>{position.isExpired ? "Settled BTC" : "Expiry"}</small>
+                  {position.isExpired
+                    ? position.settlementPriceLabel ?? "Pending"
+                    : position.expiryTimeLabel}
                 </span>
               </div>
               <button
@@ -2117,6 +2129,9 @@ export function App() {
     void loadPredictPortfolio({
       managerObjectId: activePredictManagerObjectId,
       maxPages: 12,
+      settlementClient: createPredictPortfolioSettlementClient({
+        apiBaseUrl: realtimeApiBaseUrl,
+      }),
     })
       .then((positions) => {
         if (!isCurrent) {
@@ -2146,7 +2161,7 @@ export function App() {
     return () => {
       isCurrent = false;
     };
-  }, [activePredictManagerObjectId, predictPortfolioRefreshKey]);
+  }, [activePredictManagerObjectId, predictPortfolioRefreshKey, realtimeApiBaseUrl]);
 
   useEffect(() => {
     const setSnapshot = (snapshot: LiveActivityModeSnapshot) => {
@@ -2467,6 +2482,22 @@ export function App() {
       });
     }
   };
+  const refreshPredictWalletSurfaces = () => {
+    setDusdcBalanceRefreshKey((key) => key + 1);
+    setPredictManagerRefreshKey((key) => key + 1);
+    setPredictManagerBankrollRefreshKey((key) => key + 1);
+    setPredictPortfolioRefreshKey((key) => key + 1);
+  };
+  const refreshAfterWalletTransaction = (digest: string | null) => {
+    void waitForWalletTransactionFinality({
+      client: currentClient,
+      digest,
+    }).finally(() => {
+      schedulePostWalletRefresh({
+        refresh: refreshPredictWalletSurfaces,
+      });
+    });
+  };
   const handleCreatePredictManager = async () => {
     if (!currentAccount) {
       setWalletTxState({
@@ -2497,15 +2528,13 @@ export function App() {
         return;
       }
 
+      const digest = walletResultDigest(result);
       setWalletTxState({
         status: "success",
         label: "Predict account transaction sent. Checking account...",
-        digest: walletResultDigest(result),
+        digest,
       });
-      setDusdcBalanceRefreshKey((key) => key + 1);
-      setPredictManagerRefreshKey((key) => key + 1);
-      setPredictManagerBankrollRefreshKey((key) => key + 1);
-      setPredictPortfolioRefreshKey((key) => key + 1);
+      refreshAfterWalletTransaction(digest);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -2564,13 +2593,13 @@ export function App() {
         return;
       }
 
+      const digest = walletResultDigest(result);
       setWalletTxState({
         status: "success",
         label: `${amountLabel} deposit transaction sent.`,
-        digest: walletResultDigest(result),
+        digest,
       });
-      setDusdcBalanceRefreshKey((key) => key + 1);
-      setPredictManagerBankrollRefreshKey((key) => key + 1);
+      refreshAfterWalletTransaction(digest);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -2647,14 +2676,13 @@ export function App() {
         return;
       }
 
+      const digest = walletResultDigest(result);
       setWalletTxState({
         status: "success",
         label: "Trade transaction sent.",
-        digest: walletResultDigest(result),
+        digest,
       });
-      setDusdcBalanceRefreshKey((key) => key + 1);
-      setPredictManagerBankrollRefreshKey((key) => key + 1);
-      setPredictPortfolioRefreshKey((key) => key + 1);
+      refreshAfterWalletTransaction(digest);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -2705,13 +2733,13 @@ export function App() {
         return;
       }
 
+      const digest = walletResultDigest(result);
       setWalletTxState({
         status: "success",
         label: `${position.actionLabel} transaction sent.`,
-        digest: walletResultDigest(result),
+        digest,
       });
-      setPredictManagerBankrollRefreshKey((key) => key + 1);
-      setPredictPortfolioRefreshKey((key) => key + 1);
+      refreshAfterWalletTransaction(digest);
     } catch (error) {
       setWalletTxState({
         status: "error",

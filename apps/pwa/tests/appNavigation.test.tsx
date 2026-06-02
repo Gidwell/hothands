@@ -79,6 +79,7 @@ describe("mobile app navigation", () => {
           },
           {
             actionLabel: "Claim",
+            claimValueLabel: "$0",
             costBasisLabel: "$2.50",
             direction: "DOWN",
             expiry: 1_779_000_000,
@@ -90,6 +91,8 @@ describe("mobile app navigation", () => {
             maxPayoutLabel: "$5",
             oracleId: "0xoracle",
             quantity: "5000000",
+            outcomeLabel: "No payout",
+            settlementPriceLabel: "$65,100.00",
             statusLabel: "Expired",
             strike: "65000000000",
             strikeLabel: "$65,000.00",
@@ -109,6 +112,10 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Claim");
     expect(html).toContain("$65,000.00");
     expect(html).toContain("$4");
+    expect(html).toContain("Claim value");
+    expect(html).toContain("No payout");
+    expect(html).toContain("Settled BTC");
+    expect(html).toContain("$65,100.00");
   });
 
   test("renders a standalone trade ticket for custom BTC bets", () => {

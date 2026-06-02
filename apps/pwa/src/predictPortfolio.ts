@@ -45,6 +45,9 @@ export type PredictPortfolioPosition = {
   actionLabel: "Redeem" | "Claim";
   maxPayoutLabel: string;
   costBasisLabel: string;
+  claimValueLabel?: string;
+  outcomeLabel?: "Pays out" | "No payout" | "Settlement pending";
+  settlementPriceLabel?: string;
   isExpired: boolean;
 };
 
@@ -54,12 +57,24 @@ export type PredictPortfolioEventClient = {
   ): Promise<Pick<PaginatedEvents, "data" | "hasNextPage" | "nextCursor">>;
 };
 
+export type PredictOracleSettlement = {
+  oracleId: string;
+  status: string;
+  settlementPrice: number | null;
+  settledAtMs?: number | null;
+};
+
+export type PredictPortfolioSettlementClient = {
+  getOracleSettlement(oracleId: string): Promise<PredictOracleSettlement | null>;
+};
+
 export type LoadPredictPortfolioOptions = {
   client?: PredictPortfolioEventClient;
   limit?: number;
   managerObjectId: string;
   maxPages?: number;
   nowMs?: number;
+  settlementClient?: PredictPortfolioSettlementClient;
 };
 
 type PortfolioAccumulator = {
@@ -79,6 +94,7 @@ export async function loadPredictPortfolio({
   managerObjectId,
   maxPages = 8,
   nowMs = Date.now(),
+  settlementClient,
 }: LoadPredictPortfolioOptions): Promise<PredictPortfolioPosition[]> {
   const [mints, redeems] = await Promise.all([
     loadPortfolioEvents({
@@ -99,14 +115,35 @@ export async function loadPredictPortfolio({
     }),
   ]);
 
-  return buildPortfolioPositions([...mints, ...redeems], { nowMs });
+  const events = [...mints, ...redeems];
+  if (!settlementClient) {
+    return buildPortfolioPositions(events, { nowMs });
+  }
+
+  const positions = buildPortfolioPositions(events, { nowMs });
+  if (positions.length === 0) {
+    return positions;
+  }
+
+  const oracleSettlements = await loadOracleSettlements(positions, settlementClient);
+
+  return buildPortfolioPositions(events, {
+    nowMs,
+    oracleSettlements,
+  });
 }
 
 export function buildPortfolioPositions(
   events: PredictPortfolioEvent[],
-  { nowMs = Date.now() }: { nowMs?: number } = {},
+  {
+    nowMs = Date.now(),
+    oracleSettlements = [],
+  }: { nowMs?: number; oracleSettlements?: PredictOracleSettlement[] } = {},
 ): PredictPortfolioPosition[] {
   const positions = new Map<string, PortfolioAccumulator>();
+  const settlementsByOracleId = new Map(
+    oracleSettlements.map((settlement) => [settlement.oracleId, settlement]),
+  );
 
   for (const event of [...events].sort(compareEventsByTime)) {
     const key = positionKey(event);
@@ -143,8 +180,38 @@ export function buildPortfolioPositions(
 
   return [...positions.values()]
     .filter((position) => position.quantity > 0n)
-    .map((position) => buildPortfolioPosition(position, nowMs))
+    .map((position) =>
+      buildPortfolioPosition(position, nowMs, settlementsByOracleId.get(position.oracleId)),
+    )
     .sort((left, right) => right.expiryMs - left.expiryMs || left.id.localeCompare(right.id));
+}
+
+export function createPredictPortfolioSettlementClient({
+  apiBaseUrl,
+  fetcher = fetch,
+}: {
+  apiBaseUrl?: string | null;
+  fetcher?: typeof fetch;
+}): PredictPortfolioSettlementClient | undefined {
+  const normalizedBaseUrl = apiBaseUrl?.trim();
+  if (!normalizedBaseUrl) {
+    return undefined;
+  }
+
+  return {
+    getOracleSettlement: async (oracleId) => {
+      const url = new URL(`${normalizedBaseUrl.replace(/\/+$/, "")}/testnet/oracle-settlement`);
+      url.searchParams.set("oracleId", oracleId);
+
+      const response = await fetcher(url.toString());
+      if (!response.ok) {
+        return null;
+      }
+
+      const payload = (await response.json()) as unknown;
+      return parseOracleSettlement(payload);
+    },
+  };
 }
 
 async function loadPortfolioEvents({
@@ -195,10 +262,21 @@ async function loadPortfolioEvents({
 function buildPortfolioPosition(
   position: PortfolioAccumulator,
   nowMs: number,
+  settlement?: PredictOracleSettlement,
 ): PredictPortfolioPosition {
   const expiryMs = normalizeEpochMs(position.expiry);
   const isExpired = expiryMs <= nowMs;
   const direction = position.isUp ? "UP" : "DOWN";
+  const settlementPrice = settledPrice(settlement);
+  const didWin =
+    isExpired && settlementPrice !== null
+      ? didPositionWin({
+          isUp: position.isUp,
+          settlementPrice,
+          strike: position.strike,
+        })
+      : null;
+  const claimValue = didWin === null ? null : didWin ? position.quantity : 0n;
 
   return {
     id: `${position.managerId}:${position.oracleId}:${position.expiry}:${position.strike}:${direction}`,
@@ -216,8 +294,31 @@ function buildPortfolioPosition(
     actionLabel: isExpired ? "Claim" : "Redeem",
     maxPayoutLabel: formatDusdcBalance(position.quantity),
     costBasisLabel: formatDusdcBalance(position.costBasis),
+    ...(isExpired
+      ? {
+          claimValueLabel: claimValue === null ? undefined : formatDusdcBalance(claimValue),
+          outcomeLabel:
+            didWin === null ? "Settlement pending" : didWin ? "Pays out" : "No payout",
+          settlementPriceLabel:
+            settlementPrice === null ? undefined : formatPredictPrice(settlementPrice),
+        }
+      : {}),
     isExpired,
   };
+}
+
+async function loadOracleSettlements(
+  positions: PredictPortfolioPosition[],
+  settlementClient: PredictPortfolioSettlementClient,
+): Promise<PredictOracleSettlement[]> {
+  const oracleIds = [...new Set(positions.map((position) => position.oracleId))];
+  const settlements = await Promise.all(
+    oracleIds.map((oracleId) => settlementClient.getOracleSettlement(oracleId).catch(() => null)),
+  );
+
+  return settlements.filter(
+    (settlement): settlement is PredictOracleSettlement => settlement !== null,
+  );
 }
 
 function parsePortfolioEvent(
@@ -297,7 +398,15 @@ function normalizeEpochMs(value: number | null): number {
 }
 
 function formatStrike(strike: number): string {
-  return `$${normalizeStrike(strike).toLocaleString("en-US", {
+  return formatUsdPrice(normalizeStrike(strike));
+}
+
+function formatPredictPrice(price: number): string {
+  return formatUsdPrice(normalizePredictPrice(price));
+}
+
+function formatUsdPrice(price: number): string {
+  return `$${price.toLocaleString("en-US", {
     maximumFractionDigits: 2,
     minimumFractionDigits: 2,
   })}`;
@@ -313,6 +422,70 @@ function normalizeStrike(value: number): number {
   }
 
   return Math.round(value);
+}
+
+function normalizePredictPrice(value: number): number {
+  if (value >= 1_000_000_000_000) {
+    return value / 1_000_000_000;
+  }
+
+  if (value >= 1_000_000_000) {
+    return value / 1_000_000;
+  }
+
+  return value;
+}
+
+function didPositionWin({
+  isUp,
+  settlementPrice,
+  strike,
+}: {
+  isUp: boolean;
+  settlementPrice: number;
+  strike: number;
+}): boolean {
+  const normalizedSettlementPrice = normalizePredictPrice(settlementPrice);
+  const normalizedStrike = normalizeStrike(strike);
+
+  return isUp
+    ? normalizedSettlementPrice > normalizedStrike
+    : normalizedSettlementPrice <= normalizedStrike;
+}
+
+function settledPrice(settlement: PredictOracleSettlement | undefined): number | null {
+  if (
+    !settlement ||
+    settlement.status !== "settled" ||
+    typeof settlement.settlementPrice !== "number" ||
+    !Number.isFinite(settlement.settlementPrice)
+  ) {
+    return null;
+  }
+
+  return settlement.settlementPrice;
+}
+
+function parseOracleSettlement(payload: unknown): PredictOracleSettlement | null {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const oracleId = stringValue(payload.oracleId ?? payload.oracle_id);
+  const status = stringValue(payload.status);
+  const settlementPrice = numberValue(payload.settlementPrice ?? payload.settlement_price);
+  const settledAtMs = numberValue(payload.settledAtMs ?? payload.settled_at);
+
+  if (!oracleId || !status) {
+    return null;
+  }
+
+  return {
+    oracleId,
+    status,
+    settlementPrice,
+    settledAtMs,
+  };
 }
 
 function formatExpiryTime(expiryMs: number): string {

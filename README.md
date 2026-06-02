@@ -71,6 +71,8 @@ What is live today:
   `PredictManager`; if one is missing, the wallet bar is the place to create it.
   Trade surfaces assume that account setup has happened before preparing a
   quoted `predict::mint` transaction.
+- Portfolio reads open positions and, for settled expired positions, shows the
+  oracle settlement price plus the claim value before sending the wallet action.
 
 What is still in progress:
 

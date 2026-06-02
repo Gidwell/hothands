@@ -19,6 +19,7 @@ import {
 } from "./table-state";
 import { createTableActivityBroadcast } from "./table-activity";
 import { getTestnetMarketHeat } from "./market-heat";
+import { getTestnetOracleSettlement } from "./oracle-settlement";
 import {
   getTestnetPredictQuote,
   type InspectPredictQuoteQuantity,
@@ -89,6 +90,29 @@ export default {
       }
     }
 
+    if (url.pathname === "/testnet/oracle-settlement") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      try {
+        return json(
+          await getTestnetOracleSettlement({
+            fetchImpl: env.fetch ?? fetch,
+            oracleId: requireSearchParam(url, "oracleId")
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "oracle_settlement_failed",
+            message: error instanceof Error ? error.message : "Unable to load oracle settlement."
+          },
+          400
+        );
+      }
+    }
+
     const tableMatch = url.pathname.match(
       /^\/tables\/([^/]+)(?:\/(summary|ws|activity))?$/
     );
@@ -99,6 +123,7 @@ export default {
           routes: [
             "/health",
             "/testnet/market-heat",
+            "/testnet/oracle-settlement",
             "/testnet/quote",
             "/tables/:tableId/summary",
             "/tables/:tableId/ws",
@@ -381,10 +406,10 @@ function parsePredictQuoteRequest(url: URL): PredictQuoteRequest {
   };
 }
 
-function requireSearchParam(url: URL, name: string): string {
-  const value = url.searchParams.get(name);
+function requireSearchParam(url: URL, key: string): string {
+  const value = url.searchParams.get(key)?.trim();
   if (!value) {
-    throw new Error(`${name} is required.`);
+    throw new Error(`${key} is required`);
   }
 
   return value;

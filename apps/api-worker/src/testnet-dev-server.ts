@@ -1,4 +1,5 @@
 import { getTestnetMarketHeat } from "./market-heat";
+import { getTestnetOracleSettlement } from "./oracle-settlement";
 import {
   getTestnetPredictQuote,
   type InspectPredictQuoteQuantity
@@ -95,10 +96,33 @@ export function createTestnetDevServerFetch({
       }
     }
 
+    if (url.pathname === "/testnet/oracle-settlement") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      try {
+        return json(
+          await getTestnetOracleSettlement({
+            fetchImpl,
+            oracleId: requireSearchParam(url, "oracleId")
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "oracle_settlement_failed",
+            message: error instanceof Error ? error.message : "Unable to load oracle settlement."
+          },
+          400
+        );
+      }
+    }
+
     return json(
       {
         error: "not_found",
-        routes: ["/health", "/testnet/market-heat", "/testnet/quote"]
+        routes: ["/health", "/testnet/market-heat", "/testnet/oracle-settlement", "/testnet/quote"]
       },
       404
     );
@@ -156,5 +180,7 @@ if ((import.meta as { main?: boolean }).main) {
   });
 
   console.log(`Testnet API dev server listening on ${server.url}`);
-  console.log("Routes: GET /health, GET /testnet/market-heat, GET /testnet/quote");
+  console.log(
+    "Routes: GET /health, GET /testnet/market-heat, GET /testnet/oracle-settlement, GET /testnet/quote"
+  );
 }
