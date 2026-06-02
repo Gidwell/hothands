@@ -72,6 +72,48 @@ describe("DUSDC wallet balance", () => {
     expect(label).toBe("$12.50");
   });
 
+  test("falls back to a PredictManager balance call when object fields do not expose bankroll", async () => {
+    const inspectCalls: Array<{ sender: string }> = [];
+    const label = await loadPredictManagerBankrollLabel({
+      predictManagerObjectId:
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+      sender: "0xwallet",
+      client: {
+        getObject: async () => ({
+          data: {
+            content: {
+              dataType: "moveObject",
+              fields: {
+                owner: "0xwallet",
+              },
+            },
+          },
+        }),
+      },
+      fallbackClient: {
+        devInspectTransactionBlock: async (input) => {
+          inspectCalls.push({
+            sender: input.sender,
+          });
+          return {
+            results: [
+              {
+                returnValues: [[[0x40, 0x4b, 0x4c, 0x00, 0, 0, 0, 0]]],
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    expect(inspectCalls).toEqual([
+      {
+        sender: "0xwallet",
+      },
+    ]);
+    expect(label).toBe("$5");
+  });
+
   test("selects a DUSDC coin that can cover a deposit amount", async () => {
     const calls: Array<{ owner: string; coinType: string }> = [];
     const coin = await selectDusdcDepositCoin({

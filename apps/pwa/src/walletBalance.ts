@@ -68,14 +68,20 @@ export async function loadDusdcBalanceLabel({
 
 export async function loadPredictManagerBankrollLabel({
   client,
+  fallbackClient,
   predictManagerObjectId,
+  sender,
 }: {
   client: PredictManagerBankrollClient;
+  fallbackClient?: PredictManagerBankrollClient;
   predictManagerObjectId: string;
+  sender?: string;
 }): Promise<string> {
   const atomicBalance = await loadPredictManagerBankrollAtomic({
     client,
+    fallbackClient,
     predictManagerObjectId,
+    sender,
   });
 
   return formatDusdcBalance(atomicBalance);
@@ -83,32 +89,43 @@ export async function loadPredictManagerBankrollLabel({
 
 export async function loadPredictManagerBankrollAtomic({
   client,
+  fallbackClient,
   predictManagerObjectId,
   sender,
 }: {
   client: PredictManagerBankrollClient;
+  fallbackClient?: PredictManagerBankrollClient;
   predictManagerObjectId: string;
   sender?: string;
 }): Promise<bigint> {
   const response = await getPredictManagerObject(client, predictManagerObjectId);
   const atomicBalance = readAtomicBalanceField(response.data?.content);
 
-  if (atomicBalance !== null || !isFunction(client.devInspectTransactionBlock)) {
-    return atomicBalance ?? 0n;
+  if (atomicBalance !== null) {
+    return atomicBalance;
   }
 
-  const devInspectTransactionBlock = client.devInspectTransactionBlock as (input: {
-    sender: string;
-    transactionBlock: Transaction;
-  }) => Promise<{
-    results?: Array<{
-      returnValues?: unknown[];
+  const inspectClient =
+    isFunction(client.devInspectTransactionBlock)
+      ? client
+      : fallbackClient ?? createPredictManagerBankrollClient();
+  if (!isFunction(inspectClient.devInspectTransactionBlock)) {
+    return 0n;
+  }
+
+  const devInspectTransactionBlock =
+    inspectClient.devInspectTransactionBlock as (input: {
+      sender: string;
+      transactionBlock: Transaction;
+    }) => Promise<{
+      results?: Array<{
+        returnValues?: unknown[];
+      }>;
     }>;
-  }>;
 
   return loadPredictManagerBankrollAtomicByMoveCall({
     devInspectTransactionBlock: (input) =>
-      devInspectTransactionBlock.call(client, input),
+      devInspectTransactionBlock.call(inspectClient, input),
     predictManagerObjectId,
     sender,
   });
@@ -229,6 +246,13 @@ function createDusdcDepositCoinClient(): DusdcDepositCoinClient {
     url: getJsonRpcFullnodeUrl("testnet"),
     network: "testnet",
   }) as unknown as DusdcDepositCoinClient;
+}
+
+function createPredictManagerBankrollClient(): PredictManagerBankrollClient {
+  return new SuiJsonRpcClient({
+    url: getJsonRpcFullnodeUrl("testnet"),
+    network: "testnet",
+  }) as unknown as PredictManagerBankrollClient;
 }
 
 export function formatDusdcBalance(atomicBalance: string | bigint): string {
