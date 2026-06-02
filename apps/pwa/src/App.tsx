@@ -66,7 +66,9 @@ import {
   createPredictPortfolioCloseQuoteClient,
   createPredictPortfolioSettlementClient,
   formatPortfolioTimeRemaining,
-  loadPredictPortfolio,
+  loadPredictPortfolioSnapshot,
+  selectVisiblePortfolioPositions,
+  type PredictPortfolioPnlSummary,
   type PredictPortfolioPosition,
 } from "./predictPortfolio";
 import {
@@ -120,6 +122,7 @@ type PredictManagerState = {
 };
 type PredictPortfolioState = {
   managerObjectId: string | null;
+  pnl: PredictPortfolioPnlSummary;
   refreshKey: number;
   status: "idle" | "loading" | "ready" | "error";
   positions: PredictPortfolioPosition[];
@@ -130,7 +133,15 @@ const idleWalletTransactionState: WalletTransactionState = {
   label: "Wallet ready",
   digest: null,
 };
+const idlePredictPortfolioPnl: PredictPortfolioPnlSummary = {
+  costLabel: "$0",
+  payoutLabel: "$0",
+  pnlAtomic: "0",
+  pnlLabel: "$0",
+  pnlTone: "flat",
+};
 const PREDICT_MANAGER_STORAGE_KEY = "hot-hands-predict-manager-id";
+const DISMISSED_PORTFOLIO_STORAGE_KEY = "hot-hands-dismissed-portfolio-position-ids";
 
 export function getInitialPreviewMode(_apiBaseUrl: string | undefined): PreviewMode {
   return "market";
@@ -427,6 +438,44 @@ function writeStoredPredictManagerObjectId(accountAddress: string, objectId: str
   }
 
   window.localStorage.setItem(`${PREDICT_MANAGER_STORAGE_KEY}:${accountAddress}`, objectId);
+}
+
+function readDismissedPortfolioPositionIds(managerObjectId: string | null): Set<string> {
+  if (typeof window === "undefined" || !managerObjectId) {
+    return new Set();
+  }
+
+  const stored = window.localStorage.getItem(
+    `${DISMISSED_PORTFOLIO_STORAGE_KEY}:${managerObjectId}`,
+  );
+  if (!stored) {
+    return new Set();
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as unknown;
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((value): value is string => typeof value === "string" && value.length > 0)
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function writeDismissedPortfolioPositionIds(
+  managerObjectId: string,
+  positionIds: ReadonlySet<string>,
+): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    `${DISMISSED_PORTFOLIO_STORAGE_KEY}:${managerObjectId}`,
+    JSON.stringify([...positionIds]),
+  );
 }
 
 export function WalletStatusBar({
@@ -1007,6 +1056,7 @@ export function PortfolioPanel({
   walletActionPending = false,
   walletStatusLabel = null,
   walletSubmittedPositionId = null,
+  onDismissPosition,
   onPositionAction,
 }: {
   emptyLabel?: string;
@@ -1016,6 +1066,7 @@ export function PortfolioPanel({
   walletActionPending?: boolean;
   walletStatusLabel?: string | null;
   walletSubmittedPositionId?: string | null;
+  onDismissPosition?: (positionId: string) => void;
   onPositionAction: (position: PredictPortfolioPosition) => void;
 }) {
   const emptyLabel =
@@ -1051,7 +1102,12 @@ export function PortfolioPanel({
             ]
               .filter((label): label is string => Boolean(label))
               .join(" · ");
-            const actionLabel = isExpired ? "Claim" : position.actionLabel;
+            const isDismissible = isExpired && position.dismissible;
+            const actionLabel = isExpired
+              ? isDismissible
+                ? "Dismiss"
+                : "Claim"
+              : position.actionLabel;
             const actionPosition = isExpired
               ? {
                   ...position,
@@ -1094,14 +1150,21 @@ export function PortfolioPanel({
                 <button
                   type="button"
                   className="portfolio-action-button"
-                  disabled={walletActionPending}
-                  onClick={() => onPositionAction(actionPosition)}
+                  disabled={!isDismissible && walletActionPending}
+                  onClick={() => {
+                    if (isDismissible) {
+                      onDismissPosition?.(position.id);
+                      return;
+                    }
+
+                    onPositionAction(actionPosition);
+                  }}
                 >
-                  {walletActionPending && walletSubmittedPositionId === position.id
+                  {!isDismissible && walletActionPending && walletSubmittedPositionId === position.id
                     ? "Sending..."
                     : actionLabel}
                 </button>
-                {walletSubmittedPositionId === position.id ? (
+                {!isDismissible && walletSubmittedPositionId === position.id ? (
                   <span className="portfolio-wallet-status" aria-live="polite">
                     {walletStatusLabel ?? "Wallet request started"}
                   </span>
@@ -1377,6 +1440,9 @@ export function AccountSummary({
   depositAmount = DEPOSIT_AMOUNT_DEFAULT,
   onDeposit,
   onDepositAmountChange,
+  pnlLabel,
+  pnlTitle = "All-time PNL",
+  pnlTone,
   summary,
 }: {
   availableLabel?: string | null;
@@ -1384,18 +1450,24 @@ export function AccountSummary({
   depositAmount?: number;
   onDeposit?: () => void;
   onDepositAmountChange?: (amount: number) => void;
+  pnlLabel?: string;
+  pnlTitle?: string;
+  pnlTone?: "positive" | "negative" | "flat";
   summary: ReturnType<typeof getReplayAccountSummary>;
 }) {
+  const visiblePnlLabel = pnlLabel ?? summary.pnl;
+  const visiblePnlTone = pnlTone ?? summary.pnlTone;
+
   return (
     <section
-      className={`account-summary account-summary-${summary.pnlTone}`}
+      className={`account-summary account-summary-${visiblePnlTone}`}
       aria-label="Account summary"
       data-testid="session-pnl"
     >
       <div className="account-summary-main">
         <div className="account-pnl" data-testid="account-pnl">
-          <p>Session PNL</p>
-          <strong>{summary.pnl}</strong>
+          <p>{pnlTitle}</p>
+          <strong>{visiblePnlLabel}</strong>
         </div>
         <div className="account-value">
           <span>Bankroll</span>
@@ -1559,11 +1631,15 @@ export function App() {
   const [predictPortfolioRefreshKey, setPredictPortfolioRefreshKey] = useState(0);
   const [predictPortfolioState, setPredictPortfolioState] = useState<PredictPortfolioState>({
     managerObjectId: null,
+    pnl: idlePredictPortfolioPnl,
     refreshKey: 0,
     status: "idle",
     positions: [],
   });
   const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
+  const [dismissedPortfolioPositionIds, setDismissedPortfolioPositionIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [depositAmount, setDepositAmount] = useState(DEPOSIT_AMOUNT_DEFAULT);
   const [tradeQuoteState, setTradeQuoteState] = useState<{
     key: string | null;
@@ -1744,8 +1820,28 @@ export function App() {
       ? predictPortfolioState.status
       : "loading"
     : "idle";
-  const visiblePortfolioPositions =
-    isPredictPortfolioStateCurrent ? predictPortfolioState.positions : [];
+  const visiblePortfolioPositions = isPredictPortfolioStateCurrent
+    ? selectVisiblePortfolioPositions(predictPortfolioState.positions, {
+        dismissedPositionIds: dismissedPortfolioPositionIds,
+        nowMs: portfolioNowMs,
+      })
+    : [];
+  const visiblePortfolioPnl =
+    activePredictManagerObjectId && isPredictPortfolioStateCurrent
+      ? predictPortfolioState.status === "ready"
+        ? predictPortfolioState.pnl
+        : predictPortfolioState.status === "loading"
+          ? {
+              ...idlePredictPortfolioPnl,
+              pnlLabel: "Loading...",
+            }
+          : predictPortfolioState.status === "error"
+            ? {
+                ...idlePredictPortfolioPnl,
+                pnlLabel: "$--",
+              }
+            : idlePredictPortfolioPnl
+      : idlePredictPortfolioPnl;
 
   useEffect(() => {
     if (!connectedAccountAddress) {
@@ -1811,6 +1907,12 @@ export function App() {
       isCurrent = false;
     };
   }, [connectedAccountAddress, predictManagerRefreshKey]);
+
+  useEffect(() => {
+    setDismissedPortfolioPositionIds(
+      readDismissedPortfolioPositionIds(activePredictManagerObjectId || null),
+    );
+  }, [activePredictManagerObjectId]);
 
   useEffect(() => {
     if (!connectedAccountAddress) {
@@ -1936,6 +2038,7 @@ export function App() {
     if (!activePredictManagerObjectId) {
       setPredictPortfolioState({
         managerObjectId: null,
+        pnl: idlePredictPortfolioPnl,
         refreshKey: predictPortfolioRefreshKey,
         status: "idle",
         positions: [],
@@ -1946,6 +2049,10 @@ export function App() {
     let isCurrent = true;
     setPredictPortfolioState((state) => ({
       managerObjectId: activePredictManagerObjectId,
+      pnl:
+        state.managerObjectId === activePredictManagerObjectId
+          ? state.pnl
+          : idlePredictPortfolioPnl,
       refreshKey: predictPortfolioRefreshKey,
       status: "loading",
       positions:
@@ -1954,7 +2061,7 @@ export function App() {
           : [],
     }));
 
-    void loadPredictPortfolio({
+    void loadPredictPortfolioSnapshot({
       closeQuoteClient: createPredictPortfolioCloseQuoteClient({
         apiBaseUrl: realtimeApiBaseUrl,
       }),
@@ -1964,16 +2071,17 @@ export function App() {
         apiBaseUrl: realtimeApiBaseUrl,
       }),
     })
-      .then((positions) => {
+      .then((snapshot) => {
         if (!isCurrent) {
           return;
         }
 
         setPredictPortfolioState({
           managerObjectId: activePredictManagerObjectId,
+          pnl: snapshot.pnl,
           refreshKey: predictPortfolioRefreshKey,
           status: "ready",
-          positions,
+          positions: snapshot.positions,
         });
       })
       .catch(() => {
@@ -1983,6 +2091,7 @@ export function App() {
 
         setPredictPortfolioState({
           managerObjectId: activePredictManagerObjectId,
+          pnl: idlePredictPortfolioPnl,
           refreshKey: predictPortfolioRefreshKey,
           status: "error",
           positions: [],
@@ -2177,6 +2286,19 @@ export function App() {
   const handleCloseCopyPanel = () => {
     setExpandedTraderId(null);
     setFrozenTraderOrder(null);
+  };
+
+  const handleDismissPortfolioPosition = (positionId: string) => {
+    if (!activePredictManagerObjectId) {
+      return;
+    }
+
+    setDismissedPortfolioPositionIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      nextIds.add(positionId);
+      writeDismissedPortfolioPositionIds(activePredictManagerObjectId, nextIds);
+      return nextIds;
+    });
   };
 
   const handleMarketHeatSelect = (rowId: string) => {
@@ -2679,6 +2801,8 @@ export function App() {
             depositAmount={depositAmount}
             onDeposit={handleDepositBankroll}
             onDepositAmountChange={handleDepositAmountChange}
+            pnlLabel={visiblePortfolioPnl.pnlLabel}
+            pnlTone={visiblePortfolioPnl.pnlTone}
             summary={accountSummary}
           />
           {activeView === "feed" ? (
@@ -2740,6 +2864,7 @@ export function App() {
               walletActionPending={isWalletActionPending}
               walletStatusLabel={walletTxState.label}
               walletSubmittedPositionId={portfolioWalletSubmitPositionId}
+              onDismissPosition={handleDismissPortfolioPosition}
               onPositionAction={handlePortfolioPositionAction}
             />
           )}

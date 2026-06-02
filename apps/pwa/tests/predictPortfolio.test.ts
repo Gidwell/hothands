@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   POSITION_MINTED_EVENT_TYPE,
   POSITION_REDEEMED_EVENT_TYPE,
+  buildPortfolioSnapshot,
   buildPortfolioPositions,
   createPredictPortfolioCloseQuoteClient,
   createPredictPortfolioSettlementClient,
   loadPredictPortfolio,
+  selectVisiblePortfolioPositions,
 } from "../src/predictPortfolio";
 
 describe("Predict portfolio", () => {
@@ -140,6 +142,133 @@ describe("Predict portfolio", () => {
       outcomeLabel: "Pays out",
       settlementPriceLabel: "$64,900.00",
     });
+  });
+
+  test("calculates all-time PnL from redeemed and settled positions", () => {
+    const snapshot = buildPortfolioSnapshot(
+      [
+        {
+          eventId: "mint-redeemed",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xoracle-redeemed",
+          expiry: 1_779_193_600,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 5_000_000,
+          cost: 2_000_000,
+          timestampMs: 1_779_100_000_000,
+        },
+        {
+          eventId: "redeem-win",
+          eventType: "redeem",
+          managerId: "0xmanager",
+          oracleId: "0xoracle-redeemed",
+          expiry: 1_779_193_600,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 5_000_000,
+          payout: 3_250_000,
+          timestampMs: 1_779_101_000_000,
+        },
+        {
+          eventId: "mint-settled-loss",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xoracle-loss",
+          expiry: 1_779_193_600,
+          strike: 65_000_000_000,
+          isUp: false,
+          quantity: 4_000_000,
+          cost: 1_500_000,
+          timestampMs: 1_779_102_000_000,
+        },
+        {
+          eventId: "mint-open",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xoracle-open",
+          expiry: 1_779_300_000,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 2_000_000,
+          cost: 900_000,
+          timestampMs: 1_779_103_000_000,
+        },
+      ],
+      {
+        nowMs: 1_779_194_000_000,
+        oracleSettlements: [
+          {
+            oracleId: "0xoracle-loss",
+            settlementPrice: 65_100,
+            status: "settled",
+          },
+        ],
+      },
+    );
+
+    expect(snapshot.pnl).toEqual({
+      costLabel: "$3.50",
+      payoutLabel: "$3.25",
+      pnlAtomic: "-250000",
+      pnlLabel: "-$0.25",
+      pnlTone: "negative",
+    });
+  });
+
+  test("filters old or dismissed no-payout expired positions", () => {
+    const freshNoPayout = {
+      actionLabel: "Dismiss" as const,
+      claimValueLabel: "$0",
+      costBasisLabel: "$1",
+      direction: "DOWN" as const,
+      dismissible: true,
+      expiry: 1_779_193_600,
+      expiryMs: 1_779_193_600_000,
+      expiryTimeLabel: "May 18, 2026, 9:46 PM",
+      id: "fresh-loss",
+      isExpired: true,
+      managerId: "0xmanager",
+      maxPayoutLabel: "$2",
+      oracleId: "0xfresh",
+      outcomeLabel: "No payout" as const,
+      quantity: "2000000",
+      settlementPriceLabel: "$65,100.00",
+      statusLabel: "Expired" as const,
+      strike: "65000000000",
+      strikeLabel: "$65,000.00",
+      timeLabel: "Expired",
+    };
+    const staleNoPayout = {
+      ...freshNoPayout,
+      expiryMs: 1_779_000_000_000,
+      id: "stale-loss",
+      oracleId: "0xstale",
+    };
+    const claimableWin = {
+      ...freshNoPayout,
+      actionLabel: "Claim" as const,
+      claimValueLabel: "$2",
+      dismissible: false,
+      id: "win",
+      oracleId: "0xwin",
+      outcomeLabel: "Pays out" as const,
+    };
+
+    expect(
+      selectVisiblePortfolioPositions([freshNoPayout, staleNoPayout, claimableWin], {
+        dismissedPositionIds: new Set<string>(),
+        nowMs: freshNoPayout.expiryMs + 60_000,
+      }).map((position) => position.id),
+    ).toEqual(["fresh-loss", "win"]);
+
+    expect(
+      selectVisiblePortfolioPositions([freshNoPayout, claimableWin], {
+        dismissedPositionIds: new Set(["fresh-loss"]),
+        nowMs: freshNoPayout.expiryMs + 60_000,
+      }).map((position) => position.id),
+    ).toEqual(["win"]);
   });
 
   test("shows an estimated close value for open positions", () => {

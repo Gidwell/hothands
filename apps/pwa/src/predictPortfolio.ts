@@ -42,15 +42,32 @@ export type PredictPortfolioPosition = {
   expiryTimeLabel: string;
   timeLabel: string;
   statusLabel: "Open" | "Expired";
-  actionLabel: "Redeem" | "Claim";
+  actionLabel: "Redeem" | "Claim" | "Dismiss";
+  maxPayoutAtomic: string;
   maxPayoutLabel: string;
+  costBasisAtomic: string;
   costBasisLabel: string;
   closeValueLabel?: string;
   closeValueStatusLabel?: "Quoted now";
+  claimValueAtomic?: string;
   claimValueLabel?: string;
+  dismissible?: boolean;
   outcomeLabel?: "Pays out" | "No payout" | "Settlement pending";
   settlementPriceLabel?: string;
   isExpired: boolean;
+};
+
+export type PredictPortfolioPnlSummary = {
+  costLabel: string;
+  payoutLabel: string;
+  pnlAtomic: string;
+  pnlLabel: string;
+  pnlTone: "positive" | "negative" | "flat";
+};
+
+export type PredictPortfolioSnapshot = {
+  pnl: PredictPortfolioPnlSummary;
+  positions: PredictPortfolioPosition[];
 };
 
 export type PredictPortfolioEventClient = {
@@ -95,6 +112,8 @@ export type LoadPredictPortfolioOptions = {
   settlementClient?: PredictPortfolioSettlementClient;
 };
 
+export const ZERO_PAYOUT_POSITION_HIDE_MS = 24 * 60 * 60 * 1000;
+
 type PortfolioAccumulator = {
   managerId: string;
   oracleId: string;
@@ -107,6 +126,14 @@ type PortfolioAccumulator = {
 };
 
 export async function loadPredictPortfolio({
+  ...options
+}: LoadPredictPortfolioOptions): Promise<PredictPortfolioPosition[]> {
+  const snapshot = await loadPredictPortfolioSnapshot(options);
+
+  return snapshot.positions;
+}
+
+export async function loadPredictPortfolioSnapshot({
   client = createPredictPortfolioEventClient(),
   limit = 50,
   managerObjectId,
@@ -114,7 +141,7 @@ export async function loadPredictPortfolio({
   nowMs = Date.now(),
   closeQuoteClient,
   settlementClient,
-}: LoadPredictPortfolioOptions): Promise<PredictPortfolioPosition[]> {
+}: LoadPredictPortfolioOptions): Promise<PredictPortfolioSnapshot> {
   const [mints, redeems] = await Promise.all([
     loadPortfolioEvents({
       client,
@@ -137,7 +164,7 @@ export async function loadPredictPortfolio({
   const events = [...mints, ...redeems];
   const positions = buildPortfolioPositions(events, { nowMs });
   if (positions.length === 0 || (!settlementClient && !closeQuoteClient)) {
-    return positions;
+    return buildPortfolioSnapshot(events, { nowMs });
   }
 
   const [oracleSettlements, closeQuotes] = await Promise.all([
@@ -145,11 +172,36 @@ export async function loadPredictPortfolio({
     closeQuoteClient ? loadCloseQuotes(positions, closeQuoteClient) : [],
   ]);
 
-  return buildPortfolioPositions(events, {
+  return buildPortfolioSnapshot(events, {
     closeQuotes,
     nowMs,
     oracleSettlements,
   });
+}
+
+export function buildPortfolioSnapshot(
+  events: PredictPortfolioEvent[],
+  {
+    closeQuotes = [],
+    nowMs = Date.now(),
+    oracleSettlements = [],
+  }: {
+    closeQuotes?: PredictPortfolioCloseQuote[];
+    nowMs?: number;
+    oracleSettlements?: PredictOracleSettlement[];
+  } = {},
+): PredictPortfolioSnapshot {
+  return {
+    pnl: buildPortfolioPnlSummary(events, {
+      nowMs,
+      oracleSettlements,
+    }),
+    positions: buildPortfolioPositions(events, {
+      closeQuotes,
+      nowMs,
+      oracleSettlements,
+    }),
+  };
 }
 
 export function buildPortfolioPositions(
@@ -218,6 +270,114 @@ export function buildPortfolioPositions(
       return closeQuote ? applyCloseQuote(builtPosition, closeQuote) : builtPosition;
     })
     .sort((left, right) => right.expiryMs - left.expiryMs || left.id.localeCompare(right.id));
+}
+
+export function selectVisiblePortfolioPositions(
+  positions: PredictPortfolioPosition[],
+  {
+    dismissedPositionIds = new Set<string>(),
+    nowMs = Date.now(),
+  }: {
+    dismissedPositionIds?: ReadonlySet<string>;
+    nowMs?: number;
+  } = {},
+): PredictPortfolioPosition[] {
+  return positions.filter((position) => {
+    if (!isZeroPayoutExpiredPosition(position)) {
+      return true;
+    }
+
+    if (dismissedPositionIds.has(position.id)) {
+      return false;
+    }
+
+    return nowMs - position.expiryMs < ZERO_PAYOUT_POSITION_HIDE_MS;
+  });
+}
+
+function buildPortfolioPnlSummary(
+  events: PredictPortfolioEvent[],
+  {
+    nowMs,
+    oracleSettlements,
+  }: {
+    nowMs: number;
+    oracleSettlements: PredictOracleSettlement[];
+  },
+): PredictPortfolioPnlSummary {
+  const positions = new Map<string, PortfolioAccumulator>();
+  const settlementsByOracleId = new Map(
+    oracleSettlements.map((settlement) => [settlement.oracleId, settlement]),
+  );
+  let cost = 0n;
+  let payout = 0n;
+
+  for (const event of [...events].sort(compareEventsByTime)) {
+    const key = positionKey(event);
+    const position =
+      positions.get(key) ??
+      {
+        managerId: event.managerId,
+        oracleId: event.oracleId,
+        expiry: event.expiry,
+        strike: event.strike,
+        isUp: event.isUp,
+        quantity: 0n,
+        costBasis: 0n,
+        lastTimestampMs: 0,
+      };
+    positions.set(key, position);
+    position.lastTimestampMs = Math.max(position.lastTimestampMs, event.timestampMs);
+
+    const quantity = atomicBigInt(event.quantity);
+    if (event.eventType === "mint") {
+      position.quantity += quantity;
+      position.costBasis += atomicBigInt(event.cost);
+      continue;
+    }
+
+    const removedQuantity = quantity > position.quantity ? position.quantity : quantity;
+    const removedCost =
+      position.quantity === 0n
+        ? 0n
+        : (position.costBasis * removedQuantity) / position.quantity;
+    position.quantity -= removedQuantity;
+    position.costBasis -= removedCost;
+    cost += removedCost;
+    payout += atomicBigInt(event.payout);
+  }
+
+  for (const position of positions.values()) {
+    if (position.quantity <= 0n || normalizeEpochMs(position.expiry) > nowMs) {
+      continue;
+    }
+
+    const settlementPrice = settledPrice(settlementsByOracleId.get(position.oracleId));
+    if (settlementPrice === null) {
+      continue;
+    }
+
+    cost += position.costBasis;
+    if (
+      didPositionWin({
+        isUp: position.isUp,
+        settlementPrice,
+        strike: position.strike,
+      })
+    ) {
+      payout += position.quantity;
+    }
+  }
+
+  const pnl = payout - cost;
+
+  return {
+    costLabel: formatDusdcBalance(cost),
+    payoutLabel: formatDusdcBalance(payout),
+    pnlAtomic: pnl.toString(),
+    pnlLabel: formatSignedDusdcBalance(pnl),
+    pnlTone: pnl > 0n ? "positive" : pnl < 0n ? "negative" : "flat",
+  };
 }
 
 export function createPredictPortfolioCloseQuoteClient({
@@ -343,6 +503,7 @@ function buildPortfolioPosition(
         })
       : null;
   const claimValue = didWin === null ? null : didWin ? position.quantity : 0n;
+  const isNoPayout = didWin === false;
 
   return {
     id: `${position.managerId}:${position.oracleId}:${position.expiry}:${position.strike}:${direction}`,
@@ -357,12 +518,16 @@ function buildPortfolioPosition(
     expiryTimeLabel: formatExpiryTime(expiryMs),
     timeLabel: formatPortfolioTimeRemaining(expiryMs, nowMs),
     statusLabel: isExpired ? "Expired" : "Open",
-    actionLabel: isExpired ? "Claim" : "Redeem",
+    actionLabel: isExpired ? (isNoPayout ? "Dismiss" : "Claim") : "Redeem",
+    maxPayoutAtomic: position.quantity.toString(),
     maxPayoutLabel: formatDusdcBalance(position.quantity),
+    costBasisAtomic: position.costBasis.toString(),
     costBasisLabel: formatDusdcBalance(position.costBasis),
     ...(isExpired
       ? {
+          claimValueAtomic: claimValue === null ? undefined : claimValue.toString(),
           claimValueLabel: claimValue === null ? undefined : formatDusdcBalance(claimValue),
+          dismissible: isNoPayout,
           outcomeLabel:
             didWin === null ? "Settlement pending" : didWin ? "Pays out" : "No payout",
           settlementPriceLabel:
@@ -558,6 +723,33 @@ function settledPrice(settlement: PredictOracleSettlement | undefined): number |
   }
 
   return settlement.settlementPrice;
+}
+
+function isZeroPayoutExpiredPosition(position: PredictPortfolioPosition): boolean {
+  return (
+    position.isExpired &&
+    (position.dismissible === true ||
+      position.outcomeLabel === "No payout" ||
+      position.claimValueAtomic === "0" ||
+      position.claimValueLabel === "$0")
+  );
+}
+
+function atomicBigInt(value: number | undefined): bigint {
+  if (!Number.isFinite(value)) {
+    return 0n;
+  }
+
+  return BigInt(Math.max(0, Math.trunc(value ?? 0)));
+}
+
+function formatSignedDusdcBalance(value: bigint): string {
+  if (value === 0n) {
+    return "$0";
+  }
+
+  const prefix = value > 0n ? "+" : "-";
+  return `${prefix}${formatDusdcBalance(value > 0n ? value : -value)}`;
 }
 
 function closeQuoteKey(quote: PredictPortfolioCloseQuote): string {

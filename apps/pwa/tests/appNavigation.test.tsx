@@ -59,6 +59,7 @@ describe("mobile app navigation", () => {
 
     expect(depositClicked).toBe(false);
     expect(html).toContain('aria-label="Account summary"');
+    expect(html).toContain("All-time PNL");
     expect(html).toContain("Available");
     expect(html).toContain('data-testid="available-wallet-balance"');
     expect(html).toContain("$42");
@@ -182,6 +183,46 @@ describe("mobile app navigation", () => {
     expect(html).toContain("No payout");
     expect(html).toContain("Settled BTC");
     expect(html).toContain("$65,100.00");
+  });
+
+  test("renders zero-payout expired portfolio rows as dismissible", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        positions={[
+          {
+            actionLabel: "Dismiss",
+            claimValueLabel: "$0",
+            costBasisLabel: "$2.50",
+            direction: "DOWN",
+            dismissible: true,
+            expiry: 1_779_000_000,
+            expiryMs: 1_779_000_000_000,
+            expiryTimeLabel: "May 16, 2026, 7:00 PM",
+            id: "position-expired-zero",
+            isExpired: true,
+            managerId: "0xmanager",
+            maxPayoutLabel: "$5",
+            oracleId: "0xoracle",
+            quantity: "5000000",
+            outcomeLabel: "No payout",
+            settlementPriceLabel: "$65,100.00",
+            statusLabel: "Expired",
+            strike: "65000000000",
+            strikeLabel: "$65,000.00",
+            timeLabel: "Expired",
+          },
+        ]}
+        walletActionPending={false}
+        walletStatusLabel={null}
+        walletSubmittedPositionId={null}
+        onDismissPosition={() => undefined}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("No payout");
+    expect(html).toContain("Dismiss</button>");
+    expect(html).not.toContain("Claim</button>");
   });
 
   test("renders portfolio time remaining from the current clock", () => {
