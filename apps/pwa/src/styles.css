@@ -72,7 +72,6 @@ button:disabled {
 .market-strip,
 .wallet-status-bar,
 .account-summary,
-.active-signal-strip,
 .trader-row,
 .market-heat-row {
   border: 1px solid #dbe5ee;
@@ -285,39 +284,6 @@ button:disabled {
   line-height: 1.05;
 }
 
-.active-signal-strip {
-  display: grid;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 10px;
-}
-
-.signal-strip-top {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.signal-strip-top strong {
-  display: block;
-  min-width: 0;
-  margin-top: 2px;
-  overflow: hidden;
-  color: #111827;
-  font-size: 0.9rem;
-  line-height: 1.12;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.signal-strip-top > span {
-  color: #42526b;
-  font-size: 0.72rem;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
 .bottom-nav button,
 .market-heat-sort button,
 .trader-row-main button,
@@ -362,23 +328,6 @@ button:disabled {
   min-height: 34px;
   border-radius: 8px;
   font-weight: 900;
-}
-
-.signal-strip-leader {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.signal-strip-leader strong {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  color: #111827;
-  font-size: 0.84rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .trader-list,
@@ -1307,7 +1256,6 @@ button:disabled {
 
   .market-strip,
   .account-summary,
-  .active-signal-strip,
   .trader-row,
   .market-heat-row {
     padding: 12px;
@@ -1317,7 +1265,6 @@ button:disabled {
     font-size: 1.42rem;
   }
 
-  .signal-strip-top,
   .alpha-call-line {
     grid-template-columns: 1fr;
   }

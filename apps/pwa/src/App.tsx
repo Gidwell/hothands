@@ -999,38 +999,6 @@ function TraderRow({
   );
 }
 
-function ActiveSignalStrip({
-  marketHeatSourceLabel,
-}: {
-  marketHeatSourceLabel: string;
-}) {
-  return (
-    <section
-      className="active-signal-strip active-signal-strip-market"
-      aria-label="Active signal"
-      data-testid="active-signal-strip"
-    >
-      <div className="signal-strip-top">
-        <div>
-          <p>Testnet Alpha</p>
-          <strong>
-            Live Predict wallets
-          </strong>
-        </div>
-        <span>User signs every copy</span>
-      </div>
-      <div className="signal-strip-leader">
-        <div>
-          <strong>
-            Observed BTC UP/DOWN mints
-          </strong>
-        </div>
-        <span>{marketHeatSourceLabel}</span>
-      </div>
-    </section>
-  );
-}
-
 export function PortfolioPanel({
   emptyLabel: emptyLabelOverride,
   nowMs,
@@ -2715,9 +2683,6 @@ export function App() {
           />
           {activeView === "feed" ? (
             <>
-              <ActiveSignalStrip
-                marketHeatSourceLabel={marketHeatPreview.sourceLabel}
-              />
               <MarketHeatPreview
                 rows={sortedMarketHeatRows}
                 sourceLabel={marketHeatPreview.sourceLabel}
