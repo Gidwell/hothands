@@ -1244,7 +1244,7 @@ export function PortfolioPanel({
                   <small>{position.isExpired ? "Claim value" : "Est. close"}</small>
                   {position.isExpired
                     ? position.claimValueLabel ?? "Checking"
-                    : position.closeValueLabel ?? "Checking"}
+                    : position.closeValueLabel ?? (status === "loading" ? "Checking" : "Unavailable")}
                 </span>
                 <span>
                   <small>Cost</small>

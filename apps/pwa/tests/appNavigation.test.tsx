@@ -123,6 +123,42 @@ describe("mobile app navigation", () => {
     expect(html).toContain("$65,100.00");
   });
 
+  test("shows unavailable instead of indefinite checking when an open close quote is missing", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        positions={[
+          {
+            actionLabel: "Redeem",
+            costBasisLabel: "$1.80",
+            direction: "UP",
+            expiry: 1_779_193_600,
+            expiryMs: 1_779_193_600_000,
+            expiryTimeLabel: "May 18, 2026, 9:46 PM",
+            id: "position-open",
+            isExpired: false,
+            managerId: "0xmanager",
+            maxPayoutLabel: "$4",
+            oracleId: "0xoracle",
+            quantity: "4000000",
+            statusLabel: "Open",
+            strike: "65000000000",
+            strikeLabel: "$65,000.00",
+            timeLabel: "1d left",
+          },
+        ]}
+        status="ready"
+        walletActionPending={false}
+        walletStatusLabel={null}
+        walletSubmittedPositionId={null}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Est. close");
+    expect(html).toContain("Unavailable");
+    expect(html).not.toContain("Checking");
+  });
+
   test("renders a standalone trade ticket for custom BTC bets", () => {
     const html = renderToStaticMarkup(
       <TradeTicket
