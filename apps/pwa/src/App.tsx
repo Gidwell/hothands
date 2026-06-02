@@ -200,6 +200,18 @@ function estimatePriceFromRow(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd"
   return costUsd / payoutUsd;
 }
 
+function formatObservedBuyAmount(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd">): string {
+  const costUsd =
+    row.costUsd ??
+    (row.cost === undefined || !Number.isFinite(row.cost) ? undefined : row.cost / 1_000_000);
+
+  if (costUsd === undefined || !Number.isFinite(costUsd)) {
+    return "Unknown";
+  }
+
+  return formatUsdValue(costUsd);
+}
+
 function formatUsdValue(amount: number): string {
   return `$${amount.toLocaleString("en-US", {
     maximumFractionDigits: 2,
@@ -1428,15 +1440,17 @@ export function MarketHeatPreview({
             </div>
             <div className="alpha-call-line">
               <div>
-                <span>{row.pairLabel}</span>
+                <span>
+                  {row.pairLabel} {row.strikeLabel.replace("Strike ", "")}
+                </span>
                 <strong className={`direction-pill direction-pill-${sideClass}`}>{row.side}</strong>
               </div>
               <span>{row.intervalLabel} market</span>
             </div>
-            <div className="trader-row-metrics" aria-label={`${row.displayName} market heat stats`}>
+            <div className="trader-row-metrics" aria-label={`${row.displayName} market stats`}>
               <span>
-                <small>Strike</small>
-                {row.strikeLabel.replace("Strike ", "")}
+                <small>Cost</small>
+                {formatObservedBuyAmount(row)}
               </span>
               <span>
                 <small>Expiry</small>

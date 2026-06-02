@@ -100,6 +100,10 @@ describe("MarketHeatPreview component", () => {
     );
 
     expect(html).toContain("Spend</small>$375");
+    expect(html).toContain("BTC/USD $7,100");
+    expect(html).toContain("Cost</small>$0.40");
+    expect(html).toContain("Heat</small>94");
+    expect(html).not.toContain("Strike</small>");
     expect(html).toContain("Est. payout</small>$937.50");
     expect(html).toContain("Max profit</small>+$562.50");
     expect(html).toContain('data-testid="market-heat-wallet-submit"');
