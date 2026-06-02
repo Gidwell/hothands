@@ -6,8 +6,8 @@ describe("app preview mode", () => {
     expect(getInitialPreviewMode("http://127.0.0.1:8789")).toBe("market");
   });
 
-  test("keeps replay mode when testnet API config is absent", () => {
-    expect(getInitialPreviewMode(undefined)).toBe("replay");
-    expect(getInitialPreviewMode("")).toBe("replay");
+  test("defaults to testnet mode with captured data when testnet API config is absent", () => {
+    expect(getInitialPreviewMode(undefined)).toBe("market");
+    expect(getInitialPreviewMode("")).toBe("market");
   });
 });

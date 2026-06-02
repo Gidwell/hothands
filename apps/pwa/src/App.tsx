@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
+import { useEffect, useMemo, useState, type SyntheticEvent } from "react";
 import {
   useCurrentClient,
   useCurrentAccount,
@@ -16,7 +16,6 @@ import {
   COPY_AMOUNT_MAX,
   COPY_AMOUNT_MIN,
   formatCopyAmount,
-  getSelectedTrader,
   markCopySubmitted,
   selectHotTrader,
   setCopyAmount,
@@ -31,25 +30,9 @@ import {
   getReplayAccountSummary,
   getReplayFrame,
   getReplayTraders,
-  REPLAY_SCENARIOS,
-  resetReplay,
-  selectReplayScenario,
   setReplayPlaying,
   updateReplayCopy,
-  type ReplayScenarioId,
 } from "./replayModel";
-import { produceRealtimeActivityTraceById } from "@hot-hands/demo-runner";
-import {
-  createInitialRealtimeActivityState,
-} from "./realtimeActivityModel";
-import { applyRealtimeActivityServerMessageJson } from "./realtimeActivityStreamClient";
-import {
-  createLiveActivityMode,
-  createReplayLiveActivitySnapshot,
-  type LiveActivityModeController,
-  type LiveActivityModeSnapshot,
-  type LiveActivityModeStatus,
-} from "./liveActivityMode";
 import {
   buildMarketHeatIntentPanel,
   buildMarketHeatPreview,
@@ -149,8 +132,8 @@ const idleWalletTransactionState: WalletTransactionState = {
 };
 const PREDICT_MANAGER_STORAGE_KEY = "hot-hands-predict-manager-id";
 
-export function getInitialPreviewMode(apiBaseUrl: string | undefined): PreviewMode {
-  return apiBaseUrl ? "market" : "replay";
+export function getInitialPreviewMode(_apiBaseUrl: string | undefined): PreviewMode {
+  return "market";
 }
 
 function formatQuickAmount(amount: number): string {
@@ -1016,203 +999,34 @@ function TraderRow({
   );
 }
 
-function ReplayControls({
-  isPlaying,
-  scenarioId,
-  onReplayToggle,
-  onReplayNext,
-  onReplayReset,
-  onScenarioChange,
-}: {
-  isPlaying: boolean;
-  scenarioId: ReplayScenarioId;
-  onReplayToggle: () => void;
-  onReplayNext: () => void;
-  onReplayReset: () => void;
-  onScenarioChange: (scenarioId: ReplayScenarioId) => void;
-}) {
-  return (
-    <div className="demo-controls" aria-label="Demo controls">
-      <select
-        aria-label="Demo scenario"
-        data-testid="scenario-selector"
-        value={scenarioId}
-        onChange={(event) => onScenarioChange(event.currentTarget.value as ReplayScenarioId)}
-      >
-        {REPLAY_SCENARIOS.map((availableScenario) => (
-          <option key={availableScenario.id} value={availableScenario.id}>
-            {availableScenario.title}
-          </option>
-        ))}
-      </select>
-      <div className="demo-buttons" aria-label="Replay controls">
-        <button type="button" onClick={onReplayToggle}>
-          {isPlaying ? "Pause" : "Play"}
-        </button>
-        <button type="button" data-testid="replay-next" onClick={onReplayNext}>
-          Next
-        </button>
-        <button type="button" data-testid="replay-reset" onClick={onReplayReset}>
-          Reset
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SpectatorRail({
-  spectatorCount,
-  activity,
-  activitySource,
-  activityStatus,
-  activityStatusLabel,
-}: {
-  spectatorCount: number;
-  activity: string[];
-  activitySource?: string;
-  activityStatus: LiveActivityModeStatus;
-  activityStatusLabel: string;
-}) {
-  const latestActivity = activity[0] ?? "Waiting for live BTC activity";
-
-  return (
-    <section
-      className="spectator-rail"
-      aria-label="Live testnet activity"
-      data-source={activitySource}
-      data-status={activityStatus}
-      data-testid="spectator-rail"
-    >
-      <div className="spectator-copy">
-        <span>Live status</span>
-        <strong>{spectatorCount.toLocaleString()}</strong>
-        <span>
-          wallets watched /{" "}
-          <span
-            className="activity-source-status"
-            data-testid="activity-connection-status"
-            role="status"
-          >
-            {activityStatusLabel}
-          </span>
-        </span>
-      </div>
-      <div className="activity-ticker" aria-label="Market activity">
-        <span>{latestActivity}</span>
-      </div>
-    </section>
-  );
-}
-
-function ModeSwitch({
-  mode,
-  onModeChange,
-}: {
-  mode: PreviewMode;
-  onModeChange: (mode: PreviewMode) => void;
-}) {
-  return (
-    <div className="mode-switch" aria-label="Preview mode">
-      <button
-        type="button"
-        aria-pressed={mode === "replay"}
-        onClick={() => onModeChange("replay")}
-      >
-        Demo
-      </button>
-      <button
-        type="button"
-        aria-pressed={mode === "market"}
-        data-testid="market-heat-mode"
-        onClick={() => onModeChange("market")}
-      >
-        Testnet
-      </button>
-    </div>
-  );
-}
-
 function ActiveSignalStrip({
-  frame,
-  receiptState,
-  copyAmount,
-  isPlaying,
-  scenarioId,
-  mode,
-  onReplayToggle,
-  onReplayNext,
-  onReplayReset,
-  onScenarioChange,
-  onModeChange,
   marketHeatSourceLabel,
 }: {
-  frame: ReturnType<typeof getReplayFrame>;
-  receiptState: string;
-  copyAmount: number;
-  isPlaying: boolean;
-  scenarioId: ReplayScenarioId;
-  mode: PreviewMode;
-  onReplayToggle: () => void;
-  onReplayNext: () => void;
-  onReplayReset: () => void;
-  onScenarioChange: (scenarioId: ReplayScenarioId) => void;
-  onModeChange: (mode: PreviewMode) => void;
   marketHeatSourceLabel: string;
 }) {
-  const [isDemoOpen, setIsDemoOpen] = useState(false);
-
   return (
     <section
-      className={`active-signal-strip active-signal-strip-${frame.phase}`}
+      className="active-signal-strip active-signal-strip-market"
       aria-label="Active signal"
       data-testid="active-signal-strip"
     >
       <div className="signal-strip-top">
         <div>
-          <p>{mode === "market" ? "Testnet Alpha" : frame.status}</p>
+          <p>Testnet Alpha</p>
           <strong>
-            {mode === "market"
-              ? "Live Predict wallets"
-              : frame.latestSignal}
+            Live Predict wallets
           </strong>
         </div>
-        <span>
-          {mode === "market"
-            ? "User signs every copy"
-            : receiptState === "Disarmed"
-            ? `Ready / ${formatCopyAmount(copyAmount)}`
-            : `${receiptState} / ${formatCopyAmount(copyAmount)}`}
-        </span>
-        <button
-          type="button"
-          className="demo-toggle"
-          aria-expanded={isDemoOpen}
-          onClick={() => setIsDemoOpen((isOpen) => !isOpen)}
-        >
-          Tools
-        </button>
+        <span>User signs every copy</span>
       </div>
-      <ModeSwitch mode={mode} onModeChange={onModeChange} />
       <div className="signal-strip-leader">
         <div>
           <strong>
-            {mode === "market"
-              ? "Observed BTC UP/DOWN mints"
-              : frame.latestSignal}
+            Observed BTC UP/DOWN mints
           </strong>
         </div>
-        <span>{mode === "market" ? marketHeatSourceLabel : frame.stepLabel}</span>
+        <span>{marketHeatSourceLabel}</span>
       </div>
-      {isDemoOpen ? (
-        <ReplayControls
-          isPlaying={isPlaying}
-          scenarioId={scenarioId}
-          onReplayToggle={onReplayToggle}
-          onReplayNext={onReplayNext}
-          onReplayReset={onReplayReset}
-          onScenarioChange={onScenarioChange}
-        />
-      ) : null}
     </section>
   );
 }
@@ -1792,13 +1606,7 @@ export function App() {
     status: "idle",
     quote: null,
   });
-  const [previewMode, setPreviewMode] = useState<PreviewMode>(() =>
-    getInitialPreviewMode(realtimeApiBaseUrl),
-  );
-  const [liveActivitySnapshotState, setLiveActivitySnapshotState] = useState<{
-    key: string;
-    snapshot: LiveActivityModeSnapshot;
-  } | null>(null);
+  const previewMode = getInitialPreviewMode(realtimeApiBaseUrl);
   const [marketHeatPreview, setMarketHeatPreview] = useState<MarketHeatPreviewModel>(() =>
     buildMarketHeatPreview(),
   );
@@ -1812,15 +1620,9 @@ export function App() {
   });
   const [marketHeatWalletSubmitRowId, setMarketHeatWalletSubmitRowId] =
     useState<string | null>(null);
-  const liveActivityModeRef = useRef<LiveActivityModeController | null>(null);
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
   const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
   const copyState = replayState.copy;
-  const liveActivityKey = `${scenario.id}:${scenario.tableId}:${realtimeApiBaseUrl ?? ""}`;
-  const realtimeTrace = useMemo(
-    () => produceRealtimeActivityTraceById(scenario.id),
-    [scenario.id],
-  );
   const replayTraders = useMemo(
     () => getReplayTraders(replayState, scenario),
     [replayState, scenario],
@@ -1905,34 +1707,9 @@ export function App() {
     () => getReplayFrame(replayState, scenario, market),
     [replayState, scenario],
   );
-  const replayActivity = useMemo(() => {
-    const sourceSequence = scenario.frames[replayState.step]?.source.sequence ?? 0;
-    const visibleTrace = realtimeTrace.filter(
-      (item) => item.sourceSequence <= sourceSequence,
-    );
-
-    return visibleTrace.reduce(
-      (state, item) =>
-        applyRealtimeActivityServerMessageJson(state, JSON.stringify(item)),
-      createInitialRealtimeActivityState(),
-    );
-  }, [realtimeTrace, replayState.step, scenario.frames]);
-  const fallbackActivitySnapshot = useMemo(
-    () => createReplayLiveActivitySnapshot(replayActivity),
-    [replayActivity],
-  );
-  const liveActivitySnapshot =
-    liveActivitySnapshotState?.key === liveActivityKey
-      ? liveActivitySnapshotState.snapshot
-      : fallbackActivitySnapshot;
-  const selectedTrader = getSelectedTrader(copyState, replayTraders);
   const hotTrader = replayTraders.find((trader) => trader.name === frame.hotHand.leader);
   const accountSummary = getReplayAccountSummary(replayState, frame);
   const receipt = frame.copyReceipt;
-  const spectatorCount = scenario.spectators.length + selectedTrader.copied + selectedTrader.streak * 7;
-  const activity = liveActivitySnapshot.activity.latestActivity
-    ? [liveActivitySnapshot.activity.latestActivity.label]
-    : frame.activity;
   const isWalletActionPending = walletTxState.status === "pending";
   const connectedAccountAddress = currentAccount?.address ?? null;
   const liveDusdcBalanceLabel =
@@ -2250,33 +2027,6 @@ export function App() {
   }, [activePredictManagerObjectId, predictPortfolioRefreshKey, realtimeApiBaseUrl]);
 
   useEffect(() => {
-    const setSnapshot = (snapshot: LiveActivityModeSnapshot) => {
-      setLiveActivitySnapshotState({
-        key: liveActivityKey,
-        snapshot,
-      });
-    };
-    const mode = createLiveActivityMode({
-      apiBaseUrl: realtimeApiBaseUrl,
-      tableId: scenario.tableId,
-      spectatorId: "spectator-local",
-      replayActivity,
-      onSnapshot: setSnapshot,
-    });
-
-    liveActivityModeRef.current = mode;
-    setSnapshot(mode.snapshot);
-
-    return () => {
-      if (liveActivityModeRef.current === mode) {
-        liveActivityModeRef.current = null;
-      }
-
-      mode.close();
-    };
-  }, [liveActivityKey, realtimeApiBaseUrl, scenario.tableId]);
-
-  useEffect(() => {
     let isCurrent = true;
     let isRefreshing = false;
 
@@ -2311,10 +2061,6 @@ export function App() {
       window.clearInterval(refreshTimer);
     };
   }, [previewMode, realtimeApiBaseUrl]);
-
-  useEffect(() => {
-    liveActivityModeRef.current?.updateReplayActivity(replayActivity);
-  }, [replayActivity]);
 
   useEffect(() => {
     if (
@@ -2423,15 +2169,6 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [activePredictManagerObjectId, activeView]);
 
-  const handleScenarioChange = (scenarioId: ReplayScenarioId) => {
-    const nextScenario = createReplayScenario(scenarioId);
-
-    setScenario(nextScenario);
-    setReplayState((state) => selectReplayScenario(state, nextScenario));
-    setExpandedTraderId(null);
-    setFrozenTraderOrder(null);
-  };
-
   const handleTraderSelect = (traderId: string) => {
     setReplayState((state) =>
       setReplayPlaying(
@@ -2472,29 +2209,6 @@ export function App() {
   const handleCloseCopyPanel = () => {
     setExpandedTraderId(null);
     setFrozenTraderOrder(null);
-  };
-
-  const handleReplayToggle = () => {
-    setReplayState((state) => setReplayPlaying(state, !state.isPlaying));
-  };
-
-  const handleReplayNext = () => {
-    setReplayState((state) => advanceReplay(setReplayPlaying(state, false), scenario));
-  };
-
-  const handleReplayReset = () => {
-    setReplayState((state) => resetReplay(state));
-    setExpandedTraderId(null);
-    setFrozenTraderOrder(null);
-  };
-
-  const handlePreviewModeChange = (mode: PreviewMode) => {
-    setPreviewMode(mode);
-
-    if (mode !== "market") {
-      setMarketHeatIntent((state) => closeMarketHeatIntent(state));
-      setMarketHeatWalletSubmitRowId(null);
-    }
   };
 
   const handleMarketHeatSelect = (rowId: string) => {
@@ -3002,64 +2716,29 @@ export function App() {
           {activeView === "feed" ? (
             <>
               <ActiveSignalStrip
-                frame={frame}
-                receiptState={receipt.state}
-                copyAmount={copyState.copyAmount}
-                isPlaying={replayState.isPlaying}
-                scenarioId={scenario.id}
-                mode={previewMode}
-                onReplayToggle={handleReplayToggle}
-                onReplayNext={handleReplayNext}
-                onReplayReset={handleReplayReset}
-                onScenarioChange={handleScenarioChange}
-                onModeChange={handlePreviewModeChange}
                 marketHeatSourceLabel={marketHeatPreview.sourceLabel}
               />
-              <SpectatorRail
-                spectatorCount={spectatorCount}
-                activity={activity}
-                activitySource={liveActivitySnapshot.dataSource}
-                activityStatus={liveActivitySnapshot.status}
-                activityStatusLabel={liveActivitySnapshot.statusLabel}
+              <MarketHeatPreview
+                rows={sortedMarketHeatRows}
+                sourceLabel={marketHeatPreview.sourceLabel}
+                sortMode={marketHeatSortMode}
+                showExpired={marketHeatShowExpired}
+                canShowMore={marketHeatRemainingCount > 0}
+                selectedRowId={marketHeatIntent.selectedRowId}
+                walletSubmitRowId={marketHeatWalletSubmitRowId}
+                walletSubmitLabel={
+                  marketHeatWalletSubmitRowId ? walletTxState.label : null
+                }
+                copyAmount={copyState.copyAmount}
+                showMoreLabel={marketHeatShowMoreLabel}
+                onAmountSet={handleAmountSet}
+                onShowExpiredChange={handleMarketHeatShowExpiredChange}
+                onShowMore={handleMarketHeatShowMore}
+                onSortModeChange={handleMarketHeatSortModeChange}
+                onWalletSubmit={handleMarketHeatWalletSubmit}
+                onSelectRow={handleMarketHeatSelect}
+                onCloseIntent={handleMarketHeatClose}
               />
-              {previewMode === "market" ? (
-                <MarketHeatPreview
-                  rows={sortedMarketHeatRows}
-                  sourceLabel={marketHeatPreview.sourceLabel}
-                  sortMode={marketHeatSortMode}
-                  showExpired={marketHeatShowExpired}
-                  canShowMore={marketHeatRemainingCount > 0}
-                  selectedRowId={marketHeatIntent.selectedRowId}
-                  walletSubmitRowId={marketHeatWalletSubmitRowId}
-                  walletSubmitLabel={
-                    marketHeatWalletSubmitRowId ? walletTxState.label : null
-                  }
-                  copyAmount={copyState.copyAmount}
-                  showMoreLabel={marketHeatShowMoreLabel}
-                  onAmountSet={handleAmountSet}
-                  onShowExpiredChange={handleMarketHeatShowExpiredChange}
-                  onShowMore={handleMarketHeatShowMore}
-                  onSortModeChange={handleMarketHeatSortModeChange}
-                  onWalletSubmit={handleMarketHeatWalletSubmit}
-                  onSelectRow={handleMarketHeatSelect}
-                  onCloseIntent={handleMarketHeatClose}
-                />
-              ) : (
-                <HotTraderList
-                  traders={displayedTraders}
-                  selectedTraderId={copyState.selectedTraderId}
-                  expandedTraderId={expandedTraderId}
-                  receiptState={receipt.state}
-                  copyAmount={copyState.copyAmount}
-                  hotTraderId={hotTrader?.id ?? ""}
-                  onCopy={handleTraderSelect}
-                  onAmountStep={handleAmountStep}
-                  onAmountSet={handleAmountSet}
-                  onArmToggle={handleArmToggle}
-                  onConfirmCopy={handleConfirmCopy}
-                  onClose={handleCloseCopyPanel}
-                />
-              )}
             </>
           ) : activeView === "trade" ? (
             <TradeTicket

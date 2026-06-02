@@ -73,7 +73,6 @@ button:disabled {
 .wallet-status-bar,
 .account-summary,
 .active-signal-strip,
-.spectator-rail,
 .trader-row,
 .market-heat-row {
   border: 1px solid #dbe5ee;
@@ -319,8 +318,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-.demo-toggle,
-.mode-switch button,
 .bottom-nav button,
 .market-heat-sort button,
 .trader-row-main button,
@@ -331,8 +328,7 @@ button:disabled {
 .wallet-submit-button,
 .trade-side-toggle button,
 .trade-intervals button,
-.trade-wallet-button,
-.demo-buttons button {
+.trade-wallet-button {
   min-height: 32px;
   border-radius: 8px;
   font-weight: 900;
@@ -368,33 +364,6 @@ button:disabled {
   font-weight: 900;
 }
 
-.demo-toggle {
-  padding: 0 10px;
-  color: #6246ea;
-  background: #efeafe;
-}
-
-.mode-switch {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
-  padding: 3px;
-  border-radius: 8px;
-  background: #eef3f8;
-}
-
-.mode-switch button {
-  color: #667085;
-  background: transparent;
-  font-size: 0.78rem;
-}
-
-.mode-switch button[aria-pressed="true"] {
-  color: #ffffff;
-  background: #6246ea;
-  box-shadow: 0 8px 18px rgba(98, 70, 234, 0.22);
-}
-
 .signal-strip-leader {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -410,73 +379,6 @@ button:disabled {
   font-size: 0.84rem;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.demo-controls {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-}
-
-.demo-controls select {
-  min-width: 0;
-  min-height: 38px;
-  padding: 0 10px;
-  border: 1px solid #dbe5ee;
-  border-radius: 8px;
-  color: #111827;
-  background: #ffffff;
-  font-weight: 800;
-}
-
-.demo-buttons {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(44px, 1fr));
-  gap: 6px;
-}
-
-.demo-buttons button {
-  padding: 0 8px;
-  color: #42526b;
-  background: #eef3f8;
-  font-size: 0.72rem;
-}
-
-.spectator-rail {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-  margin-top: 8px;
-  padding: 8px 10px;
-}
-
-.spectator-copy {
-  display: grid;
-  gap: 1px;
-}
-
-.spectator-copy strong {
-  color: #111827;
-  font-size: 1.08rem;
-  line-height: 1;
-}
-
-.spectator-rail[data-status="live"] .activity-source-status {
-  color: #16a34a;
-}
-
-.spectator-rail[data-status="connecting"] .activity-source-status {
-  color: #2563eb;
-}
-
-.activity-ticker {
-  min-width: 0;
-  overflow: hidden;
-  color: #42526b;
-  font-size: 0.76rem;
-  font-weight: 800;
-  text-align: right;
 }
 
 .trader-list,
@@ -1406,7 +1308,6 @@ button:disabled {
   .market-strip,
   .account-summary,
   .active-signal-strip,
-  .spectator-rail,
   .trader-row,
   .market-heat-row {
     padding: 12px;
@@ -1417,13 +1318,8 @@ button:disabled {
   }
 
   .signal-strip-top,
-  .spectator-rail,
   .alpha-call-line {
     grid-template-columns: 1fr;
-  }
-
-  .activity-ticker {
-    text-align: left;
   }
 
   .market-heat-intent-meta {
