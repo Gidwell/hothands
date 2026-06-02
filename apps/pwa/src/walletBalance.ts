@@ -1,4 +1,9 @@
 import { DEEPBOOK_PREDICT_TESTNET_TX_CONFIG } from "@hot-hands/contracts";
+import {
+  getJsonRpcFullnodeUrl,
+  SuiJsonRpcClient,
+} from "@mysten/sui/jsonRpc";
+import { Transaction } from "@mysten/sui/transactions";
 
 export const DUSDC_COIN_TYPE = DEEPBOOK_PREDICT_TESTNET_TX_CONFIG.quoteAssetType;
 const DUSDC_SCALE = 1_000_000n;
@@ -15,6 +20,29 @@ export type DusdcBalanceClient = {
           addressBalance?: string;
         }
       | undefined;
+  }>;
+};
+
+export type PredictManagerBankrollClient = {
+  getObject?: unknown;
+  devInspectTransactionBlock?: unknown;
+};
+
+export type DusdcDepositCoin = {
+  coinObjectId: string;
+  balance: string;
+};
+
+export type DusdcDepositCoinClient = {
+  getCoins(input: {
+    owner: string;
+    coinType: string;
+  }): Promise<{
+    data: Array<{
+      coinObjectId?: string;
+      balance?: string;
+      coinBalance?: string;
+    }>;
   }>;
 };
 
@@ -36,6 +64,171 @@ export async function loadDusdcBalanceLabel({
     "0";
 
   return formatDusdcBalance(atomicBalance);
+}
+
+export async function loadPredictManagerBankrollLabel({
+  client,
+  predictManagerObjectId,
+}: {
+  client: PredictManagerBankrollClient;
+  predictManagerObjectId: string;
+}): Promise<string> {
+  const atomicBalance = await loadPredictManagerBankrollAtomic({
+    client,
+    predictManagerObjectId,
+  });
+
+  return formatDusdcBalance(atomicBalance);
+}
+
+export async function loadPredictManagerBankrollAtomic({
+  client,
+  predictManagerObjectId,
+  sender,
+}: {
+  client: PredictManagerBankrollClient;
+  predictManagerObjectId: string;
+  sender?: string;
+}): Promise<bigint> {
+  const response = await getPredictManagerObject(client, predictManagerObjectId);
+  const atomicBalance = readAtomicBalanceField(response.data?.content);
+
+  if (atomicBalance !== null || !isFunction(client.devInspectTransactionBlock)) {
+    return atomicBalance ?? 0n;
+  }
+
+  const devInspectTransactionBlock = client.devInspectTransactionBlock as (input: {
+    sender: string;
+    transactionBlock: Transaction;
+  }) => Promise<{
+    results?: Array<{
+      returnValues?: unknown[];
+    }>;
+  }>;
+
+  return loadPredictManagerBankrollAtomicByMoveCall({
+    devInspectTransactionBlock: (input) =>
+      devInspectTransactionBlock.call(client, input),
+    predictManagerObjectId,
+    sender,
+  });
+}
+
+export async function selectDusdcDepositCoin({
+  amount,
+  client = createDusdcDepositCoinClient(),
+  owner,
+}: {
+  amount: string | bigint;
+  client?: DusdcDepositCoinClient;
+  owner: string;
+}): Promise<DusdcDepositCoin> {
+  const targetAmount = typeof amount === "bigint" ? amount : parseAtomicBalance(amount);
+  const response = await client.getCoins({
+    owner,
+    coinType: DUSDC_COIN_TYPE,
+  });
+  const coin = response.data.find((candidate) => {
+    if (!candidate.coinObjectId) {
+      return false;
+    }
+
+    return parseAtomicBalance(candidate.balance ?? candidate.coinBalance ?? "0") >= targetAmount;
+  });
+
+  if (!coin?.coinObjectId) {
+    throw new Error("Not enough DUSDC available in one wallet coin to deposit.");
+  }
+
+  return {
+    coinObjectId: coin.coinObjectId,
+    balance: coin.balance ?? coin.coinBalance ?? "0",
+  };
+}
+
+export function usdToDusdcAtomic(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Deposit amount must be positive.");
+  }
+
+  return String(BigInt(Math.round(amount * Number(DUSDC_SCALE))));
+}
+
+async function loadPredictManagerBankrollAtomicByMoveCall({
+  devInspectTransactionBlock,
+  predictManagerObjectId,
+  sender,
+}: {
+  devInspectTransactionBlock: (input: {
+    sender: string;
+    transactionBlock: Transaction;
+  }) => Promise<{
+    results?: Array<{
+      returnValues?: unknown[];
+    }>;
+  }>;
+  predictManagerObjectId: string;
+  sender?: string;
+}): Promise<bigint> {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${DEEPBOOK_PREDICT_TESTNET_TX_CONFIG.predictPackageId}::predict_manager::balance`,
+    typeArguments: [DUSDC_COIN_TYPE],
+    arguments: [tx.object(predictManagerObjectId)],
+  });
+
+  const result = await devInspectTransactionBlock({
+    sender: sender ?? "0x0000000000000000000000000000000000000000000000000000000000000000",
+    transactionBlock: tx,
+  });
+
+  return readU64ReturnValue(result.results?.[0]?.returnValues?.[0]) ?? 0n;
+}
+
+async function getPredictManagerObject(
+  client: PredictManagerBankrollClient,
+  predictManagerObjectId: string,
+): Promise<{
+  data?:
+    | {
+        content?: unknown;
+      }
+    | undefined;
+}> {
+  if (!isFunction(client.getObject)) {
+    throw new Error("Sui client cannot load PredictManager objects.");
+  }
+
+  const getObject = client.getObject as (input: unknown) => Promise<{
+    data?:
+      | {
+          content?: unknown;
+        }
+      | undefined;
+  }>;
+
+  try {
+    return await getObject.call(client, {
+      id: predictManagerObjectId,
+      options: {
+        showContent: true,
+      },
+    });
+  } catch (error) {
+    return getObject.call(client, {
+      objectId: predictManagerObjectId,
+      options: {
+        showContent: true,
+      },
+    });
+  }
+}
+
+function createDusdcDepositCoinClient(): DusdcDepositCoinClient {
+  return new SuiJsonRpcClient({
+    url: getJsonRpcFullnodeUrl("testnet"),
+    network: "testnet",
+  }) as unknown as DusdcDepositCoinClient;
 }
 
 export function formatDusdcBalance(atomicBalance: string | bigint): string {
@@ -62,6 +255,67 @@ export function formatDusdcBalance(atomicBalance: string | bigint): string {
 
 function parseAtomicBalance(value: string): bigint {
   return /^\d+$/.test(value) ? BigInt(value) : 0n;
+}
+
+function readAtomicBalanceField(content: unknown): bigint | null {
+  const fields = readMoveObjectFields(content);
+  if (!fields) {
+    return null;
+  }
+
+  return (
+    readAtomicField(fields.bankroll) ??
+    readAtomicField(fields.balance) ??
+    readAtomicField(fields.available) ??
+    readAtomicField(fields.quoteBalance) ??
+    readAtomicField(fields.quote_balance)
+  );
+}
+
+function readMoveObjectFields(content: unknown): Record<string, unknown> | null {
+  if (!content || typeof content !== "object") {
+    return null;
+  }
+
+  const dataType = "dataType" in content ? (content as { dataType?: unknown }).dataType : null;
+  if (dataType !== "moveObject") {
+    return null;
+  }
+
+  const fields = "fields" in content ? (content as { fields?: unknown }).fields : null;
+  return fields && typeof fields === "object" ? (fields as Record<string, unknown>) : null;
+}
+
+function readAtomicField(value: unknown): bigint | null {
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    return BigInt(value);
+  }
+
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return BigInt(value);
+  }
+
+  return null;
+}
+
+function readU64ReturnValue(value: unknown): bigint | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const bytes = Array.isArray(value[0]) ? value[0] : value;
+  if (!bytes.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+    return null;
+  }
+
+  return (bytes as number[]).reduceRight(
+    (total, byte) => (total << 8n) + BigInt(byte),
+    0n,
+  );
+}
+
+function isFunction(value: unknown): value is (...args: unknown[]) => unknown {
+  return typeof value === "function";
 }
 
 function formatAtomicUnits(value: bigint, decimals: number): string {

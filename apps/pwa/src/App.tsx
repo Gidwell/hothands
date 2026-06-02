@@ -8,7 +8,10 @@ import {
   useWalletConnection,
   useWallets,
 } from "@mysten/dapp-kit-react";
-import { buildCreatePredictManagerTransaction } from "@hot-hands/contracts";
+import {
+  buildCreatePredictManagerTransaction,
+  buildDepositQuoteTransaction,
+} from "@hot-hands/contracts";
 import {
   COPY_AMOUNT_MAX,
   COPY_AMOUNT_MIN,
@@ -66,7 +69,13 @@ import {
   type TradeStrikeOption,
 } from "./marketHeatModel";
 import { buildTradeMintTransaction } from "./walletTransactions";
-import { loadDusdcBalanceLabel } from "./walletBalance";
+import {
+  formatDusdcBalance,
+  loadDusdcBalanceLabel,
+  loadPredictManagerBankrollAtomic,
+  selectDusdcDepositCoin,
+  usdToDusdcAtomic,
+} from "./walletBalance";
 import { findPredictManagerForOwner } from "./predictManager";
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
@@ -92,6 +101,14 @@ type DusdcBalanceState = {
   accountAddress: string | null;
   refreshKey: number;
   status: "idle" | "loading" | "ready" | "error";
+  label: string | null;
+};
+type PredictManagerBankrollState = {
+  accountAddress: string | null;
+  managerObjectId: string | null;
+  refreshKey: number;
+  status: "idle" | "loading" | "ready" | "error";
+  atomicBalance: bigint | null;
   label: string | null;
 };
 type PredictManagerStatus = "idle" | "checking" | "ready" | "missing" | "error";
@@ -364,6 +381,10 @@ function walletResultError(result: unknown): string | null {
   }
 
   return "Transaction failed.";
+}
+
+function parseAtomicQuoteCost(cost: string): bigint | null {
+  return /^\d+$/.test(cost) ? BigInt(cost) : null;
 }
 
 function readStoredPredictManagerObjectId(accountAddress: string | null): string | null {
@@ -1396,13 +1417,15 @@ function MarketHeader({
   );
 }
 
-function AccountSummary({
+export function AccountSummary({
   availableLabel = null,
   bankrollLabel = null,
+  onDeposit,
   summary,
 }: {
   availableLabel?: string | null;
   bankrollLabel?: string | null;
+  onDeposit?: () => void;
   summary: ReturnType<typeof getReplayAccountSummary>;
 }) {
   return (
@@ -1418,13 +1441,27 @@ function AccountSummary({
         </div>
         <div className="account-value">
           <span>Bankroll</span>
-          <strong data-testid="account-value">{bankrollLabel ?? summary.accountValue}</strong>
+          <strong data-testid="predict-bankroll-balance">
+            {bankrollLabel ?? summary.accountValue}
+          </strong>
+          {onDeposit ? (
+            <button
+              type="button"
+              className="account-deposit-button"
+              data-testid="deposit-bankroll"
+              onClick={onDeposit}
+            >
+              Deposit
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="account-summary-stats">
         <div>
-          <span>Avail</span>
-          <strong>{availableLabel ?? summary.available}</strong>
+          <span>Available</span>
+          <strong data-testid="available-wallet-balance">
+            {availableLabel ?? summary.available}
+          </strong>
         </div>
         <div>
           <span>Copy</span>
@@ -1526,6 +1563,17 @@ export function App() {
     status: "idle",
     label: null,
   });
+  const [predictManagerBankrollRefreshKey, setPredictManagerBankrollRefreshKey] =
+    useState(0);
+  const [predictManagerBankrollState, setPredictManagerBankrollState] =
+    useState<PredictManagerBankrollState>({
+      accountAddress: null,
+      managerObjectId: null,
+      refreshKey: 0,
+      status: "idle",
+      atomicBalance: null,
+      label: null,
+    });
   const [predictManagerRefreshKey, setPredictManagerRefreshKey] = useState(0);
   const [predictManagerState, setPredictManagerState] = useState<PredictManagerState>({
     accountAddress: null,
@@ -1715,6 +1763,31 @@ export function App() {
       ? predictManagerState.status
       : "checking"
     : "idle";
+  const isPredictManagerBankrollStateCurrent =
+    connectedAccountAddress &&
+    activePredictManagerObjectId &&
+    predictManagerBankrollState.accountAddress === connectedAccountAddress &&
+    predictManagerBankrollState.managerObjectId === activePredictManagerObjectId &&
+    predictManagerBankrollState.refreshKey === predictManagerBankrollRefreshKey;
+  const livePredictManagerBankrollLabel =
+    connectedAccountAddress && activePredictManagerObjectId
+      ? isPredictManagerBankrollStateCurrent
+        ? predictManagerBankrollState.status === "ready"
+          ? predictManagerBankrollState.label
+          : predictManagerBankrollState.status === "loading"
+            ? "Loading..."
+            : predictManagerBankrollState.status === "error"
+              ? "$--"
+              : null
+        : "Loading..."
+      : connectedAccountAddress && visiblePredictManagerStatus === "missing"
+        ? "$0"
+        : null;
+  const livePredictManagerBankrollAtomic =
+    isPredictManagerBankrollStateCurrent &&
+    predictManagerBankrollState.status === "ready"
+      ? predictManagerBankrollState.atomicBalance
+      : null;
 
   useEffect(() => {
     if (!connectedAccountAddress) {
@@ -1833,6 +1906,73 @@ export function App() {
       isCurrent = false;
     };
   }, [connectedAccountAddress, currentClient, dusdcBalanceRefreshKey]);
+
+  useEffect(() => {
+    if (!connectedAccountAddress || !activePredictManagerObjectId) {
+      setPredictManagerBankrollState({
+        accountAddress: connectedAccountAddress,
+        managerObjectId: activePredictManagerObjectId || null,
+        refreshKey: predictManagerBankrollRefreshKey,
+        status: "idle",
+        atomicBalance: null,
+        label: null,
+      });
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setPredictManagerBankrollState({
+      accountAddress: connectedAccountAddress,
+      managerObjectId: activePredictManagerObjectId,
+      refreshKey: predictManagerBankrollRefreshKey,
+      status: "loading",
+      atomicBalance: null,
+      label: null,
+    });
+
+    void loadPredictManagerBankrollAtomic({
+      client: currentClient,
+      predictManagerObjectId: activePredictManagerObjectId,
+      sender: connectedAccountAddress,
+    })
+      .then((atomicBalance) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setPredictManagerBankrollState({
+          accountAddress: connectedAccountAddress,
+          managerObjectId: activePredictManagerObjectId,
+          refreshKey: predictManagerBankrollRefreshKey,
+          status: "ready",
+          atomicBalance,
+          label: formatDusdcBalance(atomicBalance),
+        });
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setPredictManagerBankrollState({
+          accountAddress: connectedAccountAddress,
+          managerObjectId: activePredictManagerObjectId,
+          refreshKey: predictManagerBankrollRefreshKey,
+          status: "error",
+          atomicBalance: null,
+          label: null,
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [
+    activePredictManagerObjectId,
+    connectedAccountAddress,
+    currentClient,
+    predictManagerBankrollRefreshKey,
+  ]);
 
   useEffect(() => {
     const setSnapshot = (snapshot: LiveActivityModeSnapshot) => {
@@ -2189,6 +2329,72 @@ export function App() {
       });
       setDusdcBalanceRefreshKey((key) => key + 1);
       setPredictManagerRefreshKey((key) => key + 1);
+      setPredictManagerBankrollRefreshKey((key) => key + 1);
+    } catch (error) {
+      setWalletTxState({
+        status: "error",
+        label: walletErrorMessage(error),
+        digest: null,
+      });
+    }
+  };
+  const handleDepositBankroll = async () => {
+    if (!currentAccount) {
+      setWalletTxState({
+        status: "error",
+        label: "Connect a Sui testnet wallet first.",
+        digest: null,
+      });
+      return;
+    }
+
+    if (!activePredictManagerObjectId) {
+      setWalletTxState({
+        status: "error",
+        label: "Create a Predict account first.",
+        digest: null,
+      });
+      return;
+    }
+
+    const amount = usdToDusdcAtomic(copyState.copyAmount);
+    const amountLabel = formatCopyAmount(copyState.copyAmount);
+
+    setWalletTxState({
+      status: "pending",
+      label: `Depositing ${amountLabel} to bankroll...`,
+      digest: null,
+    });
+
+    try {
+      const coin = await selectDusdcDepositCoin({
+        amount,
+        owner: currentAccount.address,
+      });
+      const result = await dAppKit.signAndExecuteTransaction({
+        transaction: buildDepositQuoteTransaction({
+          amount,
+          predictManagerObjectId: activePredictManagerObjectId,
+          quoteCoinObjectId: coin.coinObjectId,
+        }),
+      });
+      const error = walletResultError(result);
+      if (error) {
+        setWalletTxState({
+          status: "error",
+          label: error,
+          digest: null,
+        });
+        return;
+      }
+
+      setWalletTxState({
+        status: "success",
+        label: `${amountLabel} deposit transaction sent.`,
+        digest: walletResultDigest(result),
+      });
+      setDusdcBalanceRefreshKey((key) => key + 1);
+      setPredictManagerBankrollRefreshKey((key) => key + 1);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -2225,6 +2431,22 @@ export function App() {
       return;
     }
 
+    const quoteCostAtomic = parseAtomicQuoteCost(activeTradeQuote.cost);
+    if (
+      quoteCostAtomic !== null &&
+      livePredictManagerBankrollAtomic !== null &&
+      livePredictManagerBankrollAtomic < quoteCostAtomic
+    ) {
+      setWalletTxState({
+        status: "error",
+        label: `Deposit bankroll first. Bankroll ${formatDusdcBalance(
+          livePredictManagerBankrollAtomic,
+        )}, trade needs ${formatDusdcBalance(quoteCostAtomic)}.`,
+        digest: null,
+      });
+      return;
+    }
+
     setTradeWalletSubmitted(true);
     setWalletTxState({
       status: "pending",
@@ -2255,6 +2477,7 @@ export function App() {
         digest: walletResultDigest(result),
       });
       setDusdcBalanceRefreshKey((key) => key + 1);
+      setPredictManagerBankrollRefreshKey((key) => key + 1);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -2284,7 +2507,8 @@ export function App() {
           />
           <AccountSummary
             availableLabel={liveDusdcBalanceLabel}
-            bankrollLabel={liveDusdcBalanceLabel}
+            bankrollLabel={livePredictManagerBankrollLabel}
+            onDeposit={handleDepositBankroll}
             summary={accountSummary}
           />
           {activeView === "feed" ? (

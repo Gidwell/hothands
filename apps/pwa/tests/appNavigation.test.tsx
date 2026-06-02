@@ -1,8 +1,42 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { BottomNav, TradeTicket, WalletStatusBar } from "../src/App";
+import { AccountSummary, BottomNav, TradeTicket, WalletStatusBar } from "../src/App";
 
 describe("mobile app navigation", () => {
+  test("renders available wallet balance separately from Predict bankroll with a deposit action", () => {
+    let depositClicked = false;
+    const html = renderToStaticMarkup(
+      <AccountSummary
+        availableLabel="$42"
+        bankrollLabel="$12.50"
+        summary={{
+          accountValue: "$100",
+          available: "$80",
+          copyValue: "$25",
+          detail: "Ready to copy.",
+          pnl: "+$0",
+          pnlTone: "flat",
+          status: "Watching",
+          title: "My Session",
+        }}
+        onDeposit={() => {
+          depositClicked = true;
+        }}
+      />,
+    );
+
+    expect(depositClicked).toBe(false);
+    expect(html).toContain('aria-label="Account summary"');
+    expect(html).toContain("Available");
+    expect(html).toContain('data-testid="available-wallet-balance"');
+    expect(html).toContain("$42");
+    expect(html).toContain("Bankroll");
+    expect(html).toContain('data-testid="predict-bankroll-balance"');
+    expect(html).toContain("$12.50");
+    expect(html).toContain('data-testid="deposit-bankroll"');
+    expect(html).toContain("Deposit");
+  });
+
   test("renders feed and trade as bottom navigation tabs", () => {
     const html = renderToStaticMarkup(
       <BottomNav activeView="feed" onViewChange={() => undefined} />,

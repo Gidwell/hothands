@@ -212,6 +212,19 @@ button:disabled {
   font-size: 1rem;
 }
 
+.account-deposit-button {
+  min-height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: #111827;
+  color: #f8fafc;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 5px 9px;
+}
+
 .account-summary-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
