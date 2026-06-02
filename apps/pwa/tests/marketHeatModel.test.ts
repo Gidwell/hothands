@@ -7,6 +7,7 @@ import {
   loadMarketHeatPreview,
   loadTradeQuote,
   buildTradeMarketLadder,
+  buildTradeMarketForMarketHeatRow,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
   sortMarketHeatRows,
@@ -501,6 +502,72 @@ describe("market heat preview model", () => {
         },
       },
     ]);
+  });
+
+  test("resolves a copy-ready feed row to a trade market using the observed strike", () => {
+    const nowMs = 1_779_165_000_000;
+    const expiryMs = nowMs + 15 * 60_000;
+    const preview = {
+      ...buildMarketHeatPreview(
+        [
+          {
+            id: "mint-a",
+            oracleId: "0xoracle15",
+            wallet: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            manager: "manager-a",
+            market: "BTC-USD",
+            side: "UP" as const,
+            strike: 71_000,
+            expiryMs,
+            intervalLabel: "15m",
+            observedAtMs: nowMs - 60_000,
+            heatScore: 90,
+            status: "copy_ready" as const,
+            quantity: 30_000_000,
+            costUsd: 14.25,
+          },
+        ],
+        8,
+        {
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71_050,
+            source: "live_testnet",
+          },
+          nowMs,
+        },
+      ),
+      availableMarkets: [
+        {
+          id: "0xoracle15-1779165900000",
+          oracleId: "0xoracle15",
+          pairLabel: "BTC/USD",
+          intervalLabel: "15m",
+          expiry: expiryMs,
+          expiryMs,
+          expiryTimeLabel: "May 18, 21:15 PDT",
+          strike: 71_100,
+          strikeRaw: 71_100_000_000,
+          strikeLabel: "$71,100",
+          status: "active",
+        },
+      ],
+    };
+
+    expect(buildTradeMarketForMarketHeatRow(preview, "mint-a", { nowMs })).toEqual({
+      row: expect.objectContaining({
+        id: "mint-a",
+        side: "UP",
+      }),
+      market: expect.objectContaining({
+        oracleId: "0xoracle15",
+        expiry: expiryMs,
+        strike: 71_000,
+        strikeRaw: 71_000_000_000,
+        strikeLabel: "$71,000",
+        moneynessLabel: "-$50 vs spot",
+      }),
+    });
   });
 
   test("keeps the full compact market heat feed available for scrolling", () => {

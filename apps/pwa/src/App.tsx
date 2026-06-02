@@ -53,6 +53,7 @@ import {
 import {
   buildMarketHeatIntentPanel,
   buildMarketHeatPreview,
+  buildTradeMarketForMarketHeatRow,
   buildTradeMarketLadder,
   closeMarketHeatIntent,
   loadTradeQuote,
@@ -1320,6 +1321,7 @@ export function MarketHeatPreview({
   canShowMore,
   selectedRowId,
   walletSubmitRowId = null,
+  walletSubmitLabel = null,
   copyAmount,
   showMoreLabel,
   onAmountSet,
@@ -1337,6 +1339,7 @@ export function MarketHeatPreview({
   canShowMore: boolean;
   selectedRowId: string | null;
   walletSubmitRowId?: string | null;
+  walletSubmitLabel?: string | null;
   copyAmount: number;
   showMoreLabel: string;
   onAmountSet: (amount: number) => void;
@@ -1515,7 +1518,7 @@ export function MarketHeatPreview({
                     </button>
                     {didSubmitToWallet ? (
                       <span className="wallet-submit-status" aria-live="polite">
-                        Wallet request started
+                        {walletSubmitLabel ?? "Wallet request started"}
                       </span>
                     ) : null}
                   </div>
@@ -2461,11 +2464,121 @@ export function App() {
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
     setMarketHeatWalletSubmitRowId(null);
   };
-  const handleMarketHeatWalletSubmit = (rowId: string) => {
+  const handleMarketHeatWalletSubmit = async (rowId: string) => {
     setMarketHeatIntent((state) =>
       selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
     );
+
+    if (!currentAccount) {
+      setWalletTxState({
+        status: "error",
+        label: "Connect a Sui testnet wallet first.",
+        digest: null,
+      });
+      return;
+    }
+
+    if (!activePredictManagerObjectId) {
+      setWalletTxState({
+        status: "error",
+        label: "Create a Predict account first.",
+        digest: null,
+      });
+      return;
+    }
+
+    const copyTrade = buildTradeMarketForMarketHeatRow(marketHeatPreview, rowId, {
+      nowMs: Date.now(),
+    });
+    if (!copyTrade) {
+      setWalletTxState({
+        status: "error",
+        label: "Select a live copy-ready feed row first.",
+        digest: null,
+      });
+      return;
+    }
+
     setMarketHeatWalletSubmitRowId(rowId);
+    setWalletTxState({
+      status: "pending",
+      label: "Preparing copy quote...",
+      digest: null,
+    });
+
+    try {
+      const quote = await loadTradeQuote({
+        apiBaseUrl: realtimeApiBaseUrl,
+        market: copyTrade.market,
+        side: copyTrade.row.side,
+        spendUsd: copyState.copyAmount,
+      });
+
+      if (!quote) {
+        setMarketHeatWalletSubmitRowId(null);
+        setWalletTxState({
+          status: "error",
+          label: "Could not quote this feed copy. Try the Trade tab.",
+          digest: null,
+        });
+        return;
+      }
+
+      const quoteCostAtomic = parseAtomicQuoteCost(quote.cost);
+      if (
+        quoteCostAtomic !== null &&
+        livePredictManagerBankrollAtomic !== null &&
+        livePredictManagerBankrollAtomic < quoteCostAtomic
+      ) {
+        setMarketHeatWalletSubmitRowId(null);
+        setWalletTxState({
+          status: "error",
+          label: `Deposit bankroll first. Bankroll ${formatDusdcBalance(
+            livePredictManagerBankrollAtomic,
+          )}, copy needs ${formatDusdcBalance(quoteCostAtomic)}.`,
+          digest: null,
+        });
+        return;
+      }
+
+      setWalletTxState({
+        status: "pending",
+        label: "Sending copy to wallet...",
+        digest: null,
+      });
+
+      const transaction = buildTradeMintTransaction({
+        predictManagerObjectId: activePredictManagerObjectId,
+        market: copyTrade.market,
+        quote,
+      });
+      const result = await dAppKit.signAndExecuteTransaction({ transaction });
+      const error = walletResultError(result);
+      if (error) {
+        setMarketHeatWalletSubmitRowId(null);
+        setWalletTxState({
+          status: "error",
+          label: error,
+          digest: null,
+        });
+        return;
+      }
+
+      const digest = walletResultDigest(result);
+      setWalletTxState({
+        status: "success",
+        label: "Copy transaction sent.",
+        digest,
+      });
+      refreshAfterWalletTransaction(digest);
+    } catch (error) {
+      setMarketHeatWalletSubmitRowId(null);
+      setWalletTxState({
+        status: "error",
+        label: walletErrorMessage(error),
+        digest: null,
+      });
+    }
   };
   const handleMarketHeatSortModeChange = (sortMode: MarketHeatSortMode) => {
     setMarketHeatSortMode(sortMode);
@@ -2869,6 +2982,9 @@ export function App() {
                   canShowMore={marketHeatRemainingCount > 0}
                   selectedRowId={marketHeatIntent.selectedRowId}
                   walletSubmitRowId={marketHeatWalletSubmitRowId}
+                  walletSubmitLabel={
+                    marketHeatWalletSubmitRowId ? walletTxState.label : null
+                  }
                   copyAmount={copyState.copyAmount}
                   showMoreLabel={marketHeatShowMoreLabel}
                   onAmountSet={handleAmountSet}

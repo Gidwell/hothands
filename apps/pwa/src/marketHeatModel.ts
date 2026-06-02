@@ -193,6 +193,11 @@ export type TradeQuote = {
   quoteStatus: "ready";
 };
 
+export type MarketHeatCopyTrade = {
+  row: MarketHeatPreviewRow;
+  market: TradeMarketLadderRow;
+};
+
 export type LoadTradeQuoteOptions = {
   apiBaseUrl?: string;
   fetcher?: typeof fetch;
@@ -400,6 +405,54 @@ export function buildTradeMarketLadder(
           Math.abs(right.strike - parseFormattedUsd(preview.marketPrice.priceLabel)) ||
         left.id.localeCompare(right.id),
     );
+}
+
+export function buildTradeMarketForMarketHeatRow(
+  preview: MarketHeatPreview,
+  rowId: string,
+  { nowMs = Date.now() }: SelectTradeMarketsOptions = {},
+): MarketHeatCopyTrade | null {
+  const row = preview.rows.find((candidate) => candidate.id === rowId);
+  if (!row || row.status !== "copy_ready" || row.expiryMs <= nowMs) {
+    return null;
+  }
+
+  const market = buildTradeMarketLadder(preview, { nowMs }).find((candidate) => {
+    if (row.oracleId && candidate.oracleId === row.oracleId) {
+      return true;
+    }
+
+    return (
+      candidate.pairLabel === row.pairLabel &&
+      candidate.intervalLabel === row.intervalLabel &&
+      candidate.expiryMs === row.expiryMs
+    );
+  });
+
+  if (!market) {
+    return null;
+  }
+
+  const rowStrikeRaw = Math.round(row.strike * 1_000_000);
+  const strikeOption =
+    market.strikeOptions?.find((option) => option.strikeRaw === rowStrikeRaw) ??
+    market.strikeOptions?.find((option) => option.strike === row.strike) ?? {
+      strike: row.strike,
+      strikeRaw: rowStrikeRaw,
+      strikeLabel: formatStrike(row.strike),
+    };
+  const spot = parseFormattedUsd(preview.marketPrice.priceLabel);
+
+  return {
+    row,
+    market: {
+      ...market,
+      strike: strikeOption.strike,
+      strikeRaw: strikeOption.strikeRaw,
+      strikeLabel: strikeOption.strikeLabel,
+      moneynessLabel: formatMoneyness(strikeOption.strike - spot),
+    },
+  };
 }
 
 function buildTradeStrikeOptions(
