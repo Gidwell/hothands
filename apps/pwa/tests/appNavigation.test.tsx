@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { BottomNav, TradeTicket } from "../src/App";
+import { BottomNav, TradeTicket, WalletStatusBar } from "../src/App";
 
 describe("mobile app navigation", () => {
   test("renders feed and trade as bottom navigation tabs", () => {
@@ -150,8 +150,52 @@ describe("mobile app navigation", () => {
     expect(html.indexOf("2h left")).toBeLessThan(html.indexOf("Trade this market"));
     expect(html.indexOf("Trade this market")).toBeLessThan(html.indexOf("4h left"));
     expect(html).toContain("Connect wallet first");
-    expect(html).toContain('data-testid="predict-manager-object-id"');
+    expect(html).not.toContain("Predict account");
+    expect(html).not.toContain('data-testid="predict-manager-object-id"');
+  });
+
+  test("prompts connected users to create a Predict account from the wallet bar", () => {
+    const html = renderToStaticMarkup(
+      <WalletStatusBar
+        accountAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        connectionStatus="connected"
+        networkLabel="testnet"
+        predictManagerObjectId={null}
+        predictManagerStatus="missing"
+        txState={{ status: "idle", label: "Wallet ready", digest: null }}
+        walletCount={1}
+        walletName="Sui Wallet"
+        onConnect={() => undefined}
+        onCreatePredictManager={() => undefined}
+        onDisconnect={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="predict-manager-status"');
+    expect(html).toContain("No Predict account yet");
     expect(html).toContain('data-testid="create-predict-manager"');
+    expect(html).toContain("Create Predict account");
+  });
+
+  test("shows a discovered Predict account in the connected wallet bar", () => {
+    const html = renderToStaticMarkup(
+      <WalletStatusBar
+        accountAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        connectionStatus="connected"
+        networkLabel="testnet"
+        predictManagerObjectId="0x000000000000000000000000000000000000000000000000000000000000bbbb"
+        predictManagerStatus="ready"
+        txState={{ status: "idle", label: "Wallet ready", digest: null }}
+        walletCount={1}
+        walletName="Sui Wallet"
+        onConnect={() => undefined}
+        onCreatePredictManager={() => undefined}
+        onDisconnect={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Predict account 0x0000...bbbb");
+    expect(html).not.toContain('data-testid="create-predict-manager"');
   });
 
   test("keeps return fields visible when a trade market still needs a quote", () => {
@@ -346,9 +390,7 @@ describe("mobile app navigation", () => {
         walletStatusLabel="Trade transaction sent."
         walletSubmitted={true}
         onAmountSet={() => undefined}
-        onCreatePredictManager={() => undefined}
         onMarketChange={() => undefined}
-        onPredictManagerObjectIdChange={() => undefined}
         onSideChange={() => undefined}
         onWalletSubmit={() => undefined}
       />,

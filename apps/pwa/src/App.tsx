@@ -66,6 +66,7 @@ import {
 } from "./marketHeatModel";
 import { buildTradeMintTransaction } from "./walletTransactions";
 import { loadDusdcBalanceLabel } from "./walletBalance";
+import { findPredictManagerForOwner } from "./predictManager";
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
@@ -85,6 +86,13 @@ type DusdcBalanceState = {
   refreshKey: number;
   status: "idle" | "loading" | "ready" | "error";
   label: string | null;
+};
+type PredictManagerStatus = "idle" | "checking" | "ready" | "missing" | "error";
+type PredictManagerState = {
+  accountAddress: string | null;
+  objectId: string | null;
+  refreshKey: number;
+  status: PredictManagerStatus;
 };
 
 const idleWalletTransactionState: WalletTransactionState = {
@@ -273,31 +281,45 @@ function walletResultError(result: unknown): string | null {
   return "Transaction failed.";
 }
 
-function readStoredPredictManagerObjectId(): string {
-  if (typeof window === "undefined") {
-    return "";
+function readStoredPredictManagerObjectId(accountAddress: string | null): string | null {
+  if (typeof window === "undefined" || !accountAddress) {
+    return null;
   }
 
-  return window.localStorage.getItem(PREDICT_MANAGER_STORAGE_KEY) ?? "";
+  return window.localStorage.getItem(`${PREDICT_MANAGER_STORAGE_KEY}:${accountAddress}`) ?? null;
 }
 
-function WalletStatusBar({
+function writeStoredPredictManagerObjectId(accountAddress: string, objectId: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(`${PREDICT_MANAGER_STORAGE_KEY}:${accountAddress}`, objectId);
+}
+
+export function WalletStatusBar({
   accountAddress,
   connectionStatus,
   networkLabel,
+  predictManagerObjectId,
+  predictManagerStatus,
   txState,
   walletCount,
   walletName,
   onConnect,
+  onCreatePredictManager,
   onDisconnect,
 }: {
   accountAddress: string | null;
   connectionStatus: string;
   networkLabel: string;
+  predictManagerObjectId: string | null;
+  predictManagerStatus: PredictManagerStatus;
   txState: WalletTransactionState;
   walletCount: number;
   walletName: string | null;
   onConnect: () => void;
+  onCreatePredictManager: () => void;
   onDisconnect: () => void;
 }) {
   const isConnected = Boolean(accountAddress);
@@ -333,6 +355,32 @@ function WalletStatusBar({
           </button>
         )}
       </div>
+      {isConnected ? (
+        <div
+          className={`predict-manager-status predict-manager-status-${predictManagerStatus}`}
+          aria-live="polite"
+        >
+          <span data-testid="predict-manager-status">
+            {predictManagerStatus === "checking"
+              ? "Checking Predict account..."
+              : predictManagerStatus === "ready"
+                ? `Predict account ${formatWalletAddress(predictManagerObjectId)}`
+                : predictManagerStatus === "error"
+                  ? "Could not check Predict account"
+                  : "No Predict account yet"}
+          </span>
+          {predictManagerStatus === "missing" || predictManagerStatus === "error" ? (
+            <button
+              type="button"
+              data-testid="create-predict-manager"
+              disabled={txState.status === "pending"}
+              onClick={onCreatePredictManager}
+            >
+              {txState.status === "pending" ? "Sending..." : "Create Predict account"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {txState.status !== "idle" ? (
         <div className={`wallet-tx-status wallet-tx-status-${txState.status}`} aria-live="polite">
           <span data-testid="wallet-tx-status">{txState.label}</span>
@@ -385,9 +433,7 @@ export function TradeTicket({
   walletStatusLabel = null,
   walletSubmitted = false,
   onAmountSet,
-  onCreatePredictManager = () => undefined,
   onMarketChange,
-  onPredictManagerObjectIdChange = () => undefined,
   onSideChange,
   onWalletSubmit,
 }: {
@@ -403,9 +449,7 @@ export function TradeTicket({
   walletStatusLabel?: string | null;
   walletSubmitted?: boolean;
   onAmountSet: (amount: number) => void;
-  onCreatePredictManager?: () => void;
   onMarketChange: (marketId: string) => void;
-  onPredictManagerObjectIdChange?: (objectId: string) => void;
   onSideChange: (side: TradeSide) => void;
   onWalletSubmit: () => void;
 }) {
@@ -431,7 +475,7 @@ export function TradeTicket({
   const tradeWalletButtonLabel = !walletConnected
     ? "Connect wallet first"
     : !hasPredictManagerObjectId
-      ? "Add Predict account"
+      ? "Create Predict account first"
       : quoteStatus === "loading"
         ? "Wait for quote"
         : walletActionPending
@@ -570,30 +614,6 @@ export function TradeTicket({
                     copyAmount={copyAmount}
                     onAmountSet={onAmountSet}
                   />
-                  <div className="predict-account-panel">
-                    <label className="predict-account-field">
-                      <span>Predict account</span>
-                      <input
-                        aria-label="Predict account object id"
-                        data-testid="predict-manager-object-id"
-                        placeholder="0x PredictManager object"
-                        spellCheck="false"
-                        value={predictManagerObjectId}
-                        onChange={(event) =>
-                          onPredictManagerObjectIdChange(event.currentTarget.value)
-                        }
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="predict-account-button"
-                      data-testid="create-predict-manager"
-                      disabled={!walletConnected || walletActionPending}
-                      onClick={onCreatePredictManager}
-                    >
-                      {walletActionPending ? "Sending..." : "Create account"}
-                    </button>
-                  </div>
                   <button
                     type="button"
                     className="trade-wallet-button"
@@ -1374,9 +1394,13 @@ export function App() {
     status: "idle",
     label: null,
   });
-  const [predictManagerObjectId, setPredictManagerObjectId] = useState(
-    readStoredPredictManagerObjectId,
-  );
+  const [predictManagerRefreshKey, setPredictManagerRefreshKey] = useState(0);
+  const [predictManagerState, setPredictManagerState] = useState<PredictManagerState>({
+    accountAddress: null,
+    objectId: null,
+    refreshKey: 0,
+    status: "idle",
+  });
   const [tradeQuoteState, setTradeQuoteState] = useState<{
     key: string | null;
     status: TradeQuoteStatus;
@@ -1525,20 +1549,87 @@ export function App() {
       : connectedAccountAddress
         ? "Loading..."
         : null;
+  const isPredictManagerStateCurrent =
+    connectedAccountAddress &&
+    predictManagerState.accountAddress === connectedAccountAddress &&
+    predictManagerState.refreshKey === predictManagerRefreshKey;
+  const activePredictManagerObjectId =
+    isPredictManagerStateCurrent && predictManagerState.status === "ready"
+      ? predictManagerState.objectId ?? ""
+      : "";
+  const visiblePredictManagerObjectId = isPredictManagerStateCurrent
+    ? predictManagerState.objectId
+    : null;
+  const visiblePredictManagerStatus: PredictManagerStatus = connectedAccountAddress
+    ? isPredictManagerStateCurrent
+      ? predictManagerState.status
+      : "checking"
+    : "idle";
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
+    if (!connectedAccountAddress) {
+      setPredictManagerState({
+        accountAddress: null,
+        objectId: null,
+        refreshKey: predictManagerRefreshKey,
+        status: "idle",
+      });
+      return undefined;
     }
 
-    const trimmedManagerId = predictManagerObjectId.trim();
-    if (trimmedManagerId) {
-      window.localStorage.setItem(PREDICT_MANAGER_STORAGE_KEY, trimmedManagerId);
-      return;
-    }
+    let isCurrent = true;
+    const storedObjectId = readStoredPredictManagerObjectId(connectedAccountAddress);
+    setPredictManagerState({
+      accountAddress: connectedAccountAddress,
+      objectId: storedObjectId,
+      refreshKey: predictManagerRefreshKey,
+      status: "checking",
+    });
 
-    window.localStorage.removeItem(PREDICT_MANAGER_STORAGE_KEY);
-  }, [predictManagerObjectId]);
+    void findPredictManagerForOwner({
+      owner: connectedAccountAddress,
+      maxPages: 10,
+    })
+      .then((objectId) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        if (objectId) {
+          writeStoredPredictManagerObjectId(connectedAccountAddress, objectId);
+          setPredictManagerState({
+            accountAddress: connectedAccountAddress,
+            objectId,
+            refreshKey: predictManagerRefreshKey,
+            status: "ready",
+          });
+          return;
+        }
+
+        setPredictManagerState({
+          accountAddress: connectedAccountAddress,
+          objectId: storedObjectId,
+          refreshKey: predictManagerRefreshKey,
+          status: storedObjectId ? "ready" : "missing",
+        });
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setPredictManagerState({
+          accountAddress: connectedAccountAddress,
+          objectId: storedObjectId,
+          refreshKey: predictManagerRefreshKey,
+          status: storedObjectId ? "ready" : "error",
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [connectedAccountAddress, predictManagerRefreshKey]);
 
   useEffect(() => {
     if (!connectedAccountAddress) {
@@ -1903,7 +1994,6 @@ export function App() {
       return;
     }
 
-    setTradeWalletSubmitted(true);
     setWalletTxState({
       status: "pending",
       label: "Creating Predict account...",
@@ -1926,10 +2016,11 @@ export function App() {
 
       setWalletTxState({
         status: "success",
-        label: "Predict account transaction sent. Paste the new object id when it appears.",
+        label: "Predict account transaction sent. Checking account...",
         digest: walletResultDigest(result),
       });
       setDusdcBalanceRefreshKey((key) => key + 1);
+      setPredictManagerRefreshKey((key) => key + 1);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -1957,10 +2048,10 @@ export function App() {
       return;
     }
 
-    if (!predictManagerObjectId.trim()) {
+    if (!activePredictManagerObjectId) {
       setWalletTxState({
         status: "error",
-        label: "Create or paste a Predict account object id first.",
+        label: "Create a Predict account first.",
         digest: null,
       });
       return;
@@ -1975,7 +2066,7 @@ export function App() {
 
     try {
       const transaction = buildTradeMintTransaction({
-        predictManagerObjectId: predictManagerObjectId.trim(),
+        predictManagerObjectId: activePredictManagerObjectId,
         market: selectedTradeMarket,
         quote: activeTradeQuote,
       });
@@ -2014,10 +2105,13 @@ export function App() {
             accountAddress={currentAccount?.address ?? null}
             connectionStatus={walletConnection.status}
             networkLabel={String(currentNetwork)}
+            predictManagerObjectId={visiblePredictManagerObjectId}
+            predictManagerStatus={visiblePredictManagerStatus}
             txState={walletTxState}
             walletCount={wallets.length}
             walletName={currentWallet?.name ?? null}
             onConnect={handleWalletConnect}
+            onCreatePredictManager={handleCreatePredictManager}
             onDisconnect={handleWalletDisconnect}
           />
           <AccountSummary
@@ -2092,18 +2186,13 @@ export function App() {
               selectedSide={tradeSide}
               quote={activeTradeQuote}
               quoteStatus={activeTradeQuoteStatus}
-              predictManagerObjectId={predictManagerObjectId}
+              predictManagerObjectId={activePredictManagerObjectId}
               walletActionPending={isWalletActionPending}
               walletConnected={Boolean(currentAccount)}
               walletStatusLabel={walletTxState.label}
               walletSubmitted={tradeWalletSubmitted}
               onAmountSet={handleAmountSet}
-              onCreatePredictManager={handleCreatePredictManager}
               onMarketChange={handleTradeMarketChange}
-              onPredictManagerObjectIdChange={(objectId) => {
-                setPredictManagerObjectId(objectId);
-                setTradeWalletSubmitted(false);
-              }}
               onSideChange={handleTradeSideChange}
               onWalletSubmit={handleTradeWalletSubmit}
             />

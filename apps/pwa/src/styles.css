@@ -665,8 +665,7 @@ button:disabled {
   gap: 2px;
 }
 
-.wallet-status-main small,
-.predict-account-field span {
+.wallet-status-main small {
   color: #667085;
   font-size: 0.62rem;
   font-weight: 900;
@@ -690,7 +689,7 @@ button:disabled {
 }
 
 .wallet-status-actions button,
-.predict-account-button {
+.predict-manager-status button {
   min-height: 34px;
   padding: 0 10px;
   border: 1px solid #d8e2ec;
@@ -702,8 +701,50 @@ button:disabled {
 }
 
 .wallet-status-actions button:not(:disabled),
-.predict-account-button:not(:disabled) {
+.predict-manager-status button:not(:disabled) {
   box-shadow: 0 7px 18px rgba(34, 48, 64, 0.08);
+}
+
+.predict-manager-status {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid #e3ebf3;
+  border-radius: 8px;
+  color: #344054;
+  background: #f8fafc;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.predict-manager-status span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.predict-manager-status-ready {
+  border-color: #b7efd0;
+  color: #07813f;
+  background: #f4fff8;
+}
+
+.predict-manager-status-missing,
+.predict-manager-status-error {
+  border-color: #fde2b7;
+  color: #9a5800;
+  background: #fffaf0;
+}
+
+.predict-manager-status-error {
+  border-color: #f3b8b1;
+  color: #c0392b;
+  background: #fff6f5;
 }
 
 .wallet-tx-status {
@@ -739,31 +780,6 @@ button:disabled {
   color: #07813f;
   font-size: 0.74rem;
   font-weight: 950;
-}
-
-.predict-account-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: end;
-}
-
-.predict-account-field {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.predict-account-field input {
-  min-width: 0;
-  min-height: 38px;
-  padding: 0 9px;
-  border: 1px solid #d8e2ec;
-  border-radius: 8px;
-  color: #111827;
-  background: #ffffff;
-  font-size: 0.76rem;
-  font-weight: 800;
 }
 
 .section-heading {
