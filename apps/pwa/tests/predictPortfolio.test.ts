@@ -217,6 +217,100 @@ describe("Predict portfolio", () => {
     });
   });
 
+  test("builds all-time trade history from opened, redeemed, and settled positions", () => {
+    const snapshot = buildPortfolioSnapshot(
+      [
+        {
+          eventId: "mint-redeemed",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xoracle-redeemed",
+          expiry: 1_779_193_600,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 5_000_000,
+          cost: 2_000_000,
+          timestampMs: 1_779_100_000_000,
+        },
+        {
+          eventId: "redeem-win",
+          eventType: "redeem",
+          managerId: "0xmanager",
+          oracleId: "0xoracle-redeemed",
+          expiry: 1_779_193_600,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 5_000_000,
+          payout: 3_250_000,
+          timestampMs: 1_779_101_000_000,
+        },
+        {
+          eventId: "mint-settled-loss",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xoracle-loss",
+          expiry: 1_779_193_600,
+          strike: 65_000_000_000,
+          isUp: false,
+          quantity: 4_000_000,
+          cost: 1_500_000,
+          timestampMs: 1_779_102_000_000,
+        },
+        {
+          eventId: "mint-open",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xoracle-open",
+          expiry: 1_779_300_000,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 2_000_000,
+          cost: 900_000,
+          timestampMs: 1_779_103_000_000,
+        },
+      ],
+      {
+        nowMs: 1_779_194_000_000,
+        oracleSettlements: [
+          {
+            oracleId: "0xoracle-loss",
+            settlementPrice: 65_100,
+            status: "settled",
+          },
+        ],
+      },
+    );
+
+    expect(snapshot.history.map((item) => item.oracleId)).toEqual([
+      "0xoracle-open",
+      "0xoracle-loss",
+      "0xoracle-redeemed",
+    ]);
+    expect(snapshot.history.find((item) => item.oracleId === "0xoracle-open")).toMatchObject({
+      costLabel: "$0.90",
+      direction: "UP",
+      payoutLabel: "Pending",
+      pnlLabel: "Open",
+      remainingLabel: "$2",
+      statusLabel: "Open",
+      strikeLabel: "$65,000.00",
+    });
+    expect(snapshot.history.find((item) => item.oracleId === "0xoracle-loss")).toMatchObject({
+      costLabel: "$1.50",
+      direction: "DOWN",
+      payoutLabel: "$0",
+      pnlLabel: "-$1.50",
+      statusLabel: "No payout",
+    });
+    expect(snapshot.history.find((item) => item.oracleId === "0xoracle-redeemed")).toMatchObject({
+      costLabel: "$2",
+      direction: "UP",
+      payoutLabel: "$3.25",
+      pnlLabel: "+$1.25",
+      statusLabel: "Redeemed",
+    });
+  });
+
   test("filters old or dismissed no-payout expired positions", () => {
     const freshNoPayout = {
       actionLabel: "Dismiss" as const,

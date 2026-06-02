@@ -285,6 +285,7 @@ button:disabled {
 }
 
 .bottom-nav button,
+.portfolio-tabs button,
 .market-heat-sort button,
 .trader-row-main button,
 .market-heat-main button,
@@ -330,6 +331,28 @@ button:disabled {
   font-weight: 900;
 }
 
+.portfolio-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #eef3f8;
+}
+
+.portfolio-tabs button {
+  min-height: 34px;
+  color: #667085;
+  background: transparent;
+  font-size: 0.78rem;
+}
+
+.portfolio-tabs button[aria-pressed="true"] {
+  color: #111827;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(34, 48, 64, 0.08);
+}
+
 .trader-list,
 .market-heat-list,
 .trade-ticket,
@@ -359,12 +382,20 @@ button:disabled {
   box-shadow: 0 8px 28px rgba(34, 48, 64, 0.07);
 }
 
-.portfolio-list {
+.portfolio-list,
+.portfolio-history {
   display: grid;
   gap: 8px;
 }
 
-.portfolio-row {
+.portfolio-history-title {
+  color: #667085;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.portfolio-row,
+.portfolio-history-row {
   display: grid;
   gap: 8px;
   padding: 10px;
@@ -372,6 +403,14 @@ button:disabled {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 8px 28px rgba(34, 48, 64, 0.07);
+}
+
+.portfolio-history-row-positive {
+  border-color: #b7efd0;
+}
+
+.portfolio-history-row-negative {
+  border-color: #f3b8b1;
 }
 
 .portfolio-row-main {
@@ -443,6 +482,10 @@ button:disabled {
   font-size: 0.6rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.portfolio-history-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .portfolio-action-button {

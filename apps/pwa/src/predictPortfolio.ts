@@ -65,7 +65,29 @@ export type PredictPortfolioPnlSummary = {
   pnlTone: "positive" | "negative" | "flat";
 };
 
+export type PredictPortfolioHistoryItem = {
+  id: string;
+  managerId: string;
+  oracleId: string;
+  direction: "UP" | "DOWN";
+  strikeLabel: string;
+  expiryTimeLabel: string;
+  openedAtLabel: string;
+  updatedAtLabel: string;
+  quantityLabel: string;
+  remainingLabel: string;
+  costLabel: string;
+  payoutLabel: string;
+  pnlAtomic?: string;
+  pnlLabel: string;
+  pnlTone: "positive" | "negative" | "flat";
+  statusLabel: "Open" | "Redeemed" | "Claimable" | "No payout" | "Settlement pending";
+  closeLabel: string;
+  settlementPriceLabel?: string;
+};
+
 export type PredictPortfolioSnapshot = {
+  history: PredictPortfolioHistoryItem[];
   pnl: PredictPortfolioPnlSummary;
   positions: PredictPortfolioPosition[];
 };
@@ -123,6 +145,13 @@ type PortfolioAccumulator = {
   quantity: bigint;
   costBasis: bigint;
   lastTimestampMs: number;
+};
+
+type PortfolioHistoryAccumulator = PortfolioAccumulator & {
+  firstTimestampMs: number;
+  totalCost: bigint;
+  totalQuantity: bigint;
+  payout: bigint;
 };
 
 export async function loadPredictPortfolio({
@@ -192,6 +221,10 @@ export function buildPortfolioSnapshot(
   } = {},
 ): PredictPortfolioSnapshot {
   return {
+    history: buildPortfolioHistory(events, {
+      nowMs,
+      oracleSettlements,
+    }),
     pnl: buildPortfolioPnlSummary(events, {
       nowMs,
       oracleSettlements,
@@ -293,6 +326,78 @@ export function selectVisiblePortfolioPositions(
 
     return nowMs - position.expiryMs < ZERO_PAYOUT_POSITION_HIDE_MS;
   });
+}
+
+function buildPortfolioHistory(
+  events: PredictPortfolioEvent[],
+  {
+    nowMs,
+    oracleSettlements,
+  }: {
+    nowMs: number;
+    oracleSettlements: PredictOracleSettlement[];
+  },
+): PredictPortfolioHistoryItem[] {
+  const histories = new Map<string, PortfolioHistoryAccumulator>();
+  const settlementsByOracleId = new Map(
+    oracleSettlements.map((settlement) => [settlement.oracleId, settlement]),
+  );
+
+  for (const event of [...events].sort(compareEventsByTime)) {
+    const key = positionKey(event);
+    const history =
+      histories.get(key) ??
+      {
+        managerId: event.managerId,
+        oracleId: event.oracleId,
+        expiry: event.expiry,
+        strike: event.strike,
+        isUp: event.isUp,
+        quantity: 0n,
+        costBasis: 0n,
+        firstTimestampMs: event.timestampMs,
+        lastTimestampMs: 0,
+        payout: 0n,
+        totalCost: 0n,
+        totalQuantity: 0n,
+      };
+    histories.set(key, history);
+    history.firstTimestampMs = Math.min(history.firstTimestampMs, event.timestampMs);
+    history.lastTimestampMs = Math.max(history.lastTimestampMs, event.timestampMs);
+
+    const quantity = atomicBigInt(event.quantity);
+    if (event.eventType === "mint") {
+      const cost = atomicBigInt(event.cost);
+      history.quantity += quantity;
+      history.costBasis += cost;
+      history.totalCost += cost;
+      history.totalQuantity += quantity;
+      continue;
+    }
+
+    const removedQuantity = quantity > history.quantity ? history.quantity : quantity;
+    const removedCost =
+      history.quantity === 0n
+        ? 0n
+        : (history.costBasis * removedQuantity) / history.quantity;
+    history.quantity -= removedQuantity;
+    history.costBasis -= removedCost;
+    history.payout += atomicBigInt(event.payout);
+  }
+
+  return [...histories.values()]
+    .sort(
+      (left, right) =>
+        right.lastTimestampMs - left.lastTimestampMs ||
+        positionAccumulatorKey(right).localeCompare(positionAccumulatorKey(left)),
+    )
+    .map((history) =>
+      buildPortfolioHistoryItem(
+        history,
+        nowMs,
+        settlementsByOracleId.get(history.oracleId),
+      ),
+    );
 }
 
 function buildPortfolioPnlSummary(
@@ -538,6 +643,62 @@ function buildPortfolioPosition(
   };
 }
 
+function buildPortfolioHistoryItem(
+  history: PortfolioHistoryAccumulator,
+  nowMs: number,
+  settlement?: PredictOracleSettlement,
+): PredictPortfolioHistoryItem {
+  const expiryMs = normalizeEpochMs(history.expiry);
+  const isExpired = expiryMs <= nowMs;
+  const direction = history.isUp ? "UP" : "DOWN";
+  const settlementPrice = settledPrice(settlement);
+  const didWin =
+    isExpired && history.quantity > 0n && settlementPrice !== null
+      ? didPositionWin({
+          isUp: history.isUp,
+          settlementPrice,
+          strike: history.strike,
+        })
+      : null;
+  const knownPayout =
+    didWin === null ? history.payout : history.payout + (didWin ? history.quantity : 0n);
+  const isFullyRedeemed = history.quantity === 0n;
+  const isResolved = isFullyRedeemed || didWin !== null;
+  const pnl = isResolved ? knownPayout - history.totalCost : null;
+  const statusLabel: PredictPortfolioHistoryItem["statusLabel"] = isFullyRedeemed
+    ? "Redeemed"
+    : !isExpired
+      ? "Open"
+      : didWin === null
+        ? "Settlement pending"
+        : didWin
+          ? "Claimable"
+          : "No payout";
+  const pendingPayoutLabel = history.payout > 0n ? formatDusdcBalance(history.payout) : "Pending";
+
+  return {
+    id: positionAccumulatorKey(history),
+    managerId: history.managerId,
+    oracleId: history.oracleId,
+    direction,
+    strikeLabel: formatStrike(history.strike),
+    expiryTimeLabel: formatExpiryTime(expiryMs),
+    openedAtLabel: formatExpiryTime(history.firstTimestampMs),
+    updatedAtLabel: formatExpiryTime(history.lastTimestampMs),
+    quantityLabel: formatDusdcBalance(history.totalQuantity),
+    remainingLabel: formatDusdcBalance(history.quantity),
+    costLabel: formatDusdcBalance(history.totalCost),
+    payoutLabel: isResolved ? formatDusdcBalance(knownPayout) : pendingPayoutLabel,
+    pnlAtomic: pnl === null ? undefined : pnl.toString(),
+    pnlLabel: pnl === null ? (statusLabel === "Open" ? "Open" : "Pending") : formatSignedDusdcBalance(pnl),
+    pnlTone: pnl === null ? "flat" : pnl > 0n ? "positive" : pnl < 0n ? "negative" : "flat",
+    statusLabel,
+    closeLabel: statusLabel,
+    settlementPriceLabel:
+      settlementPrice === null ? undefined : formatPredictPrice(settlementPrice),
+  };
+}
+
 async function loadOracleSettlements(
   positions: PredictPortfolioPosition[],
   settlementClient: PredictPortfolioSettlementClient,
@@ -634,6 +795,12 @@ function parsePortfolioEvent(
 
 function positionKey(event: Pick<PredictPortfolioEvent, "managerId" | "oracleId" | "expiry" | "strike" | "isUp">): string {
   return `${event.managerId}:${event.oracleId}:${event.expiry}:${event.strike}:${event.isUp ? "UP" : "DOWN"}`;
+}
+
+function positionAccumulatorKey(
+  position: Pick<PortfolioAccumulator, "managerId" | "oracleId" | "expiry" | "strike" | "isUp">,
+): string {
+  return `${position.managerId}:${position.oracleId}:${position.expiry}:${position.strike}:${position.isUp ? "UP" : "DOWN"}`;
 }
 
 function compareEventsByTime(left: PredictPortfolioEvent, right: PredictPortfolioEvent): number {

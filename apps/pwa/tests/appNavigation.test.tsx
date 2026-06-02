@@ -225,6 +225,50 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("Claim</button>");
   });
 
+  test("renders all-time portfolio history rows", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        historyItems={[
+          {
+            closeLabel: "Redeemed",
+            costLabel: "$2",
+            direction: "UP",
+            expiryTimeLabel: "May 18, 2026, 9:46 PM",
+            id: "history-redeemed",
+            managerId: "0xmanager",
+            openedAtLabel: "May 17, 2026, 7:33 AM",
+            oracleId: "0xoracle",
+            payoutLabel: "$3.25",
+            pnlLabel: "+$1.25",
+            pnlTone: "positive",
+            quantityLabel: "$5",
+            remainingLabel: "$0",
+            statusLabel: "Redeemed",
+            strikeLabel: "$65,000.00",
+            updatedAtLabel: "May 17, 2026, 7:50 AM",
+          },
+        ]}
+        initialTab="history"
+        positions={[]}
+        walletActionPending={false}
+        walletStatusLabel={null}
+        walletSubmittedPositionId={null}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="portfolio-history-tab"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('data-testid="portfolio-history"');
+    expect(html).toContain("Trade history");
+    expect(html).toContain("BTC/USD $65,000.00");
+    expect(html).toContain("Redeemed");
+    expect(html).toContain("Cost</small>$2");
+    expect(html).toContain("Payout</small>$3.25");
+    expect(html).toContain("PNL</small>+$1.25");
+    expect(html).toContain("Opened</small>May 17, 2026, 7:33 AM");
+  });
+
   test("renders portfolio time remaining from the current clock", () => {
     const html = renderToStaticMarkup(
       <PortfolioPanel

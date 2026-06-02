@@ -68,6 +68,7 @@ import {
   formatPortfolioTimeRemaining,
   loadPredictPortfolioSnapshot,
   selectVisiblePortfolioPositions,
+  type PredictPortfolioHistoryItem,
   type PredictPortfolioPnlSummary,
   type PredictPortfolioPosition,
 } from "./predictPortfolio";
@@ -121,12 +122,14 @@ type PredictManagerState = {
   status: PredictManagerStatus;
 };
 type PredictPortfolioState = {
+  history: PredictPortfolioHistoryItem[];
   managerObjectId: string | null;
   pnl: PredictPortfolioPnlSummary;
   refreshKey: number;
   status: "idle" | "loading" | "ready" | "error";
   positions: PredictPortfolioPosition[];
 };
+type PortfolioTab = "positions" | "history";
 
 const idleWalletTransactionState: WalletTransactionState = {
   status: "idle",
@@ -1050,6 +1053,8 @@ function TraderRow({
 
 export function PortfolioPanel({
   emptyLabel: emptyLabelOverride,
+  historyItems = [],
+  initialTab = "positions",
   nowMs,
   positions,
   status = "ready",
@@ -1060,6 +1065,8 @@ export function PortfolioPanel({
   onPositionAction,
 }: {
   emptyLabel?: string;
+  historyItems?: PredictPortfolioHistoryItem[];
+  initialTab?: PortfolioTab;
   nowMs?: number;
   positions: PredictPortfolioPosition[];
   status?: PredictPortfolioState["status"];
@@ -1069,6 +1076,7 @@ export function PortfolioPanel({
   onDismissPosition?: (positionId: string) => void;
   onPositionAction: (position: PredictPortfolioPosition) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<PortfolioTab>(initialTab);
   const emptyLabel =
     emptyLabelOverride ??
     (status === "loading"
@@ -1076,14 +1084,46 @@ export function PortfolioPanel({
       : status === "error"
         ? "Could not load positions"
         : "No open positions");
+  const historyEmptyLabel =
+    status === "loading"
+      ? "Loading history..."
+      : status === "error"
+        ? "Could not load history"
+        : "No trade history yet";
 
   return (
     <section className="portfolio-panel" aria-label="Portfolio" data-testid="portfolio-view">
       <div className="section-heading">
         <p>Portfolio</p>
-        <span>{positions.length ? `${positions.length} active` : "Positions"}</span>
+        <span>
+          {activeTab === "positions"
+            ? positions.length
+              ? `${positions.length} active`
+              : "Positions"
+            : historyItems.length
+              ? `${historyItems.length} trades`
+              : "History"}
+        </span>
       </div>
-      {positions.length ? (
+      <div className="portfolio-tabs" aria-label="Portfolio tabs">
+        <button
+          type="button"
+          aria-pressed={activeTab === "positions"}
+          data-testid="portfolio-positions-tab"
+          onClick={() => setActiveTab("positions")}
+        >
+          Positions
+        </button>
+        <button
+          type="button"
+          aria-pressed={activeTab === "history"}
+          data-testid="portfolio-history-tab"
+          onClick={() => setActiveTab("history")}
+        >
+          History
+        </button>
+      </div>
+      {activeTab === "positions" && positions.length ? (
         <div className="portfolio-list">
           {positions.map((position) => {
             const isExpired =
@@ -1173,8 +1213,58 @@ export function PortfolioPanel({
             );
           })}
         </div>
-      ) : (
+      ) : activeTab === "positions" ? (
         <div className="portfolio-empty">{emptyLabel}</div>
+      ) : historyItems.length ? (
+        <div className="portfolio-history" data-testid="portfolio-history">
+          <p className="portfolio-history-title">Trade history</p>
+          {historyItems.map((item) => (
+            <article
+              className={`portfolio-history-row portfolio-history-row-${item.pnlTone}`}
+              key={item.id}
+            >
+              <div className="portfolio-row-main">
+                <span className={item.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
+                  {item.direction}
+                </span>
+                <div>
+                  <strong>BTC/USD {item.strikeLabel}</strong>
+                  <small>
+                    {item.statusLabel} · Exp {item.expiryTimeLabel}
+                  </small>
+                </div>
+              </div>
+              <div className="portfolio-row-metrics portfolio-history-metrics">
+                <span>
+                  <small>Cost</small>
+                  {item.costLabel}
+                </span>
+                <span>
+                  <small>Payout</small>
+                  {item.payoutLabel}
+                </span>
+                <span>
+                  <small>PNL</small>
+                  {item.pnlLabel}
+                </span>
+                <span>
+                  <small>Opened</small>
+                  {item.openedAtLabel}
+                </span>
+                <span>
+                  <small>Updated</small>
+                  {item.updatedAtLabel}
+                </span>
+                <span>
+                  <small>Remaining</small>
+                  {item.remainingLabel}
+                </span>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="portfolio-empty">{historyEmptyLabel}</div>
       )}
     </section>
   );
@@ -1630,6 +1720,7 @@ export function App() {
   });
   const [predictPortfolioRefreshKey, setPredictPortfolioRefreshKey] = useState(0);
   const [predictPortfolioState, setPredictPortfolioState] = useState<PredictPortfolioState>({
+    history: [],
     managerObjectId: null,
     pnl: idlePredictPortfolioPnl,
     refreshKey: 0,
@@ -1825,6 +1916,9 @@ export function App() {
         dismissedPositionIds: dismissedPortfolioPositionIds,
         nowMs: portfolioNowMs,
       })
+    : [];
+  const visiblePortfolioHistory = isPredictPortfolioStateCurrent
+    ? predictPortfolioState.history
     : [];
   const visiblePortfolioPnl =
     activePredictManagerObjectId && isPredictPortfolioStateCurrent
@@ -2038,6 +2132,7 @@ export function App() {
     if (!activePredictManagerObjectId) {
       setPredictPortfolioState({
         managerObjectId: null,
+        history: [],
         pnl: idlePredictPortfolioPnl,
         refreshKey: predictPortfolioRefreshKey,
         status: "idle",
@@ -2048,6 +2143,10 @@ export function App() {
 
     let isCurrent = true;
     setPredictPortfolioState((state) => ({
+      history:
+        state.managerObjectId === activePredictManagerObjectId
+          ? state.history
+          : [],
       managerObjectId: activePredictManagerObjectId,
       pnl:
         state.managerObjectId === activePredictManagerObjectId
@@ -2077,6 +2176,7 @@ export function App() {
         }
 
         setPredictPortfolioState({
+          history: snapshot.history,
           managerObjectId: activePredictManagerObjectId,
           pnl: snapshot.pnl,
           refreshKey: predictPortfolioRefreshKey,
@@ -2090,6 +2190,7 @@ export function App() {
         }
 
         setPredictPortfolioState({
+          history: [],
           managerObjectId: activePredictManagerObjectId,
           pnl: idlePredictPortfolioPnl,
           refreshKey: predictPortfolioRefreshKey,
@@ -2858,6 +2959,7 @@ export function App() {
                     : "Create a Predict account first"
                   : "Connect wallet to see positions"
               }
+              historyItems={visiblePortfolioHistory}
               nowMs={portfolioNowMs}
               positions={visiblePortfolioPositions}
               status={visiblePortfolioStatus}
