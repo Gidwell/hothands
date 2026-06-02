@@ -18,6 +18,7 @@ export type DeepBookPredictTargets = {
   marketKeyUp: string;
   marketKeyDown: string;
   mint: string;
+  redeem: string;
 };
 
 export type CopyNextMintIntentInput = {
@@ -37,6 +38,19 @@ export type DepositQuoteTransactionInput = {
   predictManagerObjectId: string;
   quoteCoinObjectId: string;
   amount: IntegerLike;
+  quoteAssetType?: string;
+  config?: DeepBookPredictTxConfig;
+};
+
+export type RedeemPositionTransactionInput = {
+  direction: PredictDirection;
+  oracleId: string;
+  expiry: IntegerLike;
+  strike: IntegerLike;
+  quantity: IntegerLike;
+  predictObjectId?: string;
+  predictManagerObjectId: string;
+  clockObjectId?: string;
   quoteAssetType?: string;
   config?: DeepBookPredictTxConfig;
 };
@@ -121,6 +135,7 @@ export function buildDeepBookPredictTargets(
     marketKeyUp: `${pkg}::market_key::up`,
     marketKeyDown: `${pkg}::market_key::down`,
     mint: `${pkg}::predict::mint`,
+    redeem: `${pkg}::predict::redeem`,
   };
 }
 
@@ -246,6 +261,51 @@ export function buildCopyNextMintTransaction(intent: CopyNextMintIntent): Transa
       marketKey,
       tx.pure.u64(intent.quantity),
       intent.objects.clock === "0x6" ? tx.object.clock() : tx.object(intent.objects.clock),
+    ],
+  });
+
+  return tx;
+}
+
+export function buildRedeemPositionTransaction(
+  input: RedeemPositionTransactionInput,
+): Transaction {
+  const config = input.config ?? DEEPBOOK_PREDICT_TESTNET_TX_CONFIG;
+  const targets = buildDeepBookPredictTargets(config);
+  const expiry = toPositiveIntegerString(input.expiry, "expiry");
+  const strike = toPositiveIntegerString(input.strike, "strike");
+  const quantity = toPositiveIntegerString(input.quantity, "quantity");
+  const predictObjectId = input.predictObjectId ?? config.predictObjectId;
+  const clockObjectId = input.clockObjectId ?? "0x6";
+  const quoteAssetType = input.quoteAssetType ?? config.quoteAssetType;
+
+  assertObjectId(input.oracleId, "oracleId");
+  assertObjectId(predictObjectId, "predictObjectId");
+  assertObjectId(input.predictManagerObjectId, "predictManagerObjectId");
+  assertObjectId(clockObjectId, "clockObjectId");
+  assertNonEmpty(quoteAssetType, "quoteAssetType");
+
+  const tx = new Transaction();
+  const marketKey = tx.moveCall({
+    target: targets.marketKeyNew,
+    arguments: [
+      tx.pure.id(input.oracleId),
+      tx.pure.u64(expiry),
+      tx.pure.u64(strike),
+      tx.pure.bool(input.direction === "up"),
+    ],
+  });
+
+  tx.moveCall({
+    target: targets.redeem,
+    typeArguments: [quoteAssetType],
+    arguments: [
+      tx.object(predictObjectId),
+      tx.object(input.predictManagerObjectId),
+      tx.object(input.oracleId),
+      marketKey,
+      tx.pure.u64(quantity),
+      clockObjectId === "0x6" ? tx.object.clock() : tx.object(clockObjectId),
     ],
   });
 

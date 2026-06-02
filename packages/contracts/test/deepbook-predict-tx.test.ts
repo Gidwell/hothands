@@ -6,6 +6,7 @@ import {
   buildCopyNextMintTransaction,
   buildCreatePredictManagerTransaction,
   buildDepositQuoteTransaction,
+  buildRedeemPositionTransaction,
   explainPredictMintDryRunPrerequisites,
   parsePredictTxBuilderConfig,
   serializeCopyNextMintIntent,
@@ -44,6 +45,8 @@ describe("DeepBook Predict transaction config", () => {
         "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::market_key::down",
       mint:
         "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::predict::mint",
+      redeem:
+        "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::predict::redeem",
     });
   });
 });
@@ -303,6 +306,75 @@ describe("DeepBook Predict SDK transaction builders", () => {
     ).toThrow("quoteCoinObjectId must be a Sui object id");
     expect(() =>
       buildDepositQuoteTransaction({ ...valid, predictManagerObjectId: "manager" }),
+    ).toThrow("predictManagerObjectId must be a Sui object id");
+  });
+
+  test("builds a redeem transaction for an existing UP/DOWN position", () => {
+    const tx = buildRedeemPositionTransaction({
+      direction: "down",
+      oracleId:
+        "0x4444444444444444444444444444444444444444444444444444444444444444",
+      expiry: 1_779_193_600,
+      strike: 65_000_000_000,
+      quantity: 2_500_000,
+      predictManagerObjectId:
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+    });
+    const data = tx.getData();
+    const commands = moveCalls(tx);
+
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toMatchObject({
+      package: DEEPBOOK_PREDICT_TESTNET_TX_CONFIG.predictPackageId,
+      module: "market_key",
+      function: "new",
+      typeArguments: [],
+    });
+    expect(commands[1]).toMatchObject({
+      package: DEEPBOOK_PREDICT_TESTNET_TX_CONFIG.predictPackageId,
+      module: "predict",
+      function: "redeem",
+      typeArguments: [DEEPBOOK_PREDICT_TESTNET_TX_CONFIG.quoteAssetType],
+      arguments: [
+        { Input: 4, type: "object" },
+        { Input: 5, type: "object" },
+        { Input: 6, type: "object" },
+        { Result: 0 },
+        { Input: 7, type: "pure" },
+        { Input: 8, type: "object" },
+      ],
+    });
+    expect(data.inputs[8]).toMatchObject({
+      Object: {
+        SharedObject: {
+          objectId:
+            "0x0000000000000000000000000000000000000000000000000000000000000006",
+        },
+      },
+    });
+    expect(typeof tx.serialize()).toBe("string");
+  });
+
+  test("validates redeem transaction inputs", () => {
+    const valid = {
+      direction: "up" as const,
+      oracleId:
+        "0x4444444444444444444444444444444444444444444444444444444444444444",
+      expiry: 1,
+      strike: 1,
+      quantity: 1,
+      predictManagerObjectId:
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+    };
+
+    expect(() => buildRedeemPositionTransaction({ ...valid, quantity: 0 })).toThrow(
+      "quantity must be a positive integer",
+    );
+    expect(() =>
+      buildRedeemPositionTransaction({ ...valid, oracleId: "btc-oracle" }),
+    ).toThrow("oracleId must be a Sui object id");
+    expect(() =>
+      buildRedeemPositionTransaction({ ...valid, predictManagerObjectId: "manager" }),
     ).toThrow("predictManagerObjectId must be a Sui object id");
   });
 });

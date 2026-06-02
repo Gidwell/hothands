@@ -69,6 +69,7 @@ import {
   type TradeStrikeOption,
 } from "./marketHeatModel";
 import { buildTradeMintTransaction } from "./walletTransactions";
+import { buildPortfolioRedeemTransaction } from "./walletTransactions";
 import {
   formatDusdcBalance,
   loadDusdcBalanceLabel,
@@ -77,12 +78,16 @@ import {
   usdToDusdcAtomic,
 } from "./walletBalance";
 import { findPredictManagerForOwner } from "./predictManager";
+import {
+  loadPredictPortfolio,
+  type PredictPortfolioPosition,
+} from "./predictPortfolio";
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
 type PreviewMode = "replay" | "market";
-export type AppView = "feed" | "trade";
+export type AppView = "feed" | "trade" | "portfolio";
 export type TradeSide = "UP" | "DOWN";
 export type TradeMarketSelection = {
   marketId: string;
@@ -117,6 +122,12 @@ type PredictManagerState = {
   objectId: string | null;
   refreshKey: number;
   status: PredictManagerStatus;
+};
+type PredictPortfolioState = {
+  managerObjectId: string | null;
+  refreshKey: number;
+  status: "idle" | "loading" | "ready" | "error";
+  positions: PredictPortfolioPosition[];
 };
 
 const idleWalletTransactionState: WalletTransactionState = {
@@ -521,6 +532,13 @@ export function BottomNav({
         onClick={() => onViewChange("trade")}
       >
         ↔ Trade
+      </button>
+      <button
+        type="button"
+        aria-pressed={activeView === "portfolio"}
+        onClick={() => onViewChange("portfolio")}
+      >
+        Portfolio
       </button>
     </nav>
   );
@@ -1167,6 +1185,89 @@ function ActiveSignalStrip({
   );
 }
 
+export function PortfolioPanel({
+  emptyLabel: emptyLabelOverride,
+  positions,
+  status = "ready",
+  walletActionPending = false,
+  walletStatusLabel = null,
+  walletSubmittedPositionId = null,
+  onPositionAction,
+}: {
+  emptyLabel?: string;
+  positions: PredictPortfolioPosition[];
+  status?: PredictPortfolioState["status"];
+  walletActionPending?: boolean;
+  walletStatusLabel?: string | null;
+  walletSubmittedPositionId?: string | null;
+  onPositionAction: (position: PredictPortfolioPosition) => void;
+}) {
+  const emptyLabel =
+    emptyLabelOverride ??
+    (status === "loading"
+      ? "Loading positions..."
+      : status === "error"
+        ? "Could not load positions"
+        : "No open positions");
+
+  return (
+    <section className="portfolio-panel" aria-label="Portfolio" data-testid="portfolio-view">
+      <div className="section-heading">
+        <p>Portfolio</p>
+        <span>{positions.length ? `${positions.length} active` : "Positions"}</span>
+      </div>
+      {positions.length ? (
+        <div className="portfolio-list">
+          {positions.map((position) => (
+            <article className="portfolio-row" key={position.id}>
+              <div className="portfolio-row-main">
+                <span className={position.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
+                  {position.direction}
+                </span>
+                <div>
+                  <strong>BTC/USD {position.strikeLabel}</strong>
+                  <small>{position.statusLabel} · {position.timeLabel}</small>
+                </div>
+              </div>
+              <div className="portfolio-row-metrics">
+                <span>
+                  <small>Max payout</small>
+                  {position.maxPayoutLabel}
+                </span>
+                <span>
+                  <small>Cost</small>
+                  {position.costBasisLabel}
+                </span>
+                <span>
+                  <small>Expiry</small>
+                  {position.expiryTimeLabel}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="portfolio-action-button"
+                disabled={walletActionPending}
+                onClick={() => onPositionAction(position)}
+              >
+                {walletActionPending && walletSubmittedPositionId === position.id
+                  ? "Sending..."
+                  : position.actionLabel}
+              </button>
+              {walletSubmittedPositionId === position.id ? (
+                <span className="portfolio-wallet-status" aria-live="polite">
+                  {walletStatusLabel ?? "Wallet request started"}
+                </span>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="portfolio-empty">{emptyLabel}</div>
+      )}
+    </section>
+  );
+}
+
 export function MarketHeatPreview({
   rows,
   sourceLabel,
@@ -1553,6 +1654,8 @@ export function App() {
     Record<string, TradeMarketSelection>
   >({});
   const [tradeWalletSubmitted, setTradeWalletSubmitted] = useState(false);
+  const [portfolioWalletSubmitPositionId, setPortfolioWalletSubmitPositionId] =
+    useState<string | null>(null);
   const [walletTxState, setWalletTxState] = useState<WalletTransactionState>(
     idleWalletTransactionState,
   );
@@ -1580,6 +1683,13 @@ export function App() {
     objectId: null,
     refreshKey: 0,
     status: "idle",
+  });
+  const [predictPortfolioRefreshKey, setPredictPortfolioRefreshKey] = useState(0);
+  const [predictPortfolioState, setPredictPortfolioState] = useState<PredictPortfolioState>({
+    managerObjectId: null,
+    refreshKey: 0,
+    status: "idle",
+    positions: [],
   });
   const [tradeQuoteState, setTradeQuoteState] = useState<{
     key: string | null;
@@ -1788,6 +1898,17 @@ export function App() {
     predictManagerBankrollState.status === "ready"
       ? predictManagerBankrollState.atomicBalance
       : null;
+  const isPredictPortfolioStateCurrent =
+    activePredictManagerObjectId &&
+    predictPortfolioState.managerObjectId === activePredictManagerObjectId &&
+    predictPortfolioState.refreshKey === predictPortfolioRefreshKey;
+  const visiblePortfolioStatus: PredictPortfolioState["status"] = activePredictManagerObjectId
+    ? isPredictPortfolioStateCurrent
+      ? predictPortfolioState.status
+      : "loading"
+    : "idle";
+  const visiblePortfolioPositions =
+    isPredictPortfolioStateCurrent ? predictPortfolioState.positions : [];
 
   useEffect(() => {
     if (!connectedAccountAddress) {
@@ -1973,6 +2094,59 @@ export function App() {
     currentClient,
     predictManagerBankrollRefreshKey,
   ]);
+
+  useEffect(() => {
+    if (!activePredictManagerObjectId) {
+      setPredictPortfolioState({
+        managerObjectId: null,
+        refreshKey: predictPortfolioRefreshKey,
+        status: "idle",
+        positions: [],
+      });
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setPredictPortfolioState({
+      managerObjectId: activePredictManagerObjectId,
+      refreshKey: predictPortfolioRefreshKey,
+      status: "loading",
+      positions: [],
+    });
+
+    void loadPredictPortfolio({
+      managerObjectId: activePredictManagerObjectId,
+      maxPages: 12,
+    })
+      .then((positions) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setPredictPortfolioState({
+          managerObjectId: activePredictManagerObjectId,
+          refreshKey: predictPortfolioRefreshKey,
+          status: "ready",
+          positions,
+        });
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setPredictPortfolioState({
+          managerObjectId: activePredictManagerObjectId,
+          refreshKey: predictPortfolioRefreshKey,
+          status: "error",
+          positions: [],
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [activePredictManagerObjectId, predictPortfolioRefreshKey]);
 
   useEffect(() => {
     const setSnapshot = (snapshot: LiveActivityModeSnapshot) => {
@@ -2284,6 +2458,7 @@ export function App() {
       await dAppKit.disconnectWallet();
       setWalletTxState(idleWalletTransactionState);
       setTradeWalletSubmitted(false);
+      setPortfolioWalletSubmitPositionId(null);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -2330,6 +2505,7 @@ export function App() {
       setDusdcBalanceRefreshKey((key) => key + 1);
       setPredictManagerRefreshKey((key) => key + 1);
       setPredictManagerBankrollRefreshKey((key) => key + 1);
+      setPredictPortfolioRefreshKey((key) => key + 1);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -2478,6 +2654,64 @@ export function App() {
       });
       setDusdcBalanceRefreshKey((key) => key + 1);
       setPredictManagerBankrollRefreshKey((key) => key + 1);
+      setPredictPortfolioRefreshKey((key) => key + 1);
+    } catch (error) {
+      setWalletTxState({
+        status: "error",
+        label: walletErrorMessage(error),
+        digest: null,
+      });
+    }
+  };
+  const handlePortfolioPositionAction = async (position: PredictPortfolioPosition) => {
+    if (!currentAccount) {
+      setWalletTxState({
+        status: "error",
+        label: "Connect a Sui testnet wallet first.",
+        digest: null,
+      });
+      return;
+    }
+
+    if (!activePredictManagerObjectId) {
+      setWalletTxState({
+        status: "error",
+        label: "Create a Predict account first.",
+        digest: null,
+      });
+      return;
+    }
+
+    setPortfolioWalletSubmitPositionId(position.id);
+    setWalletTxState({
+      status: "pending",
+      label: `${position.actionLabel}ing position...`,
+      digest: null,
+    });
+
+    try {
+      const transaction = buildPortfolioRedeemTransaction({
+        position,
+        predictManagerObjectId: activePredictManagerObjectId,
+      });
+      const result = await dAppKit.signAndExecuteTransaction({ transaction });
+      const error = walletResultError(result);
+      if (error) {
+        setWalletTxState({
+          status: "error",
+          label: error,
+          digest: null,
+        });
+        return;
+      }
+
+      setWalletTxState({
+        status: "success",
+        label: `${position.actionLabel} transaction sent.`,
+        digest: walletResultDigest(result),
+      });
+      setPredictManagerBankrollRefreshKey((key) => key + 1);
+      setPredictPortfolioRefreshKey((key) => key + 1);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -2570,7 +2804,7 @@ export function App() {
                 />
               )}
             </>
-          ) : (
+          ) : activeView === "trade" ? (
             <TradeTicket
               customStrike={selectedTradeCustomStrike}
               copyAmount={copyState.copyAmount}
@@ -2589,6 +2823,22 @@ export function App() {
               onSideChange={handleTradeSideChange}
               onStrikeChange={handleTradeStrikeChange}
               onWalletSubmit={handleTradeWalletSubmit}
+            />
+          ) : (
+            <PortfolioPanel
+              emptyLabel={
+                currentAccount
+                  ? activePredictManagerObjectId
+                    ? undefined
+                    : "Create a Predict account first"
+                  : "Connect wallet to see positions"
+              }
+              positions={visiblePortfolioPositions}
+              status={visiblePortfolioStatus}
+              walletActionPending={isWalletActionPending}
+              walletStatusLabel={walletTxState.label}
+              walletSubmittedPositionId={portfolioWalletSubmitPositionId}
+              onPositionAction={handlePortfolioPositionAction}
             />
           )}
         </div>

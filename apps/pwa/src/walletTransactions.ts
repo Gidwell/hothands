@@ -1,12 +1,14 @@
 import {
   buildCopyNextMintIntent,
   buildCopyNextMintTransaction,
+  buildRedeemPositionTransaction as buildDeepBookRedeemPositionTransaction,
 } from "@hot-hands/contracts";
 import type { Transaction } from "@mysten/sui/transactions";
 import type {
   TradeMarketLadderRow,
   TradeQuote,
 } from "./marketHeatModel";
+import type { PredictPortfolioPosition } from "./predictPortfolio";
 
 export type BuildTradeMintTransactionInput = {
   predictManagerObjectId: string;
@@ -31,6 +33,23 @@ export function buildTradeMintTransaction({
       predictManagerObjectId,
     }),
   );
+}
+
+export function buildPortfolioRedeemTransaction({
+  position,
+  predictManagerObjectId,
+}: {
+  position: PredictPortfolioPosition;
+  predictManagerObjectId: string;
+}): Transaction {
+  return buildDeepBookRedeemPositionTransaction({
+    direction: position.direction === "UP" ? "up" : "down",
+    oracleId: position.oracleId,
+    expiry: position.expiry,
+    strike: position.strike,
+    quantity: position.quantity,
+    predictManagerObjectId,
+  });
 }
 
 function assertQuoteMatchesMarket(market: TradeMarketLadderRow, quote: TradeQuote): void {

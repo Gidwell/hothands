@@ -309,7 +309,7 @@ button:disabled {
 
 .bottom-nav {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   margin-top: 10px;
   padding: 6px;
@@ -329,6 +329,12 @@ button:disabled {
 .bottom-nav button[aria-pressed="true"] {
   color: #ffffff;
   background: #111827;
+}
+
+.portfolio-action-button {
+  min-height: 34px;
+  border-radius: 8px;
+  font-weight: 900;
 }
 
 .demo-toggle {
@@ -444,13 +450,15 @@ button:disabled {
 
 .trader-list,
 .market-heat-list,
-.trade-ticket {
+.trade-ticket,
+.portfolio-panel {
   display: grid;
   gap: 8px;
   margin-top: 12px;
 }
 
-.market-heat-list {
+.market-heat-list,
+.portfolio-panel {
   align-content: start;
   padding-bottom: 18px;
 }
@@ -467,6 +475,115 @@ button:disabled {
   border-radius: 8px;
   background: #ffffff;
   box-shadow: 0 8px 28px rgba(34, 48, 64, 0.07);
+}
+
+.portfolio-list {
+  display: grid;
+  gap: 8px;
+}
+
+.portfolio-row {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #dbe5ee;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 28px rgba(34, 48, 64, 0.07);
+}
+
+.portfolio-row-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.portfolio-row-main > span {
+  display: grid;
+  min-width: 54px;
+  min-height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.portfolio-side-up {
+  color: #07813f;
+  background: #dcfce7;
+}
+
+.portfolio-side-down {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+.portfolio-row-main strong {
+  display: block;
+  color: #111827;
+  font-size: 0.9rem;
+  font-weight: 950;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-row-main small {
+  color: #667085;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.portfolio-row-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.portfolio-row-metrics span {
+  display: grid;
+  gap: 3px;
+  min-height: 44px;
+  padding: 6px;
+  align-content: center;
+  border: 1px solid #e3ebf3;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #111827;
+  font-size: 0.78rem;
+  font-weight: 950;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-row-metrics small {
+  color: #667085;
+  font-size: 0.6rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.portfolio-action-button {
+  color: #ffffff;
+  background: #111827;
+}
+
+.portfolio-wallet-status {
+  color: #07813f;
+  font-size: 0.72rem;
+  font-weight: 950;
+}
+
+.portfolio-empty {
+  display: grid;
+  min-height: 120px;
+  place-items: center;
+  border: 1px dashed #dbe5ee;
+  border-radius: 8px;
+  color: #667085;
+  background: #ffffff;
+  font-size: 0.86rem;
+  font-weight: 900;
 }
 
 .trade-ticket-title {

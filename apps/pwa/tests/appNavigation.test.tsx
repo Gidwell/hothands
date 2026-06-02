@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AccountSummary, BottomNav, TradeTicket, WalletStatusBar } from "../src/App";
+import {
+  AccountSummary,
+  BottomNav,
+  PortfolioPanel,
+  TradeTicket,
+  WalletStatusBar,
+} from "../src/App";
 
 describe("mobile app navigation", () => {
   test("renders available wallet balance separately from Predict bankroll with a deposit action", () => {
@@ -45,7 +51,64 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="bottom-nav"');
     expect(html).toContain("🔥 Feed");
     expect(html).toContain("↔ Trade");
+    expect(html).toContain("Portfolio");
     expect(html).toContain('aria-pressed="true"');
+  });
+
+  test("renders portfolio positions with redeem and claim actions", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        positions={[
+          {
+            actionLabel: "Redeem",
+            costBasisLabel: "$1.80",
+            direction: "UP",
+            expiry: 1_779_193_600,
+            expiryMs: 1_779_193_600_000,
+            expiryTimeLabel: "May 18, 2026, 9:46 PM",
+            id: "position-open",
+            isExpired: false,
+            managerId: "0xmanager",
+            maxPayoutLabel: "$4",
+            oracleId: "0xoracle",
+            quantity: "4000000",
+            statusLabel: "Open",
+            strike: "65000000000",
+            strikeLabel: "$65,000.00",
+            timeLabel: "1d left",
+          },
+          {
+            actionLabel: "Claim",
+            costBasisLabel: "$2.50",
+            direction: "DOWN",
+            expiry: 1_779_000_000,
+            expiryMs: 1_779_000_000_000,
+            expiryTimeLabel: "May 16, 2026, 7:00 PM",
+            id: "position-expired",
+            isExpired: true,
+            managerId: "0xmanager",
+            maxPayoutLabel: "$5",
+            oracleId: "0xoracle",
+            quantity: "5000000",
+            statusLabel: "Expired",
+            strike: "65000000000",
+            strikeLabel: "$65,000.00",
+            timeLabel: "Expired",
+          },
+        ]}
+        walletActionPending={false}
+        walletStatusLabel={null}
+        walletSubmittedPositionId={null}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="portfolio-view"');
+    expect(html).toContain("Portfolio");
+    expect(html).toContain("Redeem");
+    expect(html).toContain("Claim");
+    expect(html).toContain("$65,000.00");
+    expect(html).toContain("$4");
   });
 
   test("renders a standalone trade ticket for custom BTC bets", () => {
