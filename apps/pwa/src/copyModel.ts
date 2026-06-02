@@ -20,9 +20,9 @@ export type CopyMarket = {
   pair: string;
 };
 
-export const COPY_AMOUNT_MIN = 10;
+export const COPY_AMOUNT_MIN = 0.01;
 export const COPY_AMOUNT_MAX = 1_000;
-export const COPY_AMOUNT_STEP = 50;
+export const COPY_AMOUNT_STEP = 5;
 export const COPY_AMOUNT_DEFAULT = 25;
 
 export function createInitialCopyState(traders: Trader[]): CopyTableState {
@@ -39,7 +39,9 @@ export function clampCopyAmount(amount: number): number {
     return COPY_AMOUNT_DEFAULT;
   }
 
-  return Math.min(COPY_AMOUNT_MAX, Math.max(COPY_AMOUNT_MIN, Math.round(amount)));
+  const cents = Math.round(amount * 100) / 100;
+
+  return Math.min(COPY_AMOUNT_MAX, Math.max(COPY_AMOUNT_MIN, cents));
 }
 
 export function setCopyAmount(state: CopyTableState, amount: number): CopyTableState {
@@ -116,7 +118,12 @@ export function getSelectedTrader(state: CopyTableState, traders: Trader[]): Tra
 }
 
 export function formatCopyAmount(amount: number): string {
-  return `$${clampCopyAmount(amount).toLocaleString()}`;
+  const clampedAmount = clampCopyAmount(amount);
+
+  return `$${clampedAmount.toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: Number.isInteger(clampedAmount) ? 0 : 2,
+  })}`;
 }
 
 export function getCopyReceiptPreview(

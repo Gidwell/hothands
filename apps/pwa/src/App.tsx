@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import {
+  useCurrentClient,
   useCurrentAccount,
   useCurrentNetwork,
   useCurrentWallet,
@@ -64,6 +65,7 @@ import {
   type TradeMarketLadderRow,
 } from "./marketHeatModel";
 import { buildTradeMintTransaction } from "./walletTransactions";
+import { loadDusdcBalanceLabel } from "./walletBalance";
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
@@ -77,6 +79,12 @@ type WalletTransactionState = {
   status: WalletTransactionStatus;
   label: string;
   digest: string | null;
+};
+type DusdcBalanceState = {
+  accountAddress: string | null;
+  refreshKey: number;
+  status: "idle" | "loading" | "ready" | "error";
+  label: string | null;
 };
 
 const idleWalletTransactionState: WalletTransactionState = {
@@ -202,7 +210,7 @@ function CopyAmountControls({
             inputMode="numeric"
             min={COPY_AMOUNT_MIN}
             max={COPY_AMOUNT_MAX}
-            step="1"
+            step="0.01"
             type="number"
             value={copyAmount}
             onClick={stopEvent}
@@ -1240,8 +1248,12 @@ function MarketHeader({
 }
 
 function AccountSummary({
+  availableLabel = null,
+  bankrollLabel = null,
   summary,
 }: {
+  availableLabel?: string | null;
+  bankrollLabel?: string | null;
   summary: ReturnType<typeof getReplayAccountSummary>;
 }) {
   return (
@@ -1257,13 +1269,13 @@ function AccountSummary({
         </div>
         <div className="account-value">
           <span>Bankroll</span>
-          <strong data-testid="account-value">{summary.accountValue}</strong>
+          <strong data-testid="account-value">{bankrollLabel ?? summary.accountValue}</strong>
         </div>
       </div>
       <div className="account-summary-stats">
         <div>
           <span>Avail</span>
-          <strong>{summary.available}</strong>
+          <strong>{availableLabel ?? summary.available}</strong>
         </div>
         <div>
           <span>Copy</span>
@@ -1340,6 +1352,7 @@ function HotTraderList({
 export function App() {
   const dAppKit = useDAppKit();
   const currentAccount = useCurrentAccount();
+  const currentClient = useCurrentClient();
   const currentWallet = useCurrentWallet();
   const currentNetwork = useCurrentNetwork();
   const walletConnection = useWalletConnection();
@@ -1354,6 +1367,13 @@ export function App() {
   const [walletTxState, setWalletTxState] = useState<WalletTransactionState>(
     idleWalletTransactionState,
   );
+  const [dusdcBalanceRefreshKey, setDusdcBalanceRefreshKey] = useState(0);
+  const [dusdcBalanceState, setDusdcBalanceState] = useState<DusdcBalanceState>({
+    accountAddress: null,
+    refreshKey: 0,
+    status: "idle",
+    label: null,
+  });
   const [predictManagerObjectId, setPredictManagerObjectId] = useState(
     readStoredPredictManagerObjectId,
   );
@@ -1490,6 +1510,21 @@ export function App() {
     ? [liveActivitySnapshot.activity.latestActivity.label]
     : frame.activity;
   const isWalletActionPending = walletTxState.status === "pending";
+  const connectedAccountAddress = currentAccount?.address ?? null;
+  const liveDusdcBalanceLabel =
+    connectedAccountAddress &&
+    dusdcBalanceState.accountAddress === connectedAccountAddress &&
+    dusdcBalanceState.refreshKey === dusdcBalanceRefreshKey
+      ? dusdcBalanceState.status === "ready"
+        ? dusdcBalanceState.label
+        : dusdcBalanceState.status === "loading"
+          ? "Loading..."
+          : dusdcBalanceState.status === "error"
+            ? "$--"
+            : null
+      : connectedAccountAddress
+        ? "Loading..."
+        : null;
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1504,6 +1539,59 @@ export function App() {
 
     window.localStorage.removeItem(PREDICT_MANAGER_STORAGE_KEY);
   }, [predictManagerObjectId]);
+
+  useEffect(() => {
+    if (!connectedAccountAddress) {
+      setDusdcBalanceState({
+        accountAddress: null,
+        refreshKey: dusdcBalanceRefreshKey,
+        status: "idle",
+        label: null,
+      });
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setDusdcBalanceState({
+      accountAddress: connectedAccountAddress,
+      refreshKey: dusdcBalanceRefreshKey,
+      status: "loading",
+      label: null,
+    });
+
+    void loadDusdcBalanceLabel({
+      client: currentClient,
+      owner: connectedAccountAddress,
+    })
+      .then((label) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setDusdcBalanceState({
+          accountAddress: connectedAccountAddress,
+          refreshKey: dusdcBalanceRefreshKey,
+          status: "ready",
+          label,
+        });
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setDusdcBalanceState({
+          accountAddress: connectedAccountAddress,
+          refreshKey: dusdcBalanceRefreshKey,
+          status: "error",
+          label: null,
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [connectedAccountAddress, currentClient, dusdcBalanceRefreshKey]);
 
   useEffect(() => {
     const setSnapshot = (snapshot: LiveActivityModeSnapshot) => {
@@ -1841,6 +1929,7 @@ export function App() {
         label: "Predict account transaction sent. Paste the new object id when it appears.",
         digest: walletResultDigest(result),
       });
+      setDusdcBalanceRefreshKey((key) => key + 1);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -1906,6 +1995,7 @@ export function App() {
         label: "Trade transaction sent.",
         digest: walletResultDigest(result),
       });
+      setDusdcBalanceRefreshKey((key) => key + 1);
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -1930,7 +2020,11 @@ export function App() {
             onConnect={handleWalletConnect}
             onDisconnect={handleWalletDisconnect}
           />
-          <AccountSummary summary={accountSummary} />
+          <AccountSummary
+            availableLabel={liveDusdcBalanceLabel}
+            bankrollLabel={liveDusdcBalanceLabel}
+            summary={accountSummary}
+          />
           {activeView === "feed" ? (
             <>
               <ActiveSignalStrip

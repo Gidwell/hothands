@@ -15,9 +15,17 @@ describe("copy interaction model", () => {
     const state = createInitialCopyState(traders);
 
     expect(state.copyAmount).toBe(25);
-    expect(stepCopyAmount(state, -1).copyAmount).toBe(10);
-    expect(stepCopyAmount(setCopyAmount(state, 11), -1).copyAmount).toBe(10);
+    expect(stepCopyAmount(state, -1).copyAmount).toBe(20);
+    expect(stepCopyAmount(setCopyAmount(state, 3), -1).copyAmount).toBe(0.01);
     expect(stepCopyAmount(setCopyAmount(state, 5_000), 1).copyAmount).toBe(1_000);
+  });
+
+  test("allows custom copy amounts below ten dollars", () => {
+    const state = createInitialCopyState(traders);
+
+    expect(setCopyAmount(state, 7.5).copyAmount).toBe(7.5);
+    expect(setCopyAmount(state, 0.25).copyAmount).toBe(0.25);
+    expect(setCopyAmount(state, 0).copyAmount).toBe(0.01);
   });
 
   test("toggles copy arming without losing the selected leader", () => {
