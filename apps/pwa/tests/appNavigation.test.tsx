@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   AccountSummary,
@@ -8,6 +9,29 @@ import {
   WalletStatusBar,
 } from "../src/App";
 
+function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const match = findElementByTestId(child, testId);
+      if (match) {
+        return match;
+      }
+    }
+    return null;
+  }
+
+  if (!isValidElement(node)) {
+    return null;
+  }
+
+  const props = node.props as { children?: ReactNode; "data-testid"?: string };
+  if (props["data-testid"] === testId) {
+    return node;
+  }
+
+  return findElementByTestId(props.children, testId);
+}
+
 describe("mobile app navigation", () => {
   test("renders available wallet balance separately from Predict bankroll with a deposit action", () => {
     let depositClicked = false;
@@ -15,6 +39,7 @@ describe("mobile app navigation", () => {
       <AccountSummary
         availableLabel="$42"
         bankrollLabel="$12.50"
+        depositAmount={75}
         summary={{
           accountValue: "$100",
           available: "$80",
@@ -28,6 +53,7 @@ describe("mobile app navigation", () => {
         onDeposit={() => {
           depositClicked = true;
         }}
+        onDepositAmountChange={() => undefined}
       />,
     );
 
@@ -39,8 +65,43 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Bankroll");
     expect(html).toContain('data-testid="predict-bankroll-balance"');
     expect(html).toContain("$12.50");
+    expect(html).toContain('aria-label="Deposit amount"');
+    expect(html).toContain('data-testid="deposit-bankroll-amount"');
+    expect(html).toContain('value="75"');
     expect(html).toContain('data-testid="deposit-bankroll"');
     expect(html).toContain("Deposit");
+  });
+
+  test("wires the custom deposit amount input", () => {
+    let changedAmount = 0;
+    const tree = AccountSummary({
+      depositAmount: 25,
+      summary: {
+        accountValue: "$100",
+        available: "$80",
+        copyValue: "$25",
+        detail: "Ready to copy.",
+        pnl: "+$0",
+        pnlTone: "flat",
+        status: "Watching",
+        title: "My Session",
+      },
+      onDeposit: () => undefined,
+      onDepositAmountChange: (amount) => {
+        changedAmount = amount;
+      },
+    });
+
+    const input = findElementByTestId(tree, "deposit-bankroll-amount");
+    expect(input).not.toBeNull();
+    const props = input?.props as {
+      onChange?: (event: { currentTarget: { value: string } }) => void;
+      value?: number;
+    };
+
+    expect(props.value).toBe(25);
+    props.onChange?.({ currentTarget: { value: "12.34" } });
+    expect(changedAmount).toBe(12.34);
   });
 
   test("renders feed and trade as bottom navigation tabs", () => {

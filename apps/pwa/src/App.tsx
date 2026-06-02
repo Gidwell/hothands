@@ -96,6 +96,8 @@ const MARKET_HEAT_REFRESH_MS = 10_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
 const PORTFOLIO_TIME_REFRESH_MS = 15_000;
+const DEPOSIT_AMOUNT_DEFAULT = 25;
+const DEPOSIT_AMOUNT_MIN = 0.01;
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "portfolio";
 export type TradeSide = "UP" | "DOWN";
@@ -222,6 +224,14 @@ function formatUsdValue(amount: number): string {
 function formatSignedUsdValue(amount: number): string {
   const prefix = amount >= 0 ? "+" : "-";
   return `${prefix}${formatUsdValue(Math.abs(amount))}`;
+}
+
+function clampDepositAmount(amount: number): number {
+  if (!Number.isFinite(amount)) {
+    return DEPOSIT_AMOUNT_DEFAULT;
+  }
+
+  return Math.max(DEPOSIT_AMOUNT_MIN, Math.round(amount * 100) / 100);
 }
 
 function buildReturnPreviewFromQuote(quote: TradeQuote): ReturnPreview {
@@ -1582,12 +1592,16 @@ function MarketHeader({
 export function AccountSummary({
   availableLabel = null,
   bankrollLabel = null,
+  depositAmount = DEPOSIT_AMOUNT_DEFAULT,
   onDeposit,
+  onDepositAmountChange,
   summary,
 }: {
   availableLabel?: string | null;
   bankrollLabel?: string | null;
+  depositAmount?: number;
   onDeposit?: () => void;
+  onDepositAmountChange?: (amount: number) => void;
   summary: ReturnType<typeof getReplayAccountSummary>;
 }) {
   return (
@@ -1607,14 +1621,29 @@ export function AccountSummary({
             {bankrollLabel ?? summary.accountValue}
           </strong>
           {onDeposit ? (
-            <button
-              type="button"
-              className="account-deposit-button"
-              data-testid="deposit-bankroll"
-              onClick={onDeposit}
-            >
-              Deposit
-            </button>
+            <div className="account-deposit-control">
+              <label className="account-deposit-amount">
+                <span aria-hidden="true">$</span>
+                <input
+                  aria-label="Deposit amount"
+                  data-testid="deposit-bankroll-amount"
+                  inputMode="decimal"
+                  min={DEPOSIT_AMOUNT_MIN}
+                  step="0.01"
+                  type="number"
+                  value={depositAmount}
+                  onChange={(event) => onDepositAmountChange?.(Number(event.currentTarget.value))}
+                />
+              </label>
+              <button
+                type="button"
+                className="account-deposit-button"
+                data-testid="deposit-bankroll"
+                onClick={onDeposit}
+              >
+                Deposit
+              </button>
+            </div>
           ) : null}
         </div>
       </div>
@@ -1753,6 +1782,7 @@ export function App() {
     positions: [],
   });
   const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
+  const [depositAmount, setDepositAmount] = useState(DEPOSIT_AMOUNT_DEFAULT);
   const [tradeQuoteState, setTradeQuoteState] = useState<{
     key: string | null;
     status: TradeQuoteStatus;
@@ -2605,6 +2635,9 @@ export function App() {
   const handleMarketHeatShowMore = () => {
     setMarketHeatVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
   };
+  const handleDepositAmountChange = (amount: number) => {
+    setDepositAmount(clampDepositAmount(amount));
+  };
   const handleTradeSideChange = (side: TradeSide) => {
     setTradeSide(side);
     setTradeWalletSubmitted(false);
@@ -2753,8 +2786,8 @@ export function App() {
       return;
     }
 
-    const amount = usdToDusdcAtomic(copyState.copyAmount);
-    const amountLabel = formatCopyAmount(copyState.copyAmount);
+    const amount = usdToDusdcAtomic(depositAmount);
+    const amountLabel = formatCopyAmount(depositAmount);
 
     setWalletTxState({
       status: "pending",
@@ -2961,7 +2994,9 @@ export function App() {
           <AccountSummary
             availableLabel={liveDusdcBalanceLabel}
             bankrollLabel={livePredictManagerBankrollLabel}
+            depositAmount={depositAmount}
             onDeposit={handleDepositBankroll}
+            onDepositAmountChange={handleDepositAmountChange}
             summary={accountSummary}
           />
           {activeView === "feed" ? (
