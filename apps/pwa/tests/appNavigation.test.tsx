@@ -113,7 +113,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="bottom-nav"');
     expect(html).toContain("🔥 Feed");
     expect(html).toContain("↔ Trade");
-    expect(html).toContain("Portfolio");
+    expect(html).toContain("💵 Portfolio");
     expect(html).toContain('aria-pressed="true"');
   });
 
@@ -491,9 +491,15 @@ describe("mobile app navigation", () => {
           },
         ]}
         copyAmount={100}
+        durationOptions={[
+          { count: 1, label: "15m", value: "15m" },
+          { count: 1, label: "2h", value: "2h" },
+        ]}
         selectedMarketId="btc-2h-72000"
+        selectedDuration="2h"
         selectedSide="UP"
         onAmountSet={() => undefined}
+        onDurationChange={() => undefined}
         onMarketChange={() => undefined}
         onSideChange={() => undefined}
         onWalletSubmit={() => undefined}
@@ -501,6 +507,9 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain('data-testid="trade-view"');
+    expect(html).toContain('data-testid="trade-duration-all"');
+    expect(html).toContain('data-testid="trade-duration-15m"');
+    expect(html).toContain('data-testid="trade-duration-2h"');
     expect(html).toContain("Make a BTC prediction");
     expect(html).toContain("Pick a market");
     expect(html).toContain("UP");

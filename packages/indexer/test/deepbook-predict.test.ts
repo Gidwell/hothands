@@ -3,8 +3,10 @@ import {
   DEEPBOOK_PREDICT_TESTNET_CONFIG,
   buildPredictServerUrl,
   computeMarketHeat,
+  createPredictOraclePriceClient,
   createPredictTradeHistoryClient,
   createPredictReadCanary,
+  normalizePredictOraclePriceRow,
   normalizePredictTradeRow,
   parsePredictCanaryConfig,
   selectBestBtcOracle,
@@ -347,6 +349,71 @@ describe("DeepBook Predict trade-history normalization", () => {
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/positions/minted`,
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/positions/redeemed`,
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/trades/btc-2026-05-19`,
+    ]);
+  });
+
+  test("reads oracle price history for charting through injected fetch", async () => {
+    const requests: string[] = [];
+    const client = createPredictOraclePriceClient({
+      fetchImpl: async (input: RequestInfo | URL) => {
+        const url = String(input);
+        requests.push(url);
+
+        if (url.endsWith("/oracles/btc-2026-05-19/prices")) {
+          return jsonResponse({
+            prices: [
+              {
+                oracle_id: "btc-2026-05-19",
+                spot: "72050000000",
+                forward: "72070000000",
+                checkpoint: "4251",
+                checkpoint_timestamp_ms: "1779070860000",
+              },
+              {
+                oracleId: "btc-2026-05-19",
+                spot: 72_000_000_000,
+                timestamp_ms: 1_779_070_800_000,
+              },
+            ],
+          });
+        }
+
+        return jsonResponse({ error: "not_found" }, 404);
+      },
+    });
+
+    await expect(client.listOraclePrices("btc-2026-05-19")).resolves.toEqual([
+      {
+        oracleId: "btc-2026-05-19",
+        spot: 72_000_000_000,
+        timestampMs: 1_779_070_800_000,
+        source: "oracles/prices",
+      },
+      {
+        oracleId: "btc-2026-05-19",
+        spot: 72_050_000_000,
+        forward: 72_070_000_000,
+        checkpoint: 4251,
+        timestampMs: 1_779_070_860_000,
+        source: "oracles/prices",
+      },
+    ]);
+    expect(
+      normalizePredictOraclePriceRow(
+        {
+          spot: "72050000000",
+          checkpoint_timestamp_ms: "1779070860000",
+        },
+        "btc-2026-05-19",
+      ),
+    ).toMatchObject({
+      oracleId: "btc-2026-05-19",
+      spot: 72_050_000_000,
+      timestampMs: 1_779_070_860_000,
+    });
+
+    expect(requests).toEqual([
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-2026-05-19/prices`,
     ]);
   });
 });

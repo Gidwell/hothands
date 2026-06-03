@@ -125,6 +125,40 @@ describe("testnet market heat endpoint", () => {
     });
   });
 
+  test("returns normalized oracle price history for BTC charting", async () => {
+    const response = await worker.fetch(
+      new Request(
+        "https://api.hot-hands.test/testnet/oracle-prices?oracleId=btc-live"
+      ),
+      { fetch: createOraclePriceHistoryFetch() } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    await expect(response.json()).resolves.toEqual({
+      source: "live_testnet",
+      market: "BTC-USD",
+      oracleId: "btc-live",
+      title: "DeepBook BTC oracle price",
+      detail: "DeepBook Predict oracle price used for BTC market settlement.",
+      latestPrice: 72050,
+      points: [
+        {
+          timestampMs: 1_779_070_800_000,
+          price: 72000,
+          checkpoint: 101
+        },
+        {
+          timestampMs: 1_779_070_860_000,
+          price: 72050,
+          forwardPrice: 72070,
+          checkpoint: 102
+        }
+      ]
+    });
+  });
+
   test("quotes redeem value for an open portfolio position", async () => {
     const inspectedQuantities: string[] = [];
     const response = await worker.fetch(
@@ -638,6 +672,34 @@ function createOracleSettlementFetch(): typeof fetch {
           settled_at: 1_780_366_507_716
         })
       ]);
+    }
+
+    return jsonResponse({ error: "not_found" }, 404);
+  };
+}
+
+function createOraclePriceHistoryFetch(): typeof fetch {
+  return async (input: RequestInfo | URL) => {
+    const url = String(input);
+
+    if (url.endsWith("/oracles/btc-live/prices")) {
+      return jsonResponse({
+        prices: [
+          {
+            oracle_id: "btc-live",
+            spot: "72000000000",
+            checkpoint: "101",
+            checkpoint_timestamp_ms: "1779070800000"
+          },
+          {
+            oracle_id: "btc-live",
+            spot: "72050000000",
+            forward: "72070000000",
+            checkpoint: "102",
+            checkpoint_timestamp_ms: "1779070860000"
+          }
+        ]
+      });
     }
 
     return jsonResponse({ error: "not_found" }, 404);

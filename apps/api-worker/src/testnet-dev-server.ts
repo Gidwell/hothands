@@ -1,4 +1,5 @@
 import { getTestnetMarketHeat } from "./market-heat";
+import { getTestnetOraclePrices } from "./oracle-prices";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
 import {
   getTestnetPredictRedeemQuote,
@@ -142,6 +143,29 @@ export function createTestnetDevServerFetch({
       }
     }
 
+    if (url.pathname === "/testnet/oracle-prices") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      try {
+        return json(
+          await getTestnetOraclePrices({
+            fetchImpl,
+            oracleId: requireSearchParam(url, "oracleId")
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "oracle_prices_failed",
+            message: error instanceof Error ? error.message : "Unable to load oracle price history."
+          },
+          400
+        );
+      }
+    }
+
     return json(
       {
         error: "not_found",
@@ -149,6 +173,7 @@ export function createTestnetDevServerFetch({
           "/health",
           "/testnet/market-heat",
           "/testnet/oracle-settlement",
+          "/testnet/oracle-prices",
           "/testnet/quote",
           "/testnet/redeem-quote"
         ]
