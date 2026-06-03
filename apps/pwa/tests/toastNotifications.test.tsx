@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   ToastStack,
+  WalletStatusBar,
   buildWalletToast,
   type AppToast,
   type WalletTransactionState,
@@ -90,5 +91,26 @@ describe("toast notifications", () => {
     expect(html).toContain("Connect a Sui testnet wallet first.");
     expect(html).toContain('aria-label="Dismiss Done"');
     expect(html).toContain('aria-label="Dismiss Action needed"');
+  });
+
+  test("keeps wallet transaction notifications out of the wallet bar", () => {
+    const html = renderToStaticMarkup(
+      <WalletStatusBar
+        accountAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        connectionStatus="connected"
+        networkLabel="testnet"
+        predictManagerObjectId="0x000000000000000000000000000000000000000000000000000000000000bbbb"
+        predictManagerStatus="ready"
+        txState={{ status: "pending", label: "Sending trade to wallet...", digest: null }}
+        walletCount={1}
+        walletName="Sui Wallet"
+        onConnect={() => undefined}
+        onCreatePredictManager={() => undefined}
+        onDisconnect={() => undefined}
+      />,
+    );
+
+    expect(html).not.toContain('data-testid="wallet-tx-status"');
+    expect(html).not.toContain("Sending trade to wallet...");
   });
 });

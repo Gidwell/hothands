@@ -630,14 +630,6 @@ export function WalletStatusBar({
           ) : null}
         </div>
       ) : null}
-      {txState.status !== "idle" ? (
-        <div className={`wallet-tx-status wallet-tx-status-${txState.status}`} aria-live="polite">
-          <span data-testid="wallet-tx-status">{txState.label}</span>
-          {txState.digest ? (
-            <small data-testid="wallet-tx-digest">{formatWalletAddress(txState.digest)}</small>
-          ) : null}
-        </div>
-      ) : null}
     </section>
   );
 }
@@ -773,8 +765,6 @@ export function TradeTicket({
   testId = "trade-view",
   walletActionPending = false,
   walletConnected = false,
-  walletStatusLabel = null,
-  walletSubmitted = false,
   onAmountSet,
   onDurationChange = () => undefined,
   onMarketChange,
@@ -795,8 +785,6 @@ export function TradeTicket({
   testId?: string;
   walletActionPending?: boolean;
   walletConnected?: boolean;
-  walletStatusLabel?: string | null;
-  walletSubmitted?: boolean;
   onAmountSet: (amount: number) => void;
   onDurationChange?: (duration: string) => void;
   onMarketChange: (selection: TradeMarketSelection) => void;
@@ -1023,11 +1011,6 @@ export function TradeTicket({
                     >
                       {tradeWalletButtonLabel}
                     </button>
-                    {walletSubmitted ? (
-                      <span className="trade-wallet-status" aria-live="polite">
-                        {walletStatusLabel ?? "Wallet request started"}
-                      </span>
-                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1225,7 +1208,6 @@ export function PortfolioPanel({
   positions,
   status = "ready",
   walletActionPending = false,
-  walletStatusLabel = null,
   walletSubmittedPositionId = null,
   onDismissPosition,
   onPositionAction,
@@ -1237,7 +1219,6 @@ export function PortfolioPanel({
   positions: PredictPortfolioPosition[];
   status?: PredictPortfolioState["status"];
   walletActionPending?: boolean;
-  walletStatusLabel?: string | null;
   walletSubmittedPositionId?: string | null;
   onDismissPosition?: (positionId: string) => void;
   onPositionAction: (position: PredictPortfolioPosition) => void;
@@ -1370,11 +1351,6 @@ export function PortfolioPanel({
                     ? "Sending..."
                     : actionLabel}
                 </button>
-                {!isDismissible && walletSubmittedPositionId === position.id ? (
-                  <span className="portfolio-wallet-status" aria-live="polite">
-                    {walletStatusLabel ?? "Wallet request started"}
-                  </span>
-                ) : null}
               </article>
             );
           })}
@@ -1444,8 +1420,6 @@ export function MarketHeatPreview({
   showExpired,
   canShowMore,
   selectedRowId,
-  walletSubmitRowId = null,
-  walletSubmitLabel = null,
   copyAmount,
   durationOptions = [],
   showMoreLabel,
@@ -1466,8 +1440,6 @@ export function MarketHeatPreview({
   showExpired: boolean;
   canShowMore: boolean;
   selectedRowId: string | null;
-  walletSubmitRowId?: string | null;
-  walletSubmitLabel?: string | null;
   copyAmount: number;
   durationOptions?: MarketDurationOption[];
   showMoreLabel: string;
@@ -1546,7 +1518,6 @@ export function MarketHeatPreview({
         const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
         const sideClass = row.side.toLowerCase();
         const isWalletSubmitReady = row.status === "copy_ready";
-        const didSubmitToWallet = walletSubmitRowId === row.id;
         const returnPreview = buildReturnPreview(copyAmount, estimatePriceFromRow(row));
 
         return (
@@ -1670,11 +1641,6 @@ export function MarketHeatPreview({
                     >
                       Send to wallet
                     </button>
-                    {didSubmitToWallet ? (
-                      <span className="wallet-submit-status" aria-live="polite">
-                        {walletSubmitLabel ?? "Wallet request started"}
-                      </span>
-                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1880,7 +1846,6 @@ export function App() {
   const [customTradeStrikes, setCustomTradeStrikes] = useState<
     Record<string, TradeMarketSelection>
   >({});
-  const [tradeWalletSubmitted, setTradeWalletSubmitted] = useState(false);
   const [portfolioWalletSubmitPositionId, setPortfolioWalletSubmitPositionId] =
     useState<string | null>(null);
   const [walletTxState, setWalletTxState] = useState<WalletTransactionState>(
@@ -1953,8 +1918,6 @@ export function App() {
   const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
     selectedRowId: null,
   });
-  const [marketHeatWalletSubmitRowId, setMarketHeatWalletSubmitRowId] =
-    useState<string | null>(null);
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
   const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
   const dismissToast = (toastId: string) => {
@@ -2642,12 +2605,9 @@ export function App() {
 
   const handleAmountStep = (direction: -1 | 1) => {
     setReplayState((state) => updateReplayCopy(state, (copy) => stepCopyAmount(copy, direction)));
-    setTradeWalletSubmitted(false);
   };
 
   const handleAmountSet = (amount: number) => {
-    setMarketHeatWalletSubmitRowId(null);
-    setTradeWalletSubmitted(false);
     setReplayState((state) => updateReplayCopy(state, (copy) => setCopyAmount(copy, amount)));
   };
 
@@ -2685,7 +2645,6 @@ export function App() {
   };
 
   const handleMarketHeatSelect = (rowId: string) => {
-    setMarketHeatWalletSubmitRowId(null);
     setMarketHeatIntent((state) =>
       selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
     );
@@ -2693,7 +2652,6 @@ export function App() {
 
   const handleMarketHeatClose = () => {
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
-    setMarketHeatWalletSubmitRowId(null);
   };
   const handleMarketHeatWalletSubmit = async (rowId: string) => {
     setMarketHeatIntent((state) =>
@@ -2730,7 +2688,6 @@ export function App() {
       return;
     }
 
-    setMarketHeatWalletSubmitRowId(rowId);
     setWalletTxState({
       status: "pending",
       label: "Preparing copy quote...",
@@ -2746,7 +2703,6 @@ export function App() {
       });
 
       if (!quote) {
-        setMarketHeatWalletSubmitRowId(null);
         setWalletTxState({
           status: "error",
           label: "Could not quote this feed copy. Try the Trade tab.",
@@ -2761,7 +2717,6 @@ export function App() {
         livePredictManagerBankrollAtomic !== null &&
         livePredictManagerBankrollAtomic < quoteCostAtomic
       ) {
-        setMarketHeatWalletSubmitRowId(null);
         setWalletTxState({
           status: "error",
           label: `Deposit bankroll first. Bankroll ${formatDusdcBalance(
@@ -2786,7 +2741,6 @@ export function App() {
       const result = await dAppKit.signAndExecuteTransaction({ transaction });
       const error = walletResultError(result);
       if (error) {
-        setMarketHeatWalletSubmitRowId(null);
         setWalletTxState({
           status: "error",
           label: error,
@@ -2803,7 +2757,6 @@ export function App() {
       });
       refreshAfterWalletTransaction(digest);
     } catch (error) {
-      setMarketHeatWalletSubmitRowId(null);
       setWalletTxState({
         status: "error",
         label: walletErrorMessage(error),
@@ -2819,8 +2772,6 @@ export function App() {
     setSelectedMarketDuration(duration);
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
-    setMarketHeatWalletSubmitRowId(null);
-    setTradeWalletSubmitted(false);
   };
   const handleMarketHeatShowExpiredChange = (showExpired: boolean) => {
     setMarketHeatShowExpired(showExpired);
@@ -2834,7 +2785,6 @@ export function App() {
   };
   const handleTradeSideChange = (side: TradeSide) => {
     setTradeSide(side);
-    setTradeWalletSubmitted(false);
   };
   const handleTradeMarketChange = (selection: TradeMarketSelection) => {
     setSelectedTradeMarketId(selection.marketId);
@@ -2848,7 +2798,6 @@ export function App() {
         [selection.marketId]: selection,
       };
     });
-    setTradeWalletSubmitted(false);
   };
   const handleTradeStrikeChange = (selection: TradeMarketSelection) => {
     setSelectedTradeMarketId(selection.marketId);
@@ -2856,7 +2805,6 @@ export function App() {
       ...state,
       [selection.marketId]: selection,
     }));
-    setTradeWalletSubmitted(false);
   };
   const handleWalletConnect = async () => {
     const wallet = wallets[0];
@@ -2895,7 +2843,6 @@ export function App() {
     try {
       await dAppKit.disconnectWallet();
       setWalletTxState(idleWalletTransactionState);
-      setTradeWalletSubmitted(false);
       setPortfolioWalletSubmitPositionId(null);
       pushToast({
         kind: "success",
@@ -3080,7 +3027,6 @@ export function App() {
       return;
     }
 
-    setTradeWalletSubmitted(true);
     setWalletTxState({
       status: "pending",
       label: "Sending trade to wallet...",
@@ -3187,10 +3133,6 @@ export function App() {
       showExpired={marketHeatShowExpired}
       canShowMore={marketHeatRemainingCount > 0}
       selectedRowId={marketHeatIntent.selectedRowId}
-      walletSubmitRowId={marketHeatWalletSubmitRowId}
-      walletSubmitLabel={
-        marketHeatWalletSubmitRowId ? walletTxState.label : null
-      }
       copyAmount={copyState.copyAmount}
       showMoreLabel={marketHeatShowMoreLabel}
       testId={testId}
@@ -3220,8 +3162,6 @@ export function App() {
       testId={testId}
       walletActionPending={isWalletActionPending}
       walletConnected={Boolean(currentAccount)}
-      walletStatusLabel={walletTxState.label}
-      walletSubmitted={tradeWalletSubmitted}
       onAmountSet={handleAmountSet}
       onDurationChange={handleMarketDurationChange}
       onMarketChange={handleTradeMarketChange}
@@ -3282,7 +3222,6 @@ export function App() {
               positions={visiblePortfolioPositions}
               status={visiblePortfolioStatus}
               walletActionPending={isWalletActionPending}
-              walletStatusLabel={walletTxState.label}
               walletSubmittedPositionId={portfolioWalletSubmitPositionId}
               onDismissPosition={handleDismissPortfolioPosition}
               onPositionAction={handlePortfolioPositionAction}

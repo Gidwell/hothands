@@ -164,7 +164,6 @@ describe("mobile app navigation", () => {
           },
         ]}
         walletActionPending={false}
-        walletStatusLabel={null}
         walletSubmittedPositionId={null}
         onPositionAction={() => undefined}
       />,
@@ -213,7 +212,6 @@ describe("mobile app navigation", () => {
           },
         ]}
         walletActionPending={false}
-        walletStatusLabel={null}
         walletSubmittedPositionId={null}
         onDismissPosition={() => undefined}
         onPositionAction={() => undefined}
@@ -251,7 +249,6 @@ describe("mobile app navigation", () => {
         initialTab="history"
         positions={[]}
         walletActionPending={false}
-        walletStatusLabel={null}
         walletSubmittedPositionId={null}
         onPositionAction={() => undefined}
       />,
@@ -295,7 +292,6 @@ describe("mobile app navigation", () => {
           },
         ]}
         walletActionPending={false}
-        walletStatusLabel={null}
         walletSubmittedPositionId={null}
         onPositionAction={() => undefined}
       />,
@@ -332,7 +328,6 @@ describe("mobile app navigation", () => {
           },
         ]}
         walletActionPending={false}
-        walletStatusLabel={null}
         walletSubmittedPositionId={null}
         onPositionAction={() => undefined}
       />,
@@ -373,7 +368,6 @@ describe("mobile app navigation", () => {
         ]}
         status="ready"
         walletActionPending={false}
-        walletStatusLabel={null}
         walletSubmittedPositionId={null}
         onPositionAction={() => undefined}
       />,
@@ -866,8 +860,6 @@ describe("mobile app navigation", () => {
         quoteStatus="ready"
         predictManagerObjectId="0x1111"
         walletConnected={true}
-        walletStatusLabel="Trade transaction sent."
-        walletSubmitted={true}
         onAmountSet={() => undefined}
         onMarketChange={() => undefined}
         onSideChange={() => undefined}
@@ -877,6 +869,40 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain(">Send to wallet</button>");
     expect(html).not.toContain("disabled");
-    expect(html).toContain("Trade transaction sent.");
+    expect(html).not.toContain("Trade transaction sent.");
+    expect(html).not.toContain("Wallet request started");
+  });
+
+  test("keeps portfolio wallet notifications in the toast layer", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        positions={[
+          {
+            id: "portfolio-open-1",
+            direction: "UP",
+            oracleId: "0xoracle",
+            expiry: "1779158400000",
+            expiryMs: 1_779_158_400_000,
+            strike: "71000000000",
+            strikeLabel: "$71,000",
+            quantity: "1000000",
+            costBasisAtomic: 1_000_000n,
+            costBasisLabel: "$1",
+            maxPayoutAtomic: 2_000_000n,
+            maxPayoutLabel: "$2",
+            timeLabel: "8m left",
+            statusLabel: "Open",
+            isExpired: false,
+            actionLabel: "Redeem",
+          },
+        ]}
+        nowMs={1_779_157_900_000}
+        walletActionPending={false}
+        walletSubmittedPositionId="portfolio-open-1"
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).not.toContain("Wallet request started");
   });
 });

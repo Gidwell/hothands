@@ -112,6 +112,34 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("No wallet request until you tap Send to wallet");
   });
 
+  test("keeps feed wallet notifications in the toast layer", () => {
+    const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        selectedRowId={row.id}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onCloseIntent={() => undefined}
+      />,
+    );
+
+    expect(html).not.toContain("Copy transaction sent.");
+    expect(html).not.toContain("Wallet request started");
+  });
+
   test("renders a bottom show-more control when more feed rows are available", () => {
     const rows = buildMarketHeatPreview(
       Array.from({ length: 10 }, (_, index) => ({

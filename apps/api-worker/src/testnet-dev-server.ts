@@ -36,6 +36,14 @@ export interface TestnetDevServerOptions extends TestnetDevServerFetchOptions {
 
 const DEFAULT_HOSTNAME = "127.0.0.1";
 const DEFAULT_PORT = 8789;
+const TESTNET_DEV_SERVER_ROUTES = [
+  "/health",
+  "/testnet/market-heat",
+  "/testnet/oracle-settlement",
+  "/testnet/oracle-prices",
+  "/testnet/quote",
+  "/testnet/redeem-quote"
+];
 
 const JSON_HEADERS = {
   "access-control-allow-origin": "*",
@@ -169,14 +177,7 @@ export function createTestnetDevServerFetch({
     return json(
       {
         error: "not_found",
-        routes: [
-          "/health",
-          "/testnet/market-heat",
-          "/testnet/oracle-settlement",
-          "/testnet/oracle-prices",
-          "/testnet/quote",
-          "/testnet/redeem-quote"
-        ]
+        routes: TESTNET_DEV_SERVER_ROUTES
       },
       404
     );
@@ -244,7 +245,5 @@ if ((import.meta as { main?: boolean }).main) {
   });
 
   console.log(`Testnet API dev server listening on ${server.url}`);
-  console.log(
-    "Routes: GET /health, GET /testnet/market-heat, GET /testnet/oracle-settlement, GET /testnet/quote, GET /testnet/redeem-quote"
-  );
+  console.log(`Routes: GET ${TESTNET_DEV_SERVER_ROUTES.join(", GET ")}`);
 }

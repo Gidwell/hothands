@@ -5,7 +5,6 @@ import type { OraclePriceChart } from "../src/oraclePriceChartModel";
 
 const readyChart: OraclePriceChart = {
   detail: "DeepBook Predict oracle price used for BTC market settlement.",
-  latestPrice: 66_978.22,
   latestPriceLabel: "$66,978",
   marketLabel: "BTC/USD",
   oracleId: "0xoracle",
@@ -19,7 +18,6 @@ const readyChart: OraclePriceChart = {
       timestampMs: 1_779_158_060_000,
     },
   ],
-  source: "live_testnet",
   sourceLabel: "Live Testnet",
   status: "ready",
   title: "DeepBook BTC oracle price",

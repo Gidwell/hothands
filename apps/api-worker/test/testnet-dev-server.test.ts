@@ -75,4 +75,70 @@ describe("testnet API dev server harness", () => {
       redeemPayoutUsd: 1
     });
   });
+
+  test("serves oracle price history for the local BTC chart", async () => {
+    const fetchHandler = createTestnetDevServerFetch({
+      fetchImpl: async (input) => {
+        const url = String(input);
+
+        if (url.endsWith("/oracles/btc-live/prices")) {
+          return jsonResponse({
+            prices: [
+              {
+                oracle_id: "btc-live",
+                spot: "72000000000",
+                checkpoint: "101",
+                checkpoint_timestamp_ms: "1779070800000"
+              },
+              {
+                oracle_id: "btc-live",
+                spot: "72050000000",
+                forward: "72070000000",
+                checkpoint: "102",
+                checkpoint_timestamp_ms: "1779070860000"
+              }
+            ]
+          });
+        }
+
+        return jsonResponse({ error: "not_found" }, 404);
+      }
+    });
+
+    const response = await fetchHandler(
+      new Request(
+        "http://127.0.0.1:8789/testnet/oracle-prices?oracleId=btc-live"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    await expect(response.json()).resolves.toMatchObject({
+      source: "live_testnet",
+      market: "BTC-USD",
+      oracleId: "btc-live",
+      latestPrice: 72050,
+      points: [
+        {
+          timestampMs: 1_779_070_800_000,
+          price: 72000,
+          checkpoint: 101
+        },
+        {
+          timestampMs: 1_779_070_860_000,
+          price: 72050,
+          forwardPrice: 72070,
+          checkpoint: 102
+        }
+      ]
+    });
+  });
 });
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" }
+  });
+}
