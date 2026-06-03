@@ -1,6 +1,6 @@
 # Hot Hands Architecture
 
-Last updated: May 19, 2026
+Last updated: June 3, 2026
 
 ## System Overview
 
@@ -23,7 +23,7 @@ Indexer / Scoring Worker
   |
   | reads
   v
-DeepBook Predict server + Sui RPC + Hot Hands events
+DeepBook Predict server + Sui RPC + optional Hot Hands events
   |
   | writes durable projections
   v
@@ -39,11 +39,14 @@ Responsibilities:
 - Render table-first mobile UI.
 - Consume shared deterministic replay frames in fixture mode.
 - Connect wallet or zkLogin flow.
+- Create or edit claimed profile state.
+- Link X account for claimed profiles.
 - Subscribe to table WebSocket.
 - Arm watch-next-trade rules for external Predict traders.
 - Arm copy-next-signal rules for Hot Hands-native leaders after native signals
   exist.
-- Sign and execute prepared copy transactions.
+- Choose mirror-copy or fade for observed Predict positions.
+- Sign and execute prepared copy/fade transactions.
 - Show hot tables, trader cards, copy tray, and settlement moments.
 
 ### Worker API
@@ -51,9 +54,12 @@ Responsibilities:
 Responsibilities:
 
 - Auth/session verification.
+- Profile, follow, and social-ledger APIs.
+- X account linking callback/verification flow.
+- SuiNS display-name lookup/cache refresh.
 - Route table WebSocket upgrades to Durable Objects.
 - Serve table summaries and hot feeds.
-- Prepare transaction payloads.
+- Prepare copy/fade transaction payloads.
 - Validate copy constraints before transaction construction.
 - Rate-limit suspicious clients.
 
@@ -99,16 +105,71 @@ Stage 2 note:
 Durable data:
 
 - users and profiles
+- wallet identities and claimed profile links
+- X account links
+- SuiNS name cache
 - watched external traders
 - watch rules
 - observed Predict trades
 - signals
 - copy rules
-- copy receipts
+- copy receipts or trade action receipts
+- copy/fade intents
+- copy/fade executions
+- position-level copy/fade stats
+- trader-level copy/fade stats
 - resolved signal outcomes
 - score snapshots
 - indexed DeepBook trade projections
 - demo scenario traces
+
+### Identity And Profiles
+
+Hot Hands needs useful identities before every observed trader creates a
+profile. The database should support three states:
+
+- `shadow`: created from observed DeepBook Predict activity; display `.sui`
+  when SuiNS resolves, otherwise shortened address.
+- `claimed`: wallet-connected user has signed in and can edit profile fields.
+- `x_linked`: claimed profile has a verified X account handle/avatar link.
+
+Profile display fallback order:
+
+```text
+claimed display name -> linked X handle -> SuiNS name -> shortened wallet
+```
+
+SuiNS is a cacheable enrichment, not the account authority. Wallet ownership is
+the authority for claiming/editing a profile.
+
+### Copy And Fade Ledger
+
+Hot Hands social trade actions are stored offchain first and verified against
+Sui transaction results.
+
+Core action fields:
+
+- `action_type`: `mirror` or `fade`
+- `source_wallet`
+- `source_manager_id`
+- `source_digest`
+- `source_event_seq`
+- `source_oracle_id`
+- `source_expiry`
+- `source_strike`
+- `source_side`
+- `follower_wallet`
+- `follower_manager_id`
+- `executed_side`
+- `copy_tx_digest`
+- `quantity`
+- `cost`
+- `status`
+
+Mirror-copy uses the same side as the source trade. Fade uses the opposite side
+at the same oracle, expiry, and strike. After wallet submission, the indexer
+must verify that `copy_tx_digest` actually minted the expected side and market
+for the follower before the action counts toward stats or Heat.
 
 ### Indexer / Scoring Worker
 
@@ -116,6 +177,7 @@ Responsibilities:
 
 - Poll or stream DeepBook Predict data.
 - Index Hot Hands events.
+- Verify copy/fade executions against Sui transaction digests.
 - Normalize public Predict mints, redeems, and per-oracle trades.
 - Compute external wallet market heat before Hot Hands-native reputation exists.
 - Resolve signals when oracles settle.
@@ -124,11 +186,15 @@ Responsibilities:
 
 ### Move Contracts
 
-MVP contract scope:
+Move is optional for the first DB-backed social ledger. DeepBook Predict remains
+the execution layer, and Postgres can provide verified product attribution by
+linking source trades to follower transaction digests.
+
+Optional proof-event scope:
 
 - emit profile and social events
 - emit signal events
-- emit copy rule / copy receipt proof
+- emit copy/fade rule and receipt proof
 - avoid pooled custody
 - avoid automatic delegated trading
 
@@ -166,10 +232,11 @@ Testnet trade read mode:
   feed and provisional `Market Heat` rankings.
 - A user can arm a watch against an external trader or manager. When the indexer
   observes the next matching Predict mint, the backend can prepare a user-signed
-  copy transaction. This is reactive copy of an observed mint, not pre-trade
-  execution.
+  mirror-copy or fade transaction. This is reactive action from an observed
+  mint, not pre-trade execution.
 - Do not present external wallet heat as final Hot Hands reputation until Hot
-  Hands signal records, copy receipts, and settlement-aware scoring are linked.
+  Hands signal records, copy/fade executions or receipts, and
+  settlement-aware scoring are linked.
 - Keep fixture/replay mode visually distinct from testnet mode so demos do not
   blur simulated copy behavior with real testnet market activity.
 
@@ -198,10 +265,10 @@ Integration sequence:
    mint payloads.
 8. Find or create user `PredictManager`.
 9. Ensure DUSDC deposit.
-10. Prepare a copy when a watched external trader's next mint appears.
+10. Prepare a mirror-copy or fade when a watched external trader's next mint appears.
 11. Execute with user signature.
 12. Read back indexed mint event.
-13. Link event to a Hot Hands watch rule or native signal/copy receipt.
+13. Link event to a Hot Hands watch rule, source trade, and copy/fade ledger row.
 
 ## Realtime Presence
 

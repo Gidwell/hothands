@@ -1,17 +1,17 @@
 # Hot Hands Product Spec
 
-Last updated: May 19, 2026
+Last updated: June 3, 2026
 
 ## One-Line Pitch
 
-Hot Hands is the live social copy layer for DeepBook Predict: find wallets heating up in real BTC UP/DOWN markets, watch their next trade, and copy with your own amount.
+Hot Hands is the live social copy/fade layer for DeepBook Predict: find wallets heating up in real BTC UP/DOWN markets, watch their trades, and mirror or fade them with your own amount.
 
 ## Product Principles
 
 - The app should feel like a live social market floor: high-energy and communal, but always grounded in BTC UP/DOWN prediction language.
 - Avoid literal craps/dice/table-game terminology unless the feature truly maps to prediction markets.
-- The home page should answer: which real Predict wallets are hot, who is watching them, who is armed, and what can I copy right now?
-- Copying should be explicit and user-signed for MVP.
+- The home page should answer: which real Predict wallets are hot, who is watching them, what can I copy, and what can I fade right now?
+- Copying and fading should be explicit and user-signed for MVP.
 - Onchain state should prove important social and trading artifacts, but ephemeral liveness should stay offchain.
 - The testnet demo must work even if public data is noisy, slow, or quiet.
 - External wallet watching is the first live-data loop. Hot Hands-native
@@ -31,8 +31,11 @@ Hot Hands is the live social copy layer for DeepBook Predict: find wallets heati
 - As a spectator, I can enter a live BTC table and see real DeepBook Predict activity.
 - As a follower, I can watch a hot trader address or `PredictManager`.
 - As a follower, I can arm a watch-next-trade rule with my own sizing limits.
-- As a follower, I can receive a prepared copy transaction when the watched trader mints a new BTC UP/DOWN position.
-- As any user, I can see current market heat ranked by realized performance, activity, streak, size, and copy demand.
+- As a follower, I can receive a prepared copy or fade transaction when the watched trader mints a new BTC UP/DOWN position.
+- As a follower, I can fade an observed trade by taking the opposite side at the same oracle, expiry, and strike.
+- As any user, I can see current market heat ranked by realized performance, activity, streak, size, copy demand, and fade demand.
+- As any user, I can see useful trader identity even before a trader has created a Hot Hands profile, using SuiNS when available and a shortened wallet otherwise.
+- As a connected user, I can claim my wallet profile and link my X account.
 - As a judge, I can watch a deterministic demo and a live testnet-read mode that clearly distinguish fixture copy behavior from real Predict wallet activity.
 - Later, as a Hot Hands-native leader, I can post a public pre-trade signal with market, direction, strike, expiry, confidence, and optional thesis.
 
@@ -70,6 +73,7 @@ Table roles:
 - `watched trader`: external address or manager being followed from Predict activity.
 - `leader`: Hot Hands-native profile that has posted signals or attracted followers.
 - `copier`: executed a copy trade.
+- `fader`: executed the opposite side of an observed trade.
 
 ## External Wallet Watches
 
@@ -116,12 +120,32 @@ Execution flow:
 1. Follower arms a watch-next-trade rule.
 2. Indexer observes a new Predict mint by the watched trader or manager.
 3. Backend validates market, size, freshness, and user constraints.
-4. Backend prepares a DeepBook Predict mint transaction using follower size rules.
+4. Backend prepares a DeepBook Predict mint transaction using follower size rules and selected action.
 5. Follower signs and executes.
-6. Hot Hands records the copy relationship and tracks redeem/settlement.
+6. Hot Hands records the copy/fade relationship and tracks redeem/settlement.
 
 MVP copy is reactive. Do not imply Hot Hands saw or executed the external
 trader's intent before it landed on DeepBook Predict.
+
+## Profiles And Identity
+
+Hot Hands should display a useful identity for every wallet in the feed,
+including wallets that have never opened the app.
+
+Profile states:
+
+- `shadow`: auto-created from observed DeepBook Predict activity.
+- `claimed`: connected wallet user can edit display name, avatar, and bio.
+- `x_linked`: claimed profile has a verified X account handle/avatar link.
+
+Display fallback:
+
+```text
+claimed display name -> linked X handle -> SuiNS name -> shortened wallet
+```
+
+SuiNS names are display enrichment. Wallet signature remains the authority for
+claiming and editing a Hot Hands profile.
 
 ## Hot Hands-Native Signals
 
@@ -168,21 +192,29 @@ Anti-gaming rules:
 - Clip extreme ROI contributions.
 - Weight scores by sample size.
 
-## Copy Semantics
+## Copy And Fade Semantics
 
-MVP copy is explicit and user-signed.
+MVP social trade actions are explicit and user-signed.
 
-Two MVP-compatible copy sources:
+Two MVP-compatible sources:
 
 - `watch_next_trade`: reactive copy of a public external Predict mint.
 - `copy_next_signal`: copy of a Hot Hands-native pre-trade signal.
 
-Shared copy rule fields:
+Action types:
+
+- `mirror`: same side as the source trade or signal.
+- `fade`: opposite side at the same oracle, expiry, and strike.
+
+Shared social trade fields:
 
 - `rule_id`
 - `follower`
 - `source_kind`
 - `source_id`
+- `action_type`
+- `source_side`
+- `executed_side`
 - `max_cost`
 - `sizing_mode`
 - `sizing_value`
@@ -195,6 +227,10 @@ Sizing modes:
 - `percent_of_leader`
 - `max_affordable`
 
+Copy/fade counts should be tracked separately at both the position and trader
+level. Heat can use these values, but the UI should still expose raw copy/fade
+demand because it is socially legible.
+
 ## Scoring
 
 Hot score should make the table feel alive while resisting obvious gaming.
@@ -202,8 +238,8 @@ Hot score should make the table feel alive while resisting obvious gaming.
 Use two score labels until Hot Hands-native proof exists:
 
 - `Market Heat`: inferred from raw DeepBook Predict activity.
-- `Hot Hands Reputation`: earned from Hot Hands-native signals, copy receipts,
-  and linked settlement outcomes.
+- `Hot Hands Reputation`: earned from Hot Hands-native signals, copy/fade
+  executions or receipts, and linked settlement outcomes.
 
 Market Heat inputs:
 
@@ -213,6 +249,7 @@ Market Heat inputs:
 - activity freshness
 - trade size
 - sample size
+- copy/fade demand
 - spam penalties
 
 Hot Hands Reputation inputs:
@@ -221,7 +258,9 @@ Hot Hands Reputation inputs:
 - recent realized PnL
 - recent ROI
 - hit rate
-- copied volume
+- copied volume and successful copy outcomes
+- faded volume and successful fade outcomes
+- position-level copy/fade demand
 - sample size
 - signal freshness
 - calibration, when confidence is available
@@ -234,7 +273,7 @@ hot_score =
 + 0.25 * recent_roi_score
 + 0.20 * recent_pnl_score
 + 0.10 * hit_rate_score
-+ 0.10 * copied_volume_score
++ 0.10 * social_demand_score
 + 0.05 * freshness_score
 - penalties
 ```

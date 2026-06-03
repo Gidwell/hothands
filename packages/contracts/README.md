@@ -1,15 +1,20 @@
 # Hot Hands Contracts
 
-Sui Move package for the minimal social proof layer.
+DeepBook Predict transaction builders and optional Sui Move proof layer.
 
-MVP events:
+The current MVP path is DB-first: Hot Hands can verify social trade attribution
+by linking source DeepBook Predict trades to follower transaction digests in
+Postgres. A small Move package can still add cleaner chain-native proof events,
+but it should not block profiles, copy/fade counts, or leaderboards.
+
+Optional proof events:
 
 - `ProfileCreated`
 - `ExternalTraderWatched`
 - `WatchRuleArmed`
 - `SignalPosted`
 - `CopyRuleArmed`
-- `CopyReceipt`
+- `CopyReceipt` or `TradeActionReceipt`
 - `Followed`
 
 DeepBook Predict remains the trading execution layer.
@@ -24,7 +29,7 @@ Current scope:
   DUSDC quote type constants pinned to `predict-testnet-4-16`
 - expose Move target strings for manager creation, manager deposit, market key
   construction, and mint
-- serialize a conservative copied binary mint intent for tests and future wallet
+- serialize a conservative binary mint intent for tests and future wallet
   integration. The existing-manager mint plan builds
   `market_key::new(oracle_id, expiry, strike, is_up)` and then calls
   `predict::mint(predict, manager, oracle, key, quantity, clock)`

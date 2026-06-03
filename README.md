@@ -1,6 +1,6 @@
 # Hot Hands
 
-Hot Hands is a mobile-first social copy layer for DeepBook Predict. The core loop is simple: discover real BTC UP/DOWN wallets that are heating up, arm a watch on their next DeepBook Predict trade, and copy with your own chosen amount after Hot Hands prepares the transaction.
+Hot Hands is a mobile-first social copy/fade layer for DeepBook Predict. The core loop is simple: discover real BTC UP/DOWN wallets that are heating up, watch their latest trades, and either mirror or fade them with your own chosen amount after Hot Hands prepares the transaction.
 
 This repository now has the Stage 1 fake-data vertical slice, the Stage 2 simulated realtime loop, and the first Stage 3 DeepBook Predict testnet bridge: deterministic mobile replay, worker-shaped table activity, an in-process socket contract, optional PWA live-mode checks, a local Wrangler-backed worker smoke, a Predict server read canary, and Sui SDK transaction builders for manager creation, quote deposit, and copied mint.
 
@@ -80,27 +80,45 @@ What is live today:
 What is still in progress:
 
 - `Heat` is a provisional activity/performance score, not the final settled reputation model.
-- DUSDC deposit setup and Feed tab copy transactions are still in progress.
+- Feed copy/fade attribution is not yet backed by a Hot Hands database.
+- Profiles, X linking, SuiNS-backed display names, follows, copy counts, fade counts, and durable leaderboards are not wired in yet.
 
 ## Product Loop
 
 1. Hot Hands reads real DeepBook Predict mints/redeems and finds active BTC traders.
-2. The home page ranks provisional hot wallets by recent activity, realized performance, streak, and size.
-3. A user arms "watch next trade" for a trader address or `PredictManager`.
-4. When that trader mints a new BTC UP/DOWN position, Hot Hands prepares a copy transaction with the user's sizing rules.
+2. The home page ranks provisional hot wallets by recent activity, realized performance, streak, size, and social demand.
+3. A user selects a trader, position, or profile and chooses to copy or fade.
+4. Copy mirrors the source side; fade takes the opposite side at the same oracle, expiry, and strike.
 5. The user signs and executes their own DeepBook Predict mint.
-6. Hot Hands tracks the copied trade through redeem/settlement and updates wallet heat, copy volume, and eventually native reputation.
+6. Hot Hands verifies the transaction against the source trade and records the social trade action.
+7. Hot Hands tracks the trade through redeem/settlement and updates wallet heat, copy/fade volume, position stats, and reputation.
 
 Hot Hands-native pre-trade signals remain the richer social layer after this
 external-wallet loop is working. They should improve attribution and latency,
 but the MVP should not wait for native leaders before the app feels alive.
 
+## Social Data Direction
+
+DeepBook Predict stays the source of truth for market execution, settlement, and payouts. Hot Hands adds the social layer in Postgres:
+
+- shadow profiles for every observed trader wallet or `PredictManager`
+- claimed profiles when a wallet connects
+- SuiNS lookup/cache for unclaimed wallets with `.sui` names
+- X account linking for claimed profiles
+- follows and watched traders
+- copy/fade intents and executions tied to Sui transaction digests
+- position-level copy and fade counts
+- trader-level copy and fade counts
+- score snapshots for streaks, leaderboards, and Heat
+
+For the hackathon, copy/fade attribution can be DB-verified by matching the follower's transaction digest back to the source trade parameters. A tiny Move event package can still be added later for cleaner chain-native proof, but it should not block profiles, leaderboards, or copy/fade counts.
+
 ## Planned Stack
 
 - Mobile PWA: React, Vite, TypeScript
 - Realtime: Cloudflare Workers and Durable Objects
-- Chain: Sui Move plus DeepBook Predict testnet
-- App data: Postgres
+- Chain: DeepBook Predict testnet plus optional Sui Move proof events
+- App data: Postgres for profiles, social trade attribution, copy/fade counts, and score snapshots
 - Tooling: Bun as package manager and script runner
 - Verification: Vitest, Cloudflare Workers Vitest pool, Playwright, Sui Move tests, and scripted demo scenarios
 
@@ -108,7 +126,7 @@ but the MVP should not wait for native leaders before the app feels alive.
 
 - `apps/pwa`: mobile PWA
 - `apps/api-worker`: Cloudflare Worker API and Durable Objects
-- `packages/contracts`: Hot Hands Move package
+- `packages/contracts`: DeepBook Predict transaction builders and optional Hot Hands Move proof package
 - `packages/shared`: shared TypeScript schemas, constants, and scoring types
 - `packages/indexer`: DeepBook Predict and Hot Hands event indexer
 - `packages/demo-runner`: scripted fake users, spectators, signals, and settlements

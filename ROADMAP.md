@@ -1,6 +1,6 @@
 # Hot Hands Roadmap
 
-Last updated: May 19, 2026
+Last updated: June 3, 2026
 
 The hackathon submission deadline is June 21, 2026. This roadmap is organized around gates. Each gate should end with a working demo or a major risk retired.
 
@@ -191,8 +191,8 @@ Risk:
 - `create_manager` can be dev-inspected without funds, but deposit and mint
   dry-runs need gas, DUSDC, an existing `PredictManager`, and a live oracle.
 - Public Predict trade rows are protocol activity, not Hot Hands-native social
-  proof. Label rankings as `Market Heat` until watch rules, copy receipts, and
-  settlement-aware scoring are linked.
+  proof. Label rankings as `Market Heat` until watch rules, copy/fade
+  executions, and settlement-aware scoring are linked.
 
 Current notes:
 
@@ -204,36 +204,52 @@ Current notes:
 - `apps/pwa` has a compact `Testnet` preview mode backed by captured BTC
   activity, clearly separated from replay copy behavior.
 
-## Stage 4: Hot Hands Watch And Proof Contracts
+## Stage 4: Identity And Copy/Fade Ledger
 
-Target: May 23-28
+Target: June 3-7
 
-Goal: create the minimal proof layer for watched external trades and later
-native signals.
+Goal: create the durable social data layer for profiles, follows, copy/fade
+attribution, and position/trader demand metrics. This stage is DB-first; Move
+proof events are optional and should not block product reputation work.
 
 Deliverables:
 
-- `ProfileCreated`
-- `ExternalTraderWatched`
-- `WatchRuleArmed`
-- `SignalPosted`
-- `CopyRuleArmed`
-- `CopyReceipt`
-- `Followed`
+- Postgres schema and migration path for Hot Hands app data.
+- Shadow profiles for observed trader wallets and `PredictManager` IDs.
+- Claimed profiles for connected wallets.
+- SuiNS lookup/cache for `.sui` names on unclaimed and claimed wallets.
+- X account linking for claimed profiles.
+- Follows and watched external traders.
+- Observed Predict trade table keyed by source digest/event sequence.
+- Copy/fade intent table created before wallet handoff.
+- Copy/fade execution table updated with wallet transaction digest.
+- Verification job that confirms a follower transaction minted the expected
+  oracle, expiry, strike, side, and quantity before counting it.
+- Position-level counts: copies, fades, copied volume, faded volume.
+- Trader-level counts: copies received, fades received, copied/faded volume.
+- API endpoints for profile display, feed social stats, and copy/fade
+  execution status.
+- Optional spike: emit a generic or Move-native copy/fade receipt event inside
+  the same PTB as the Predict mint.
 
 TDD:
 
-- Move unit tests for all event paths.
-- TS transaction builder tests for each call.
+- migration/schema tests
+- repository tests for idempotent observed-trade and copy/fade writes
+- mocked X linking tests
+- SuiNS resolver/cache tests with fixture responses
+- copy/fade attribution tests for mirror and opposite-side execution
+- indexer verification tests for confirmed, failed, and mismatched tx digests
+- API contract tests for profile and feed social stats
 
 Verification:
 
 ```bash
-bun run move:test
-bun run test:contracts
+bun run verify:fast
+bun test packages/indexer/test
 ```
 
-## Stage 5: Real Watch Next Trade
+## Stage 5: Real Watch, Copy, And Fade
 
 Target: May 27-June 4
 
@@ -243,19 +259,22 @@ Deliverables:
 
 - Follower watches a hot external Predict trader or manager.
 - Backend detects that trader's next BTC UP/DOWN mint.
-- Backend prepares follower copy transaction using sizing and freshness guards.
+- Backend prepares follower mirror-copy or fade transaction using sizing and
+  freshness guards.
 - Follower signs and executes DeepBook Predict mint.
-- Copy receipt links follower, watched trader, source mint, and copied mint.
-- Redeem/settlement updates external wallet heat and follower copy result.
+- Copy/fade ledger links follower, watched trader, source mint, action type,
+  and follower mint transaction.
+- Redeem/settlement updates external wallet heat and follower copy/fade result.
 - Hot Hands-native signal copy remains supported as a later lower-latency path.
 
 TDD:
 
 - watch rule matching tests
-- copy sizing tests
+- copy/fade sizing tests
 - max-cost guard tests
 - observed-mint freshness tests
 - prepared transaction snapshot tests
+- ledger confirmation tests
 - e2e test with mocked wallet
 
 Verification:
@@ -317,7 +336,10 @@ Deliverables:
 - recent ROI
 - realized PnL
 - hit rate
-- copied volume
+- copied volume and copy count
+- faded volume and fade count
+- position-level copy/fade demand
+- trader-level copy/fade demand
 - anti-gaming penalties
 
 TDD:

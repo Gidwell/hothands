@@ -38,9 +38,10 @@ fixture tests.
 
 The first UI pass should label these as "Testnet trades" or "Market Heat" and
 use them for activity/trader discovery. Users can still watch an external
-trader's next observed mint and receive a prepared copy transaction, but that is
-reactive copy from public activity. Hot Hands-native reputation requires watch
-rules, copy receipts, native signals when present, and settlement-aware scoring.
+trader's next observed mint and receive a prepared mirror-copy or fade
+transaction, but that is reactive action from public activity. Hot
+Hands-native reputation requires watch rules, copy/fade executions, native
+signals when present, and settlement-aware scoring.
 
 Primary responsibilities:
 
@@ -48,8 +49,9 @@ Primary responsibilities:
 - DeepBook Predict trade-history normalization
 - external wallet heat scoring
 - watch-rule matching inputs
+- copy/fade execution verification against Sui transaction digests
 - Sui event/checkpoint adapters for oracle updates
-- Hot Hands event indexing
+- Hot Hands DB/event indexing
 - signal resolution
 - hot score snapshots
 - hot table cache
