@@ -62,9 +62,10 @@ Environment overrides:
 
 ## Testnet Dev Launcher
 
-Start the local testnet API and PWA together:
+Start the local testnet API, PWA, and indexed read path together:
 
 ```bash
+export DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev
 bun run dev:testnet
 ```
 
@@ -82,6 +83,23 @@ Defaults:
 
 - API: `http://127.0.0.1:8789`
 - PWA: `http://127.0.0.1:5176`
+- Market Heat: `http://127.0.0.1:8789/testnet/market-heat`
+- Indexer status: `http://127.0.0.1:8789/testnet/indexer-status`
+
+Override ports when another local run owns the defaults:
+
+```bash
+DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev HOT_HANDS_TESTNET_API_PORT=8792 HOT_HANDS_TESTNET_PWA_PORT=5184 bun run dev:testnet
+```
+
+Read-only wallet debugging is supported in the PWA with `devWallet`:
+
+```text
+http://127.0.0.1:5176/?devWallet=0x29b8e29b80f2d332f130990ebe0b3bfc99ccef6657a01858e0c25d675721cd79
+```
+
+This loads discovered manager, bankroll, PnL, portfolio, and history data for
+inspection only. Wallet-signed actions still require connecting the real wallet.
 
 If a stale local listener or Vite/esbuild process still owns the dev loop, run:
 
@@ -94,8 +112,19 @@ and repo-local Bun/Vite/esbuild commands. If the PWA repeatedly times out
 before opening a port, run the app from a no-space git worktree; Vite/esbuild
 has hung in paths such as `Documents/New project`.
 
+If cleanup does not free a port, inspect the exact listener before killing it:
+
+```bash
+lsof -nP -iTCP:5176 -sTCP:LISTEN
+lsof -nP -iTCP:8789 -sTCP:LISTEN
+```
+
+Only kill confirmed stale Hot Hands, Bun, Vite, or esbuild processes from this
+repo or its no-space worktree.
+
 Environment overrides:
 
+- `DATABASE_URL`
 - `HOT_HANDS_TESTNET_API_PORT`
 - `HOT_HANDS_TESTNET_PWA_PORT`
 - `HOT_HANDS_TESTNET_HOST`
@@ -104,3 +133,9 @@ Environment overrides:
 - `HOT_HANDS_DEV_READY_TIMEOUT_MS`
 - `HOT_HANDS_DEV_MIGRATE=false`
 - `HOT_HANDS_DEV_BACKFILL=false`
+- `HOT_HANDS_INDEXER_LIVE=false`
+- `HOT_HANDS_INDEXER_PRICE_POLL_MS`
+- `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`
+- `HOT_HANDS_INDEXER_TRADES_POLL_MS`
+- `HOT_HANDS_INDEXER_ORACLES_POLL_MS`
+- `VITE_HOT_HANDS_DEV_WALLET_ADDRESS`

@@ -4,11 +4,12 @@ Hot Hands is a mobile-first social copy/fade layer for DeepBook Predict. The cor
 
 This repository now has the Stage 1 fake-data vertical slice, the Stage 2 simulated realtime loop, and the first Stage 3 DeepBook Predict testnet bridge: deterministic mobile replay, worker-shaped table activity, an in-process socket contract, optional PWA live-mode checks, a local Wrangler-backed worker smoke, a Predict server read canary, and Sui SDK transaction builders for manager creation, quote deposit, and copied mint.
 
-## Testnet Quickstart
+## Indexed Testnet Quickstart
 
 Prerequisites:
 
 - Bun installed locally
+- a local Postgres database for the indexer-backed app loop
 - Chromium installed for Playwright only if you plan to run browser tests
 
 Install dependencies:
@@ -17,13 +18,23 @@ Install dependencies:
 bun install
 ```
 
-Start the local testnet API and PWA together:
+Create or choose a local database, then export `DATABASE_URL`. The exact
+connection string depends on your local Postgres user; these are common local
+defaults:
+
+```bash
+createdb hothands_dev
+export DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev
+```
+
+Start the full local testnet stack:
 
 ```bash
 bun run dev:testnet
 ```
 
-Then open:
+Wait for the launcher to print `Hot Hands testnet dev is ready`, then open the
+printed PWA URL. Default local URLs are:
 
 ```text
 http://127.0.0.1:5176
@@ -33,16 +44,30 @@ The launcher starts:
 
 - PWA: `http://127.0.0.1:5176`
 - API: `http://127.0.0.1:8789`
-- Live indexer: enabled when `DATABASE_URL` is set
+- Indexer bootstrap: migrations plus bounded Predict backfill when `DATABASE_URL` is set
+- Live indexer: enabled when `DATABASE_URL` is set, unless `HOT_HANDS_INDEXER_LIVE=false`
 - Market heat API: `http://127.0.0.1:8789/testnet/market-heat`
 - Indexer status API: `http://127.0.0.1:8789/testnet/indexer-status`
 - Open-position close quote API: `http://127.0.0.1:8789/testnet/redeem-quote`
 
-With `dev:testnet`, the app opens directly in `Testnet` mode and shows live DeepBook Predict market heat rows.
-If public testnet reads fail, the API falls back to captured rows and labels the
-source as `Captured`. Market Heat opens in `Latest` order and refreshes while
-Testnet mode is open so live public trades are easier to watch, with a `Heat`
-toggle for the provisional score ranking.
+With `DATABASE_URL`, `dev:testnet` is the recommended teammate/agent loop. It
+applies indexer migrations, runs an idempotent bounded write backfill, starts
+the local API, starts the PWA pointed at that API, then starts the live indexer.
+The PWA opens directly in testnet mode and prefers indexed reads for Feed,
+Trade, Portfolio, and the BTC chart. If indexed reads are unavailable, the API
+falls back to public Predict reads or captured rows and labels the source.
+
+Quick health checks:
+
+```bash
+curl -sS http://127.0.0.1:8789/health
+curl -sS http://127.0.0.1:8789/testnet/indexer-status
+curl -sS http://127.0.0.1:8789/testnet/market-heat
+```
+
+`/testnet/indexer-status` should report the indexed jobs when `DATABASE_URL` is
+set. If it is missing indexed jobs, the app is probably running in fallback
+mode, not the durable local indexer mode.
 
 Useful checks:
 
@@ -60,8 +85,23 @@ bunx playwright install chromium
 Port overrides:
 
 ```bash
-HOT_HANDS_TESTNET_API_PORT=8790 HOT_HANDS_TESTNET_PWA_PORT=5177 bun run dev:testnet
+DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev HOT_HANDS_TESTNET_API_PORT=8792 HOT_HANDS_TESTNET_PWA_PORT=5184 bun run dev:testnet
 ```
+
+Use port overrides when another local run already owns the defaults, or when a
+teammate needs to match a shared browser URL.
+
+Read-only wallet debug mode:
+
+```text
+http://127.0.0.1:5176/?devWallet=0x29b8e29b80f2d332f130990ebe0b3bfc99ccef6657a01858e0c25d675721cd79
+```
+
+`devWallet` lets an agent inspect a wallet's discovered `PredictManager`,
+bankroll, portfolio, PnL, and history without the private wallet extension. It
+is read-only: signing, deposit, mint, redeem, and claim actions still require
+the real connected wallet. You can also set
+`VITE_HOT_HANDS_DEV_WALLET_ADDRESS` before starting the PWA.
 
 `dev:testnet` writes `.hot-hands-dev-testnet.json` with the exact child PIDs and
 prints `Hot Hands testnet dev is ready` only after both the API and PWA URLs
@@ -84,6 +124,32 @@ children from holding ports between Codex/browser test runs.
 If the PWA repeatedly times out before opening a port, run from a no-space git
 worktree. This repo has previously exposed Vite/esbuild hangs from paths like
 `Documents/New project`.
+
+```bash
+git worktree add --detach /private/tmp/hothands-dev HEAD
+cd /private/tmp/hothands-dev
+bun install
+export DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev
+bun run dev:testnet
+```
+
+If a port still looks occupied after cleanup, inspect the exact listener before
+killing anything:
+
+```bash
+lsof -nP -iTCP:5176 -sTCP:LISTEN
+lsof -nP -iTCP:8789 -sTCP:LISTEN
+```
+
+Only kill confirmed stale Hot Hands, Bun, Vite, or esbuild processes from this
+repo or its no-space worktree.
+
+Common local debugging notes:
+
+- An empty Feed usually means there are no unexpired indexed positions at that moment. Use `Show expired` to inspect older activity.
+- Quote and close quote URLs must use Predict's millisecond expiry key, such as `1779158400000`. Passing seconds, such as `1779158400`, can fail with `oracle_config::assert_key_matches`.
+- The Trade button waits for a quote because the transaction needs current Predict price and quantity data before it can build the wallet request.
+- The BTC chart can only show history that has been indexed locally or returned by the public Predict server. Keep the live indexer running to build longer local history.
 
 ## Durable Indexer Local Notes
 

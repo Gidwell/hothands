@@ -23,12 +23,15 @@ serves them behind a narrow local setup:
 1. Create a local Postgres database and export `DATABASE_URL`, for example:
 
    ```bash
-   export DATABASE_URL=postgres://hot_hands:hot_hands@127.0.0.1:5432/hot_hands
+   createdb hothands_dev
+   export DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev
    ```
 
-2. For the normal local app loop, start the launcher with the same
-   `DATABASE_URL`. It applies migrations, runs a bounded write backfill, starts
-   the local API/PWA, and then starts the live indexer:
+   Use the connection string that matches your local Postgres user. Do not
+   commit real credentials.
+2. For the normal teammate/agent app loop, start the root launcher with the
+   same `DATABASE_URL`. It applies migrations, runs a bounded write backfill,
+   starts the local API/PWA, and then starts the live indexer:
 
    ```bash
    bun run dev:testnet
