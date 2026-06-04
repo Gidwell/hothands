@@ -210,17 +210,6 @@ button:disabled {
   font-weight: 850;
 }
 
-.oracle-mini-chart-copy small {
-  min-width: 0;
-  overflow: hidden;
-  color: #98a2b3;
-  font-size: 0.64rem;
-  font-weight: 850;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .oracle-chart-shell {
   position: relative;
   width: 100%;
@@ -321,8 +310,7 @@ button:disabled {
 
 .oracle-chart-modal-header span,
 .oracle-chart-modal-header p,
-.oracle-chart-modal-meta span,
-.oracle-chart-modal-meta small {
+.oracle-chart-modal-meta span {
   margin: 0;
   color: #667085;
   font-size: 0.78rem;
@@ -351,7 +339,6 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
   gap: 12px;
   padding: 10px;
   border: 1px solid #e6edf4;
@@ -363,11 +350,6 @@ button:disabled {
   color: #111827;
   font-size: 1.5rem;
   line-height: 1;
-}
-
-.oracle-chart-modal-meta small {
-  flex-basis: 100%;
-  line-height: 1.2;
 }
 
 .oracle-chart-modal-empty {

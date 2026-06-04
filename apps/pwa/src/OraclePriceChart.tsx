@@ -34,9 +34,6 @@ export function OraclePriceChartCard({
         <span>BTC/USD</span>
         <strong>{priceLabel}</strong>
         <em>DeepBook oracle price</em>
-        {chart?.latestPointLocalLabel ? (
-          <small>{chart.latestPointLocalLabel}</small>
-        ) : null}
       </span>
       {hasChart ? (
         <LightweightOraclePriceChart points={chart.points} compact height={52} />
@@ -74,12 +71,6 @@ export function OraclePriceChartModal({
         <div className="oracle-chart-modal-meta">
           <span>{chart?.sourceLabel ?? "Live Testnet"}</span>
           <strong>{chart?.latestPriceLabel ?? "No price yet"}</strong>
-          {chart?.latestPointLocalLabel ? (
-            <small>{chart.latestPointLocalLabel}</small>
-          ) : null}
-          {chart?.historyWindowLabel ? (
-            <small>{chart.historyWindowLabel}</small>
-          ) : null}
         </div>
         <div className="oracle-expanded-chart" data-testid="oracle-expanded-chart">
           {hasChart ? (

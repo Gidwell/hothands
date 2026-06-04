@@ -15,8 +15,6 @@ export type OraclePriceChart = {
   title: string;
   detail: string;
   latestPriceLabel: string | null;
-  latestPointLocalLabel: string | null;
-  historyWindowLabel: string | null;
   points: OraclePriceChartPoint[];
 };
 
@@ -50,8 +48,6 @@ function buildOraclePriceChartFromPayload(payload: unknown, oracleId: string): O
   const points = parseOraclePriceChartPoints(record.points);
   const latestPrice = numberValue(record.latestPrice);
   const latestPointPrice = points.at(-1)?.price;
-  const firstPoint = points[0];
-  const latestPoint = points.at(-1);
   const latestPriceLabel = formatUsdPrice(
     latestPrice && latestPrice > 0 ? latestPrice : latestPointPrice,
   );
@@ -70,13 +66,6 @@ function buildOraclePriceChartFromPayload(payload: unknown, oracleId: string): O
       stringValue(record.detail) ??
       "DeepBook Predict oracle price used for BTC market settlement.",
     latestPriceLabel,
-    latestPointLocalLabel: latestPoint
-      ? `Updated ${formatLocalDateTime(latestPoint.timestampMs)}`
-      : null,
-    historyWindowLabel:
-      firstPoint && latestPoint
-        ? `Showing ${formatDuration(latestPoint.timestampMs - firstPoint.timestampMs)} of oracle history`
-        : null,
     points,
   };
 }
@@ -90,8 +79,6 @@ function buildUnavailableOraclePriceChart(oracleId: string): OraclePriceChart {
     title: "DeepBook BTC oracle price",
     detail: "Waiting for DeepBook oracle price history.",
     latestPriceLabel: null,
-    latestPointLocalLabel: null,
-    historyWindowLabel: null,
     points: [],
   };
 }
@@ -161,32 +148,6 @@ function formatUsdPrice(value: number | undefined): string | null {
   }
 
   return `$${Math.round(value).toLocaleString("en-US")}`;
-}
-
-function formatLocalDateTime(timestampMs: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZoneName: "short",
-  }).format(new Date(timestampMs));
-}
-
-function formatDuration(durationMs: number): string {
-  if (!Number.isFinite(durationMs) || durationMs <= 0) {
-    return "0s";
-  }
-
-  const totalSeconds = Math.max(1, Math.round(durationMs / 1_000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes <= 0) {
-    return `${seconds}s`;
-  }
-
-  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
 }
 
 function numberValue(value: unknown): number | undefined {

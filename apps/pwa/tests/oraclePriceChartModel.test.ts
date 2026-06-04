@@ -45,8 +45,6 @@ describe("oracle price chart model", () => {
       title: "DeepBook BTC oracle price",
       detail: "DeepBook Predict oracle price used for BTC market settlement.",
       latestPriceLabel: "$72,050",
-      latestPointLocalLabel: `Updated ${formatExpectedLocalDateTime(1_779_070_860_000)}`,
-      historyWindowLabel: "Showing 1m of oracle history",
       points: [
         {
           timestampMs: 1_779_070_800_000,
@@ -84,20 +82,7 @@ describe("oracle price chart model", () => {
       title: "DeepBook BTC oracle price",
       detail: "Waiting for DeepBook oracle price history.",
       latestPriceLabel: null,
-      latestPointLocalLabel: null,
-      historyWindowLabel: null,
       points: [],
     });
   });
 });
-
-function formatExpectedLocalDateTime(timestampMs: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZoneName: "short",
-  }).format(new Date(timestampMs));
-}
