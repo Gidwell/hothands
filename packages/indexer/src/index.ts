@@ -39,5 +39,27 @@ export {
   summarizePredictPositions,
   type PredictIndexerSnapshot,
   type PredictIndexerStore,
+  type PredictIndexerWriter,
   type PredictPositionSummary,
 } from "./store";
+
+export {
+  createPostgresPredictIndexerStore,
+  type PostgresPredictIndexerStoreOptions,
+  type SqlExecutionResult,
+  type SqlExecutor,
+  type SqlValue,
+} from "./postgres-store";
+
+export {
+  buildLatestTradeFeedProjection,
+  buildTraderHeatProjection,
+  downsampleOraclePricePoints,
+  summarizeWalletStats,
+  type LatestTradeFeedProjectionOptions,
+  type TraderHeatComponents,
+  type TraderHeatProjection,
+  type TraderHeatProjectionOptions,
+  type WalletStats,
+  type WalletStatsOptions,
+} from "./projections";

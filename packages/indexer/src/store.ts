@@ -10,13 +10,18 @@ export type PredictIndexerSnapshot = {
   tradeEvents: PredictNormalizedTradeEvent[];
   oraclePrices: PredictOraclePricePoint[];
   oracleSvi: PredictOracleSviPoint[];
+  positionSummaries: PredictPositionSummary[];
 };
 
-export type PredictIndexerStore = {
+export type PredictIndexerWriter = {
   upsertOracles(oracles: PredictOracleState[]): Promise<number>;
   upsertTradeEvents(events: PredictNormalizedTradeEvent[]): Promise<number>;
   upsertOraclePrices(points: PredictOraclePricePoint[]): Promise<number>;
   upsertOracleSvi(points: PredictOracleSviPoint[]): Promise<number>;
+  upsertPositionSummaries(summaries: PredictPositionSummary[]): Promise<number>;
+};
+
+export type PredictIndexerStore = PredictIndexerWriter & {
   snapshot(): PredictIndexerSnapshot;
 };
 
@@ -81,6 +86,7 @@ class InMemoryPredictIndexerStore implements PredictIndexerStore {
   private readonly tradeEvents = new Map<string, PredictNormalizedTradeEvent>();
   private readonly oraclePrices = new Map<string, PredictOraclePricePoint>();
   private readonly oracleSvi = new Map<string, PredictOracleSviPoint>();
+  private readonly positionSummaries = new Map<string, PredictPositionSummary>();
 
   async upsertOracles(oracles: PredictOracleState[]): Promise<number> {
     return upsertMany(this.oracles, oracles, (oracle) => oracle.oracle_id);
@@ -98,6 +104,10 @@ class InMemoryPredictIndexerStore implements PredictIndexerStore {
     return upsertMany(this.oracleSvi, points, (point) => point.eventId);
   }
 
+  async upsertPositionSummaries(summaries: PredictPositionSummary[]): Promise<number> {
+    return upsertMany(this.positionSummaries, summaries, (summary) => summary.id);
+  }
+
   snapshot(): PredictIndexerSnapshot {
     return {
       oracles: [...this.oracles.values()].sort((left, right) =>
@@ -106,6 +116,11 @@ class InMemoryPredictIndexerStore implements PredictIndexerStore {
       tradeEvents: [...this.tradeEvents.values()].sort(compareEventsByTime),
       oraclePrices: [...this.oraclePrices.values()].sort(comparePointsByTime),
       oracleSvi: [...this.oracleSvi.values()].sort(comparePointsByTime),
+      positionSummaries: [...this.positionSummaries.values()].sort(
+        (left, right) =>
+          right.lastEventMs - left.lastEventMs ||
+          left.id.localeCompare(right.id),
+      ),
     };
   }
 }

@@ -61,6 +61,24 @@ Port overrides:
 HOT_HANDS_TESTNET_API_PORT=8790 HOT_HANDS_TESTNET_PWA_PORT=5177 bun run dev:testnet
 ```
 
+## Durable Indexer Local Notes
+
+The durable indexer now has a DB writer, bounded public Predict backfill CLI,
+and pure projection helpers. Keep the local shape simple and explicit:
+
+- set `DATABASE_URL` to a local Postgres database before running DB-backed
+  indexer work; do not commit real credentials
+- run migrations manually against that database until a root migration command
+  is wired
+- run the bounded Predict backfill CLI with `bun run indexer:backfill:predict -- --dry-run`
+  first, then with `--write` once migrations are applied
+- keep the data path as: public DeepBook Predict server -> Postgres raw tables
+  -> compact projections -> API worker endpoints -> PWA feeds
+
+The PWA/API may keep captured or public-read fallbacks while this comes online,
+but durable Heat, recent activity, attribution, and settlement views should read
+from projections instead of direct public Predict server responses.
+
 ## Current Demo Status
 
 What is live today:

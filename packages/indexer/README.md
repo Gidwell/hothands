@@ -13,6 +13,46 @@ SVI into raw tables, then derive projections for market heat, recent activity,
 settlement views, and PWA feeds. No cursor paging has been found on the public
 Predict endpoints yet, so every job should be idempotent and freshness-aware.
 
+## Local Durable Setup
+
+Current status: `verify:testnet` uses public Predict server reads. The durable
+Postgres path uses the same normalized records, then persists them behind a
+narrow local setup:
+
+1. Create a local Postgres database and export `DATABASE_URL`, for example:
+
+   ```bash
+   export DATABASE_URL=postgres://hot_hands:hot_hands@127.0.0.1:5432/hot_hands
+   ```
+
+2. Apply indexer migrations manually until a package script is wired. Run the
+   SQL files in order against `DATABASE_URL`, review them before applying, and
+   keep backfill-related writes idempotent.
+3. Run the Predict backfill CLI in dry-run mode first:
+
+   ```bash
+   bun run --cwd packages/indexer backfill:predict -- --dry-run --trade-limit 5000 --price-limit 10000
+   ```
+
+   Once migrations are applied, write to Postgres:
+
+   ```bash
+   bun run --cwd packages/indexer backfill:predict -- --write --trade-limit 5000 --price-limit 10000
+   ```
+
+   Start with small limits locally, then replay with wider limits. The CLI reads
+   `DATABASE_URL` in write mode, fetches from the public Predict server, and upserts
+   raw oracles, mints, redeems, trades, prices, and SVI.
+4. Build projections from the raw tables before serving product flows:
+
+   ```text
+   public Predict server -> Postgres raw tables -> projections -> API/PWA
+   ```
+
+Do not treat observed external-wallet mints as pre-trade signals. This path is
+for reactive copy/fade preparation, settlement-aware scoring, and durable
+activity projections.
+
 Run the read-only canary with:
 
 ```bash

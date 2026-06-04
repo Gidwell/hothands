@@ -6,10 +6,10 @@ import {
   createPredictTradeHistoryClient,
   type PredictCanaryConfig,
 } from "./deepbook-predict";
-import type { PredictIndexerStore } from "./store";
+import { summarizePredictPositions, type PredictIndexerWriter } from "./store";
 
 export type DeepBookPredictBackfillOptions = {
-  store: PredictIndexerStore;
+  store: PredictIndexerWriter;
   config?: PredictCanaryConfig;
   fetchImpl?: typeof fetch;
   oracleIds?: string[];
@@ -26,6 +26,7 @@ export type DeepBookPredictBackfillSummary = {
   tradeEventCount: number;
   oraclePriceCount: number;
   oracleSviCount: number;
+  positionSummaryCount: number;
   selectedOracleIds: string[];
 };
 
@@ -54,11 +55,15 @@ export async function runDeepBookPredictBackfill({
   const oracleTrades = includeOracleTrades
     ? await fetchOracleTrades(tradeClient, selectedOracleIds, tradeLimit)
     : [];
-  const tradeEventCount = await store.upsertTradeEvents([
+  const tradeEvents = [
     ...minted,
     ...redeemed,
     ...oracleTrades,
-  ]);
+  ];
+  const tradeEventCount = await store.upsertTradeEvents(tradeEvents);
+  const positionSummaryCount = await store.upsertPositionSummaries(
+    summarizePredictPositions(tradeEvents),
+  );
 
   const priceClient = createPredictOraclePriceClient({ config, fetchImpl });
   const oraclePrices = includePrices
@@ -85,6 +90,7 @@ export async function runDeepBookPredictBackfill({
     tradeEventCount,
     oraclePriceCount,
     oracleSviCount,
+    positionSummaryCount,
     selectedOracleIds,
   };
 }

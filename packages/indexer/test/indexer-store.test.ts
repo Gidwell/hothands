@@ -35,6 +35,7 @@ describe("Predict indexer store", () => {
       tradeEvents: [mint, redeem],
       oraclePrices: [price],
       oracleSvi: [],
+      positionSummaries: [],
     });
   });
 
@@ -163,6 +164,7 @@ describe("DeepBook Predict backfill runner", () => {
       tradeEventCount: 3,
       oraclePriceCount: 1,
       oracleSviCount: 1,
+      positionSummaryCount: 1,
       selectedOracleIds: ["btc-15m"],
     });
     expect(store.snapshot()).toMatchObject({
@@ -185,6 +187,13 @@ describe("DeepBook Predict backfill runner", () => {
         expect.objectContaining({
           eventId: "svi:0xsvi1:3",
           oracleId: "btc-15m",
+        }),
+      ],
+      positionSummaries: [
+        expect.objectContaining({
+          id: "manager-btc:btc-15m:1779158400000:72000000000:UP",
+          openQuantity: 2,
+          status: "open",
         }),
       ],
     });

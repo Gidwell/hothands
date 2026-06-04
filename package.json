@@ -17,6 +17,7 @@
     "test:worker": "bun run --cwd apps/api-worker test:worker",
     "test:contracts": "bun run --cwd packages/contracts test",
     "test:scoring": "bun test packages/shared/test/scoring.test.ts",
+    "indexer:backfill:predict": "bun run --cwd packages/indexer backfill:predict",
     "build:pwa": "bun run --cwd apps/pwa build",
     "build:api": "bun run --cwd apps/api-worker build",
     "move:test": "echo \"TODO: run sui move test in packages/contracts\"",
