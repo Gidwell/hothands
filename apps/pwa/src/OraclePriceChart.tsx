@@ -13,8 +13,9 @@ import {
 } from "lightweight-charts";
 import type { OraclePriceChart, OraclePriceChartPoint } from "./oraclePriceChartModel";
 
-const COMPACT_CHART_MIN_BAR_SPACING = 0.5;
+const COMPACT_CHART_MIN_BAR_SPACING = 0.02;
 const EXPANDED_CHART_MIN_BAR_SPACING = 0.02;
+const COMPACT_CHART_DEFAULT_WINDOW_SECONDS = 15 * 60;
 const EXPANDED_CHART_DEFAULT_WINDOW_SECONDS = 30 * 60;
 
 type OraclePriceChartInitialView =
@@ -277,7 +278,7 @@ export function getInitialOraclePriceChartView({
   compact: boolean;
   pointTimes: number[];
 }): OraclePriceChartInitialView {
-  if (compact || pointTimes.length < 2) {
+  if (pointTimes.length < 2) {
     return { mode: "fit-content" };
   }
 
@@ -292,7 +293,7 @@ export function getInitialOraclePriceChartView({
 
   const visibleStart = Math.max(
     firstTime,
-    latestTime - EXPANDED_CHART_DEFAULT_WINDOW_SECONDS,
+    latestTime - getOraclePriceChartDefaultWindowSeconds({ compact }),
   );
   if (visibleStart <= firstTime) {
     return { mode: "fit-content" };
@@ -303,6 +304,16 @@ export function getInitialOraclePriceChartView({
     from: visibleStart as UTCTimestamp,
     to: latestTime as UTCTimestamp,
   };
+}
+
+function getOraclePriceChartDefaultWindowSeconds({
+  compact,
+}: {
+  compact: boolean;
+}): number {
+  return compact
+    ? COMPACT_CHART_DEFAULT_WINDOW_SECONDS
+    : EXPANDED_CHART_DEFAULT_WINDOW_SECONDS;
 }
 
 function formatCrosshairLocalTime(time: Time): string {

@@ -93,8 +93,8 @@ describe("OraclePriceChartModal", () => {
       0.03,
     );
 
-    expect(getOraclePriceChartMinBarSpacing({ compact: true })).toBeGreaterThan(
-      getOraclePriceChartMinBarSpacing({ compact: false }),
+    expect(getOraclePriceChartMinBarSpacing({ compact: true })).toBeLessThanOrEqual(
+      0.03,
     );
   });
 
@@ -111,14 +111,20 @@ describe("OraclePriceChartModal", () => {
     });
   });
 
-  test("fits compact and short-history charts instead of forcing a thirty minute range", () => {
+  test("defaults feed mini charts to the latest fifteen minutes when more history exists", () => {
     expect(
       getInitialOraclePriceChartView({
         compact: true,
         pointTimes: [100, 1_000, 1_900, 2_000],
       }),
-    ).toEqual({ mode: "fit-content" });
+    ).toEqual({
+      mode: "time-range",
+      from: 1_100,
+      to: 2_000,
+    });
+  });
 
+  test("fits short-history charts instead of forcing a thirty minute range", () => {
     expect(
       getInitialOraclePriceChartView({
         compact: false,
