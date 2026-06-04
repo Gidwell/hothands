@@ -35,6 +35,14 @@ export {
 } from "./backfill";
 
 export {
+  listMigrationSqlFiles,
+  readIndexerMigrationFiles,
+  runIndexerMigrations,
+  splitSqlStatements,
+  type IndexerMigration,
+} from "./migrations";
+
+export {
   createInMemoryPredictIndexerStore,
   summarizePredictPositions,
   type PredictIndexerSnapshot,

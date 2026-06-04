@@ -76,6 +76,9 @@ let liveIndexer: SpawnedProcess | null = null;
 try {
   process.stdout.write("Starting Hot Hands testnet dev...\n");
 
+  await runSetupCommand("indexer migrations", config.migrationCommand);
+  await runSetupCommand("indexer backfill", config.bootstrapBackfillCommand);
+
   api = spawnManaged("api", config.apiCommand, {
     HOST: config.apiHost,
     HOT_HANDS_TESTNET_API_PORT: String(config.apiPort),
@@ -173,6 +176,26 @@ function spawnManaged(
   });
   processes.push(managed);
   return managed;
+}
+
+async function runSetupCommand(name: string, command: string[] | null) {
+  if (!command) {
+    return;
+  }
+
+  process.stdout.write(`Running ${name}...\n`);
+  const setup = Bun.spawn(command, {
+    cwd: repoRoot,
+    env: process.env,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const exitCode = await setup.exited;
+
+  if (exitCode !== 0) {
+    throw new Error(`${name} failed with exit code ${exitCode}.`);
+  }
 }
 
 async function writeDevState() {
@@ -343,6 +366,7 @@ function formatReadyMessage(indexerEnabled: boolean): string {
     "Hot Hands testnet dev is ready.",
     `PWA:         ${config.pwaUrl}`,
     `API:         ${config.apiUrl}`,
+    `Bootstrap:   ${formatBootstrapStatus()}`,
     `Indexer:     ${indexerEnabled ? "live" : "disabled"}`,
     `Market heat: ${config.apiUrl}/testnet/market-heat`,
     `Status:      ${config.apiUrl}/testnet/indexer-status`,
@@ -352,4 +376,15 @@ function formatReadyMessage(indexerEnabled: boolean): string {
     "Override ports with HOT_HANDS_TESTNET_API_PORT and HOT_HANDS_TESTNET_PWA_PORT.",
     "",
   ].join("\n");
+}
+
+function formatBootstrapStatus(): string {
+  if (!config.migrationCommand && !config.bootstrapBackfillCommand) {
+    return "disabled";
+  }
+
+  return [
+    config.migrationCommand ? "migrated" : "migration skipped",
+    config.bootstrapBackfillCommand ? "backfilled" : "backfill skipped",
+  ].join(", ");
 }

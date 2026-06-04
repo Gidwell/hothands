@@ -26,10 +26,23 @@ serves them behind a narrow local setup:
    export DATABASE_URL=postgres://hot_hands:hot_hands@127.0.0.1:5432/hot_hands
    ```
 
-2. Apply indexer migrations manually until a package script is wired. Run the
-   SQL files in order against `DATABASE_URL`, review them before applying, and
-   keep backfill-related writes idempotent.
-3. Run the Predict backfill CLI in dry-run mode first:
+2. For the normal local app loop, start the launcher with the same
+   `DATABASE_URL`. It applies migrations, runs a bounded write backfill, starts
+   the local API/PWA, and then starts the live indexer:
+
+   ```bash
+   bun run dev:testnet
+   ```
+
+   Disable either automatic bootstrap step with `HOT_HANDS_DEV_MIGRATE=false`
+   or `HOT_HANDS_DEV_BACKFILL=false` when you intentionally want to skip it.
+3. For manual debugging, apply indexer migrations directly:
+
+   ```bash
+   bun run --cwd packages/indexer migrate
+   ```
+
+4. Run the Predict backfill CLI in dry-run mode first:
 
    ```bash
    bun run --cwd packages/indexer backfill:predict -- --dry-run --trade-limit 5000 --price-limit 10000
@@ -44,7 +57,8 @@ serves them behind a narrow local setup:
    Start with small limits locally, then replay with wider limits. The CLI reads
    `DATABASE_URL` in write mode, fetches from the public Predict server, and upserts
    raw oracles, mints, redeems, trades, prices, and SVI.
-4. Start the local app with the same `DATABASE_URL`:
+5. If you skipped the launcher in step 2, start the local app with the same
+   `DATABASE_URL`:
 
    ```bash
    bun run dev:testnet
@@ -57,9 +71,9 @@ serves them behind a narrow local setup:
    - Portfolio mint/redeem events for a connected `PredictManager`
    - Oracle price history for the BTC chart
 
-   When `DATABASE_URL` is set, the dev launcher also starts a separate live
-   indexer process. The API remains read-only against Postgres. You can run the
-   same process by itself with:
+   When `DATABASE_URL` is set, the dev launcher starts a separate live indexer
+   process after migration/backfill bootstrap. The API remains read-only against
+   Postgres. You can run the same process by itself with:
 
    ```bash
    bun run --cwd packages/indexer live -- --once
@@ -86,7 +100,7 @@ serves them behind a narrow local setup:
    The chart endpoint requests downsampled full-range history from
    `predict_oracle_prices`, preserving the first and latest indexed points while
    returning at most the requested point budget.
-5. Build projections from the raw tables before serving product flows:
+6. Build projections from the raw tables before serving product flows:
 
    ```text
    public Predict server -> Postgres raw tables -> projections -> API/PWA

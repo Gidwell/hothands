@@ -8,8 +8,10 @@ describe("testnet dev launcher config", () => {
       apiCommand: ["bun", "apps/api-worker/src/testnet-dev-server.ts"],
       apiPort: 8789,
       apiUrl: "http://127.0.0.1:8789",
+      bootstrapBackfillCommand: null,
       cleanupPorts: [8789, 5176],
       liveIndexerCommand: null,
+      migrationCommand: null,
       readinessTimeoutMs: 30000,
       pwaCommand: [
         "bun",
@@ -42,8 +44,10 @@ describe("testnet dev launcher config", () => {
       apiCommand: ["bun", "apps/api-worker/src/testnet-dev-server.ts"],
       apiPort: 8899,
       apiUrl: "http://0.0.0.0:8899",
+      bootstrapBackfillCommand: null,
       cleanupPorts: [8899, 5299],
       liveIndexerCommand: null,
+      migrationCommand: null,
       readinessTimeoutMs: 30000,
       pwaCommand: [
         "bun",
@@ -64,11 +68,17 @@ describe("testnet dev launcher config", () => {
   });
 
   test("enables the dedicated live indexer when DATABASE_URL is present", () => {
-    expect(
-      resolveDevTestnetConfig({
-        DATABASE_URL: "postgres://hot-hands.test",
-      }).liveIndexerCommand,
-    ).toEqual(["bun", "packages/indexer/src/live.ts"]);
+    const config = resolveDevTestnetConfig({
+      DATABASE_URL: "postgres://hot-hands.test",
+    });
+
+    expect(config.liveIndexerCommand).toEqual(["bun", "packages/indexer/src/live.ts"]);
+    expect(config.migrationCommand).toEqual(["bun", "packages/indexer/src/migrate.ts"]);
+    expect(config.bootstrapBackfillCommand).toEqual([
+      "bun",
+      "packages/indexer/src/backfill-predict.ts",
+      "--write",
+    ]);
   });
 
   test("does not enable the live indexer without DATABASE_URL", () => {
@@ -82,6 +92,18 @@ describe("testnet dev launcher config", () => {
         HOT_HANDS_INDEXER_LIVE: "false",
       }).liveIndexerCommand,
     ).toBeNull();
+  });
+
+  test("allows dev testnet DB bootstrap steps to be disabled independently", () => {
+    const config = resolveDevTestnetConfig({
+      DATABASE_URL: "postgres://hot-hands.test",
+      HOT_HANDS_DEV_BACKFILL: "false",
+      HOT_HANDS_DEV_MIGRATE: "false",
+    });
+
+    expect(config.migrationCommand).toBeNull();
+    expect(config.bootstrapBackfillCommand).toBeNull();
+    expect(config.liveIndexerCommand).toEqual(["bun", "packages/indexer/src/live.ts"]);
   });
 
   test("allows readiness timeout override for tighter local diagnostics", () => {

@@ -72,10 +72,11 @@ The launcher starts `apps/api-worker` with its Bun testnet server, waits for
 `/health`, then starts the PWA with `VITE_HOT_HANDS_API_URL` pointed at that
 local API and waits for the PWA URL to respond. It prints `Hot Hands testnet
 dev is ready` only after both URLs are reachable. When `DATABASE_URL` is set,
-it also starts the dedicated Predict indexer process. The launcher starts API
-and indexer as direct Bun scripts, keeps the PWA on its proven Vite package
-script, writes `.hot-hands-dev-testnet.json` with exact child PIDs, and shuts
-down process groups on exit.
+it first applies indexer migrations, runs an idempotent bounded Predict
+backfill, and then starts the dedicated live Predict indexer process. The
+launcher starts API and indexer as direct Bun scripts, keeps the PWA on its
+proven Vite package script, writes `.hot-hands-dev-testnet.json` with exact
+child PIDs, and shuts down process groups on exit.
 
 Defaults:
 
@@ -101,3 +102,5 @@ Environment overrides:
 - `HOT_HANDS_TESTNET_API_HOST`
 - `HOT_HANDS_TESTNET_PWA_HOST`
 - `HOT_HANDS_DEV_READY_TIMEOUT_MS`
+- `HOT_HANDS_DEV_MIGRATE=false`
+- `HOT_HANDS_DEV_BACKFILL=false`

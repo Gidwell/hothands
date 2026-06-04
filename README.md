@@ -87,16 +87,19 @@ worktree. This repo has previously exposed Vite/esbuild hangs from paths like
 
 ## Durable Indexer Local Notes
 
-The durable indexer now has a DB writer, bounded public Predict backfill CLI,
-Postgres readers, a dedicated live polling process, and API/PWA read-path hooks.
+The durable indexer now has migrations, a DB writer, bounded public Predict
+backfill CLI, Postgres readers, a dedicated live polling process, and API/PWA
+read-path hooks.
 Keep the local shape simple and explicit:
 
 - set `DATABASE_URL` to a local Postgres database before running DB-backed
   indexer work; do not commit real credentials
-- run migrations manually against that database until a root migration command
-  is wired
-- run the bounded Predict backfill CLI with `bun run indexer:backfill:predict -- --dry-run`
-  first, then with `--write` once migrations are applied
+- run `bun run dev:testnet` with `DATABASE_URL` set to automatically apply
+  indexer migrations, run an idempotent bounded Predict backfill, start the API,
+  start the PWA, and then start the live indexer
+- for manual debugging, run migrations with `bun run indexer:migrate`, then run
+  the bounded Predict backfill CLI with
+  `bun run indexer:backfill:predict -- --dry-run` first, then with `--write`
 - run the live indexer directly with `bun run indexer:live` when you want only
   ingestion, or let `bun run dev:testnet` start it automatically when
   `DATABASE_URL` is set
@@ -104,9 +107,13 @@ Keep the local shape simple and explicit:
   -> compact projections -> API worker endpoints -> PWA Feed, Trade,
   Portfolio, and chart views
 
-When `DATABASE_URL` is set for `bun run dev:testnet`, the local API prefers
-indexed reads for Market Heat, Trade markets, Portfolio events, and oracle price
-history. The launcher also starts a separate live indexer process. Prices,
+When `DATABASE_URL` is set for `bun run dev:testnet`, the launcher applies
+migrations, runs a bounded write backfill, and the local API prefers indexed
+reads for Market Heat, Trade markets, Portfolio events, and oracle price
+history. The launcher also starts a separate live indexer process. Disable
+automatic bootstrap with `HOT_HANDS_DEV_MIGRATE=false` or
+`HOT_HANDS_DEV_BACKFILL=false` when you intentionally want to skip either step.
+Prices,
 positions, and active-oracle trade activity poll every 1 second by default;
 oracle metadata polls every 30 seconds by default. Tune these with
 `HOT_HANDS_INDEXER_PRICE_POLL_MS`, `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`,
