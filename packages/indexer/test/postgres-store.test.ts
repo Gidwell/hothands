@@ -107,6 +107,60 @@ describe("Postgres Predict indexer store", () => {
       normalizePredictTradeRow(mintedRow({ digest: "0xtwo" })),
     ])).resolves.toBe(2);
   });
+
+  test("dedupes repeated conflict keys before one upsert batch", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      return { rows: [{ inserted: 1 }], rowCount: 1 };
+    };
+    const store = createPostgresPredictIndexerStore({ execute });
+
+    await expect(store.upsertTradeEvents([
+      normalizePredictTradeRow(mintedRow({ cost: "1200000" })),
+      normalizePredictTradeRow(mintedRow({ cost: "1400000" })),
+    ])).resolves.toBe(1);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.params).toHaveLength(17);
+    expect(calls[0]?.params.slice(0, 12)).toEqual([
+      "mint:0xmint:1",
+      "mint",
+      "0xtrader",
+      "0xtrader",
+      "manager-btc",
+      "btc-15m",
+      1_779_158_400_000,
+      72_000_000_000,
+      true,
+      3,
+      1_400_000,
+      null,
+    ]);
+  });
+
+  test("chunks large upsert batches below the Postgres parameter cap", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      return { rowCount: params.length / 17 };
+    };
+    const store = createPostgresPredictIndexerStore({ execute });
+    const events = Array.from({ length: 4_000 }, (_, index) =>
+      normalizePredictTradeRow(mintedRow({
+        digest: `0xmint${index}`,
+        event_digest: `0xmint${index}`,
+      })),
+    );
+
+    await expect(store.upsertTradeEvents(events)).resolves.toBe(4_000);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.params.length).toBeLessThanOrEqual(60_000);
+    expect(calls[1]?.params.length).toBeLessThanOrEqual(60_000);
+    expect(calls[0]?.statement).toContain("insert into predict_trade_events");
+    expect(calls[1]?.statement).toContain("insert into predict_trade_events");
+  });
 });
 
 type SqlCall = {

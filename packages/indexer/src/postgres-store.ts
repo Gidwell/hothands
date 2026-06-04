@@ -27,6 +27,8 @@ type SqlColumn<T> = {
   cast?: string;
 };
 
+const POSTGRES_PARAMETER_BUDGET = 60_000;
+
 export function createPostgresPredictIndexerStore({
   execute,
 }: PostgresPredictIndexerStoreOptions): PredictIndexerWriter {
@@ -98,6 +100,42 @@ async function upsertRows<T>({
     return 0;
   }
 
+  const uniqueRows = dedupeRowsByConflictKey(rows, columns, conflictColumns);
+  const maxRowsPerBatch = Math.max(
+    1,
+    Math.floor(POSTGRES_PARAMETER_BUDGET / columns.length),
+  );
+  let affectedRows = 0;
+
+  for (let index = 0; index < uniqueRows.length; index += maxRowsPerBatch) {
+    affectedRows += await upsertRowBatch({
+      execute,
+      table,
+      conflictColumns,
+      columns,
+      touchColumn,
+      rows: uniqueRows.slice(index, index + maxRowsPerBatch),
+    });
+  }
+
+  return affectedRows;
+}
+
+async function upsertRowBatch<T>({
+  execute,
+  table,
+  conflictColumns,
+  columns,
+  touchColumn,
+  rows,
+}: {
+  execute: SqlExecutor;
+  table: string;
+  conflictColumns: readonly string[];
+  columns: readonly SqlColumn<T>[];
+  touchColumn?: string;
+  rows: readonly T[];
+}): Promise<number> {
   const params: SqlValue[] = [];
   const valuesSql = rows.map((row) => {
     const placeholders = columns.map((column) => {
@@ -122,6 +160,31 @@ async function upsertRows<T>({
   const result = await execute(statement, params);
 
   return rowsAffected(result);
+}
+
+function dedupeRowsByConflictKey<T>(
+  rows: readonly T[],
+  columns: readonly SqlColumn<T>[],
+  conflictColumns: readonly string[],
+): readonly T[] {
+  const keyColumns = conflictColumns.map((name) => {
+    const column = columns.find((candidate) => candidate.name === name);
+    if (!column) {
+      throw new Error(`Conflict column ${name} is not present in upsert columns.`);
+    }
+
+    return column;
+  });
+  const rowsByKey = new Map<string, T>();
+
+  for (const row of rows) {
+    rowsByKey.set(
+      JSON.stringify(keyColumns.map((column) => column.value(row))),
+      row,
+    );
+  }
+
+  return [...rowsByKey.values()];
 }
 
 const oracleColumns: readonly SqlColumn<PredictOracleState>[] = [
