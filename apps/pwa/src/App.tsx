@@ -89,6 +89,7 @@ import {
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
+const ORACLE_PRICE_CHART_REFRESH_MS = 10_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
 const PORTFOLIO_TIME_REFRESH_MS = 15_000;
@@ -2471,17 +2472,26 @@ export function App() {
       chart?.oracleId === activeChartOracleId ? chart : null,
     );
 
-    void loadOraclePriceChart({
-      apiBaseUrl: realtimeApiBaseUrl,
-      oracleId: activeChartOracleId,
-    }).then((chart) => {
-      if (isCurrent) {
-        setOraclePriceChart(chart);
-      }
-    });
+    const refreshOraclePriceChart = () => {
+      void loadOraclePriceChart({
+        apiBaseUrl: realtimeApiBaseUrl,
+        oracleId: activeChartOracleId,
+      }).then((chart) => {
+        if (isCurrent) {
+          setOraclePriceChart(chart);
+        }
+      });
+    };
+
+    refreshOraclePriceChart();
+    const refreshTimer = window.setInterval(
+      refreshOraclePriceChart,
+      ORACLE_PRICE_CHART_REFRESH_MS,
+    );
 
     return () => {
       isCurrent = false;
+      window.clearInterval(refreshTimer);
     };
   }, [activeChartOracleId, realtimeApiBaseUrl]);
 

@@ -3,8 +3,10 @@ import {
   ColorType,
   CrosshairMode,
   LineSeries,
+  TickMarkType,
   createChart,
   type LineData,
+  type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { OraclePriceChart, OraclePriceChartPoint } from "./oraclePriceChartModel";
@@ -32,6 +34,9 @@ export function OraclePriceChartCard({
         <span>BTC/USD</span>
         <strong>{priceLabel}</strong>
         <em>DeepBook oracle price</em>
+        {chart?.latestPointLocalLabel ? (
+          <small>{chart.latestPointLocalLabel}</small>
+        ) : null}
       </span>
       {hasChart ? (
         <LightweightOraclePriceChart points={chart.points} compact height={52} />
@@ -69,6 +74,12 @@ export function OraclePriceChartModal({
         <div className="oracle-chart-modal-meta">
           <span>{chart?.sourceLabel ?? "Live Testnet"}</span>
           <strong>{chart?.latestPriceLabel ?? "No price yet"}</strong>
+          {chart?.latestPointLocalLabel ? (
+            <small>{chart.latestPointLocalLabel}</small>
+          ) : null}
+          {chart?.historyWindowLabel ? (
+            <small>{chart.historyWindowLabel}</small>
+          ) : null}
         </div>
         <div className="oracle-expanded-chart" data-testid="oracle-expanded-chart">
           {hasChart ? (
@@ -113,6 +124,9 @@ function LightweightOraclePriceChart({
         background: { type: ColorType.Solid, color: "transparent" },
         textColor: compact ? "transparent" : "#667085",
       },
+      localization: {
+        timeFormatter: formatCrosshairLocalTime,
+      },
       grid: {
         vertLines: { visible: !compact, color: "#eef3f8" },
         horzLines: { visible: !compact, color: "#eef3f8" },
@@ -130,6 +144,8 @@ function LightweightOraclePriceChart({
         visible: !compact,
         borderVisible: false,
         timeVisible: true,
+        secondsVisible: true,
+        tickMarkFormatter: formatTickMarkLocalTime,
       },
       handleScale: !compact,
       handleScroll: !compact,
@@ -167,6 +183,58 @@ function LightweightOraclePriceChart({
       <div ref={containerRef} className="oracle-chart-canvas" style={{ height }} />
     </div>
   );
+}
+
+function formatCrosshairLocalTime(time: Time): string {
+  const date = timeToDate(time);
+  if (!date) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+}
+
+function formatTickMarkLocalTime(time: Time, tickMarkType: TickMarkType): string | null {
+  const date = timeToDate(time);
+  if (!date) {
+    return null;
+  }
+
+  if (
+    tickMarkType === TickMarkType.Time ||
+    tickMarkType === TickMarkType.TimeWithSeconds
+  ) {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+      second: tickMarkType === TickMarkType.TimeWithSeconds ? "2-digit" : undefined,
+    }).format(date);
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: "numeric",
+    day: "numeric",
+  }).format(date);
+}
+
+function timeToDate(time: Time): Date | null {
+  if (typeof time === "number") {
+    return new Date(time * 1_000);
+  }
+
+  if (typeof time === "string") {
+    const timestamp = Date.parse(time);
+    return Number.isFinite(timestamp) ? new Date(timestamp) : null;
+  }
+
+  return new Date(time.year, time.month - 1, time.day);
 }
 
 function buildLineData(points: OraclePriceChartPoint[]): LineData<UTCTimestamp>[] {

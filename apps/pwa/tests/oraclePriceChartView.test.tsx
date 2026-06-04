@@ -5,7 +5,9 @@ import type { OraclePriceChart } from "../src/oraclePriceChartModel";
 
 const readyChart: OraclePriceChart = {
   detail: "DeepBook Predict oracle price used for BTC market settlement.",
+  historyWindowLabel: "Showing 1m of oracle history",
   latestPriceLabel: "$66,978",
+  latestPointLocalLabel: "Updated Jun 17, 8:21:00 AM PDT",
   marketLabel: "BTC/USD",
   oracleId: "0xoracle",
   points: [
@@ -46,5 +48,14 @@ describe("OraclePriceChartModal", () => {
     expect(html).toContain('aria-label="TradingView Lightweight Charts attribution"');
     expect(html).toContain("TradingView");
     expect(html).not.toContain("Chart renderer:");
+  });
+
+  test("shows local update and history window labels", () => {
+    const html = renderToStaticMarkup(
+      <OraclePriceChartModal chart={readyChart} onClose={() => undefined} />,
+    );
+
+    expect(html).toContain("Updated Jun 17, 8:21:00 AM PDT");
+    expect(html).toContain("Showing 1m of oracle history");
   });
 });
