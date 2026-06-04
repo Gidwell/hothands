@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { OraclePriceChartModal } from "../src/OraclePriceChart";
+import {
+  OraclePriceChartModal,
+  shouldAutoFitOraclePriceChart,
+} from "../src/OraclePriceChart";
 import type { OraclePriceChart } from "../src/oraclePriceChartModel";
 
 const readyChart: OraclePriceChart = {
@@ -55,5 +58,31 @@ describe("OraclePriceChartModal", () => {
 
     expect(html).not.toContain("Updated ");
     expect(html).not.toContain("of oracle history");
+  });
+
+  test("preserves expanded chart zoom after the first price dataset", () => {
+    expect(
+      shouldAutoFitOraclePriceChart({
+        compact: false,
+        hasFitInitialData: false,
+        pointCount: 2,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldAutoFitOraclePriceChart({
+        compact: false,
+        hasFitInitialData: true,
+        pointCount: 3,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldAutoFitOraclePriceChart({
+        compact: true,
+        hasFitInitialData: true,
+        pointCount: 3,
+      }),
+    ).toBe(true);
   });
 });

@@ -5,6 +5,8 @@ import {
   LineSeries,
   TickMarkType,
   createChart,
+  type IChartApi,
+  type ISeriesApi,
   type LineData,
   type Time,
   type UTCTimestamp,
@@ -36,7 +38,12 @@ export function OraclePriceChartCard({
         <em>DeepBook oracle price</em>
       </span>
       {hasChart ? (
-        <LightweightOraclePriceChart points={chart.points} compact height={52} />
+        <LightweightOraclePriceChart
+          points={chart.points}
+          compact
+          fitResetKey={chart.oracleId}
+          height={52}
+        />
       ) : (
         <span className="oracle-chart-empty">Waiting for price history</span>
       )}
@@ -74,7 +81,11 @@ export function OraclePriceChartModal({
         </div>
         <div className="oracle-expanded-chart" data-testid="oracle-expanded-chart">
           {hasChart ? (
-            <LightweightOraclePriceChart points={chart.points} height={320} />
+            <LightweightOraclePriceChart
+              points={chart.points}
+              fitResetKey={chart.oracleId}
+              height={320}
+            />
           ) : (
             <div className="oracle-chart-modal-empty">Waiting for DeepBook oracle price history.</div>
           )}
@@ -91,19 +102,24 @@ export function OraclePriceChartModal({
 
 function LightweightOraclePriceChart({
   compact = false,
+  fitResetKey,
   height,
   points,
 }: {
   compact?: boolean;
+  fitResetKey?: string;
   height: number;
   points: OraclePriceChartPoint[];
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const hasFitInitialDataRef = useRef(false);
+  const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const data = useMemo(() => buildLineData(points), [points]);
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || data.length < 2) {
+    if (!container) {
       return;
     }
 
@@ -149,13 +165,42 @@ function LightweightOraclePriceChart({
       lastValueVisible: !compact,
       priceLineVisible: !compact,
     });
-    series.setData(data);
-    chart.timeScale().fitContent();
+    chartRef.current = chart;
+    seriesRef.current = series;
+    hasFitInitialDataRef.current = false;
 
     return () => {
+      chartRef.current = null;
+      seriesRef.current = null;
+      hasFitInitialDataRef.current = false;
       chart.remove();
     };
-  }, [compact, data, height]);
+  }, [compact, height]);
+
+  useEffect(() => {
+    hasFitInitialDataRef.current = false;
+  }, [fitResetKey]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (!chart || !series || data.length < 2) {
+      return;
+    }
+
+    series.setData(data);
+
+    if (
+      shouldAutoFitOraclePriceChart({
+        compact,
+        hasFitInitialData: hasFitInitialDataRef.current,
+        pointCount: data.length,
+      })
+    ) {
+      chart.timeScale().fitContent();
+      hasFitInitialDataRef.current = true;
+    }
+  }, [compact, data]);
 
   return (
     <div className="oracle-chart-shell" style={{ height }}>
@@ -174,6 +219,18 @@ function LightweightOraclePriceChart({
       <div ref={containerRef} className="oracle-chart-canvas" style={{ height }} />
     </div>
   );
+}
+
+export function shouldAutoFitOraclePriceChart({
+  compact,
+  hasFitInitialData,
+  pointCount,
+}: {
+  compact: boolean;
+  hasFitInitialData: boolean;
+  pointCount: number;
+}): boolean {
+  return pointCount >= 2 && (compact || !hasFitInitialData);
 }
 
 function formatCrosshairLocalTime(time: Time): string {
