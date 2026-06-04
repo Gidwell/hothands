@@ -30,6 +30,28 @@ export type PredictLatestPrice = {
   onchain_timestamp?: number;
 };
 
+export type PredictOraclePriceRow = {
+  [key: string]: unknown;
+  oracle_id?: unknown;
+  oracleId?: unknown;
+  spot?: unknown;
+  forward?: unknown;
+  checkpoint?: unknown;
+  checkpoint_timestamp_ms?: unknown;
+  timestamp_ms?: unknown;
+  timestampMs?: unknown;
+  onchain_timestamp?: unknown;
+};
+
+export type PredictOraclePricePoint = {
+  oracleId: string;
+  spot: number;
+  forward?: number;
+  checkpoint?: number;
+  timestampMs: number;
+  source: "oracles/prices";
+};
+
 export type PredictAvailableBtcMarket = {
   oracleId: string;
   expiry: number;
@@ -178,6 +200,11 @@ export type MarketHeatTrader = {
 };
 
 export type PredictTradeHistoryClientOptions = {
+  config?: PredictCanaryConfig;
+  fetchImpl?: typeof fetch;
+};
+
+export type PredictOraclePriceClientOptions = {
   config?: PredictCanaryConfig;
   fetchImpl?: typeof fetch;
 };
@@ -334,6 +361,55 @@ export function createPredictTradeHistoryClient({
   };
 }
 
+export function createPredictOraclePriceClient({
+  config = DEEPBOOK_PREDICT_TESTNET_CONFIG,
+  fetchImpl = fetch,
+}: PredictOraclePriceClientOptions = {}) {
+  return {
+    listOraclePrices: async (oracleId: string): Promise<PredictOraclePricePoint[]> => {
+      const payload = await fetchJson<unknown>(
+        fetchImpl,
+        buildPredictServerUrl(config.serverUrl, `/oracles/${oracleId}/prices`),
+      );
+
+      return unwrapPredictOraclePriceRows(payload)
+        .map((row) => normalizePredictOraclePriceRow(row, oracleId))
+        .sort((left, right) => left.timestampMs - right.timestampMs);
+    },
+  };
+}
+
+export function normalizePredictOraclePriceRow(
+  row: PredictOraclePriceRow,
+  fallbackOracleId?: string,
+): PredictOraclePricePoint {
+  const oracleId = requiredString(
+    row.oracle_id ?? row.oracleId ?? fallbackOracleId,
+    "oracle_id",
+  );
+
+  return {
+    oracleId,
+    spot: requiredNumber(row.spot, "spot"),
+    ...(optionalNumber(row.forward) === undefined
+      ? {}
+      : { forward: optionalNumber(row.forward) }),
+    ...(optionalNumber(row.checkpoint) === undefined
+      ? {}
+      : { checkpoint: optionalNumber(row.checkpoint) }),
+    timestampMs: normalizeEpochMs(
+      requiredNumber(
+        row.checkpoint_timestamp_ms ??
+          row.timestamp_ms ??
+          row.timestampMs ??
+          row.onchain_timestamp,
+        "timestamp",
+      ),
+    ),
+    source: "oracles/prices",
+  };
+}
+
 export function normalizePredictTradeRow(
   row: PredictPositionMintedRow | PredictPositionRedeemedRow | PredictTradeHistoryRow,
 ): PredictNormalizedTradeEvent {
@@ -377,6 +453,30 @@ export function normalizePredictTradeRow(
     ),
     source,
   };
+}
+
+function unwrapPredictOraclePriceRows(payload: unknown): PredictOraclePriceRow[] {
+  if (Array.isArray(payload)) {
+    return payload.filter(isPredictOraclePriceRow);
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const record = payload as Record<string, unknown>;
+  for (const key of ["prices", "rows", "data"]) {
+    const rows = record[key];
+    if (Array.isArray(rows)) {
+      return rows.filter(isPredictOraclePriceRow);
+    }
+  }
+
+  return [];
+}
+
+function isPredictOraclePriceRow(row: unknown): row is PredictOraclePriceRow {
+  return Boolean(row && typeof row === "object");
 }
 
 export function computeMarketHeat(

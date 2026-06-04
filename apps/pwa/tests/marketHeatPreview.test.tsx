@@ -100,7 +100,7 @@ describe("MarketHeatPreview component", () => {
     );
 
     expect(html).toContain("Spend</small>$375");
-    expect(html).toContain("BTC/USD $7,100");
+    expect(html).toContain("Strike $7,100");
     expect(html).toContain("Cost</small>$0.40");
     expect(html).toContain("Heat</small>94");
     expect(html).not.toContain("Strike</small>");
@@ -110,6 +110,34 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Send to wallet");
     expect(html).not.toContain("Manager 0xbbbb...0000");
     expect(html).not.toContain("No wallet request until you tap Send to wallet");
+  });
+
+  test("keeps feed wallet notifications in the toast layer", () => {
+    const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        selectedRowId={row.id}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onCloseIntent={() => undefined}
+      />,
+    );
+
+    expect(html).not.toContain("Copy transaction sent.");
+    expect(html).not.toContain("Wallet request started");
   });
 
   test("renders a bottom show-more control when more feed rows are available", () => {
@@ -143,5 +171,42 @@ describe("MarketHeatPreview component", () => {
 
     expect(html).toContain('data-testid="market-heat-show-more"');
     expect(html).toContain("Show 2 more");
+  });
+
+  test("renders market duration toggle buttons", () => {
+    const rows = buildMarketHeatPreview(watchingOnlyRows, 1).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={rows}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        selectedDuration="1h"
+        durationOptions={[
+          { count: rows.length, label: "1h", value: "1h" },
+          { count: 2, label: "1d", value: "1d" },
+        ]}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        selectedRowId={null}
+        onAmountSet={() => undefined}
+        onDurationChange={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onCloseIntent={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="market-duration-all"');
+    expect(html).toContain('data-testid="market-duration-1h"');
+    expect(html).toContain('data-testid="market-duration-1d"');
+    expect(html).toContain("All");
+    expect(html).toContain("1h");
+    expect(html).toContain("1d");
+    expect(html).toContain('aria-pressed="true"');
   });
 });

@@ -1,4 +1,5 @@
 import { getTestnetMarketHeat } from "./market-heat";
+import { getTestnetOraclePrices } from "./oracle-prices";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
 import {
   getTestnetPredictRedeemQuote,
@@ -35,6 +36,14 @@ export interface TestnetDevServerOptions extends TestnetDevServerFetchOptions {
 
 const DEFAULT_HOSTNAME = "127.0.0.1";
 const DEFAULT_PORT = 8789;
+const TESTNET_DEV_SERVER_ROUTES = [
+  "/health",
+  "/testnet/market-heat",
+  "/testnet/oracle-settlement",
+  "/testnet/oracle-prices",
+  "/testnet/quote",
+  "/testnet/redeem-quote"
+];
 
 const JSON_HEADERS = {
   "access-control-allow-origin": "*",
@@ -142,16 +151,33 @@ export function createTestnetDevServerFetch({
       }
     }
 
+    if (url.pathname === "/testnet/oracle-prices") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      try {
+        return json(
+          await getTestnetOraclePrices({
+            fetchImpl,
+            oracleId: requireSearchParam(url, "oracleId")
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "oracle_prices_failed",
+            message: error instanceof Error ? error.message : "Unable to load oracle price history."
+          },
+          400
+        );
+      }
+    }
+
     return json(
       {
         error: "not_found",
-        routes: [
-          "/health",
-          "/testnet/market-heat",
-          "/testnet/oracle-settlement",
-          "/testnet/quote",
-          "/testnet/redeem-quote"
-        ]
+        routes: TESTNET_DEV_SERVER_ROUTES
       },
       404
     );
@@ -219,7 +245,5 @@ if ((import.meta as { main?: boolean }).main) {
   });
 
   console.log(`Testnet API dev server listening on ${server.url}`);
-  console.log(
-    "Routes: GET /health, GET /testnet/market-heat, GET /testnet/oracle-settlement, GET /testnet/quote, GET /testnet/redeem-quote"
-  );
+  console.log(`Routes: GET ${TESTNET_DEV_SERVER_ROUTES.join(", GET ")}`);
 }

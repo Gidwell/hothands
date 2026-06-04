@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   MARKET_HEAT_PREVIEW_ROWS,
+  buildMarketDurationOptions,
   buildMarketHeatIntentPanel,
   buildMarketHeatPreview,
   closeMarketHeatIntent,
@@ -749,6 +750,32 @@ describe("market heat preview model", () => {
         sortMode: "heat",
       }).map((row) => row.id),
     ).toEqual(["expired-hot", "live-warm"]);
+  });
+
+  test("builds and applies market duration filters across feed and trade markets", () => {
+    const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
+      nowMs: 1_779_150_000_000,
+    });
+
+    expect(buildMarketDurationOptions(preview, { nowMs: 1_779_150_000_000 })).toEqual([
+      { count: 1, label: "15m", value: "15m" },
+      { count: 1, label: "1h", value: "1h" },
+      { count: 1, label: "1d", value: "1d" },
+    ]);
+    expect(
+      selectVisibleMarketHeatRows(preview.rows, {
+        intervalLabel: "1h",
+        nowMs: 1_779_150_000_000,
+        showExpired: false,
+        sortMode: "latest",
+      }).map((row) => row.intervalLabel),
+    ).toEqual(["1h"]);
+    expect(
+      buildTradeMarketLadder(preview, {
+        intervalLabel: "1d",
+        nowMs: 1_779_150_000_000,
+      }).map((row) => row.intervalLabel),
+    ).toEqual(["1d"]);
   });
 
   test("keeps captured testnet API source labels compact", async () => {

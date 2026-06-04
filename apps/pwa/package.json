@@ -11,12 +11,13 @@
     "test": "bun test tests"
   },
   "dependencies": {
-    "@hot-hands/demo-runner": "workspace:*",
     "@hot-hands/contracts": "workspace:*",
+    "@hot-hands/demo-runner": "workspace:*",
     "@hot-hands/fixtures": "workspace:*",
     "@hot-hands/shared": "workspace:*",
     "@mysten/dapp-kit-react": "^2.0.3",
     "@mysten/sui": "^2.17.0",
+    "lightweight-charts": "^5.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

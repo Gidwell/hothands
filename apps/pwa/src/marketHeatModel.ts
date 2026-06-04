@@ -1,5 +1,10 @@
 export type MarketHeatStatus = "copy_ready" | "watching";
 export type MarketHeatSortMode = "latest" | "heat";
+export type MarketDurationOption = {
+  count: number;
+  label: string;
+  value: string;
+};
 
 export type MarketHeatPreviewRowInput = {
   id: string;
@@ -125,6 +130,7 @@ export type BuildMarketHeatPreviewOptions = {
 };
 
 export type SelectVisibleMarketHeatRowsOptions = {
+  intervalLabel?: string | null;
   limit?: number;
   nowMs?: number;
   showExpired?: boolean;
@@ -132,6 +138,7 @@ export type SelectVisibleMarketHeatRowsOptions = {
 };
 
 export type SelectTradeMarketsOptions = {
+  intervalLabel?: string | null;
   nowMs?: number;
 };
 
@@ -314,10 +321,13 @@ export function buildMarketHeatPreview(
 
 export function selectTradeMarkets(
   preview: MarketHeatPreview,
-  { nowMs = Date.now() }: SelectTradeMarketsOptions = {},
+  { intervalLabel = null, nowMs = Date.now() }: SelectTradeMarketsOptions = {},
 ): MarketHeatAvailableMarket[] {
+  const matchesDuration = (market: Pick<MarketHeatAvailableMarket, "intervalLabel">) =>
+    !intervalLabel || market.intervalLabel === intervalLabel;
+
   if (preview.availableMarkets !== undefined) {
-    return preview.availableMarkets;
+    return preview.availableMarkets.filter(matchesDuration);
   }
 
   const seen = new Set<string>();
@@ -342,6 +352,10 @@ export function selectTradeMarkets(
       };
     })
     .filter((market) => {
+      if (!matchesDuration(market)) {
+        return false;
+      }
+
       const key = `${market.intervalLabel}:${market.expiryMs}:${market.strike}`;
       if (seen.has(key)) {
         return false;
@@ -360,9 +374,9 @@ export function selectTradeMarkets(
 
 export function buildTradeMarketLadder(
   preview: MarketHeatPreview,
-  { nowMs = Date.now() }: SelectTradeMarketsOptions = {},
+  { intervalLabel = null, nowMs = Date.now() }: SelectTradeMarketsOptions = {},
 ): TradeMarketLadderRow[] {
-  return selectTradeMarkets(preview, { nowMs })
+  return selectTradeMarkets(preview, { intervalLabel, nowMs })
     .map((market) => {
       const activityRows = preview.rows.filter((row) => isActivityForMarket(row, market));
       const up = summarizeTradeMarketSide(activityRows, "UP");
@@ -498,6 +512,7 @@ export function sortMarketHeatRows(
 export function selectVisibleMarketHeatRows(
   rows: MarketHeatPreviewRow[],
   {
+    intervalLabel = null,
     limit = 8,
     nowMs = Date.now(),
     showExpired = false,
@@ -508,7 +523,42 @@ export function selectVisibleMarketHeatRows(
     ? rows
     : rows.filter((row) => row.expiryMs > nowMs);
 
-  return sortMarketHeatRows(eligibleRows, sortMode).slice(0, limit);
+  const durationRows = intervalLabel
+    ? eligibleRows.filter((row) => row.intervalLabel === intervalLabel)
+    : eligibleRows;
+
+  return sortMarketHeatRows(durationRows, sortMode).slice(0, limit);
+}
+
+export function buildMarketDurationOptions(
+  preview: Pick<MarketHeatPreview, "availableMarkets" | "rows">,
+  { nowMs = Date.now() }: Pick<SelectVisibleMarketHeatRowsOptions, "nowMs"> = {},
+): MarketDurationOption[] {
+  const countsByLabel = new Map<string, number>();
+
+  for (const row of preview.rows) {
+    if (row.expiryMs <= nowMs) {
+      continue;
+    }
+
+    countsByLabel.set(row.intervalLabel, (countsByLabel.get(row.intervalLabel) ?? 0) + 1);
+  }
+
+  for (const market of preview.availableMarkets ?? []) {
+    if (market.expiryMs <= nowMs) {
+      continue;
+    }
+
+    countsByLabel.set(market.intervalLabel, Math.max(1, countsByLabel.get(market.intervalLabel) ?? 0));
+  }
+
+  return [...countsByLabel.entries()]
+    .map(([label, count]) => ({ count, label, value: label }))
+    .sort(
+      (left, right) =>
+        durationMsFromIntervalLabel(left.value) - durationMsFromIntervalLabel(right.value) ||
+        left.value.localeCompare(right.value),
+    );
 }
 
 export function selectMarketHeatIntent(

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type SyntheticEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import {
   useCurrentClient,
   useCurrentAccount,
@@ -36,6 +36,7 @@ import {
 import {
   buildMarketHeatIntentPanel,
   buildMarketHeatPreview,
+  buildMarketDurationOptions,
   buildTradeMarketForMarketHeatRow,
   buildTradeMarketLadder,
   closeMarketHeatIntent,
@@ -48,10 +49,19 @@ import {
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
   type MarketHeatSortMode,
+  type MarketDurationOption,
   type TradeQuote,
   type TradeMarketLadderRow,
   type TradeStrikeOption,
 } from "./marketHeatModel";
+import {
+  OraclePriceChartCard,
+  OraclePriceChartModal,
+} from "./OraclePriceChart";
+import {
+  loadOraclePriceChart,
+  type OraclePriceChart,
+} from "./oraclePriceChartModel";
 import { buildTradeMintTransaction } from "./walletTransactions";
 import { buildPortfolioRedeemTransaction } from "./walletTransactions";
 import {
@@ -79,11 +89,14 @@ import {
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 10_000;
+const ORACLE_PRICE_CHART_REFRESH_MS = 1_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
 const PORTFOLIO_TIME_REFRESH_MS = 15_000;
 const DEPOSIT_AMOUNT_DEFAULT = 25;
 const DEPOSIT_AMOUNT_MIN = 0.01;
+const TOAST_LIMIT = 3;
+const TOAST_TIMEOUT_MS = 4_500;
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "portfolio";
 export type TradeSide = "UP" | "DOWN";
@@ -94,12 +107,22 @@ export type TradeMarketSelection = {
   strikeRaw: number;
 };
 type TradeQuoteStatus = "idle" | "loading" | "ready" | "error";
-type WalletTransactionStatus = "idle" | "pending" | "success" | "error";
-type WalletTransactionState = {
+export type WalletTransactionStatus = "idle" | "pending" | "success" | "error";
+export type WalletTransactionState = {
   status: WalletTransactionStatus;
   label: string;
   digest: string | null;
 };
+export type ToastKind = "success" | "error" | "warning" | "info";
+export type AppToast = {
+  id: string;
+  kind: ToastKind;
+  title: string;
+  message: string;
+  digest?: string | null;
+  groupKey?: string;
+};
+export type AppToastInput = Omit<AppToast, "id">;
 type DusdcBalanceState = {
   accountAddress: string | null;
   refreshKey: number;
@@ -209,6 +232,10 @@ function formatObservedBuyAmount(row: Pick<MarketHeatPreviewRow, "cost" | "costU
   }
 
   return formatUsdValue(costUsd);
+}
+
+function marketDurationTestId(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
 function formatUsdValue(amount: number): string {
@@ -390,6 +417,45 @@ function walletErrorMessage(error: unknown): string {
     : "Wallet request failed.";
 }
 
+export function buildWalletToast(txState: WalletTransactionState): AppToastInput | null {
+  if (txState.status === "idle") {
+    return null;
+  }
+
+  if (txState.status === "pending") {
+    return {
+      groupKey: "wallet-tx",
+      kind: "info",
+      title: "Wallet request",
+      message: txState.label,
+      digest: txState.digest,
+    };
+  }
+
+  if (txState.status === "success") {
+    return {
+      groupKey: "wallet-tx",
+      kind: "success",
+      title: "Done",
+      message: txState.label,
+      digest: txState.digest,
+    };
+  }
+
+  const isWarning = isWalletWarningLabel(txState.label);
+  return {
+    groupKey: "wallet-tx",
+    kind: isWarning ? "warning" : "error",
+    title: isWarning ? "Check bankroll" : "Action needed",
+    message: txState.label,
+    digest: txState.digest,
+  };
+}
+
+function isWalletWarningLabel(label: string): boolean {
+  return /deposit bankroll|wait for a live quote|create a predict account/i.test(label);
+}
+
 function walletResultDigest(result: unknown): string | null {
   if (!result || typeof result !== "object") {
     return null;
@@ -565,14 +631,49 @@ export function WalletStatusBar({
           ) : null}
         </div>
       ) : null}
-      {txState.status !== "idle" ? (
-        <div className={`wallet-tx-status wallet-tx-status-${txState.status}`} aria-live="polite">
-          <span data-testid="wallet-tx-status">{txState.label}</span>
-          {txState.digest ? (
-            <small data-testid="wallet-tx-digest">{formatWalletAddress(txState.digest)}</small>
-          ) : null}
-        </div>
-      ) : null}
+    </section>
+  );
+}
+
+export function ToastStack({
+  onDismiss,
+  toasts,
+}: {
+  onDismiss: (toastId: string) => void;
+  toasts: AppToast[];
+}) {
+  if (toasts.length === 0) {
+    return null;
+  }
+
+  return (
+    <section
+      className="toast-stack"
+      aria-label="Notifications"
+      aria-live="polite"
+      data-testid="toast-stack"
+    >
+      {toasts.map((toast) => (
+        <article
+          key={toast.id}
+          className={`toast toast-${toast.kind}`}
+          data-testid={`toast-${toast.kind}`}
+          role={toast.kind === "error" ? "alert" : "status"}
+        >
+          <div>
+            <strong>{toast.title}</strong>
+            <span>{toast.message}</span>
+            {toast.digest ? <small>Tx {formatWalletAddress(toast.digest)}</small> : null}
+          </div>
+          <button
+            type="button"
+            aria-label={`Dismiss ${toast.title}`}
+            onClick={() => onDismiss(toast.id)}
+          >
+            x
+          </button>
+        </article>
+      ))}
     </section>
   );
 }
@@ -605,9 +706,49 @@ export function BottomNav({
         aria-pressed={activeView === "portfolio"}
         onClick={() => onViewChange("portfolio")}
       >
-        Portfolio
+        💵 Portfolio
       </button>
     </nav>
+  );
+}
+
+function MarketDurationToggle({
+  ariaLabel,
+  className = "",
+  onDurationChange,
+  options,
+  selectedDuration,
+  testIdPrefix,
+}: {
+  ariaLabel: string;
+  className?: string;
+  onDurationChange: (duration: string) => void;
+  options: MarketDurationOption[];
+  selectedDuration: string;
+  testIdPrefix: string;
+}) {
+  return (
+    <div className={`market-duration-toggle ${className}`} aria-label={ariaLabel}>
+      <button
+        type="button"
+        aria-pressed={selectedDuration === "all"}
+        data-testid={`${testIdPrefix}-all`}
+        onClick={() => onDurationChange("all")}
+      >
+        All
+      </button>
+      {options.map((option) => (
+        <button
+          type="button"
+          aria-pressed={selectedDuration === option.value}
+          data-testid={`${testIdPrefix}-${marketDurationTestId(option.value)}`}
+          key={option.value}
+          onClick={() => onDurationChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -617,14 +758,16 @@ export function TradeTicket({
   marketRows,
   selectedMarketId,
   selectedSide,
+  selectedDuration = "all",
+  durationOptions = [],
   quote = null,
   quoteStatus = "idle",
   predictManagerObjectId = "",
+  testId = "trade-view",
   walletActionPending = false,
   walletConnected = false,
-  walletStatusLabel = null,
-  walletSubmitted = false,
   onAmountSet,
+  onDurationChange = () => undefined,
   onMarketChange,
   onSideChange,
   onStrikeChange = () => undefined,
@@ -635,14 +778,16 @@ export function TradeTicket({
   marketRows: TradeMarketLadderRow[];
   selectedMarketId: string;
   selectedSide: TradeSide;
+  selectedDuration?: string;
+  durationOptions?: MarketDurationOption[];
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
   predictManagerObjectId?: string;
+  testId?: string;
   walletActionPending?: boolean;
   walletConnected?: boolean;
-  walletStatusLabel?: string | null;
-  walletSubmitted?: boolean;
   onAmountSet: (amount: number) => void;
+  onDurationChange?: (duration: string) => void;
   onMarketChange: (selection: TradeMarketSelection) => void;
   onSideChange: (side: TradeSide) => void;
   onStrikeChange?: (selection: TradeMarketSelection) => void;
@@ -688,11 +833,21 @@ export function TradeTicket({
           : "Send to wallet";
 
   return (
-    <section className="trade-ticket" aria-label="Trade" data-testid="trade-view">
+    <section className="trade-ticket" aria-label="Trade" data-testid={testId}>
       <div className="section-heading">
         <p>Trade</p>
         <span>{selectedMarket?.pairLabel ?? "BTC/USD"}</span>
       </div>
+      {durationOptions.length ? (
+        <MarketDurationToggle
+          ariaLabel="Trade market duration"
+          className="trade-duration-toggle"
+          options={durationOptions}
+          selectedDuration={selectedDuration}
+          testIdPrefix="trade-duration"
+          onDurationChange={onDurationChange}
+        />
+      ) : null}
       <div className="trade-ticket-panel">
         <div className="trade-ticket-title">
           <p>Make a BTC prediction</p>
@@ -857,11 +1012,6 @@ export function TradeTicket({
                     >
                       {tradeWalletButtonLabel}
                     </button>
-                    {walletSubmitted ? (
-                      <span className="trade-wallet-status" aria-live="polite">
-                        {walletStatusLabel ?? "Wallet request started"}
-                      </span>
-                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1059,7 +1209,6 @@ export function PortfolioPanel({
   positions,
   status = "ready",
   walletActionPending = false,
-  walletStatusLabel = null,
   walletSubmittedPositionId = null,
   onDismissPosition,
   onPositionAction,
@@ -1071,7 +1220,6 @@ export function PortfolioPanel({
   positions: PredictPortfolioPosition[];
   status?: PredictPortfolioState["status"];
   walletActionPending?: boolean;
-  walletStatusLabel?: string | null;
   walletSubmittedPositionId?: string | null;
   onDismissPosition?: (positionId: string) => void;
   onPositionAction: (position: PredictPortfolioPosition) => void;
@@ -1204,11 +1352,6 @@ export function PortfolioPanel({
                     ? "Sending..."
                     : actionLabel}
                 </button>
-                {!isDismissible && walletSubmittedPositionId === position.id ? (
-                  <span className="portfolio-wallet-status" aria-live="polite">
-                    {walletStatusLabel ?? "Wallet request started"}
-                  </span>
-                ) : null}
               </article>
             );
           })}
@@ -1274,14 +1417,16 @@ export function MarketHeatPreview({
   rows,
   sourceLabel,
   sortMode,
+  selectedDuration = "all",
   showExpired,
   canShowMore,
   selectedRowId,
-  walletSubmitRowId = null,
-  walletSubmitLabel = null,
   copyAmount,
+  durationOptions = [],
   showMoreLabel,
+  testId = "market-heat-preview",
   onAmountSet,
+  onDurationChange = () => undefined,
   onShowExpiredChange,
   onShowMore,
   onSortModeChange,
@@ -1292,14 +1437,16 @@ export function MarketHeatPreview({
   rows: MarketHeatPreviewRow[];
   sourceLabel: string;
   sortMode: MarketHeatSortMode;
+  selectedDuration?: string;
   showExpired: boolean;
   canShowMore: boolean;
   selectedRowId: string | null;
-  walletSubmitRowId?: string | null;
-  walletSubmitLabel?: string | null;
   copyAmount: number;
+  durationOptions?: MarketDurationOption[];
   showMoreLabel: string;
+  testId?: string;
   onAmountSet: (amount: number) => void;
+  onDurationChange?: (duration: string) => void;
   onShowExpiredChange: (showExpired: boolean) => void;
   onShowMore: () => void;
   onSortModeChange: (sortMode: MarketHeatSortMode) => void;
@@ -1308,13 +1455,36 @@ export function MarketHeatPreview({
   onCloseIntent: () => void;
 }) {
   return (
-    <section className="market-heat-list" aria-label="Alpha Feed" data-testid="market-heat-preview">
+    <section className="market-heat-list" aria-label="Alpha Feed" data-testid={testId}>
       <div className="section-heading market-heat-heading">
         <div className="market-heat-heading-title">
           <p>Alpha Feed</p>
           <span>{sourceLabel} BTC markets</span>
         </div>
         <div className="market-heat-controls">
+          {durationOptions.length ? (
+            <div className="market-duration-toggle" aria-label="Market duration">
+              <button
+                type="button"
+                aria-pressed={selectedDuration === "all"}
+                data-testid="market-duration-all"
+                onClick={() => onDurationChange("all")}
+              >
+                All
+              </button>
+              {durationOptions.map((option) => (
+                <button
+                  type="button"
+                  aria-pressed={selectedDuration === option.value}
+                  data-testid={`market-duration-${marketDurationTestId(option.value)}`}
+                  key={option.value}
+                  onClick={() => onDurationChange(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <label className="market-heat-expired-toggle">
             <input
               type="checkbox"
@@ -1349,7 +1519,6 @@ export function MarketHeatPreview({
         const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
         const sideClass = row.side.toLowerCase();
         const isWalletSubmitReady = row.status === "copy_ready";
-        const didSubmitToWallet = walletSubmitRowId === row.id;
         const returnPreview = buildReturnPreview(copyAmount, estimatePriceFromRow(row));
 
         return (
@@ -1385,9 +1554,7 @@ export function MarketHeatPreview({
             </div>
             <div className="alpha-call-line">
               <div>
-                <span>
-                  {row.pairLabel} {row.strikeLabel.replace("Strike ", "")}
-                </span>
+                <span>{row.strikeLabel}</span>
                 <strong className={`direction-pill direction-pill-${sideClass}`}>{row.side}</strong>
               </div>
               <span>{row.intervalLabel} market</span>
@@ -1475,11 +1642,6 @@ export function MarketHeatPreview({
                     >
                       Send to wallet
                     </button>
-                    {didSubmitToWallet ? (
-                      <span className="wallet-submit-status" aria-live="polite">
-                        {walletSubmitLabel ?? "Wallet request started"}
-                      </span>
-                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1512,12 +1674,10 @@ function MarketHeader({
         <span aria-hidden="true" />
         <div>
           <h1>Hot Hands</h1>
-          <p>BTC Up/Down on DeepBook Predict</p>
         </div>
       </div>
       <div className="market-price">
         <span>{price.marketLabel}</span>
-        <strong>{price.priceLabel}</strong>
         <em>{price.statusLabel}</em>
       </div>
     </header>
@@ -1687,12 +1847,14 @@ export function App() {
   const [customTradeStrikes, setCustomTradeStrikes] = useState<
     Record<string, TradeMarketSelection>
   >({});
-  const [tradeWalletSubmitted, setTradeWalletSubmitted] = useState(false);
   const [portfolioWalletSubmitPositionId, setPortfolioWalletSubmitPositionId] =
     useState<string | null>(null);
   const [walletTxState, setWalletTxState] = useState<WalletTransactionState>(
     idleWalletTransactionState,
   );
+  const [toasts, setToasts] = useState<AppToast[]>([]);
+  const toastCounterRef = useRef(0);
+  const toastTimeoutsRef = useRef<number[]>([]);
   const [dusdcBalanceRefreshKey, setDusdcBalanceRefreshKey] = useState(0);
   const [dusdcBalanceState, setDusdcBalanceState] = useState<DusdcBalanceState>({
     accountAddress: null,
@@ -1745,18 +1907,43 @@ export function App() {
   const [marketHeatPreview, setMarketHeatPreview] = useState<MarketHeatPreviewModel>(() =>
     buildMarketHeatPreview(),
   );
+  const [oraclePriceChart, setOraclePriceChart] =
+    useState<OraclePriceChart | null>(null);
+  const [isOracleChartOpen, setIsOracleChartOpen] = useState(false);
   const [marketHeatSortMode, setMarketHeatSortMode] =
     useState<MarketHeatSortMode>("latest");
   const [marketHeatShowExpired, setMarketHeatShowExpired] = useState(false);
+  const [selectedMarketDuration, setSelectedMarketDuration] = useState("all");
   const [marketHeatVisibleLimit, setMarketHeatVisibleLimit] =
     useState(MARKET_HEAT_PAGE_SIZE);
   const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
     selectedRowId: null,
   });
-  const [marketHeatWalletSubmitRowId, setMarketHeatWalletSubmitRowId] =
-    useState<string | null>(null);
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
   const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
+  const dismissToast = (toastId: string) => {
+    setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== toastId));
+  };
+  const pushToast = (toast: AppToastInput) => {
+    toastCounterRef.current += 1;
+    const id = `toast-${Date.now()}-${toastCounterRef.current}`;
+    const nextToast: AppToast = { ...toast, id };
+
+    setToasts((currentToasts) => {
+      const filteredToasts = toast.groupKey
+        ? currentToasts.filter((currentToast) => currentToast.groupKey !== toast.groupKey)
+        : currentToasts;
+
+      return [nextToast, ...filteredToasts].slice(0, TOAST_LIMIT);
+    });
+
+    if (typeof window !== "undefined") {
+      const timeoutId = window.setTimeout(() => {
+        dismissToast(id);
+      }, TOAST_TIMEOUT_MS);
+      toastTimeoutsRef.current.push(timeoutId);
+    }
+  };
   const copyState = replayState.copy;
   const replayTraders = useMemo(
     () => getReplayTraders(replayState, scenario),
@@ -1777,13 +1964,25 @@ export function App() {
     return [...frozenTraders, ...newTraders];
   }, [frozenTraderOrder, replayTraders]);
   const marketHeatNowMs = Date.now();
+  const marketDurationOptions = buildMarketDurationOptions(marketHeatPreview, {
+    nowMs: marketHeatNowMs,
+  });
+  const activeMarketDuration =
+    selectedMarketDuration !== "all" &&
+    marketDurationOptions.some((option) => option.value === selectedMarketDuration)
+      ? selectedMarketDuration
+      : "all";
+  const activeMarketIntervalLabel =
+    activeMarketDuration === "all" ? null : activeMarketDuration;
   const sortedMarketHeatRows = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
+    intervalLabel: activeMarketIntervalLabel,
     limit: marketHeatVisibleLimit,
     nowMs: marketHeatNowMs,
     showExpired: marketHeatShowExpired,
     sortMode: marketHeatSortMode,
   });
   const tradeMarketRows = buildTradeMarketLadder(marketHeatPreview, {
+    intervalLabel: activeMarketIntervalLabel,
     nowMs: marketHeatNowMs,
   });
   const baseSelectedTradeMarket =
@@ -1801,6 +2000,12 @@ export function App() {
         marketHeatPreview.marketPrice.priceLabel,
       )
     : null;
+  const activeChartOracleId =
+    activeView === "trade" && selectedTradeMarket
+      ? selectedTradeMarket.oracleId
+      : tradeMarketRows[0]?.oracleId ??
+        sortedMarketHeatRows.find((row) => row.oracleId)?.oracleId ??
+        null;
   const displayedTradeMarketRows = tradeMarketRows.map((marketRow) => {
     if (marketRow.id !== baseSelectedTradeMarket?.id) {
       return marketRow;
@@ -1823,6 +2028,7 @@ export function App() {
   const activeTradeQuoteStatus =
     tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.status : "idle";
   const marketHeatVisibleTotal = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
+    intervalLabel: activeMarketIntervalLabel,
     limit: Number.MAX_SAFE_INTEGER,
     nowMs: marketHeatNowMs,
     showExpired: marketHeatShowExpired,
@@ -1936,6 +2142,21 @@ export function App() {
               }
             : idlePredictPortfolioPnl
       : idlePredictPortfolioPnl;
+
+  useEffect(() => {
+    return () => {
+      for (const timeoutId of toastTimeoutsRef.current) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const toast = buildWalletToast(walletTxState);
+    if (toast) {
+      pushToast(toast);
+    }
+  }, [walletTxState.digest, walletTxState.label, walletTxState.status]);
 
   useEffect(() => {
     if (!connectedAccountAddress) {
@@ -2241,6 +2462,40 @@ export function App() {
   }, [previewMode, realtimeApiBaseUrl]);
 
   useEffect(() => {
+    if (!realtimeApiBaseUrl || !activeChartOracleId) {
+      setOraclePriceChart(null);
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setOraclePriceChart((chart) =>
+      chart?.oracleId === activeChartOracleId ? chart : null,
+    );
+
+    const refreshOraclePriceChart = () => {
+      void loadOraclePriceChart({
+        apiBaseUrl: realtimeApiBaseUrl,
+        oracleId: activeChartOracleId,
+      }).then((chart) => {
+        if (isCurrent) {
+          setOraclePriceChart(chart);
+        }
+      });
+    };
+
+    refreshOraclePriceChart();
+    const refreshTimer = window.setInterval(
+      refreshOraclePriceChart,
+      ORACLE_PRICE_CHART_REFRESH_MS,
+    );
+
+    return () => {
+      isCurrent = false;
+      window.clearInterval(refreshTimer);
+    };
+  }, [activeChartOracleId, realtimeApiBaseUrl]);
+
+  useEffect(() => {
     if (
       activeView !== "trade" ||
       previewMode !== "market" ||
@@ -2360,12 +2615,9 @@ export function App() {
 
   const handleAmountStep = (direction: -1 | 1) => {
     setReplayState((state) => updateReplayCopy(state, (copy) => stepCopyAmount(copy, direction)));
-    setTradeWalletSubmitted(false);
   };
 
   const handleAmountSet = (amount: number) => {
-    setMarketHeatWalletSubmitRowId(null);
-    setTradeWalletSubmitted(false);
     setReplayState((state) => updateReplayCopy(state, (copy) => setCopyAmount(copy, amount)));
   };
 
@@ -2403,7 +2655,6 @@ export function App() {
   };
 
   const handleMarketHeatSelect = (rowId: string) => {
-    setMarketHeatWalletSubmitRowId(null);
     setMarketHeatIntent((state) =>
       selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
     );
@@ -2411,7 +2662,6 @@ export function App() {
 
   const handleMarketHeatClose = () => {
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
-    setMarketHeatWalletSubmitRowId(null);
   };
   const handleMarketHeatWalletSubmit = async (rowId: string) => {
     setMarketHeatIntent((state) =>
@@ -2448,7 +2698,6 @@ export function App() {
       return;
     }
 
-    setMarketHeatWalletSubmitRowId(rowId);
     setWalletTxState({
       status: "pending",
       label: "Preparing copy quote...",
@@ -2464,7 +2713,6 @@ export function App() {
       });
 
       if (!quote) {
-        setMarketHeatWalletSubmitRowId(null);
         setWalletTxState({
           status: "error",
           label: "Could not quote this feed copy. Try the Trade tab.",
@@ -2479,7 +2727,6 @@ export function App() {
         livePredictManagerBankrollAtomic !== null &&
         livePredictManagerBankrollAtomic < quoteCostAtomic
       ) {
-        setMarketHeatWalletSubmitRowId(null);
         setWalletTxState({
           status: "error",
           label: `Deposit bankroll first. Bankroll ${formatDusdcBalance(
@@ -2504,7 +2751,6 @@ export function App() {
       const result = await dAppKit.signAndExecuteTransaction({ transaction });
       const error = walletResultError(result);
       if (error) {
-        setMarketHeatWalletSubmitRowId(null);
         setWalletTxState({
           status: "error",
           label: error,
@@ -2521,7 +2767,6 @@ export function App() {
       });
       refreshAfterWalletTransaction(digest);
     } catch (error) {
-      setMarketHeatWalletSubmitRowId(null);
       setWalletTxState({
         status: "error",
         label: walletErrorMessage(error),
@@ -2532,6 +2777,11 @@ export function App() {
   const handleMarketHeatSortModeChange = (sortMode: MarketHeatSortMode) => {
     setMarketHeatSortMode(sortMode);
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
+  };
+  const handleMarketDurationChange = (duration: string) => {
+    setSelectedMarketDuration(duration);
+    setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
+    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
   };
   const handleMarketHeatShowExpiredChange = (showExpired: boolean) => {
     setMarketHeatShowExpired(showExpired);
@@ -2545,7 +2795,6 @@ export function App() {
   };
   const handleTradeSideChange = (side: TradeSide) => {
     setTradeSide(side);
-    setTradeWalletSubmitted(false);
   };
   const handleTradeMarketChange = (selection: TradeMarketSelection) => {
     setSelectedTradeMarketId(selection.marketId);
@@ -2559,7 +2808,6 @@ export function App() {
         [selection.marketId]: selection,
       };
     });
-    setTradeWalletSubmitted(false);
   };
   const handleTradeStrikeChange = (selection: TradeMarketSelection) => {
     setSelectedTradeMarketId(selection.marketId);
@@ -2567,7 +2815,6 @@ export function App() {
       ...state,
       [selection.marketId]: selection,
     }));
-    setTradeWalletSubmitted(false);
   };
   const handleWalletConnect = async () => {
     const wallet = wallets[0];
@@ -2589,6 +2836,11 @@ export function App() {
     try {
       await dAppKit.connectWallet({ wallet });
       setWalletTxState(idleWalletTransactionState);
+      pushToast({
+        kind: "success",
+        title: "Wallet connected",
+        message: wallet.name,
+      });
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -2601,8 +2853,12 @@ export function App() {
     try {
       await dAppKit.disconnectWallet();
       setWalletTxState(idleWalletTransactionState);
-      setTradeWalletSubmitted(false);
       setPortfolioWalletSubmitPositionId(null);
+      pushToast({
+        kind: "success",
+        title: "Wallet disconnected",
+        message: "Session controls cleared.",
+      });
     } catch (error) {
       setWalletTxState({
         status: "error",
@@ -2781,7 +3037,6 @@ export function App() {
       return;
     }
 
-    setTradeWalletSubmitted(true);
     setWalletTxState({
       status: "pending",
       label: "Sending trade to wallet...",
@@ -2878,6 +3133,54 @@ export function App() {
     }
   };
 
+  const renderMarketHeatPreview = (testId = "market-heat-preview") => (
+    <MarketHeatPreview
+      rows={sortedMarketHeatRows}
+      sourceLabel={marketHeatPreview.sourceLabel}
+      sortMode={marketHeatSortMode}
+      selectedDuration={activeMarketDuration}
+      durationOptions={marketDurationOptions}
+      showExpired={marketHeatShowExpired}
+      canShowMore={marketHeatRemainingCount > 0}
+      selectedRowId={marketHeatIntent.selectedRowId}
+      copyAmount={copyState.copyAmount}
+      showMoreLabel={marketHeatShowMoreLabel}
+      testId={testId}
+      onAmountSet={handleAmountSet}
+      onDurationChange={handleMarketDurationChange}
+      onShowExpiredChange={handleMarketHeatShowExpiredChange}
+      onShowMore={handleMarketHeatShowMore}
+      onSortModeChange={handleMarketHeatSortModeChange}
+      onWalletSubmit={handleMarketHeatWalletSubmit}
+      onSelectRow={handleMarketHeatSelect}
+      onCloseIntent={handleMarketHeatClose}
+    />
+  );
+
+  const renderTradeTicket = (testId = "trade-view") => (
+    <TradeTicket
+      customStrike={selectedTradeCustomStrike}
+      copyAmount={copyState.copyAmount}
+      durationOptions={marketDurationOptions}
+      marketRows={displayedTradeMarketRows}
+      selectedMarketId={baseSelectedTradeMarket?.id ?? ""}
+      selectedDuration={activeMarketDuration}
+      selectedSide={tradeSide}
+      quote={activeTradeQuote}
+      quoteStatus={activeTradeQuoteStatus}
+      predictManagerObjectId={activePredictManagerObjectId}
+      testId={testId}
+      walletActionPending={isWalletActionPending}
+      walletConnected={Boolean(currentAccount)}
+      onAmountSet={handleAmountSet}
+      onDurationChange={handleMarketDurationChange}
+      onMarketChange={handleTradeMarketChange}
+      onSideChange={handleTradeSideChange}
+      onStrikeChange={handleTradeStrikeChange}
+      onWalletSubmit={handleTradeWalletSubmit}
+    />
+  );
+
   return (
     <main className="app-shell" data-testid="app-shell">
       <section className="phone-frame" aria-label="Hot Hands market shell">
@@ -2906,50 +3209,15 @@ export function App() {
             pnlTone={visiblePortfolioPnl.pnlTone}
             summary={accountSummary}
           />
+          <OraclePriceChartCard
+            chart={oraclePriceChart}
+            fallbackPriceLabel={marketHeatPreview.marketPrice.priceLabel}
+            onOpen={() => setIsOracleChartOpen(true)}
+          />
           {activeView === "feed" ? (
-            <>
-              <MarketHeatPreview
-                rows={sortedMarketHeatRows}
-                sourceLabel={marketHeatPreview.sourceLabel}
-                sortMode={marketHeatSortMode}
-                showExpired={marketHeatShowExpired}
-                canShowMore={marketHeatRemainingCount > 0}
-                selectedRowId={marketHeatIntent.selectedRowId}
-                walletSubmitRowId={marketHeatWalletSubmitRowId}
-                walletSubmitLabel={
-                  marketHeatWalletSubmitRowId ? walletTxState.label : null
-                }
-                copyAmount={copyState.copyAmount}
-                showMoreLabel={marketHeatShowMoreLabel}
-                onAmountSet={handleAmountSet}
-                onShowExpiredChange={handleMarketHeatShowExpiredChange}
-                onShowMore={handleMarketHeatShowMore}
-                onSortModeChange={handleMarketHeatSortModeChange}
-                onWalletSubmit={handleMarketHeatWalletSubmit}
-                onSelectRow={handleMarketHeatSelect}
-                onCloseIntent={handleMarketHeatClose}
-              />
-            </>
+            renderMarketHeatPreview()
           ) : activeView === "trade" ? (
-            <TradeTicket
-              customStrike={selectedTradeCustomStrike}
-              copyAmount={copyState.copyAmount}
-              marketRows={displayedTradeMarketRows}
-              selectedMarketId={baseSelectedTradeMarket?.id ?? ""}
-              selectedSide={tradeSide}
-              quote={activeTradeQuote}
-              quoteStatus={activeTradeQuoteStatus}
-              predictManagerObjectId={activePredictManagerObjectId}
-              walletActionPending={isWalletActionPending}
-              walletConnected={Boolean(currentAccount)}
-              walletStatusLabel={walletTxState.label}
-              walletSubmitted={tradeWalletSubmitted}
-              onAmountSet={handleAmountSet}
-              onMarketChange={handleTradeMarketChange}
-              onSideChange={handleTradeSideChange}
-              onStrikeChange={handleTradeStrikeChange}
-              onWalletSubmit={handleTradeWalletSubmit}
-            />
+            renderTradeTicket()
           ) : (
             <PortfolioPanel
               emptyLabel={
@@ -2964,13 +3232,22 @@ export function App() {
               positions={visiblePortfolioPositions}
               status={visiblePortfolioStatus}
               walletActionPending={isWalletActionPending}
-              walletStatusLabel={walletTxState.label}
               walletSubmittedPositionId={portfolioWalletSubmitPositionId}
               onDismissPosition={handleDismissPortfolioPosition}
               onPositionAction={handlePortfolioPositionAction}
             />
           )}
         </div>
+        {isOracleChartOpen ? (
+          <OraclePriceChartModal
+            chart={oraclePriceChart}
+            onClose={() => setIsOracleChartOpen(false)}
+          >
+            {renderTradeTicket("expanded-chart-trade-ticket")}
+            {renderMarketHeatPreview("expanded-chart-market-heat-preview")}
+          </OraclePriceChartModal>
+        ) : null}
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
         <BottomNav activeView={activeView} onViewChange={setActiveView} />
       </section>
     </main>
