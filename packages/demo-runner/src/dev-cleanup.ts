@@ -228,27 +228,31 @@ async function main() {
     signalPid(pid, "SIGTERM");
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 750));
+  const allPids = new Set(sortedPids);
 
-  const latePids = collectLateListenerPids({
-    cleanupPorts: config.cleanupPorts,
-    knownPids: sortedPids,
-    listenerPidsForPort,
-  });
+  for (let pass = 0; pass < 5; pass += 1) {
+    await new Promise((resolve) => setTimeout(resolve, pass === 0 ? 750 : 250));
 
-  if (latePids.length) {
+    const latePids = collectLateListenerPids({
+      cleanupPorts: config.cleanupPorts,
+      knownPids: [...allPids],
+      listenerPidsForPort,
+    });
+
+    if (!latePids.length) {
+      break;
+    }
+
     process.stdout.write(
       `Stopping late Hot Hands dev listeners: ${latePids.join(", ")}\n`,
     );
     for (const pid of latePids) {
+      allPids.add(pid);
       signalPid(pid, "SIGTERM");
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
   }
 
-  for (const pid of [...new Set([...sortedPids, ...latePids])].sort(
-    (left, right) => left - right,
-  )) {
+  for (const pid of [...allPids].sort((left, right) => left - right)) {
     signalPid(pid, "SIGKILL", { quiet: true });
   }
 }
