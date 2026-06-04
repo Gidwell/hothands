@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  collectLateListenerPids,
   parseDevStatePids,
   parseHotHandsDevPids,
   parseLsofPids,
@@ -92,5 +93,15 @@ describe("testnet dev cleanup", () => {
         },
       ),
     ).toEqual([77836]);
+  });
+
+  test("adds late listener PIDs found after the first termination pass", () => {
+    expect(
+      collectLateListenerPids({
+        cleanupPorts: [5184, 8792],
+        knownPids: [100, 200],
+        listenerPidsForPort: (port) => (port === 5184 ? [200, 201] : []),
+      }),
+    ).toEqual([201]);
   });
 });

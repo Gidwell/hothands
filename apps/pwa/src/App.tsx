@@ -2036,6 +2036,25 @@ export function App() {
     tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.quote : null;
   const activeTradeQuoteStatus =
     tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.status : "idle";
+
+  useEffect(() => {
+    if (activeView !== "trade" || !baseSelectedTradeMarket) {
+      return;
+    }
+
+    setSelectedTradeMarketId((marketId) => marketId ?? baseSelectedTradeMarket.id);
+    setCustomTradeStrikes((state) => {
+      if (state[baseSelectedTradeMarket.id]) {
+        return state;
+      }
+
+      return {
+        ...state,
+        [baseSelectedTradeMarket.id]: buildTradeMarketSelectionFromRow(baseSelectedTradeMarket),
+      };
+    });
+  }, [activeView, baseSelectedTradeMarket?.id]);
+
   const marketHeatVisibleTotal = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
     intervalLabel: activeMarketIntervalLabel,
     limit: Number.MAX_SAFE_INTEGER,

@@ -119,6 +119,29 @@ function listenerPidsForPort(port: number): number[] {
   return parseLsofPids(new TextDecoder().decode(result.stdout));
 }
 
+export function collectLateListenerPids({
+  cleanupPorts,
+  knownPids,
+  listenerPidsForPort,
+}: {
+  cleanupPorts: number[];
+  knownPids: number[];
+  listenerPidsForPort: (port: number) => number[];
+}): number[] {
+  const known = new Set(knownPids);
+  const latePids = new Set<number>();
+
+  for (const port of cleanupPorts) {
+    for (const pid of listenerPidsForPort(port)) {
+      if (!known.has(pid)) {
+        latePids.add(pid);
+      }
+    }
+  }
+
+  return [...latePids].sort((left, right) => left - right);
+}
+
 function hotHandsDevPids({
   apiPort,
   pwaPort,
@@ -207,7 +230,25 @@ async function main() {
 
   await new Promise((resolve) => setTimeout(resolve, 750));
 
-  for (const pid of sortedPids) {
+  const latePids = collectLateListenerPids({
+    cleanupPorts: config.cleanupPorts,
+    knownPids: sortedPids,
+    listenerPidsForPort,
+  });
+
+  if (latePids.length) {
+    process.stdout.write(
+      `Stopping late Hot Hands dev listeners: ${latePids.join(", ")}\n`,
+    );
+    for (const pid of latePids) {
+      signalPid(pid, "SIGTERM");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  for (const pid of [...new Set([...sortedPids, ...latePids])].sort(
+    (left, right) => left - right,
+  )) {
     signalPid(pid, "SIGKILL", { quiet: true });
   }
 }
