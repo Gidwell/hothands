@@ -358,7 +358,7 @@ function mapIndexedPortfolioEvent(
     parsedJson: {
       manager_id: event.managerId,
       oracle_id: event.oracleId,
-      expiry: normalizeEpochSeconds(event.expiryMs),
+      expiry: event.expiryMs,
       strike: event.strike,
       is_up: event.isUp,
       quantity: event.quantity,

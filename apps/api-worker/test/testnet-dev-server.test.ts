@@ -134,7 +134,7 @@ describe("testnet API dev server harness", () => {
           parsedJson: {
             manager_id: "manager-indexed",
             oracle_id: "btc-indexed",
-            expiry: 1_779_158_400,
+            expiry: 1_779_158_400_000,
             strike: 72_000_000_000,
             is_up: true,
             quantity: 1,

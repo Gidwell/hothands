@@ -789,6 +789,31 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain('data-testid="create-predict-manager"');
   });
 
+  test("labels dev wallet override as read-only and hides account creation", () => {
+    const html = renderToStaticMarkup(
+      <WalletStatusBar
+        accountAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        connectionStatus="readonly"
+        networkLabel="testnet"
+        predictManagerObjectId="0x000000000000000000000000000000000000000000000000000000000000bbbb"
+        predictManagerStatus="ready"
+        readOnly={true}
+        txState={{ status: "idle", label: "Wallet ready", digest: null }}
+        walletCount={1}
+        walletName="Read-only wallet"
+        onConnect={() => undefined}
+        onCreatePredictManager={() => undefined}
+        onDisconnect={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Read-only wallet");
+    expect(html).toContain("Read-only Predict account 0x0000...bbbb");
+    expect(html).toContain("Connect wallet");
+    expect(html).not.toContain("Disconnect");
+    expect(html).not.toContain('data-testid="create-predict-manager"');
+  });
+
   test("keeps return fields visible when a trade market still needs a quote", () => {
     const html = renderToStaticMarkup(
       <TradeTicket

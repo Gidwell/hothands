@@ -174,6 +174,17 @@ export function getInitialPreviewMode(_apiBaseUrl: string | undefined): PreviewM
   return "market";
 }
 
+function getReadOnlyWalletAddress(): string | null {
+  const envAddress = import.meta.env.VITE_HOT_HANDS_DEV_WALLET_ADDRESS;
+  const urlAddress =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("devWallet");
+  const address = (urlAddress ?? envAddress ?? "").trim();
+
+  return /^0x[0-9a-fA-F]{64}$/.test(address) ? address : null;
+}
+
 function formatQuickAmount(amount: number): string {
   return amount === COPY_AMOUNT_MAX ? "MAX" : formatCopyAmount(amount);
 }
@@ -592,6 +603,7 @@ export function WalletStatusBar({
   networkLabel,
   predictManagerObjectId,
   predictManagerStatus,
+  readOnly = false,
   txState,
   walletCount,
   walletName,
@@ -604,6 +616,7 @@ export function WalletStatusBar({
   networkLabel: string;
   predictManagerObjectId: string | null;
   predictManagerStatus: PredictManagerStatus;
+  readOnly?: boolean;
   txState: WalletTransactionState;
   walletCount: number;
   walletName: string | null;
@@ -629,7 +642,7 @@ export function WalletStatusBar({
         <span>{isConnected ? walletName ?? "Sui wallet" : `${walletCount} wallets found`}</span>
       </div>
       <div className="wallet-status-actions">
-        {isConnected ? (
+        {isConnected && !readOnly ? (
           <button type="button" data-testid="wallet-disconnect" onClick={onDisconnect}>
             Disconnect
           </button>
@@ -649,8 +662,16 @@ export function WalletStatusBar({
           className={`predict-manager-status predict-manager-status-${predictManagerStatus}`}
           aria-live="polite"
         >
-          <span data-testid="predict-manager-status">
-            {predictManagerStatus === "checking"
+        <span data-testid="predict-manager-status">
+            {readOnly
+              ? predictManagerStatus === "ready"
+                ? `Read-only Predict account ${formatWalletAddress(predictManagerObjectId)}`
+                : predictManagerStatus === "checking"
+                  ? "Checking read-only Predict account..."
+                  : predictManagerStatus === "error"
+                    ? "Could not check read-only Predict account"
+                    : "No Predict account found"
+              : predictManagerStatus === "checking"
               ? "Checking Predict account..."
               : predictManagerStatus === "ready"
                 ? `Predict account ${formatWalletAddress(predictManagerObjectId)}`
@@ -658,7 +679,7 @@ export function WalletStatusBar({
                   ? "Could not check Predict account"
                   : "No Predict account yet"}
           </span>
-          {predictManagerStatus === "missing" || predictManagerStatus === "error" ? (
+          {!readOnly && (predictManagerStatus === "missing" || predictManagerStatus === "error") ? (
             <button
               type="button"
               data-testid="create-predict-manager"
@@ -1289,7 +1310,7 @@ export function PortfolioPanel({
         <span>
           {activeTab === "positions"
             ? positions.length
-              ? `${positions.length} active`
+              ? `${positions.length} positions`
               : "Positions"
             : historyItems.length
               ? `${historyItems.length} trades`
@@ -1896,10 +1917,13 @@ export function App() {
   const currentNetwork = useCurrentNetwork();
   const walletConnection = useWalletConnection();
   const wallets = useWallets();
+  const readOnlyWalletAddress = useMemo(() => getReadOnlyWalletAddress(), []);
   const [scenario, setScenario] = useState(() => createReplayScenario("opening-night"));
   const [replayState, setReplayState] = useState(() => createInitialReplayState(scenario));
   const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
-  const [activeView, setActiveView] = useState<AppView>("feed");
+  const [activeView, setActiveView] = useState<AppView>(() =>
+    readOnlyWalletAddress ? "portfolio" : "feed",
+  );
   const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
   const [selectedTradeMarketId, setSelectedTradeMarketId] = useState<string | null>(null);
   const [customTradeStrikes, setCustomTradeStrikes] = useState<
@@ -2122,7 +2146,8 @@ export function App() {
   const accountSummary = getReplayAccountSummary(replayState, frame);
   const receipt = frame.copyReceipt;
   const isWalletActionPending = walletTxState.status === "pending";
-  const connectedAccountAddress = currentAccount?.address ?? null;
+  const isReadOnlyWalletView = !currentAccount && Boolean(readOnlyWalletAddress);
+  const connectedAccountAddress = currentAccount?.address ?? readOnlyWalletAddress;
   const liveDusdcBalanceLabel =
     connectedAccountAddress &&
     dusdcBalanceState.accountAddress === connectedAccountAddress &&
@@ -3259,14 +3284,15 @@ export function App() {
         <div className="app-scroll" data-testid="app-scroll">
           <MarketHeader price={marketHeatPreview.marketPrice} />
           <WalletStatusBar
-            accountAddress={currentAccount?.address ?? null}
-            connectionStatus={walletConnection.status}
+            accountAddress={connectedAccountAddress}
+            connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
             networkLabel={String(currentNetwork)}
             predictManagerObjectId={visiblePredictManagerObjectId}
             predictManagerStatus={visiblePredictManagerStatus}
+            readOnly={isReadOnlyWalletView}
             txState={walletTxState}
             walletCount={wallets.length}
-            walletName={currentWallet?.name ?? null}
+            walletName={isReadOnlyWalletView ? "Read-only wallet" : currentWallet?.name ?? null}
             onConnect={handleWalletConnect}
             onCreatePredictManager={handleCreatePredictManager}
             onDisconnect={handleWalletDisconnect}
@@ -3293,7 +3319,7 @@ export function App() {
           ) : (
             <PortfolioPanel
               emptyLabel={
-                currentAccount
+                connectedAccountAddress
                   ? activePredictManagerObjectId
                     ? undefined
                     : "Create a Predict account first"
