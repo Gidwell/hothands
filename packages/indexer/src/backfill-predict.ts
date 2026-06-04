@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
-import postgres from "postgres";
 import { parsePredictCanaryConfig } from "./deepbook-predict";
 import { runDeepBookPredictBackfill } from "./backfill";
-import { createPostgresPredictIndexerStore, type SqlExecutor } from "./postgres-store";
+import { createPostgresSqlClient } from "./postgres-client";
+import { createPostgresPredictIndexerStore } from "./postgres-store";
 import { createInMemoryPredictIndexerStore } from "./store";
 
 declare const process: {
@@ -114,22 +114,11 @@ function createPostgresStore(databaseUrl: string | undefined) {
     throw new Error("DATABASE_URL is required for Postgres writes.");
   }
 
-  const sql = postgres(databaseUrl, { max: 1 });
-  const execute: SqlExecutor = async (statement, params = []) => {
-    const rows = await sql.unsafe(statement, [...params] as never[]);
-    const result = rows as readonly unknown[] & { count?: number };
-
-    return {
-      rows: [...result],
-      rowCount: typeof result.count === "number" ? result.count : result.length,
-    };
-  };
+  const client = createPostgresSqlClient({ databaseUrl });
 
   return {
-    store: createPostgresPredictIndexerStore({ execute }),
-    close: async () => {
-      await sql.end({ timeout: 5 });
-    },
+    store: createPostgresPredictIndexerStore({ execute: client.execute }),
+    close: client.close,
   };
 }
 

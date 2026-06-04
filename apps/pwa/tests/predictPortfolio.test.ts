@@ -5,6 +5,7 @@ import {
   buildPortfolioSnapshot,
   buildPortfolioPositions,
   createPredictPortfolioCloseQuoteClient,
+  createPredictPortfolioIndexedEventClient,
   createPredictPortfolioSettlementClient,
   loadPredictPortfolio,
   selectVisiblePortfolioPositions,
@@ -542,6 +543,95 @@ describe("Predict portfolio", () => {
     });
     expect(requestedUrls).toEqual([
       "https://api.hot-hands.test/testnet/oracle-settlement?oracleId=0xoracle",
+    ]);
+  });
+
+  test("loads portfolio events through the indexed testnet API client", async () => {
+    const calls: string[] = [];
+    const client = createPredictPortfolioIndexedEventClient({
+      apiBaseUrl: "https://api.hot-hands.test",
+      managerObjectId: "0xmanager",
+      fetcher: async (url) => {
+        const requestUrl = String(url);
+        calls.push(requestUrl);
+        const eventType = new URL(requestUrl).searchParams.get("eventType");
+
+        return Response.json({
+          data:
+            eventType === "mint"
+              ? [
+                  {
+                    id: {
+                      txDigest: "mint-digest",
+                      eventSeq: "0",
+                    },
+                    timestampMs: "1779100000000",
+                    parsedJson: {
+                      manager_id: "0xmanager",
+                      oracle_id: "0xoracle",
+                      expiry: "1779193600",
+                      strike: "65000000000",
+                      is_up: true,
+                      quantity: "5000000",
+                      cost: "2250000",
+                    },
+                  },
+                ]
+              : [],
+          hasNextPage: false,
+          nextCursor: null,
+        });
+      },
+    });
+
+    expect(client).toBeDefined();
+
+    const positions = await loadPredictPortfolio({
+      client,
+      managerObjectId: "0xmanager",
+      nowMs: 1_779_102_000_000,
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/portfolio-events?managerId=0xmanager&eventType=mint&limit=50",
+      "https://api.hot-hands.test/testnet/portfolio-events?managerId=0xmanager&eventType=redeem&limit=50",
+    ]);
+    expect(positions).toHaveLength(1);
+    expect(positions[0]?.managerId).toBe("0xmanager");
+    expect(positions[0]?.quantity).toBe("5000000");
+  });
+
+  test("falls back to a direct event client when indexed portfolio API is unavailable", async () => {
+    const fallbackQueries: unknown[] = [];
+    const client = createPredictPortfolioIndexedEventClient({
+      apiBaseUrl: "https://api.hot-hands.test",
+      fallbackClient: {
+        queryEvents: async (input) => {
+          fallbackQueries.push(input.query);
+
+          return {
+            data: [],
+            hasNextPage: false,
+            nextCursor: null,
+          };
+        },
+      },
+      managerObjectId: "0xmanager",
+      fetcher: async () => Response.json({ error: "indexer_unavailable" }, { status: 503 }),
+    });
+
+    await client?.queryEvents({
+      query: {
+        MoveEventType: POSITION_MINTED_EVENT_TYPE,
+      },
+      limit: 50,
+      order: "descending",
+    });
+
+    expect(fallbackQueries).toEqual([
+      {
+        MoveEventType: POSITION_MINTED_EVENT_TYPE,
+      },
     ]);
   });
 

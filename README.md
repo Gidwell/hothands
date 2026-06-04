@@ -64,7 +64,8 @@ HOT_HANDS_TESTNET_API_PORT=8790 HOT_HANDS_TESTNET_PWA_PORT=5177 bun run dev:test
 ## Durable Indexer Local Notes
 
 The durable indexer now has a DB writer, bounded public Predict backfill CLI,
-and pure projection helpers. Keep the local shape simple and explicit:
+Postgres readers, and API/PWA read-path hooks. Keep the local shape simple and
+explicit:
 
 - set `DATABASE_URL` to a local Postgres database before running DB-backed
   indexer work; do not commit real credentials
@@ -73,25 +74,33 @@ and pure projection helpers. Keep the local shape simple and explicit:
 - run the bounded Predict backfill CLI with `bun run indexer:backfill:predict -- --dry-run`
   first, then with `--write` once migrations are applied
 - keep the data path as: public DeepBook Predict server -> Postgres raw tables
-  -> compact projections -> API worker endpoints -> PWA feeds
+  -> compact projections -> API worker endpoints -> PWA Feed, Trade,
+  Portfolio, and chart views
 
-The PWA/API may keep captured or public-read fallbacks while this comes online,
-but durable Heat, recent activity, attribution, and settlement views should read
-from projections instead of direct public Predict server responses.
+When `DATABASE_URL` is set for `bun run dev:testnet`, the local API prefers
+indexed reads for Market Heat, Trade markets, Portfolio events, and oracle price
+history. The chart requests up to 10,000 indexed/downsampled points and includes
+the full stored range metadata. Public Predict, captured rows, and direct Sui
+event reads remain fallbacks when the indexer is unavailable.
 
 ## Current Demo Status
 
 What is live today:
 
-- `Testnet` reads public DeepBook Predict testnet activity through the local API.
+- `Testnet` reads indexed DeepBook Predict activity through the local API when
+  `DATABASE_URL` is set, with public/captured fallbacks when it is not.
 - `Latest` shows the newest observed active trader rows first and refreshes every 10 seconds while the app is open.
 - Rows are grouped by trader/manager, so a repeat trade moves that row upward instead of creating a duplicate feed item.
 - On wallet connect, the PWA checks whether the user already has a
   `PredictManager`; if one is missing, the wallet bar is the place to create it.
   Trade surfaces assume that account setup has happened before preparing a
   quoted `predict::mint` transaction.
-- Portfolio reads open positions and, for settled expired positions, shows the
-  oracle settlement price plus the claim value before sending the wallet action.
+- Portfolio prefers indexed manager events when the local API has an indexer
+  reader, then falls back to direct Sui event reads. For settled expired
+  positions, it shows the oracle settlement price plus the claim value before
+  sending the wallet action.
+- The BTC oracle chart can render indexed, downsampled full-history price data
+  instead of only the current public Predict response window.
 - Open positions show an estimated close value from the local testnet redeem
   quote before sending the wallet action.
 
@@ -99,9 +108,8 @@ What is still in progress:
 
 - `Heat` is a provisional activity/performance score, not the final settled reputation model.
 - Feed copy/fade attribution is not yet backed by a Hot Hands database.
-- The PWA still uses local API reads of public/captured Predict activity; it
-  should move to indexed and downsampled projections as the indexer comes
-  online.
+- Production hosting still needs a deployed indexer/API topology; the local
+  testnet app already has the indexed read-path hooks behind `DATABASE_URL`.
 - Profiles, X linking, SuiNS-backed display names, follows, copy counts, fade counts, and durable leaderboards are not wired in yet.
 
 ## Product Loop
@@ -134,11 +142,12 @@ DeepBook Predict stays the source of truth for market execution, settlement, and
 
 For the hackathon, copy/fade attribution can be DB-verified by matching the follower's transaction digest back to the source trade parameters. A tiny Move event package can still be added later for cleaner chain-native proof, but it should not block profiles, leaderboards, or copy/fade counts.
 
-First indexer foundation slice: run bounded, high-limit public Predict server
-backfills for oracles, mints, redeems, trades, prices, and SVI into raw
-Postgres tables, then derive compact projections for market heat, recent
-activity, and PWA feeds. No cursor paging has been found on the public endpoints
-yet, so backfills should stay idempotent, timestamp-aware, and easy to replay.
+Indexer read path: run bounded, high-limit public Predict server backfills for
+oracles, mints, redeems, trades, prices, and SVI into raw Postgres tables, then
+serve compact projections for market heat, recent activity, portfolio events,
+and full-range downsampled chart history. No cursor paging has been found on the
+public endpoints yet, so backfills should stay idempotent, timestamp-aware, and
+easy to replay.
 
 ## Planned Stack
 

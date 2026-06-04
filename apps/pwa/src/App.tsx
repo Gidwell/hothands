@@ -74,6 +74,7 @@ import {
 import { findPredictManagerForOwner } from "./predictManager";
 import {
   createPredictPortfolioCloseQuoteClient,
+  createPredictPortfolioIndexedEventClient,
   createPredictPortfolioSettlementClient,
   formatPortfolioTimeRemaining,
   loadPredictPortfolioSnapshot,
@@ -2382,6 +2383,10 @@ export function App() {
     }));
 
     void loadPredictPortfolioSnapshot({
+      client: createPredictPortfolioIndexedEventClient({
+        apiBaseUrl: realtimeApiBaseUrl,
+        managerObjectId: activePredictManagerObjectId,
+      }),
       closeQuoteClient: createPredictPortfolioCloseQuoteClient({
         apiBaseUrl: realtimeApiBaseUrl,
       }),

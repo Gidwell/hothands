@@ -1,11 +1,19 @@
 import { getTestnetMarketHeat } from "./market-heat";
-import { getTestnetOraclePrices } from "./oracle-prices";
+import {
+  getTestnetOraclePrices,
+  type IndexedOraclePriceHistoryLoader
+} from "./oracle-prices";
+import type {
+  PredictIndexerReader,
+  PredictNormalizedTradeEvent
+} from "@hot-hands/indexer";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
 import {
   getTestnetPredictRedeemQuote,
   getTestnetPredictQuote,
   type InspectPredictQuoteQuantity
 } from "./predict-quote";
+import { createIndexerReadersFromDatabaseUrl } from "./indexer-readers";
 
 interface BunServer {
   readonly url: URL;
@@ -26,6 +34,8 @@ declare const Bun: BunRuntime;
 
 export interface TestnetDevServerFetchOptions {
   fetchImpl?: typeof fetch;
+  indexerReader?: PredictIndexerReader;
+  indexedOraclePriceHistoryLoader?: IndexedOraclePriceHistoryLoader;
   inspectPredictQuoteQuantity?: InspectPredictQuoteQuantity;
 }
 
@@ -41,6 +51,7 @@ const TESTNET_DEV_SERVER_ROUTES = [
   "/testnet/market-heat",
   "/testnet/oracle-settlement",
   "/testnet/oracle-prices",
+  "/testnet/portfolio-events",
   "/testnet/quote",
   "/testnet/redeem-quote"
 ];
@@ -60,6 +71,8 @@ const CORS_HEADERS = {
 
 export function createTestnetDevServerFetch({
   fetchImpl = fetch,
+  indexerReader,
+  indexedOraclePriceHistoryLoader,
   inspectPredictQuoteQuantity
 }: TestnetDevServerFetchOptions = {}): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
@@ -81,7 +94,7 @@ export function createTestnetDevServerFetch({
         return json({ error: "method_not_allowed" }, 405);
       }
 
-      return json(await getTestnetMarketHeat({ fetchImpl }));
+      return json(await getTestnetMarketHeat({ fetchImpl, reader: indexerReader }));
     }
 
     if (url.pathname === "/testnet/quote") {
@@ -100,6 +113,35 @@ export function createTestnetDevServerFetch({
           {
             error: "quote_failed",
             message: error instanceof Error ? error.message : "Unable to quote trade."
+          },
+          400
+        );
+      }
+    }
+
+    if (url.pathname === "/testnet/portfolio-events") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      if (!indexerReader) {
+        return json({ error: "indexer_unavailable" }, 503);
+      }
+
+      try {
+        return json(
+          await getIndexedPortfolioEvents({
+            eventType: readPortfolioEventType(url),
+            indexerReader,
+            limit: readOptionalPositiveIntegerSearchParam(url, "limit") ?? 50,
+            managerId: requireSearchParam(url, "managerId")
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "portfolio_events_failed",
+            message: error instanceof Error ? error.message : "Unable to load portfolio events."
           },
           400
         );
@@ -160,6 +202,8 @@ export function createTestnetDevServerFetch({
         return json(
           await getTestnetOraclePrices({
             fetchImpl,
+            indexedOraclePriceHistoryLoader,
+            maxPoints: readOptionalPositiveIntegerSearchParam(url, "maxPoints"),
             oracleId: requireSearchParam(url, "oracleId")
           })
         );
@@ -187,12 +231,20 @@ export function createTestnetDevServerFetch({
 export function createTestnetDevServer({
   hostname = DEFAULT_HOSTNAME,
   port = DEFAULT_PORT,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  indexerReader,
+  indexedOraclePriceHistoryLoader,
+  inspectPredictQuoteQuantity
 }: TestnetDevServerOptions = {}): BunServer {
   return Bun.serve({
     hostname,
     port,
-    fetch: createTestnetDevServerFetch({ fetchImpl })
+    fetch: createTestnetDevServerFetch({
+      fetchImpl,
+      indexerReader,
+      indexedOraclePriceHistoryLoader,
+      inspectPredictQuoteQuantity
+    })
   });
 }
 
@@ -217,6 +269,64 @@ function parsePredictRedeemQuoteRequest(url: URL) {
   };
 }
 
+async function getIndexedPortfolioEvents({
+  eventType,
+  indexerReader,
+  limit,
+  managerId
+}: {
+  eventType: "mint" | "redeem";
+  indexerReader: PredictIndexerReader;
+  limit: number;
+  managerId: string;
+}) {
+  const events = await indexerReader.listRecentTradeEvents({
+    kind: eventType,
+    limit,
+    managerId
+  });
+
+  return {
+    data: events.map((event) => mapIndexedPortfolioEvent(event, eventType)),
+    hasNextPage: false,
+    nextCursor: null
+  };
+}
+
+function mapIndexedPortfolioEvent(
+  event: PredictNormalizedTradeEvent,
+  eventType: "mint" | "redeem"
+) {
+  const { txDigest, eventSeq } = splitIndexedEventId(event.eventId, eventType);
+
+  return {
+    id: {
+      txDigest,
+      eventSeq
+    },
+    parsedJson: {
+      manager_id: event.managerId,
+      oracle_id: event.oracleId,
+      expiry: normalizeEpochSeconds(event.expiryMs),
+      strike: event.strike,
+      is_up: event.isUp,
+      quantity: event.quantity,
+      ...(event.cost === undefined ? {} : { cost: event.cost }),
+      ...(event.payout === undefined ? {} : { payout: event.payout })
+    },
+    timestampMs: event.timestampMs
+  };
+}
+
+function splitIndexedEventId(eventId: string, eventType: "mint" | "redeem") {
+  const [kind, digest, seq] = eventId.split(":");
+
+  return {
+    txDigest: kind === eventType && digest ? digest : eventId,
+    eventSeq: seq ?? "0"
+  };
+}
+
 function requireSearchParam(url: URL, name: string): string {
   const value = url.searchParams.get(name);
   if (!value) {
@@ -224,6 +334,33 @@ function requireSearchParam(url: URL, name: string): string {
   }
 
   return value;
+}
+
+function readPortfolioEventType(url: URL): "mint" | "redeem" {
+  const eventType = requireSearchParam(url, "eventType");
+  if (eventType !== "mint" && eventType !== "redeem") {
+    throw new Error("eventType must be mint or redeem.");
+  }
+
+  return eventType;
+}
+
+function readOptionalPositiveIntegerSearchParam(url: URL, name: string): number | undefined {
+  const value = url.searchParams.get(name);
+  if (value === null || value.trim() === "") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+
+  return parsed;
+}
+
+function normalizeEpochSeconds(value: number): number {
+  return value < 1_000_000_000_000 ? value : Math.floor(value / 1000);
 }
 
 function json(body: unknown, status = 200): Response {
@@ -239,11 +376,19 @@ function readPort(value: string | undefined): number {
 }
 
 if ((import.meta as { main?: boolean }).main) {
+  const indexerReaders = Bun.env.DATABASE_URL
+    ? createIndexerReadersFromDatabaseUrl(Bun.env.DATABASE_URL)
+    : undefined;
   const server = createTestnetDevServer({
     hostname: Bun.env.HOST ?? DEFAULT_HOSTNAME,
+    indexerReader: indexerReaders?.reader,
+    indexedOraclePriceHistoryLoader: indexerReaders?.indexedOraclePriceHistoryLoader,
     port: readPort(Bun.env.HOT_HANDS_TESTNET_API_PORT ?? Bun.env.PORT)
   });
 
   console.log(`Testnet API dev server listening on ${server.url}`);
   console.log(`Routes: GET ${TESTNET_DEV_SERVER_ROUTES.join(", GET ")}`);
+  console.log(
+    `Indexer reads: ${indexerReaders ? "enabled from DATABASE_URL" : "disabled"}`
+  );
 }

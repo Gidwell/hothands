@@ -35,7 +35,7 @@ describe("oracle price chart model", () => {
     });
 
     expect(calls).toEqual([
-      "https://api.hot-hands.test/testnet/oracle-prices?oracleId=btc-live",
+      "https://api.hot-hands.test/testnet/oracle-prices?oracleId=btc-live&maxPoints=10000",
     ]);
     expect(chart).toEqual({
       status: "ready",
@@ -59,6 +59,57 @@ describe("oracle price chart model", () => {
         },
       ],
     });
+  });
+
+  test("represents indexed full-history metadata without modal copy", async () => {
+    const chart = await loadOraclePriceChart({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      oracleId: "btc-indexed",
+      fetcher: async () =>
+        Response.json({
+          source: "indexed_testnet",
+          market: "BTC-USD",
+          oracleId: "btc-indexed",
+          latestPrice: 72100,
+          historyRange: {
+            startTimestampMs: 1_778_985_000_000,
+            endTimestampMs: 1_779_071_400_000,
+            totalPointCount: 86_400,
+            returnedPointCount: 3,
+            maxPoints: 10_000,
+            downsampled: true,
+          },
+          points: [
+            {
+              timestampMs: 1_779_070_800_000,
+              price: 72000,
+              checkpoint: 101,
+            },
+            {
+              timestampMs: 1_779_071_100_000,
+              price: 72075,
+              checkpoint: 106,
+            },
+            {
+              timestampMs: 1_779_071_400_000,
+              price: 72100,
+              checkpoint: 111,
+            },
+          ],
+        }),
+    });
+
+    expect(chart.status).toBe("ready");
+    expect(chart.sourceLabel).toBe("Indexed Testnet");
+    expect(chart.historyRange).toEqual({
+      startTimestampMs: 1_778_985_000_000,
+      endTimestampMs: 1_779_071_400_000,
+      totalPointCount: 86_400,
+      returnedPointCount: 3,
+      maxPoints: 10_000,
+      downsampled: true,
+    });
+    expect(chart.points).toHaveLength(3);
   });
 
   test("returns an unavailable state when the chart API has no useful points", async () => {

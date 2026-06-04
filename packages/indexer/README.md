@@ -15,9 +15,10 @@ Predict endpoints yet, so every job should be idempotent and freshness-aware.
 
 ## Local Durable Setup
 
-Current status: `verify:testnet` uses public Predict server reads. The durable
-Postgres path uses the same normalized records, then persists them behind a
-narrow local setup:
+Current status: `verify:testnet` uses public Predict server reads, while the
+local testnet app can prefer indexed Postgres reads when `DATABASE_URL` is set.
+The durable Postgres path uses the same normalized records, then persists and
+serves them behind a narrow local setup:
 
 1. Create a local Postgres database and export `DATABASE_URL`, for example:
 
@@ -43,7 +44,23 @@ narrow local setup:
    Start with small limits locally, then replay with wider limits. The CLI reads
    `DATABASE_URL` in write mode, fetches from the public Predict server, and upserts
    raw oracles, mints, redeems, trades, prices, and SVI.
-4. Build projections from the raw tables before serving product flows:
+4. Start the local app with the same `DATABASE_URL`:
+
+   ```bash
+   bun run dev:testnet
+   ```
+
+   The local API will prefer indexed reads for:
+
+   - Market Heat and latest activity rows
+   - Trade market ladder candidates
+   - Portfolio mint/redeem events for a connected `PredictManager`
+   - Oracle price history for the BTC chart
+
+   The chart endpoint requests downsampled full-range history from
+   `predict_oracle_prices`, preserving the first and latest indexed points while
+   returning at most the requested point budget.
+5. Build projections from the raw tables before serving product flows:
 
    ```text
    public Predict server -> Postgres raw tables -> projections -> API/PWA
@@ -51,7 +68,8 @@ narrow local setup:
 
 Do not treat observed external-wallet mints as pre-trade signals. This path is
 for reactive copy/fade preparation, settlement-aware scoring, and durable
-activity projections.
+activity projections. Public Predict, captured fixtures, and direct Sui event
+reads remain fallbacks when the local indexer is unavailable.
 
 Run the read-only canary with:
 
@@ -83,14 +101,13 @@ into `PredictNormalizedTradeEvent` records and computes provisional
 `event_digest`, `event_index`, and `checkpoint_timestamp_ms` are covered by
 fixture tests.
 
-The first UI pass should label these as "Testnet trades" or "Market Heat" and
-use them for activity/trader discovery. As the indexer comes online, the PWA
-should consume indexed and downsampled projections rather than public Predict
-server responses directly. Users can still watch an external trader's next
-observed mint and receive a prepared mirror-copy or fade transaction, but that
-is reactive action from public activity. Hot Hands-native reputation requires
-watch rules, copy/fade executions, native signals when present, and
-settlement-aware scoring.
+The PWA should label these as testnet Market Heat and use them for
+activity/trader discovery. With `DATABASE_URL`, the local API consumes indexed
+and downsampled projections before public Predict responses. Users can still
+watch an external trader's next observed mint and receive a prepared mirror-copy
+or fade transaction, but that is reactive action from public activity. Hot
+Hands-native reputation requires watch rules, copy/fade executions, native
+signals when present, and settlement-aware scoring.
 
 Primary responsibilities:
 

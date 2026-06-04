@@ -52,6 +52,20 @@ export {
 } from "./postgres-store";
 
 export {
+  createPostgresPredictIndexerReader,
+  type ListBtcOraclesOptions,
+  type ListOraclePricesOptions,
+  type ListPositionSummariesOptions,
+  type ListRecentTradeEventsOptions,
+  type OraclePriceStats,
+  type PostgresPredictIndexerReaderOptions,
+  type PredictIndexerReader,
+  type SqlQueryExecutor,
+  type SqlQueryResult,
+  type SqlRow,
+} from "./postgres-reader";
+
+export {
   buildLatestTradeFeedProjection,
   buildTraderHeatProjection,
   downsampleOraclePricePoints,
