@@ -11,6 +11,7 @@ export type PredictIndexerSnapshot = {
   oraclePrices: PredictOraclePricePoint[];
   oracleSvi: PredictOracleSviPoint[];
   positionSummaries: PredictPositionSummary[];
+  indexerJobStatuses: PredictIndexerJobStatus[];
 };
 
 export type PredictIndexerWriter = {
@@ -19,9 +20,33 @@ export type PredictIndexerWriter = {
   upsertOraclePrices(points: PredictOraclePricePoint[]): Promise<number>;
   upsertOracleSvi(points: PredictOracleSviPoint[]): Promise<number>;
   upsertPositionSummaries(summaries: PredictPositionSummary[]): Promise<number>;
+  upsertIndexerJobStatus(status: PredictIndexerJobStatus): Promise<number>;
+  refreshPositionSummaries(): Promise<number>;
 };
 
 export type PredictIndexerStore = PredictIndexerWriter & {
+  listBtcOracles(options?: { includeSettled?: boolean; limit?: number }): Promise<PredictOracleState[]>;
+  listRecentTradeEvents(options?: {
+    kind?: "mint" | "redeem";
+    limit?: number;
+    hideExpiredAtMs?: number;
+    managerId?: string;
+  }): Promise<PredictNormalizedTradeEvent[]>;
+  listPositionSummaries(options?: { owner?: string; limit?: number }): Promise<PredictPositionSummary[]>;
+  listOraclePrices(options: {
+    oracleId: string;
+    fromMs?: number;
+    toMs?: number;
+    maxRawPoints?: number;
+    maxPoints?: number;
+  }): Promise<PredictOraclePricePoint[]>;
+  getLatestOraclePrice(oracleId: string): Promise<PredictOraclePricePoint | null>;
+  getOraclePriceStats(oracleId: string): Promise<{
+    totalPointCount: number;
+    startTimestampMs: number;
+    endTimestampMs: number;
+  } | null>;
+  listIndexerJobStatuses(): Promise<PredictIndexerJobStatus[]>;
   snapshot(): PredictIndexerSnapshot;
 };
 
@@ -41,6 +66,27 @@ export type PredictPositionSummary = {
   realizedPnl: number;
   lastEventMs: number;
   status: "open" | "closed";
+};
+
+export type PredictIndexerJobStatus = {
+  jobName: string;
+  source: string;
+  pollIntervalMs: number;
+  status: "ok" | "error";
+  lastPollStartedAtMs: number;
+  lastPollCompletedAtMs?: number;
+  lastSuccessAtMs?: number;
+  lastNewDataAtMs?: number;
+  lastSourceTimestampMs?: number;
+  lastCheckpoint?: number;
+  rowsFetched: number;
+  rowsWritten: number;
+  totalRowsWritten: number;
+  consecutiveErrorCount: number;
+  lastError?: string;
+  observedUpdateGapMs?: number;
+  lagMs?: number;
+  updatedAtMs: number;
 };
 
 export function createInMemoryPredictIndexerStore(): PredictIndexerStore {
@@ -87,6 +133,7 @@ class InMemoryPredictIndexerStore implements PredictIndexerStore {
   private readonly oraclePrices = new Map<string, PredictOraclePricePoint>();
   private readonly oracleSvi = new Map<string, PredictOracleSviPoint>();
   private readonly positionSummaries = new Map<string, PredictPositionSummary>();
+  private readonly indexerJobStatuses = new Map<string, PredictIndexerJobStatus>();
 
   async upsertOracles(oracles: PredictOracleState[]): Promise<number> {
     return upsertMany(this.oracles, oracles, (oracle) => oracle.oracle_id);
@@ -108,6 +155,118 @@ class InMemoryPredictIndexerStore implements PredictIndexerStore {
     return upsertMany(this.positionSummaries, summaries, (summary) => summary.id);
   }
 
+  async upsertIndexerJobStatus(status: PredictIndexerJobStatus): Promise<number> {
+    const existing = this.indexerJobStatuses.get(status.jobName);
+    this.indexerJobStatuses.set(status.jobName, status);
+
+    return existing ? 0 : 1;
+  }
+
+  async refreshPositionSummaries(): Promise<number> {
+    const summaries = summarizePredictPositions([...this.tradeEvents.values()]);
+    this.positionSummaries.clear();
+    for (const summary of summaries) {
+      this.positionSummaries.set(summary.id, summary);
+    }
+
+    return summaries.length;
+  }
+
+  async listIndexerJobStatuses(): Promise<PredictIndexerJobStatus[]> {
+    return [...this.indexerJobStatuses.values()].sort((left, right) =>
+      left.jobName.localeCompare(right.jobName),
+    );
+  }
+
+  async listBtcOracles({
+    includeSettled = false,
+    limit = Number.POSITIVE_INFINITY,
+  }: { includeSettled?: boolean; limit?: number } = {}): Promise<PredictOracleState[]> {
+    return [...this.oracles.values()]
+      .filter((oracle) => oracle.underlying_asset === "BTC")
+      .filter((oracle) => includeSettled || oracle.status === "active")
+      .sort((left, right) => left.expiry - right.expiry || left.oracle_id.localeCompare(right.oracle_id))
+      .slice(0, limit);
+  }
+
+  async listRecentTradeEvents({
+    kind,
+    limit = Number.POSITIVE_INFINITY,
+    hideExpiredAtMs,
+    managerId,
+  }: {
+    kind?: "mint" | "redeem";
+    limit?: number;
+    hideExpiredAtMs?: number;
+    managerId?: string;
+  } = {}): Promise<PredictNormalizedTradeEvent[]> {
+    return [...this.tradeEvents.values()]
+      .filter((event) => (kind ? event.kind === kind : true))
+      .filter((event) => (managerId ? event.managerId === managerId : true))
+      .filter((event) => (hideExpiredAtMs === undefined ? true : event.expiryMs > hideExpiredAtMs))
+      .sort((left, right) => right.timestampMs - left.timestampMs || left.eventId.localeCompare(right.eventId))
+      .slice(0, limit);
+  }
+
+  async listPositionSummaries({
+    owner,
+    limit = Number.POSITIVE_INFINITY,
+  }: { owner?: string; limit?: number } = {}): Promise<PredictPositionSummary[]> {
+    return [...this.positionSummaries.values()]
+      .filter((summary) => (owner ? summary.owner === owner : true))
+      .sort((left, right) => right.lastEventMs - left.lastEventMs || left.id.localeCompare(right.id))
+      .slice(0, limit);
+  }
+
+  async listOraclePrices({
+    oracleId,
+    fromMs,
+    toMs,
+    maxRawPoints = Number.POSITIVE_INFINITY,
+    maxPoints,
+  }: {
+    oracleId: string;
+    fromMs?: number;
+    toMs?: number;
+    maxRawPoints?: number;
+    maxPoints?: number;
+  }): Promise<PredictOraclePricePoint[]> {
+    const points = [...this.oraclePrices.values()]
+      .filter((point) => point.oracleId === oracleId)
+      .filter((point) => (fromMs === undefined ? true : point.timestampMs >= fromMs))
+      .filter((point) => (toMs === undefined ? true : point.timestampMs <= toMs))
+      .sort(comparePointsByTime)
+      .slice(0, maxRawPoints);
+
+    return maxPoints === undefined ? points : points.slice(0, maxPoints);
+  }
+
+  async getLatestOraclePrice(oracleId: string): Promise<PredictOraclePricePoint | null> {
+    return [...this.oraclePrices.values()]
+      .filter((point) => point.oracleId === oracleId)
+      .sort((left, right) => right.timestampMs - left.timestampMs || (left.eventId ?? "").localeCompare(right.eventId ?? ""))[0] ?? null;
+  }
+
+  async getOraclePriceStats(oracleId: string): Promise<{
+    totalPointCount: number;
+    startTimestampMs: number;
+    endTimestampMs: number;
+  } | null> {
+    const points = [...this.oraclePrices.values()]
+      .filter((point) => point.oracleId === oracleId)
+      .sort(comparePointsByTime);
+
+    if (points.length === 0) {
+      return null;
+    }
+
+    return {
+      totalPointCount: points.length,
+      startTimestampMs: points[0].timestampMs,
+      endTimestampMs: points.at(-1)?.timestampMs ?? points[0].timestampMs,
+    };
+  }
+
   snapshot(): PredictIndexerSnapshot {
     return {
       oracles: [...this.oracles.values()].sort((left, right) =>
@@ -120,6 +279,9 @@ class InMemoryPredictIndexerStore implements PredictIndexerStore {
         (left, right) =>
           right.lastEventMs - left.lastEventMs ||
           left.id.localeCompare(right.id),
+      ),
+      indexerJobStatuses: [...this.indexerJobStatuses.values()].sort(
+        (left, right) => left.jobName.localeCompare(right.jobName),
       ),
     };
   }

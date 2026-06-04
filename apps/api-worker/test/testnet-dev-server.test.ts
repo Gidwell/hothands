@@ -163,6 +163,80 @@ describe("testnet API dev server harness", () => {
     });
   });
 
+  test("serves read-only indexer freshness status from the injected reader", async () => {
+    const fetchHandler = createTestnetDevServerFetch({
+      indexerReader: createTestIndexerReader(),
+      nowMs: () => 1_779_070_802_000
+    });
+
+    const response = await fetchHandler(
+      new Request("http://127.0.0.1:8789/testnet/indexer-status")
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      source: "indexed_testnet",
+      staleJobCount: 0,
+      jobs: [
+        {
+          jobName: "predict.prices",
+          source: "oracles/prices/latest",
+          pollIntervalMs: 1000,
+          status: "ok",
+          lastPollStartedAtMs: 1_779_070_801_000,
+          lastPollCompletedAtMs: 1_779_070_801_200,
+          lastSuccessAtMs: 1_779_070_801_200,
+          lastNewDataAtMs: 1_779_070_801_200,
+          lastSourceTimestampMs: 1_779_070_800_000,
+          lastCheckpoint: 4242,
+          rowsFetched: 3,
+          rowsWritten: 2,
+          totalRowsWritten: 12,
+          consecutiveErrorCount: 0,
+          observedUpdateGapMs: 1000,
+          lagMs: 1200,
+          updatedAtMs: 1_779_070_801_200,
+          stale: false,
+        },
+        {
+          jobName: "predict.positions.minted",
+          source: "positions/minted",
+          pollIntervalMs: 1000,
+          status: "ok",
+          lastPollStartedAtMs: 1_779_070_801_000,
+          lastPollCompletedAtMs: 1_779_070_801_200,
+          lastSuccessAtMs: 1_779_070_801_200,
+          lastNewDataAtMs: 1_779_070_000_000,
+          lastSourceTimestampMs: 1_779_070_000_000,
+          lastCheckpoint: 4000,
+          rowsFetched: 0,
+          rowsWritten: 0,
+          totalRowsWritten: 12,
+          consecutiveErrorCount: 0,
+          lagMs: 801200,
+          updatedAtMs: 1_779_070_801_200,
+          stale: false,
+        },
+      ],
+    });
+  });
+
+  test("requires an indexer reader for freshness status", async () => {
+    const fetchHandler = createTestnetDevServerFetch();
+
+    const response = await fetchHandler(
+      new Request("http://127.0.0.1:8789/testnet/indexer-status")
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "indexer_unavailable",
+    });
+  });
+
   test("serves oracle price history for the local BTC chart", async () => {
     const fetchHandler = createTestnetDevServerFetch({
       fetchImpl: async (input) => {
@@ -271,5 +345,44 @@ function createTestIndexerReader(): PredictIndexerReader {
       source: "oracles/prices",
     }),
     getOraclePriceStats: async () => null,
+    listIndexerJobStatuses: async () => [
+      {
+        jobName: "predict.prices",
+        source: "oracles/prices/latest",
+        pollIntervalMs: 1_000,
+        status: "ok",
+        lastPollStartedAtMs: 1_779_070_801_000,
+        lastPollCompletedAtMs: 1_779_070_801_200,
+        lastSuccessAtMs: 1_779_070_801_200,
+        lastNewDataAtMs: 1_779_070_801_200,
+        lastSourceTimestampMs: 1_779_070_800_000,
+        lastCheckpoint: 4242,
+        rowsFetched: 3,
+        rowsWritten: 2,
+        totalRowsWritten: 12,
+        consecutiveErrorCount: 0,
+        observedUpdateGapMs: 1_000,
+        lagMs: 1_200,
+        updatedAtMs: 1_779_070_801_200,
+      },
+      {
+        jobName: "predict.positions.minted",
+        source: "positions/minted",
+        pollIntervalMs: 1_000,
+        status: "ok",
+        lastPollStartedAtMs: 1_779_070_801_000,
+        lastPollCompletedAtMs: 1_779_070_801_200,
+        lastSuccessAtMs: 1_779_070_801_200,
+        lastNewDataAtMs: 1_779_070_000_000,
+        lastSourceTimestampMs: 1_779_070_000_000,
+        lastCheckpoint: 4_000,
+        rowsFetched: 0,
+        rowsWritten: 0,
+        totalRowsWritten: 12,
+        consecutiveErrorCount: 0,
+        lagMs: 801_200,
+        updatedAtMs: 1_779_070_801_200,
+      },
+    ],
   };
 }

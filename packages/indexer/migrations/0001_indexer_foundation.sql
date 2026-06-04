@@ -114,3 +114,51 @@ create table if not exists predict_ingest_cursors (
   lag_ms bigint,
   error text
 );
+
+create table if not exists predict_indexer_jobs (
+  job_name text primary key,
+  source text not null,
+  poll_interval_ms integer not null,
+  status text not null check (status in ('ok', 'error')),
+  last_poll_started_at_ms bigint not null,
+  last_poll_completed_at_ms bigint,
+  last_success_at_ms bigint,
+  last_new_data_at_ms bigint,
+  last_source_timestamp_ms bigint,
+  last_checkpoint bigint,
+  rows_fetched integer not null default 0,
+  rows_written integer not null default 0,
+  total_rows_written bigint not null default 0,
+  consecutive_error_count integer not null default 0,
+  last_error text,
+  observed_update_gap_ms bigint,
+  lag_ms bigint,
+  updated_at_ms bigint not null
+);
+
+create index if not exists predict_indexer_jobs_updated_idx
+  on predict_indexer_jobs (updated_at_ms desc);
+
+create table if not exists predict_indexer_jobs (
+  job_name text primary key,
+  source text not null,
+  poll_interval_ms bigint not null,
+  status text not null check (status in ('ok', 'error')),
+  last_poll_started_at_ms bigint not null,
+  last_poll_completed_at_ms bigint,
+  last_success_at_ms bigint,
+  last_new_data_at_ms bigint,
+  last_source_timestamp_ms bigint,
+  last_checkpoint bigint,
+  rows_fetched bigint not null,
+  rows_written bigint not null,
+  total_rows_written bigint not null,
+  consecutive_error_count bigint not null,
+  last_error text,
+  observed_update_gap_ms bigint,
+  lag_ms bigint,
+  updated_at_ms bigint not null
+);
+
+create index if not exists predict_indexer_jobs_status_idx
+  on predict_indexer_jobs (status, updated_at_ms desc);

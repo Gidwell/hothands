@@ -4,6 +4,7 @@ import {
   type IndexedOraclePriceHistoryLoader
 } from "./oracle-prices";
 import type {
+  PredictIndexerJobStatus,
   PredictIndexerReader,
   PredictNormalizedTradeEvent
 } from "@hot-hands/indexer";
@@ -48,6 +49,7 @@ const DEFAULT_HOSTNAME = "127.0.0.1";
 const DEFAULT_PORT = 8789;
 const TESTNET_DEV_SERVER_ROUTES = [
   "/health",
+  "/testnet/indexer-status",
   "/testnet/market-heat",
   "/testnet/oracle-settlement",
   "/testnet/oracle-prices",
@@ -95,6 +97,18 @@ export function createTestnetDevServerFetch({
       }
 
       return json(await getTestnetMarketHeat({ fetchImpl, reader: indexerReader }));
+    }
+
+    if (url.pathname === "/testnet/indexer-status") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      if (!indexerReader) {
+        return json({ error: "indexer_unavailable" }, 503);
+      }
+
+      return json(await getIndexedIndexerStatus(indexerReader));
     }
 
     if (url.pathname === "/testnet/quote") {
@@ -226,6 +240,43 @@ export function createTestnetDevServerFetch({
       404
     );
   };
+}
+
+async function getIndexedIndexerStatus(indexerReader: PredictIndexerReader) {
+  const jobs = await indexerReader.listIndexerJobStatuses();
+  const mappedJobs = jobs.map(mapIndexedIndexerJobStatus);
+
+  return {
+    ok: mappedJobs.length > 0 && mappedJobs.every((job) => job.status === "ok" && !job.stale),
+    source: "indexed_testnet",
+    staleJobCount: mappedJobs.filter((job) => job.stale).length,
+    jobs: mappedJobs
+  };
+}
+
+function mapIndexedIndexerJobStatus(job: PredictIndexerJobStatus) {
+  const stale = isIndexerJobStale(job);
+
+  return {
+    ...job,
+    stale
+  };
+}
+
+function isIndexerJobStale(job: PredictIndexerJobStatus): boolean {
+  if (job.status === "error" || job.consecutiveErrorCount > 0) {
+    return true;
+  }
+
+  if (job.lastSuccessAtMs === undefined || job.lastPollCompletedAtMs === undefined) {
+    return true;
+  }
+
+  return (
+    job.source === "oracles/prices/latest" &&
+    job.observedUpdateGapMs !== undefined &&
+    job.observedUpdateGapMs > job.pollIntervalMs * 10
+  );
 }
 
 export function createTestnetDevServer({
@@ -375,30 +426,10 @@ function readPort(value: string | undefined): number {
   return Number.isInteger(port) && port > 0 ? port : DEFAULT_PORT;
 }
 
-function readPositiveInteger(value: string | undefined, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 if ((import.meta as { main?: boolean }).main) {
   const indexerReaders = Bun.env.DATABASE_URL
     ? createIndexerReadersFromDatabaseUrl(Bun.env.DATABASE_URL)
     : undefined;
-  const pricePollIntervalMs = readPositiveInteger(
-    Bun.env.HOT_HANDS_INDEXER_PRICE_POLL_MS,
-    1_000
-  );
-  const pricePoller =
-    indexerReaders && Bun.env.HOT_HANDS_INDEXER_PRICE_POLL !== "false"
-      ? indexerReaders.startPricePoller({
-          intervalMs: pricePollIntervalMs,
-          onError: (error) => {
-            console.warn(
-              `Indexer price poll failed: ${error instanceof Error ? error.message : String(error)}`
-            );
-          },
-        })
-      : undefined;
   const server = createTestnetDevServer({
     hostname: Bun.env.HOST ?? DEFAULT_HOSTNAME,
     indexerReader: indexerReaders?.reader,
@@ -410,10 +441,5 @@ if ((import.meta as { main?: boolean }).main) {
   console.log(`Routes: GET ${TESTNET_DEV_SERVER_ROUTES.join(", GET ")}`);
   console.log(
     `Indexer reads: ${indexerReaders ? "enabled from DATABASE_URL" : "disabled"}`
-  );
-  console.log(
-    `Indexer price poller: ${
-      pricePoller ? `enabled every ${pricePollIntervalMs}ms` : "disabled"
-    }`
   );
 }

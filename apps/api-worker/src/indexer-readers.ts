@@ -1,9 +1,5 @@
 import {
   createPostgresPredictIndexerReader,
-  createPostgresPredictIndexerStore,
-  startDeepBookPredictPricePoller,
-  type DeepBookPredictPricePoller,
-  type DeepBookPredictPricePollerOptions,
   type OraclePriceStats,
   type PredictIndexerReader,
   type PredictOraclePricePoint,
@@ -21,12 +17,6 @@ export type IndexerReaders = {
   indexedOraclePriceHistoryLoader: IndexedOraclePriceHistoryLoader;
   reader: PredictIndexerReader;
   close(): Promise<void>;
-  startPricePoller(
-    options?: Pick<
-      DeepBookPredictPricePollerOptions,
-      "fetchImpl" | "intervalMs" | "onError" | "onPoll"
-    >,
-  ): DeepBookPredictPricePoller;
 };
 
 export function createIndexerReadersFromDatabaseUrl(databaseUrl: string): IndexerReaders {
@@ -36,7 +26,6 @@ export function createIndexerReadersFromDatabaseUrl(databaseUrl: string): Indexe
 
 export function createIndexerReadersFromSqlClient(client: PostgresSqlClient): IndexerReaders {
   const reader = createPostgresPredictIndexerReader({ execute: client.execute });
-  const writer = createPostgresPredictIndexerStore({ execute: client.execute });
 
   return {
     reader,
@@ -67,12 +56,6 @@ export function createIndexerReadersFromSqlClient(client: PostgresSqlClient): In
       };
     },
     close: client.close,
-    startPricePoller: (options = {}) =>
-      startDeepBookPredictPricePoller({
-        reader,
-        writer,
-        ...options,
-      }),
   };
 }
 

@@ -8,6 +8,8 @@
   "scripts": {
     "test": "bun test",
     "backfill:predict": "bun src/backfill-predict.ts",
+    "live": "bun src/live.ts",
+    "live:predict": "bun src/live.ts",
     "typecheck": "tsc --noEmit",
     "verify:testnet": "bun src/verify-testnet.ts"
   },

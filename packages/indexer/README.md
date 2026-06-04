@@ -57,11 +57,31 @@ serves them behind a narrow local setup:
    - Portfolio mint/redeem events for a connected `PredictManager`
    - Oracle price history for the BTC chart
 
-   The local API also starts a latest-price poller when `DATABASE_URL` is set.
-   It polls active BTC oracle `/prices/latest` rows every 1 second by default
-   and upserts them into `predict_oracle_prices`. Disable it with
-   `HOT_HANDS_INDEXER_PRICE_POLL=false` or change the interval with
-   `HOT_HANDS_INDEXER_PRICE_POLL_MS`.
+   When `DATABASE_URL` is set, the dev launcher also starts a separate live
+   indexer process. The API remains read-only against Postgres. You can run the
+   same process by itself with:
+
+   ```bash
+   bun run --cwd packages/indexer live -- --once
+   bun run --cwd packages/indexer live
+   ```
+
+   The live indexer currently runs these idempotent jobs:
+
+   - `predict.oracles`: refresh BTC oracle metadata and settlement fields
+   - `predict.prices`: poll active BTC oracle `/prices/latest`
+   - `predict.positions.minted`: poll global minted positions
+   - `predict.positions.redeemed`: poll global redeemed positions
+   - `predict.trades.active_oracles`: poll per-active-oracle trade history
+
+   Prices, positions, and active-oracle trades poll every 1 second by default;
+   oracle metadata polls every 30 seconds. Tune with
+   `HOT_HANDS_INDEXER_PRICE_POLL_MS`,
+   `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`,
+   `HOT_HANDS_INDEXER_TRADES_POLL_MS`, and
+   `HOT_HANDS_INDEXER_ORACLES_POLL_MS`. Every job writes freshness status to
+   `predict_indexer_jobs`, and the local API exposes it at
+   `/testnet/indexer-status`.
 
    The chart endpoint requests downsampled full-range history from
    `predict_oracle_prices`, preserving the first and latest indexed points while

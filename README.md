@@ -33,7 +33,9 @@ The launcher starts:
 
 - PWA: `http://127.0.0.1:5176`
 - API: `http://127.0.0.1:8789`
+- Live indexer: enabled when `DATABASE_URL` is set
 - Market heat API: `http://127.0.0.1:8789/testnet/market-heat`
+- Indexer status API: `http://127.0.0.1:8789/testnet/indexer-status`
 - Open-position close quote API: `http://127.0.0.1:8789/testnet/redeem-quote`
 
 With `dev:testnet`, the app opens directly in `Testnet` mode and shows live DeepBook Predict market heat rows.
@@ -64,8 +66,8 @@ HOT_HANDS_TESTNET_API_PORT=8790 HOT_HANDS_TESTNET_PWA_PORT=5177 bun run dev:test
 ## Durable Indexer Local Notes
 
 The durable indexer now has a DB writer, bounded public Predict backfill CLI,
-Postgres readers, and API/PWA read-path hooks. Keep the local shape simple and
-explicit:
+Postgres readers, a dedicated live polling process, and API/PWA read-path hooks.
+Keep the local shape simple and explicit:
 
 - set `DATABASE_URL` to a local Postgres database before running DB-backed
   indexer work; do not commit real credentials
@@ -73,17 +75,25 @@ explicit:
   is wired
 - run the bounded Predict backfill CLI with `bun run indexer:backfill:predict -- --dry-run`
   first, then with `--write` once migrations are applied
+- run the live indexer directly with `bun run indexer:live` when you want only
+  ingestion, or let `bun run dev:testnet` start it automatically when
+  `DATABASE_URL` is set
 - keep the data path as: public DeepBook Predict server -> Postgres raw tables
   -> compact projections -> API worker endpoints -> PWA Feed, Trade,
   Portfolio, and chart views
 
 When `DATABASE_URL` is set for `bun run dev:testnet`, the local API prefers
 indexed reads for Market Heat, Trade markets, Portfolio events, and oracle price
-history. It also starts a lightweight latest-price poller, every 1 second by
-default, so indexed BTC oracle prices keep moving while the app is open. The
-chart requests up to 10,000 indexed/downsampled points and includes the full
-stored range metadata. Public Predict, captured rows, and direct Sui event reads
-remain fallbacks when the indexer is unavailable.
+history. The launcher also starts a separate live indexer process. Prices,
+positions, and active-oracle trade activity poll every 1 second by default;
+oracle metadata polls every 30 seconds by default. Tune these with
+`HOT_HANDS_INDEXER_PRICE_POLL_MS`, `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`,
+`HOT_HANDS_INDEXER_TRADES_POLL_MS`, and
+`HOT_HANDS_INDEXER_ORACLES_POLL_MS`. The API exposes freshness at
+`/testnet/indexer-status`. The chart requests up to 10,000
+indexed/downsampled points and includes the full stored range metadata. Public
+Predict, captured rows, and direct Sui event reads remain fallbacks when the
+indexer is unavailable.
 
 ## Current Demo Status
 
@@ -91,7 +101,7 @@ What is live today:
 
 - `Testnet` reads indexed DeepBook Predict activity through the local API when
   `DATABASE_URL` is set, with public/captured fallbacks when it is not.
-- `Latest` shows the newest observed active trader rows first and refreshes every 10 seconds while the app is open.
+- `Latest` shows the newest observed active trader rows first and refreshes every second while the app is open.
 - Rows are grouped by trader/manager, so a repeat trade moves that row upward instead of creating a duplicate feed item.
 - On wallet connect, the PWA checks whether the user already has a
   `PredictManager`; if one is missing, the wallet bar is the place to create it.
@@ -149,7 +159,10 @@ oracles, mints, redeems, trades, prices, and SVI into raw Postgres tables, then
 serve compact projections for market heat, recent activity, portfolio events,
 and full-range downsampled chart history. No cursor paging has been found on the
 public endpoints yet, so backfills should stay idempotent, timestamp-aware, and
-easy to replay.
+easy to replay. Live ingestion is a first-class daemon, not API side work: each
+job writes `predict_indexer_jobs` freshness status with poll interval, latest
+source timestamp/checkpoint, rows fetched/written, lag, errors, and observed
+update gaps so polling cadence can be tuned empirically.
 
 ## Planned Stack
 

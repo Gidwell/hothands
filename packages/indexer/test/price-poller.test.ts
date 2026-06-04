@@ -47,6 +47,8 @@ describe("DeepBook Predict live price poller", () => {
     expect(summary).toEqual({
       activeOracleCount: 2,
       fetchedPriceCount: 1,
+      latestCheckpoint: 101,
+      latestSourceTimestampMs: 1_780_604_800_000,
       upsertedPriceCount: 1,
     });
     expect(upserted).toEqual([

@@ -7,6 +7,7 @@ describe("testnet dev launcher config", () => {
       apiHost: "127.0.0.1",
       apiPort: 8789,
       apiUrl: "http://127.0.0.1:8789",
+      liveIndexerCommand: null,
       pwaHost: "127.0.0.1",
       pwaPort: 5176,
       pwaUrl: "http://127.0.0.1:5176",
@@ -25,9 +26,31 @@ describe("testnet dev launcher config", () => {
       apiHost: "0.0.0.0",
       apiPort: 8899,
       apiUrl: "http://0.0.0.0:8899",
+      liveIndexerCommand: null,
       pwaHost: "localhost",
       pwaPort: 5299,
       pwaUrl: "http://localhost:5299",
     });
+  });
+
+  test("enables the dedicated live indexer when DATABASE_URL is present", () => {
+    expect(
+      resolveDevTestnetConfig({
+        DATABASE_URL: "postgres://hot-hands.test",
+      }).liveIndexerCommand,
+    ).toEqual(["bun", "run", "--cwd", "packages/indexer", "live"]);
+  });
+
+  test("does not enable the live indexer without DATABASE_URL", () => {
+    expect(resolveDevTestnetConfig({}).liveIndexerCommand).toBeNull();
+  });
+
+  test("allows HOT_HANDS_INDEXER_LIVE=false to disable the live indexer", () => {
+    expect(
+      resolveDevTestnetConfig({
+        DATABASE_URL: "postgres://hot-hands.test",
+        HOT_HANDS_INDEXER_LIVE: "false",
+      }).liveIndexerCommand,
+    ).toBeNull();
   });
 });

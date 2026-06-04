@@ -10,6 +10,8 @@ import type { PredictIndexerWriter } from "./store";
 export type DeepBookPredictPricePollSummary = {
   activeOracleCount: number;
   fetchedPriceCount: number;
+  latestCheckpoint?: number;
+  latestSourceTimestampMs?: number;
   upsertedPriceCount: number;
 };
 
@@ -55,8 +57,26 @@ export async function pollDeepBookPredictLatestPrices({
   return {
     activeOracleCount: activeOracles.length,
     fetchedPriceCount: prices.length,
+    ...latestPriceMetadata(prices),
     upsertedPriceCount: await writer.upsertOraclePrices(prices),
   };
+}
+
+function latestPriceMetadata(
+  prices: readonly PredictOraclePricePoint[],
+): Pick<DeepBookPredictPricePollSummary, "latestCheckpoint" | "latestSourceTimestampMs"> {
+  const latest = prices.reduce<PredictOraclePricePoint | null>(
+    (current, point) =>
+      current === null || point.timestampMs > current.timestampMs ? point : current,
+    null,
+  );
+
+  return latest
+    ? {
+        ...(latest.checkpoint === undefined ? {} : { latestCheckpoint: latest.checkpoint }),
+        latestSourceTimestampMs: latest.timestampMs,
+      }
+    : {};
 }
 
 export function startDeepBookPredictPricePoller({

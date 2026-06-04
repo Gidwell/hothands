@@ -86,13 +86,25 @@ const pwa = Bun.spawn(
   },
 );
 
+const liveIndexer = config.liveIndexerCommand
+  ? Bun.spawn(config.liveIndexerCommand, {
+      cwd: repoRoot,
+      env: process.env,
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    })
+  : null;
+
 process.stdout.write(
   [
     "",
     "Hot Hands testnet dev is starting.",
     `PWA:         ${config.pwaUrl}`,
     `API:         ${config.apiUrl}`,
+    `Indexer:     ${liveIndexer ? "live" : "disabled"}`,
     `Market heat: ${config.apiUrl}/testnet/market-heat`,
+    `Status:      ${config.apiUrl}/testnet/indexer-status`,
     "",
     "Override ports with HOT_HANDS_TESTNET_API_PORT and HOT_HANDS_TESTNET_PWA_PORT.",
     "",
@@ -108,6 +120,7 @@ const stopTestnetDev = () => {
   shuttingDown = true;
   pwa.kill("SIGTERM");
   api.kill("SIGTERM");
+  liveIndexer?.kill("SIGTERM");
 };
 
 process.on("SIGINT", () => {
@@ -119,7 +132,11 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
-const exitCode = await Promise.race([api.exited, pwa.exited]);
+const exitCode = await Promise.race(
+  [api.exited, pwa.exited, liveIndexer?.exited].filter(
+    (exited): exited is Promise<number> => Boolean(exited),
+  ),
+);
 stopTestnetDev();
 process.exit(exitCode);
 

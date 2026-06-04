@@ -2,6 +2,7 @@ export interface DevTestnetConfig {
   apiHost: string;
   apiPort: number;
   apiUrl: string;
+  liveIndexerCommand: string[] | null;
   pwaHost: string;
   pwaPort: number;
   pwaUrl: string;
@@ -10,6 +11,7 @@ export interface DevTestnetConfig {
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_API_PORT = 8789;
 const DEFAULT_PWA_PORT = 5176;
+const LIVE_INDEXER_COMMAND = ["bun", "run", "--cwd", "packages/indexer", "live"];
 
 export function resolveDevTestnetConfig(
   env: Record<string, string | undefined>,
@@ -22,11 +24,16 @@ export function resolveDevTestnetConfig(
     DEFAULT_API_PORT,
   );
   const pwaPort = readPort(env.HOT_HANDS_TESTNET_PWA_PORT, DEFAULT_PWA_PORT);
+  const liveIndexerCommand =
+    env.DATABASE_URL && env.HOT_HANDS_INDEXER_LIVE !== "false"
+      ? LIVE_INDEXER_COMMAND
+      : null;
 
   return {
     apiHost,
     apiPort,
     apiUrl: localHttpUrl(apiHost, apiPort),
+    liveIndexerCommand,
     pwaHost,
     pwaPort,
     pwaUrl: localHttpUrl(pwaHost, pwaPort),

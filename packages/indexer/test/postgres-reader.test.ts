@@ -254,6 +254,63 @@ describe("Postgres Predict indexer reader", () => {
       endTimestampMs: 1_779_071_400_000,
     });
   });
+
+  test("reads live indexer job freshness ordered by job name", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlQueryExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      return {
+        rows: [
+          {
+            job_name: "predict.prices",
+            source: "oracles/prices/latest",
+            poll_interval_ms: "1000",
+            status: "ok",
+            last_poll_started_at_ms: "1779070801000",
+            last_poll_completed_at_ms: "1779070801200",
+            last_success_at_ms: "1779070801200",
+            last_new_data_at_ms: "1779070801200",
+            last_source_timestamp_ms: "1779070800000",
+            last_checkpoint: "4242",
+            rows_fetched: "3",
+            rows_written: "2",
+            total_rows_written: "12",
+            consecutive_error_count: "0",
+            last_error: null,
+            observed_update_gap_ms: "1000",
+            lag_ms: "1200",
+            updated_at_ms: "1779070801200",
+          },
+        ],
+      };
+    };
+    const reader = createPostgresPredictIndexerReader({ execute });
+
+    await expect(reader.listIndexerJobStatuses()).resolves.toEqual([
+      {
+        jobName: "predict.prices",
+        source: "oracles/prices/latest",
+        pollIntervalMs: 1_000,
+        status: "ok",
+        lastPollStartedAtMs: 1_779_070_801_000,
+        lastPollCompletedAtMs: 1_779_070_801_200,
+        lastSuccessAtMs: 1_779_070_801_200,
+        lastNewDataAtMs: 1_779_070_801_200,
+        lastSourceTimestampMs: 1_779_070_800_000,
+        lastCheckpoint: 4242,
+        rowsFetched: 3,
+        rowsWritten: 2,
+        totalRowsWritten: 12,
+        consecutiveErrorCount: 0,
+        observedUpdateGapMs: 1_000,
+        lagMs: 1_200,
+        updatedAtMs: 1_779_070_801_200,
+      },
+    ]);
+    expect(calls[0]?.statement).toContain("from predict_indexer_jobs");
+    expect(calls[0]?.statement).toContain("order by job_name asc");
+    expect(calls[0]?.params).toEqual([]);
+  });
 });
 
 type SqlCall = {

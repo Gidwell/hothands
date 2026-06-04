@@ -30,6 +30,7 @@
     "verify:realtime:sim": "bun run test:worker && bun test packages/demo-runner/test && bun run verify:e2e",
     "verify:perf": "echo \"TODO: run spectator heartbeat simulation\"",
     "verify:testnet": "bun run --cwd packages/indexer verify:testnet && bun run --cwd packages/contracts verify:testnet",
-    "verify:visual": "echo \"TODO: run screenshot checks\""
+    "verify:visual": "echo \"TODO: run screenshot checks\"",
+    "indexer:live": "bun run --cwd packages/indexer live"
   }
 }

@@ -40,6 +40,7 @@ export {
   type PredictIndexerSnapshot,
   type PredictIndexerStore,
   type PredictIndexerWriter,
+  type PredictIndexerJobStatus,
   type PredictPositionSummary,
 } from "./store";
 
@@ -74,6 +75,20 @@ export {
   type DeepBookPredictPricePollOptions,
   type DeepBookPredictPricePollSummary,
 } from "./price-poller";
+
+export {
+  DEFAULT_LIVE_INDEXER_INTERVALS,
+  parseLiveIndexerCliOptions,
+  runDeepBookPredictLiveIndexerOnce,
+  startDeepBookPredictLiveIndexer,
+  type DeepBookPredictLiveIndexer,
+  type DeepBookPredictLiveIndexerCliOptions,
+  type DeepBookPredictLiveIndexerIntervals,
+  type DeepBookPredictLiveIndexerJobSummary,
+  type DeepBookPredictLiveIndexerOnceOptions,
+  type DeepBookPredictLiveIndexerOnceSummary,
+  type DeepBookPredictLiveIndexerOptions,
+} from "./live-indexer";
 
 export {
   buildLatestTradeFeedProjection,

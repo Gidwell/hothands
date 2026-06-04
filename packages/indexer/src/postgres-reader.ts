@@ -4,7 +4,7 @@ import type {
   PredictOracleState,
 } from "./deepbook-predict";
 import { downsampleOraclePricePoints } from "./projections";
-import type { PredictPositionSummary } from "./store";
+import type { PredictIndexerJobStatus, PredictPositionSummary } from "./store";
 import type { SqlValue } from "./postgres-store";
 
 export type SqlRow = Record<string, unknown>;
@@ -60,6 +60,7 @@ export type PredictIndexerReader = {
   listOraclePrices(options: ListOraclePricesOptions): Promise<PredictOraclePricePoint[]>;
   getLatestOraclePrice(oracleId: string): Promise<PredictOraclePricePoint | null>;
   getOraclePriceStats(oracleId: string): Promise<OraclePriceStats | null>;
+  listIndexerJobStatuses(): Promise<PredictIndexerJobStatus[]>;
 };
 
 const DEFAULT_MARKET_LIMIT = 5_000;
@@ -274,6 +275,22 @@ export function createPostgresPredictIndexerReader({
         endTimestampMs: requiredNumber(row.end_timestamp_ms, "end_timestamp_ms"),
       };
     },
+    listIndexerJobStatuses: async () => {
+      const result = await execute(
+        [
+          "select job_name, source, poll_interval_ms, status,",
+          "last_poll_started_at_ms, last_poll_completed_at_ms, last_success_at_ms,",
+          "last_new_data_at_ms, last_source_timestamp_ms, last_checkpoint,",
+          "rows_fetched, rows_written, total_rows_written, consecutive_error_count,",
+          "last_error, observed_update_gap_ms, lag_ms, updated_at_ms",
+          "from predict_indexer_jobs",
+          "order by job_name asc",
+        ].join("\n"),
+        [],
+      );
+
+      return result.rows.map(mapIndexerJobStatusRow);
+    },
   };
 }
 
@@ -362,6 +379,47 @@ function mapOraclePriceRow(row: SqlRow): PredictOraclePricePoint {
       : { checkpoint: optionalNumber(row.checkpoint) }),
     timestampMs: requiredNumber(row.timestamp_ms, "timestamp_ms"),
     source: "oracles/prices",
+  };
+}
+
+function mapIndexerJobStatusRow(row: SqlRow): PredictIndexerJobStatus {
+  const status = requiredString(row.status, "status");
+
+  return {
+    jobName: requiredString(row.job_name, "job_name"),
+    source: requiredString(row.source, "source"),
+    pollIntervalMs: requiredNumber(row.poll_interval_ms, "poll_interval_ms"),
+    status: status === "error" ? "error" : "ok",
+    lastPollStartedAtMs: requiredNumber(row.last_poll_started_at_ms, "last_poll_started_at_ms"),
+    ...(optionalNumber(row.last_poll_completed_at_ms) === undefined
+      ? {}
+      : { lastPollCompletedAtMs: optionalNumber(row.last_poll_completed_at_ms) }),
+    ...(optionalNumber(row.last_success_at_ms) === undefined
+      ? {}
+      : { lastSuccessAtMs: optionalNumber(row.last_success_at_ms) }),
+    ...(optionalNumber(row.last_new_data_at_ms) === undefined
+      ? {}
+      : { lastNewDataAtMs: optionalNumber(row.last_new_data_at_ms) }),
+    ...(optionalNumber(row.last_source_timestamp_ms) === undefined
+      ? {}
+      : { lastSourceTimestampMs: optionalNumber(row.last_source_timestamp_ms) }),
+    ...(optionalNumber(row.last_checkpoint) === undefined
+      ? {}
+      : { lastCheckpoint: optionalNumber(row.last_checkpoint) }),
+    rowsFetched: requiredNumber(row.rows_fetched, "rows_fetched"),
+    rowsWritten: requiredNumber(row.rows_written, "rows_written"),
+    totalRowsWritten: requiredNumber(row.total_rows_written, "total_rows_written"),
+    consecutiveErrorCount: requiredNumber(row.consecutive_error_count, "consecutive_error_count"),
+    ...(optionalString(row.last_error) === undefined
+      ? {}
+      : { lastError: optionalString(row.last_error) }),
+    ...(optionalNumber(row.observed_update_gap_ms) === undefined
+      ? {}
+      : { observedUpdateGapMs: optionalNumber(row.observed_update_gap_ms) }),
+    ...(optionalNumber(row.lag_ms) === undefined
+      ? {}
+      : { lagMs: optionalNumber(row.lag_ms) }),
+    updatedAtMs: requiredNumber(row.updated_at_ms, "updated_at_ms"),
   };
 }
 

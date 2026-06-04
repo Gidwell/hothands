@@ -104,4 +104,6 @@ bun run --cwd apps/api-worker test:worker
 
 `dev:testnet` starts a local Bun server on `127.0.0.1:8789` by default and
 serves `GET /testnet/market-heat` without requiring Cloudflare Durable Object
-bindings. Override the port with `HOT_HANDS_TESTNET_API_PORT`.
+bindings. With `DATABASE_URL`, it also exposes read-only indexer freshness at
+`GET /testnet/indexer-status`. Override the port with
+`HOT_HANDS_TESTNET_API_PORT`.
