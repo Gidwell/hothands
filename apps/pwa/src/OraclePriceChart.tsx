@@ -13,6 +13,9 @@ import {
 } from "lightweight-charts";
 import type { OraclePriceChart, OraclePriceChartPoint } from "./oraclePriceChartModel";
 
+const COMPACT_CHART_MIN_BAR_SPACING = 0.5;
+const EXPANDED_CHART_MIN_BAR_SPACING = 0.02;
+
 export function OraclePriceChartCard({
   chart,
   fallbackPriceLabel,
@@ -150,6 +153,7 @@ function LightweightOraclePriceChart({
       timeScale: {
         visible: !compact,
         borderVisible: false,
+        minBarSpacing: getOraclePriceChartMinBarSpacing({ compact }),
         timeVisible: true,
         secondsVisible: true,
         tickMarkFormatter: formatTickMarkLocalTime,
@@ -231,6 +235,16 @@ export function shouldAutoFitOraclePriceChart({
   pointCount: number;
 }): boolean {
   return pointCount >= 2 && (compact || !hasFitInitialData);
+}
+
+export function getOraclePriceChartMinBarSpacing({
+  compact,
+}: {
+  compact: boolean;
+}): number {
+  return compact
+    ? COMPACT_CHART_MIN_BAR_SPACING
+    : EXPANDED_CHART_MIN_BAR_SPACING;
 }
 
 function formatCrosshairLocalTime(time: Time): string {

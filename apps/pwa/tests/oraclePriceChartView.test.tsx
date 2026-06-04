@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  getOraclePriceChartMinBarSpacing,
   OraclePriceChartModal,
   shouldAutoFitOraclePriceChart,
 } from "../src/OraclePriceChart";
@@ -84,5 +85,15 @@ describe("OraclePriceChartModal", () => {
         pointCount: 3,
       }),
     ).toBe(true);
+  });
+
+  test("allows the expanded chart to zoom out across dense one-second oracle history", () => {
+    expect(getOraclePriceChartMinBarSpacing({ compact: false })).toBeLessThanOrEqual(
+      0.03,
+    );
+
+    expect(getOraclePriceChartMinBarSpacing({ compact: true })).toBeGreaterThan(
+      getOraclePriceChartMinBarSpacing({ compact: false }),
+    );
   });
 });
