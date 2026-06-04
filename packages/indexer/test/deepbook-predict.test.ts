@@ -4,9 +4,11 @@ import {
   buildPredictServerUrl,
   computeMarketHeat,
   createPredictOraclePriceClient,
+  createPredictOracleSviClient,
   createPredictTradeHistoryClient,
   createPredictReadCanary,
   normalizePredictOraclePriceRow,
+  normalizePredictOracleSviRow,
   normalizePredictTradeRow,
   parsePredictCanaryConfig,
   selectBestBtcOracle,
@@ -319,7 +321,7 @@ describe("DeepBook Predict trade-history normalization", () => {
         const url = String(input);
         requests.push(url);
 
-        if (url.endsWith("/positions/minted")) {
+        if (url.includes("/positions/minted")) {
           return jsonResponse([capturedMintedRow]);
         }
 
@@ -338,6 +340,9 @@ describe("DeepBook Predict trade-history normalization", () => {
     await expect(client.listMintedPositions()).resolves.toEqual([
       normalizePredictTradeRow(capturedMintedRow),
     ]);
+    await expect(client.listMintedPositions({ limit: 5000 })).resolves.toEqual([
+      normalizePredictTradeRow(capturedMintedRow),
+    ]);
     await expect(client.listRedeemedPositions()).resolves.toEqual([
       normalizePredictTradeRow(capturedRedeemedRow),
     ]);
@@ -347,6 +352,7 @@ describe("DeepBook Predict trade-history normalization", () => {
 
     expect(requests).toEqual([
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/positions/minted`,
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/positions/minted?limit=5000`,
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/positions/redeemed`,
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/trades/btc-2026-05-19`,
     ]);
@@ -359,7 +365,7 @@ describe("DeepBook Predict trade-history normalization", () => {
         const url = String(input);
         requests.push(url);
 
-        if (url.endsWith("/oracles/btc-2026-05-19/prices")) {
+        if (url.endsWith("/oracles/btc-2026-05-19/prices?limit=10000")) {
           return jsonResponse({
             prices: [
               {
@@ -382,7 +388,7 @@ describe("DeepBook Predict trade-history normalization", () => {
       },
     });
 
-    await expect(client.listOraclePrices("btc-2026-05-19")).resolves.toEqual([
+    await expect(client.listOraclePrices("btc-2026-05-19", { limit: 10_000 })).resolves.toEqual([
       {
         oracleId: "btc-2026-05-19",
         spot: 72_000_000_000,
@@ -413,7 +419,82 @@ describe("DeepBook Predict trade-history normalization", () => {
     });
 
     expect(requests).toEqual([
-      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-2026-05-19/prices`,
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-2026-05-19/prices?limit=10000`,
+    ]);
+  });
+
+  test("reads and normalizes oracle SVI history through injected fetch", async () => {
+    const requests: string[] = [];
+    const client = createPredictOracleSviClient({
+      fetchImpl: async (input: RequestInfo | URL) => {
+        const url = String(input);
+        requests.push(url);
+
+        if (url.endsWith("/oracles/btc-2026-05-19/svi?limit=1000")) {
+          return jsonResponse({
+            rows: [
+              {
+                event_digest: "0xsvidigest",
+                event_index: 9,
+                oracle_id: "btc-2026-05-19",
+                a: "1",
+                b: "2",
+                rho: "3",
+                rho_negative: "4",
+                m: "5",
+                m_negative: "6",
+                sigma: "7",
+                checkpoint: "4252",
+                checkpoint_timestamp_ms: "1779070870000",
+              },
+            ],
+          });
+        }
+
+        return jsonResponse({ error: "not_found" }, 404);
+      },
+    });
+
+    await expect(client.listOracleSvi("btc-2026-05-19", { limit: 1000 })).resolves.toEqual([
+      {
+        eventId: "svi:0xsvidigest:9",
+        oracleId: "btc-2026-05-19",
+        a: 1,
+        b: 2,
+        rho: 3,
+        rhoNegative: 4,
+        m: 5,
+        mNegative: 6,
+        sigma: 7,
+        checkpoint: 4252,
+        timestampMs: 1_779_070_870_000,
+        source: "oracles/svi",
+      },
+    ]);
+    expect(
+      normalizePredictOracleSviRow(
+        {
+          oracle_id: "btc-2026-05-19",
+          a: "1",
+          b: "2",
+          rho: "3",
+          rho_negative: "4",
+          m: "5",
+          m_negative: "6",
+          sigma: "7",
+          checkpoint_timestamp_ms: "1779070870000",
+        },
+        "btc-2026-05-19",
+      ),
+    ).toMatchObject({
+      eventId: "svi:btc-2026-05-19:1779070870000",
+      oracleId: "btc-2026-05-19",
+      sigma: 7,
+      timestampMs: 1_779_070_870_000,
+    });
+
+    expect(requests).toEqual([
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-2026-05-19/svi?limit=1000`,
     ]);
   });
 });

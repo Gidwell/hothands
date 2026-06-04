@@ -7,6 +7,52 @@ oracle data from the public Predict server, then graduate to Sui
 events/checkpoints for lower-latency oracle updates. Direct onchain reads should
 stay reserved for wallet-adjacent flows and transaction confirmation.
 
+The first foundation slice is DB-backed but still public-server first: run
+bounded, high-limit backfills for oracles, mints, redeems, trades, prices, and
+SVI into raw tables, then derive projections for market heat, recent activity,
+settlement views, and PWA feeds. No cursor paging has been found on the public
+Predict endpoints yet, so every job should be idempotent and freshness-aware.
+
+## Local Durable Setup
+
+Current status: `verify:testnet` uses public Predict server reads. The durable
+Postgres path uses the same normalized records, then persists them behind a
+narrow local setup:
+
+1. Create a local Postgres database and export `DATABASE_URL`, for example:
+
+   ```bash
+   export DATABASE_URL=postgres://hot_hands:hot_hands@127.0.0.1:5432/hot_hands
+   ```
+
+2. Apply indexer migrations manually until a package script is wired. Run the
+   SQL files in order against `DATABASE_URL`, review them before applying, and
+   keep backfill-related writes idempotent.
+3. Run the Predict backfill CLI in dry-run mode first:
+
+   ```bash
+   bun run --cwd packages/indexer backfill:predict -- --dry-run --trade-limit 5000 --price-limit 10000
+   ```
+
+   Once migrations are applied, write to Postgres:
+
+   ```bash
+   bun run --cwd packages/indexer backfill:predict -- --write --trade-limit 5000 --price-limit 10000
+   ```
+
+   Start with small limits locally, then replay with wider limits. The CLI reads
+   `DATABASE_URL` in write mode, fetches from the public Predict server, and upserts
+   raw oracles, mints, redeems, trades, prices, and SVI.
+4. Build projections from the raw tables before serving product flows:
+
+   ```text
+   public Predict server -> Postgres raw tables -> projections -> API/PWA
+   ```
+
+Do not treat observed external-wallet mints as pre-trade signals. This path is
+for reactive copy/fade preparation, settlement-aware scoring, and durable
+activity projections.
+
 Run the read-only canary with:
 
 ```bash
@@ -22,6 +68,7 @@ Implemented testnet read checkpoint:
 - read recent binary mints from `/positions/minted`
 - read recent binary redeems from `/positions/redeemed`
 - read per-oracle activity from `/trades/:oracle_id`
+- read indexed oracle prices and SVI where available
 - keep range endpoints available for later with `/ranges/minted` and
   `/ranges/redeemed`
 
@@ -37,15 +84,19 @@ into `PredictNormalizedTradeEvent` records and computes provisional
 fixture tests.
 
 The first UI pass should label these as "Testnet trades" or "Market Heat" and
-use them for activity/trader discovery. Users can still watch an external
-trader's next observed mint and receive a prepared mirror-copy or fade
-transaction, but that is reactive action from public activity. Hot
-Hands-native reputation requires watch rules, copy/fade executions, native
-signals when present, and settlement-aware scoring.
+use them for activity/trader discovery. As the indexer comes online, the PWA
+should consume indexed and downsampled projections rather than public Predict
+server responses directly. Users can still watch an external trader's next
+observed mint and receive a prepared mirror-copy or fade transaction, but that
+is reactive action from public activity. Hot Hands-native reputation requires
+watch rules, copy/fade executions, native signals when present, and
+settlement-aware scoring.
 
 Primary responsibilities:
 
 - Predict server polling/replay adapters
+- DB-backed raw Predict backfill tables
+- derived and downsampled feed projections
 - DeepBook Predict trade-history normalization
 - external wallet heat scoring
 - watch-rule matching inputs
