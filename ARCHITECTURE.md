@@ -1,6 +1,6 @@
 # Hot Hands Architecture
 
-Last updated: June 3, 2026
+Last updated: June 4, 2026
 
 ## System Overview
 
@@ -121,6 +121,8 @@ Durable data:
 - resolved signal outcomes
 - score snapshots
 - indexed DeepBook trade projections
+- raw Predict backfill tables
+- derived and downsampled PWA feed projections
 - demo scenario traces
 
 ### Identity And Profiles
@@ -178,7 +180,10 @@ Responsibilities:
 - Poll or stream DeepBook Predict data.
 - Index Hot Hands events.
 - Verify copy/fade executions against Sui transaction digests.
-- Normalize public Predict mints, redeems, and per-oracle trades.
+- Run high-limit public Predict server backfills for oracles, mints, redeems,
+  trades, prices, and SVI.
+- Store raw Predict rows before deriving compact projections.
+- Normalize public Predict mints, redeems, prices, SVI, and per-oracle trades.
 - Compute external wallet market heat before Hot Hands-native reputation exists.
 - Resolve signals when oracles settle.
 - Compute trader, table, and squad score snapshots.
@@ -214,18 +219,26 @@ Current public integration targets live in the indexer read canary config. Offic
 Data-source guidance:
 
 - Use the public Predict server for render-ready read-canary data.
+- Use high-limit public Predict server reads for the first DB-backed backfills:
+  oracles, mints, redeems, per-oracle trades, indexed prices, and SVI.
 - Use the public Predict server history endpoints for recent testnet trade
   activity:
   - `/positions/minted`
   - `/positions/redeemed`
   - `/trades/:oracle_id`
+- No cursor paging has been found on these public endpoints yet. Treat backfill
+  jobs as bounded snapshots with idempotent upserts and explicit freshness
+  checks until a cursor or checkpoint source exists.
 - Use Sui events/checkpoints for low-latency oracle updates when the indexer needs fresher settlement signals.
 - Use direct onchain reads around wallet flows, manager state, deposits, and transaction confirmation.
 
 Testnet trade read mode:
 
-- The first real-data PWA mode should consume normalized Predict trade rows,
-  then render recent BTC mints/redeems as table activity.
+- The first real-data PWA mode can use local API reads while the indexer is
+  bootstrapping, but the target path is indexed and downsampled projections
+  instead of direct public-server reads.
+- The PWA should consume normalized Predict trade rows, then render recent BTC
+  mints/redeems as table activity.
 - Raw `trader` and `manager_id` values can seed provisional trader cards, but
   they are not Hot Hands identities yet.
 - Raw mint/redeem activity can support a "who is active" or "who is pressing"

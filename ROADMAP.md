@@ -155,6 +155,9 @@ Deliverables:
 - Read active BTC oracles from the public Predict server.
 - Read recent Predict mints/redeems and per-oracle trade history from the
   public server.
+- Add the first DB-backed indexer foundation: high-limit public-server
+  backfills for oracles, mints, redeems, trades, prices, and SVI into raw
+  tables plus derived projections.
 - Normalize external trader/manager activity into provisional `Market Heat`.
 - Add a PWA testnet-read mode that renders real BTC trade activity and lets a
   user watch a trader's next observed mint with copy disabled, preview-only, or
@@ -193,11 +196,17 @@ Risk:
 - Public Predict trade rows are protocol activity, not Hot Hands-native social
   proof. Label rankings as `Market Heat` until watch rules, copy/fade
   executions, and settlement-aware scoring are linked.
+- No cursor paging has been found on the public Predict endpoints yet, so
+  backfills need bounded high-limit reads, idempotent writes, and freshness
+  checks.
 
 Current notes:
 
 - `packages/indexer` can fetch and normalize recent minted/redeemed/per-oracle
   Predict rows through injectable clients.
+- The next indexer slice should persist raw public-server rows and publish
+  downsampled projections for the PWA, rather than having product surfaces
+  depend directly on public Predict server responses.
 - `computeMarketHeat` groups external trader/manager activity conservatively;
   PnL matching is still provisional until live row shape and position identity
   are pinned.

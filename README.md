@@ -81,6 +81,9 @@ What is still in progress:
 
 - `Heat` is a provisional activity/performance score, not the final settled reputation model.
 - Feed copy/fade attribution is not yet backed by a Hot Hands database.
+- The PWA still uses local API reads of public/captured Predict activity; it
+  should move to indexed and downsampled projections as the indexer comes
+  online.
 - Profiles, X linking, SuiNS-backed display names, follows, copy counts, fade counts, and durable leaderboards are not wired in yet.
 
 ## Product Loop
@@ -112,6 +115,12 @@ DeepBook Predict stays the source of truth for market execution, settlement, and
 - score snapshots for streaks, leaderboards, and Heat
 
 For the hackathon, copy/fade attribution can be DB-verified by matching the follower's transaction digest back to the source trade parameters. A tiny Move event package can still be added later for cleaner chain-native proof, but it should not block profiles, leaderboards, or copy/fade counts.
+
+First indexer foundation slice: run bounded, high-limit public Predict server
+backfills for oracles, mints, redeems, trades, prices, and SVI into raw
+Postgres tables, then derive compact projections for market heat, recent
+activity, and PWA feeds. No cursor paging has been found on the public endpoints
+yet, so backfills should stay idempotent, timestamp-aware, and easy to replay.
 
 ## Planned Stack
 

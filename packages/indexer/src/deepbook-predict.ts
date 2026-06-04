@@ -32,6 +32,10 @@ export type PredictLatestPrice = {
 
 export type PredictOraclePriceRow = {
   [key: string]: unknown;
+  event_digest?: unknown;
+  digest?: unknown;
+  event_index?: unknown;
+  event_seq?: unknown;
   oracle_id?: unknown;
   oracleId?: unknown;
   spot?: unknown;
@@ -44,12 +48,52 @@ export type PredictOraclePriceRow = {
 };
 
 export type PredictOraclePricePoint = {
+  eventId?: string;
   oracleId: string;
   spot: number;
   forward?: number;
   checkpoint?: number;
   timestampMs: number;
   source: "oracles/prices";
+};
+
+export type PredictOracleSviRow = {
+  [key: string]: unknown;
+  event_digest?: unknown;
+  digest?: unknown;
+  event_index?: unknown;
+  event_seq?: unknown;
+  oracle_id?: unknown;
+  oracleId?: unknown;
+  a?: unknown;
+  b?: unknown;
+  rho?: unknown;
+  rho_negative?: unknown;
+  rhoNegative?: unknown;
+  m?: unknown;
+  m_negative?: unknown;
+  mNegative?: unknown;
+  sigma?: unknown;
+  checkpoint?: unknown;
+  checkpoint_timestamp_ms?: unknown;
+  timestamp_ms?: unknown;
+  timestampMs?: unknown;
+  onchain_timestamp?: unknown;
+};
+
+export type PredictOracleSviPoint = {
+  eventId: string;
+  oracleId: string;
+  a: number;
+  b: number;
+  rho: number;
+  rhoNegative: number;
+  m: number;
+  mNegative: number;
+  sigma: number;
+  checkpoint?: number;
+  timestampMs: number;
+  source: "oracles/svi";
 };
 
 export type PredictAvailableBtcMarket = {
@@ -209,6 +253,15 @@ export type PredictOraclePriceClientOptions = {
   fetchImpl?: typeof fetch;
 };
 
+export type PredictOracleSviClientOptions = {
+  config?: PredictCanaryConfig;
+  fetchImpl?: typeof fetch;
+};
+
+export type PredictHistoryRequestOptions = {
+  limit?: number;
+};
+
 type PredictServerStatus = {
   status: string;
   latest_onchain_checkpoint?: number;
@@ -332,28 +385,33 @@ export function createPredictTradeHistoryClient({
   fetchImpl = fetch,
 }: PredictTradeHistoryClientOptions = {}) {
   return {
-    listMintedPositions: async (): Promise<PredictNormalizedTradeEvent[]> => {
+    listMintedPositions: async (
+      options: PredictHistoryRequestOptions = {},
+    ): Promise<PredictNormalizedTradeEvent[]> => {
       const rows = await fetchJson<PredictPositionMintedRow[]>(
         fetchImpl,
-        buildPredictServerUrl(config.serverUrl, "/positions/minted"),
+        buildPredictServerUrl(config.serverUrl, "/positions/minted", options),
       );
 
       return rows.map(normalizePredictTradeRow);
     },
-    listRedeemedPositions: async (): Promise<PredictNormalizedTradeEvent[]> => {
+    listRedeemedPositions: async (
+      options: PredictHistoryRequestOptions = {},
+    ): Promise<PredictNormalizedTradeEvent[]> => {
       const rows = await fetchJson<PredictPositionRedeemedRow[]>(
         fetchImpl,
-        buildPredictServerUrl(config.serverUrl, "/positions/redeemed"),
+        buildPredictServerUrl(config.serverUrl, "/positions/redeemed", options),
       );
 
       return rows.map(normalizePredictTradeRow);
     },
     listOracleTrades: async (
       oracleId: string,
+      options: PredictHistoryRequestOptions = {},
     ): Promise<PredictNormalizedTradeEvent[]> => {
       const rows = await fetchJson<PredictTradeHistoryRow[]>(
         fetchImpl,
-        buildPredictServerUrl(config.serverUrl, `/trades/${oracleId}`),
+        buildPredictServerUrl(config.serverUrl, `/trades/${oracleId}`, options),
       );
 
       return rows.map(normalizePredictTradeRow);
@@ -366,14 +424,38 @@ export function createPredictOraclePriceClient({
   fetchImpl = fetch,
 }: PredictOraclePriceClientOptions = {}) {
   return {
-    listOraclePrices: async (oracleId: string): Promise<PredictOraclePricePoint[]> => {
+    listOraclePrices: async (
+      oracleId: string,
+      options: PredictHistoryRequestOptions = {},
+    ): Promise<PredictOraclePricePoint[]> => {
       const payload = await fetchJson<unknown>(
         fetchImpl,
-        buildPredictServerUrl(config.serverUrl, `/oracles/${oracleId}/prices`),
+        buildPredictServerUrl(config.serverUrl, `/oracles/${oracleId}/prices`, options),
       );
 
       return unwrapPredictOraclePriceRows(payload)
         .map((row) => normalizePredictOraclePriceRow(row, oracleId))
+        .sort((left, right) => left.timestampMs - right.timestampMs);
+    },
+  };
+}
+
+export function createPredictOracleSviClient({
+  config = DEEPBOOK_PREDICT_TESTNET_CONFIG,
+  fetchImpl = fetch,
+}: PredictOracleSviClientOptions = {}) {
+  return {
+    listOracleSvi: async (
+      oracleId: string,
+      options: PredictHistoryRequestOptions = {},
+    ): Promise<PredictOracleSviPoint[]> => {
+      const payload = await fetchJson<unknown>(
+        fetchImpl,
+        buildPredictServerUrl(config.serverUrl, `/oracles/${oracleId}/svi`, options),
+      );
+
+      return unwrapPredictOracleSviRows(payload)
+        .map((row) => normalizePredictOracleSviRow(row, oracleId))
         .sort((left, right) => left.timestampMs - right.timestampMs);
     },
   };
@@ -387,8 +469,15 @@ export function normalizePredictOraclePriceRow(
     row.oracle_id ?? row.oracleId ?? fallbackOracleId,
     "oracle_id",
   );
+  const transactionDigest = stringValue(
+    row.digest ?? row.event_digest,
+  );
+  const eventSeq = optionalNumber(row.event_index ?? row.event_seq);
 
   return {
+    ...(transactionDigest
+      ? { eventId: `price:${transactionDigest}:${eventSeq ?? 0}` }
+      : {}),
     oracleId,
     spot: requiredNumber(row.spot, "spot"),
     ...(optionalNumber(row.forward) === undefined
@@ -407,6 +496,48 @@ export function normalizePredictOraclePriceRow(
       ),
     ),
     source: "oracles/prices",
+  };
+}
+
+export function normalizePredictOracleSviRow(
+  row: PredictOracleSviRow,
+  fallbackOracleId?: string,
+): PredictOracleSviPoint {
+  const oracleId = requiredString(
+    row.oracle_id ?? row.oracleId ?? fallbackOracleId,
+    "oracle_id",
+  );
+  const timestampMs = normalizeEpochMs(
+    requiredNumber(
+      row.checkpoint_timestamp_ms ??
+        row.timestamp_ms ??
+        row.timestampMs ??
+        row.onchain_timestamp,
+      "timestamp",
+    ),
+  );
+  const transactionDigest = stringValue(
+    row.digest ?? row.event_digest,
+  );
+  const eventSeq = optionalNumber(row.event_index ?? row.event_seq);
+
+  return {
+    eventId: transactionDigest
+      ? `svi:${transactionDigest}:${eventSeq ?? 0}`
+      : `svi:${oracleId}:${timestampMs}`,
+    oracleId,
+    a: requiredNumber(row.a, "a"),
+    b: requiredNumber(row.b, "b"),
+    rho: requiredNumber(row.rho, "rho"),
+    rhoNegative: requiredNumber(row.rho_negative ?? row.rhoNegative, "rho_negative"),
+    m: requiredNumber(row.m, "m"),
+    mNegative: requiredNumber(row.m_negative ?? row.mNegative, "m_negative"),
+    sigma: requiredNumber(row.sigma, "sigma"),
+    ...(optionalNumber(row.checkpoint) === undefined
+      ? {}
+      : { checkpoint: optionalNumber(row.checkpoint) }),
+    timestampMs,
+    source: "oracles/svi",
   };
 }
 
@@ -475,7 +606,31 @@ function unwrapPredictOraclePriceRows(payload: unknown): PredictOraclePriceRow[]
   return [];
 }
 
+function unwrapPredictOracleSviRows(payload: unknown): PredictOracleSviRow[] {
+  if (Array.isArray(payload)) {
+    return payload.filter(isPredictOracleSviRow);
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const record = payload as Record<string, unknown>;
+  for (const key of ["svi", "rows", "data"]) {
+    const rows = record[key];
+    if (Array.isArray(rows)) {
+      return rows.filter(isPredictOracleSviRow);
+    }
+  }
+
+  return [];
+}
+
 function isPredictOraclePriceRow(row: unknown): row is PredictOraclePriceRow {
+  return Boolean(row && typeof row === "object");
+}
+
+function isPredictOracleSviRow(row: unknown): row is PredictOracleSviRow {
   return Boolean(row && typeof row === "object");
 }
 
@@ -534,11 +689,18 @@ export function computeMarketHeat(
     );
 }
 
-export function buildPredictServerUrl(serverUrl: string, path: string): string {
+export function buildPredictServerUrl(
+  serverUrl: string,
+  path: string,
+  query: PredictHistoryRequestOptions = {},
+): string {
   const url = new URL(serverUrl);
   url.pathname = joinPathSegments(url.pathname, path);
   url.search = "";
   url.hash = "";
+  if (query.limit !== undefined) {
+    url.searchParams.set("limit", String(query.limit));
+  }
 
   return url.toString();
 }

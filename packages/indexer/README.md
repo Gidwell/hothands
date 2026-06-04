@@ -7,6 +7,12 @@ oracle data from the public Predict server, then graduate to Sui
 events/checkpoints for lower-latency oracle updates. Direct onchain reads should
 stay reserved for wallet-adjacent flows and transaction confirmation.
 
+The first foundation slice is DB-backed but still public-server first: run
+bounded, high-limit backfills for oracles, mints, redeems, trades, prices, and
+SVI into raw tables, then derive projections for market heat, recent activity,
+settlement views, and PWA feeds. No cursor paging has been found on the public
+Predict endpoints yet, so every job should be idempotent and freshness-aware.
+
 Run the read-only canary with:
 
 ```bash
@@ -22,6 +28,7 @@ Implemented testnet read checkpoint:
 - read recent binary mints from `/positions/minted`
 - read recent binary redeems from `/positions/redeemed`
 - read per-oracle activity from `/trades/:oracle_id`
+- read indexed oracle prices and SVI where available
 - keep range endpoints available for later with `/ranges/minted` and
   `/ranges/redeemed`
 
@@ -37,15 +44,19 @@ into `PredictNormalizedTradeEvent` records and computes provisional
 fixture tests.
 
 The first UI pass should label these as "Testnet trades" or "Market Heat" and
-use them for activity/trader discovery. Users can still watch an external
-trader's next observed mint and receive a prepared mirror-copy or fade
-transaction, but that is reactive action from public activity. Hot
-Hands-native reputation requires watch rules, copy/fade executions, native
-signals when present, and settlement-aware scoring.
+use them for activity/trader discovery. As the indexer comes online, the PWA
+should consume indexed and downsampled projections rather than public Predict
+server responses directly. Users can still watch an external trader's next
+observed mint and receive a prepared mirror-copy or fade transaction, but that
+is reactive action from public activity. Hot Hands-native reputation requires
+watch rules, copy/fade executions, native signals when present, and
+settlement-aware scoring.
 
 Primary responsibilities:
 
 - Predict server polling/replay adapters
+- DB-backed raw Predict backfill tables
+- derived and downsampled feed projections
 - DeepBook Predict trade-history normalization
 - external wallet heat scoring
 - watch-rule matching inputs
