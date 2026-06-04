@@ -15,6 +15,17 @@ import type { OraclePriceChart, OraclePriceChartPoint } from "./oraclePriceChart
 
 const COMPACT_CHART_MIN_BAR_SPACING = 0.5;
 const EXPANDED_CHART_MIN_BAR_SPACING = 0.02;
+const EXPANDED_CHART_DEFAULT_WINDOW_SECONDS = 30 * 60;
+
+type OraclePriceChartInitialView =
+  | {
+      mode: "fit-content";
+    }
+  | {
+      from: UTCTimestamp;
+      mode: "time-range";
+      to: UTCTimestamp;
+    };
 
 export function OraclePriceChartCard({
   chart,
@@ -201,7 +212,19 @@ function LightweightOraclePriceChart({
         pointCount: data.length,
       })
     ) {
-      chart.timeScale().fitContent();
+      const initialView = getInitialOraclePriceChartView({
+        compact,
+        pointTimes: data.map((point) => point.time),
+      });
+
+      if (initialView.mode === "time-range") {
+        chart.timeScale().setVisibleRange({
+          from: initialView.from,
+          to: initialView.to,
+        });
+      } else {
+        chart.timeScale().fitContent();
+      }
       hasFitInitialDataRef.current = true;
     }
   }, [compact, data]);
@@ -245,6 +268,41 @@ export function getOraclePriceChartMinBarSpacing({
   return compact
     ? COMPACT_CHART_MIN_BAR_SPACING
     : EXPANDED_CHART_MIN_BAR_SPACING;
+}
+
+export function getInitialOraclePriceChartView({
+  compact,
+  pointTimes,
+}: {
+  compact: boolean;
+  pointTimes: number[];
+}): OraclePriceChartInitialView {
+  if (compact || pointTimes.length < 2) {
+    return { mode: "fit-content" };
+  }
+
+  const sortedTimes = pointTimes
+    .filter((time) => Number.isFinite(time))
+    .sort((left, right) => left - right);
+  const firstTime = sortedTimes[0];
+  const latestTime = sortedTimes.at(-1);
+  if (firstTime === undefined || latestTime === undefined) {
+    return { mode: "fit-content" };
+  }
+
+  const visibleStart = Math.max(
+    firstTime,
+    latestTime - EXPANDED_CHART_DEFAULT_WINDOW_SECONDS,
+  );
+  if (visibleStart <= firstTime) {
+    return { mode: "fit-content" };
+  }
+
+  return {
+    mode: "time-range",
+    from: visibleStart as UTCTimestamp,
+    to: latestTime as UTCTimestamp,
+  };
 }
 
 function formatCrosshairLocalTime(time: Time): string {

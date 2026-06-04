@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  getInitialOraclePriceChartView,
   getOraclePriceChartMinBarSpacing,
   OraclePriceChartModal,
   shouldAutoFitOraclePriceChart,
@@ -95,5 +96,34 @@ describe("OraclePriceChartModal", () => {
     expect(getOraclePriceChartMinBarSpacing({ compact: true })).toBeGreaterThan(
       getOraclePriceChartMinBarSpacing({ compact: false }),
     );
+  });
+
+  test("defaults expanded charts to the latest thirty minutes when more history exists", () => {
+    expect(
+      getInitialOraclePriceChartView({
+        compact: false,
+        pointTimes: [100, 1_000, 1_900, 2_000],
+      }),
+    ).toEqual({
+      mode: "time-range",
+      from: 200,
+      to: 2_000,
+    });
+  });
+
+  test("fits compact and short-history charts instead of forcing a thirty minute range", () => {
+    expect(
+      getInitialOraclePriceChartView({
+        compact: true,
+        pointTimes: [100, 1_000, 1_900, 2_000],
+      }),
+    ).toEqual({ mode: "fit-content" });
+
+    expect(
+      getInitialOraclePriceChartView({
+        compact: false,
+        pointTimes: [1_900, 2_000],
+      }),
+    ).toEqual({ mode: "fit-content" });
   });
 });
