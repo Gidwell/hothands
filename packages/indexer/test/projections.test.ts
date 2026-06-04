@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildWalletPerformanceLeaderboards,
   buildLatestTradeFeedProjection,
   buildTraderHeatProjection,
   downsampleOraclePricePoints,
@@ -208,6 +209,98 @@ describe("Predict durable projections", () => {
       closedCount: 1,
       winCount: 1,
       lossCount: 0,
+    });
+  });
+
+  test("builds wallet leaderboards for streaks and realized PnL", () => {
+    const positions = [
+      positionSummary({
+        id: "alpha-win-1",
+        owner: "0xalpha",
+        realizedPnl: 100_000,
+        lastEventMs: 1_000,
+      }),
+      positionSummary({
+        id: "alpha-win-2",
+        owner: "0xalpha",
+        realizedPnl: 120_000,
+        lastEventMs: 2_000,
+      }),
+      positionSummary({
+        id: "alpha-loss",
+        owner: "0xalpha",
+        realizedPnl: -30_000,
+        lastEventMs: 3_000,
+      }),
+      positionSummary({
+        id: "beta-loss-1",
+        owner: "0xbeta",
+        realizedPnl: -50_000,
+        lastEventMs: 1_500,
+      }),
+      positionSummary({
+        id: "beta-loss-2",
+        owner: "0xbeta",
+        realizedPnl: -70_000,
+        lastEventMs: 2_500,
+      }),
+      positionSummary({
+        id: "beta-win",
+        owner: "0xbeta",
+        realizedPnl: 500_000,
+        lastEventMs: 3_500,
+      }),
+      positionSummary({
+        id: "gamma-loss",
+        owner: "0gamma",
+        realizedPnl: -900_000,
+        lastEventMs: 4_000,
+      }),
+      positionSummary({
+        id: "gamma-open",
+        owner: "0gamma",
+        realizedPnl: 1_000_000,
+        status: "open",
+        lastEventMs: 5_000,
+      }),
+    ];
+
+    const leaderboards = buildWalletPerformanceLeaderboards(positions, { limit: 2 });
+
+    expect(leaderboards.longestWinningStreak.map((entry) => entry.wallet)).toEqual([
+      "0xalpha",
+      "0xbeta",
+    ]);
+    expect(leaderboards.longestWinningStreak[0]).toMatchObject({
+      wallet: "0xalpha",
+      totalPnl: 190_000,
+      winCount: 2,
+      lossCount: 1,
+      longestWinningStreak: 2,
+      longestLosingStreak: 1,
+      currentStreakType: "loss",
+      currentStreakLength: 1,
+    });
+    expect(leaderboards.longestLosingStreak.map((entry) => entry.wallet)).toEqual([
+      "0xbeta",
+      "0gamma",
+    ]);
+    expect(leaderboards.highestPnl.map((entry) => entry.wallet)).toEqual([
+      "0xbeta",
+      "0xalpha",
+    ]);
+    expect(leaderboards.worstPnl.map((entry) => entry.wallet)).toEqual([
+      "0gamma",
+      "0xalpha",
+    ]);
+    expect(leaderboards.worstPnl[0]).toMatchObject({
+      wallet: "0gamma",
+      totalPnl: -900_000,
+      openCount: 1,
+      closedCount: 1,
+      longestLosingStreak: 1,
+      currentStreakType: "loss",
+      currentStreakLength: 1,
     });
   });
 });

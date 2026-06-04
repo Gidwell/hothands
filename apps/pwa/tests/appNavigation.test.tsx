@@ -164,6 +164,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="bottom-nav"');
     expect(html).toContain("🔥 Feed");
     expect(html).toContain("↔ Trade");
+    expect(html).toContain("🏆 Leaders");
     expect(html).toContain("💵 Portfolio");
     expect(html).toContain('aria-pressed="true"');
   });

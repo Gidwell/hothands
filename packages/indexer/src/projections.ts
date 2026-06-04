@@ -57,6 +57,36 @@ export type WalletStats = {
   lossCount: number;
 };
 
+export type WalletLeaderboardOptions = {
+  limit?: number;
+};
+
+export type WalletStreakType = "win" | "loss" | "none";
+
+export type WalletPerformanceEntry = {
+  wallet: string;
+  totalCost: number;
+  totalPayout: number;
+  totalPnl: number;
+  openCount: number;
+  closedCount: number;
+  winCount: number;
+  lossCount: number;
+  longestWinningStreak: number;
+  longestLosingStreak: number;
+  currentStreakType: WalletStreakType;
+  currentStreakLength: number;
+  lastSettledAtMs: number;
+  lastSeenMs: number;
+};
+
+export type WalletPerformanceLeaderboards = {
+  longestWinningStreak: WalletPerformanceEntry[];
+  longestLosingStreak: WalletPerformanceEntry[];
+  highestPnl: WalletPerformanceEntry[];
+  worstPnl: WalletPerformanceEntry[];
+};
+
 type TraderHeatAccumulator = {
   trader: string;
   eventCount: number;
@@ -218,6 +248,103 @@ export function summarizeWalletStats(
     );
 }
 
+export function buildWalletPerformanceLeaderboards(
+  positions: PredictPositionSummary[],
+  { limit }: WalletLeaderboardOptions = {},
+): WalletPerformanceLeaderboards {
+  const entries = buildWalletPerformanceEntries(positions);
+
+  return {
+    longestWinningStreak: applyLimit(
+      entries
+        .filter((entry) => entry.longestWinningStreak > 0)
+        .sort(compareByWinningStreak),
+      limit,
+    ),
+    longestLosingStreak: applyLimit(
+      entries
+        .filter((entry) => entry.longestLosingStreak > 0)
+        .sort(compareByLosingStreak),
+      limit,
+    ),
+    highestPnl: applyLimit([...entries].sort(compareByHighestPnl), limit),
+    worstPnl: applyLimit([...entries].sort(compareByWorstPnl), limit),
+  };
+}
+
+export function buildWalletPerformanceEntries(
+  positions: PredictPositionSummary[],
+): WalletPerformanceEntry[] {
+  const groups = new Map<string, PredictPositionSummary[]>();
+
+  for (const position of positions) {
+    groups.set(position.owner, [...(groups.get(position.owner) ?? []), position]);
+  }
+
+  return [...groups.entries()]
+    .map(([wallet, walletPositions]) =>
+      buildWalletPerformanceEntry(wallet, walletPositions),
+    )
+    .filter((entry) => entry.closedCount > 0)
+    .sort(compareByHighestPnl);
+}
+
+function buildWalletPerformanceEntry(
+  wallet: string,
+  positions: PredictPositionSummary[],
+): WalletPerformanceEntry {
+  const sortedClosed = positions
+    .filter((position) => position.status === "closed")
+    .sort(comparePositionsOldestFirst);
+  const stats = summarizeWalletStats(positions, { owner: wallet });
+  let longestWinningStreak = 0;
+  let longestLosingStreak = 0;
+  let currentStreakType: WalletStreakType = "none";
+  let currentStreakLength = 0;
+
+  for (const position of sortedClosed) {
+    const result = positionResult(position);
+    if (result === "none") {
+      currentStreakType = "none";
+      currentStreakLength = 0;
+      continue;
+    }
+
+    if (result === currentStreakType) {
+      currentStreakLength += 1;
+    } else {
+      currentStreakType = result;
+      currentStreakLength = 1;
+    }
+
+    if (result === "win") {
+      longestWinningStreak = Math.max(longestWinningStreak, currentStreakLength);
+    } else {
+      longestLosingStreak = Math.max(longestLosingStreak, currentStreakLength);
+    }
+  }
+
+  return {
+    wallet,
+    totalCost: stats.totalCost,
+    totalPayout: stats.totalPayout,
+    totalPnl: stats.realizedPnl,
+    openCount: stats.openCount,
+    closedCount: stats.closedCount,
+    winCount: stats.winCount,
+    lossCount: stats.lossCount,
+    longestWinningStreak,
+    longestLosingStreak,
+    currentStreakType,
+    currentStreakLength,
+    lastSettledAtMs: sortedClosed.at(-1)?.lastEventMs ?? 0,
+    lastSeenMs: positions.reduce(
+      (lastSeen, position) => Math.max(lastSeen, position.lastEventMs),
+      0,
+    ),
+  };
+}
+
 function projectTraderHeat(group: TraderHeatAccumulator): TraderHeatProjection {
   const observedVolume =
     group.positionCount > 0
@@ -349,4 +476,71 @@ function compareOraclePricePoints(
     left.timestampMs - right.timestampMs ||
     (left.eventId ?? "").localeCompare(right.eventId ?? "")
   );
+}
+
+function comparePositionsOldestFirst(
+  left: PredictPositionSummary,
+  right: PredictPositionSummary,
+): number {
+  return left.lastEventMs - right.lastEventMs || left.id.localeCompare(right.id);
+}
+
+function compareByWinningStreak(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.longestWinningStreak - left.longestWinningStreak ||
+    right.totalPnl - left.totalPnl ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByLosingStreak(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.longestLosingStreak - left.longestLosingStreak ||
+    left.totalPnl - right.totalPnl ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByHighestPnl(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.totalPnl - left.totalPnl ||
+    right.longestWinningStreak - left.longestWinningStreak ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByWorstPnl(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    left.totalPnl - right.totalPnl ||
+    right.longestLosingStreak - left.longestLosingStreak ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function positionResult(position: PredictPositionSummary): WalletStreakType {
+  if (position.realizedPnl > 0) {
+    return "win";
+  }
+
+  if (position.realizedPnl < 0) {
+    return "loss";
+  }
+
+  return "none";
 }

@@ -62,6 +62,15 @@ import {
   loadOraclePriceChart,
   type OraclePriceChart,
 } from "./oraclePriceChartModel";
+import {
+  buildWalletLeaderboards,
+  loadWalletLeaderboards,
+  selectWalletLeaderboardEntries,
+  WALLET_LEADERBOARD_BOARDS,
+  type WalletLeaderboardBoardKey,
+  type WalletLeaderboardEntry,
+  type WalletLeaderboardsSnapshot,
+} from "./walletLeaderboards";
 import { buildTradeMintTransaction } from "./walletTransactions";
 import { buildPortfolioRedeemTransaction } from "./walletTransactions";
 import {
@@ -92,6 +101,7 @@ const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 1_000;
 const ORACLE_PRICE_CHART_REFRESH_MS = 1_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
+const WALLET_LEADERBOARDS_REFRESH_MS = 15_000;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
 const PORTFOLIO_TIME_REFRESH_MS = 15_000;
 const DEPOSIT_AMOUNT_DEFAULT = 25;
@@ -99,7 +109,7 @@ const DEPOSIT_AMOUNT_MIN = 0.01;
 const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
 type PreviewMode = "replay" | "market";
-export type AppView = "feed" | "trade" | "portfolio";
+export type AppView = "feed" | "trade" | "leaderboards" | "portfolio";
 export type TradeSide = "UP" | "DOWN";
 export type TradeMarketSelection = {
   marketId: string;
@@ -152,6 +162,11 @@ type PredictPortfolioState = {
   refreshKey: number;
   status: "idle" | "loading" | "ready" | "error";
   positions: PredictPortfolioPosition[];
+};
+type WalletLeaderboardsStatus = "idle" | "loading" | "ready" | "error";
+type WalletLeaderboardsState = {
+  snapshot: WalletLeaderboardsSnapshot;
+  status: WalletLeaderboardsStatus;
 };
 type PortfolioTab = "positions" | "history";
 
@@ -760,6 +775,13 @@ export function BottomNav({
         onClick={() => onViewChange("trade")}
       >
         ↔ Trade
+      </button>
+      <button
+        type="button"
+        aria-pressed={activeView === "leaderboards"}
+        onClick={() => onViewChange("leaderboards")}
+      >
+        🏆 Leaders
       </button>
       <button
         type="button"
@@ -1477,6 +1499,127 @@ export function PortfolioPanel({
   );
 }
 
+function walletLeaderboardMetricValue(
+  entry: WalletLeaderboardEntry,
+  board: WalletLeaderboardBoardKey,
+): string {
+  switch (board) {
+    case "longestWinningStreak":
+      return entry.longestWinningStreakLabel;
+    case "longestLosingStreak":
+      return entry.longestLosingStreakLabel;
+    case "highestPnl":
+    case "worstPnl":
+      return entry.totalPnlLabel;
+  }
+}
+
+export function WalletLeaderboardsPanel({
+  activeBoard,
+  snapshot,
+  status = "ready",
+  onBoardChange,
+}: {
+  activeBoard: WalletLeaderboardBoardKey;
+  snapshot: WalletLeaderboardsSnapshot;
+  status?: WalletLeaderboardsStatus;
+  onBoardChange: (board: WalletLeaderboardBoardKey) => void;
+}) {
+  const activeBoardDefinition =
+    WALLET_LEADERBOARD_BOARDS.find((board) => board.key === activeBoard) ??
+    WALLET_LEADERBOARD_BOARDS[0];
+  const entries = selectWalletLeaderboardEntries(snapshot, activeBoardDefinition.key);
+  const emptyLabel =
+    status === "loading"
+      ? "Loading wallet leaderboards..."
+      : status === "error"
+        ? "Could not load wallet leaderboards"
+        : "No settled wallet results yet";
+  const sourceLabel =
+    status === "loading" && entries.length === 0 ? "Loading" : snapshot.sourceLabel;
+
+  return (
+    <section
+      className="wallet-leaderboards-panel"
+      aria-label="Wallet Leaderboards"
+      data-testid="wallet-leaderboards-view"
+    >
+      <div className="section-heading">
+        <p>Wallet Leaders</p>
+        <span>{sourceLabel}</span>
+      </div>
+      <div className="wallet-leaderboard-tabs" aria-label="Wallet leaderboard boards">
+        {WALLET_LEADERBOARD_BOARDS.map((board) => (
+          <button
+            type="button"
+            aria-pressed={activeBoardDefinition.key === board.key}
+            data-testid={`wallet-leaderboard-tab-${board.key}`}
+            key={board.key}
+            onClick={() => onBoardChange(board.key)}
+          >
+            {board.label}
+          </button>
+        ))}
+      </div>
+      {entries.length ? (
+        <div className="wallet-leaderboard-list">
+          {entries.map((entry) => (
+            <article
+              className={`wallet-leaderboard-row wallet-leaderboard-row-${entry.totalPnlTone}`}
+              data-testid="wallet-leaderboard-row"
+              key={`${activeBoardDefinition.key}-${entry.wallet}-${entry.rank}`}
+            >
+              <div className="wallet-leaderboard-main">
+                <span className="wallet-leaderboard-rank">#{entry.rank}</span>
+                <div>
+                  <strong>{entry.displayName}</strong>
+                  <small>
+                    {activeBoardDefinition.metricLabel}{" "}
+                    {walletLeaderboardMetricValue(entry, activeBoardDefinition.key)}
+                  </small>
+                </div>
+                <strong className={`wallet-leaderboard-pnl wallet-leaderboard-pnl-${entry.totalPnlTone}`}>
+                  {entry.totalPnlLabel}
+                </strong>
+              </div>
+              <div className="wallet-leaderboard-metrics">
+                <span>
+                  <small>{activeBoardDefinition.metricLabel}</small>
+                  {walletLeaderboardMetricValue(entry, activeBoardDefinition.key)}
+                </span>
+                <span>
+                  <small>Wins</small>
+                  {entry.winCount}
+                </span>
+                <span>
+                  <small>Losses</small>
+                  {entry.lossCount}
+                </span>
+                <span>
+                  <small>Closed</small>
+                  {entry.closedCount}
+                </span>
+                <span>
+                  <small>Current</small>
+                  {entry.currentStreakLabel}
+                </span>
+                <span>
+                  <small>Last</small>
+                  {entry.lastSettledLabel}
+                </span>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="wallet-leaderboard-empty" data-testid="wallet-leaderboard-empty">
+          {emptyLabel}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function MarketHeatPreview({
   rows,
   sourceLabel,
@@ -1971,6 +2114,13 @@ export function App() {
     status: "idle",
     positions: [],
   });
+  const [walletLeaderboardsState, setWalletLeaderboardsState] =
+    useState<WalletLeaderboardsState>(() => ({
+      snapshot: buildWalletLeaderboards(),
+      status: "idle",
+    }));
+  const [activeWalletLeaderboard, setActiveWalletLeaderboard] =
+    useState<WalletLeaderboardBoardKey>("longestWinningStreak");
   const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
   const [dismissedPortfolioPositionIds, setDismissedPortfolioPositionIds] = useState<Set<string>>(
     () => new Set(),
@@ -2559,6 +2709,67 @@ export function App() {
       window.clearInterval(refreshTimer);
     };
   }, [previewMode, realtimeApiBaseUrl]);
+
+  useEffect(() => {
+    if (activeView !== "leaderboards") {
+      return undefined;
+    }
+
+    let isCurrent = true;
+    let isRefreshing = false;
+
+    const refreshWalletLeaderboards = async () => {
+      if (isRefreshing) {
+        return;
+      }
+
+      isRefreshing = true;
+      setWalletLeaderboardsState((state) => ({
+        ...state,
+        status: state.status === "ready" ? "ready" : "loading",
+      }));
+
+      try {
+        const snapshot = await loadWalletLeaderboards({
+          apiBaseUrl: realtimeApiBaseUrl,
+        });
+
+        if (isCurrent) {
+          setWalletLeaderboardsState({
+            snapshot,
+            status: "ready",
+          });
+        }
+      } catch {
+        if (isCurrent) {
+          setWalletLeaderboardsState((state) => ({
+            ...state,
+            status: "error",
+          }));
+        }
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    void refreshWalletLeaderboards();
+
+    if (!realtimeApiBaseUrl) {
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    const refreshTimer = window.setInterval(
+      refreshWalletLeaderboards,
+      WALLET_LEADERBOARDS_REFRESH_MS,
+    );
+
+    return () => {
+      isCurrent = false;
+      window.clearInterval(refreshTimer);
+    };
+  }, [activeView, realtimeApiBaseUrl]);
 
   useEffect(() => {
     if (!realtimeApiBaseUrl || !activeChartOracleId) {
@@ -3316,6 +3527,13 @@ export function App() {
             renderMarketHeatPreview()
           ) : activeView === "trade" ? (
             renderTradeTicket()
+          ) : activeView === "leaderboards" ? (
+            <WalletLeaderboardsPanel
+              activeBoard={activeWalletLeaderboard}
+              snapshot={walletLeaderboardsState.snapshot}
+              status={walletLeaderboardsState.status}
+              onBoardChange={setActiveWalletLeaderboard}
+            />
           ) : (
             <PortfolioPanel
               emptyLabel={

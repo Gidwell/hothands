@@ -21,6 +21,7 @@ import { createTableActivityBroadcast } from "./table-activity";
 import { getTestnetMarketHeat } from "./market-heat";
 import { getTestnetOraclePrices } from "./oracle-prices";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
+import type { PredictIndexerReader } from "@hot-hands/indexer";
 import {
   getTestnetPredictRedeemQuote,
   getTestnetPredictQuote,
@@ -28,10 +29,15 @@ import {
   type PredictQuoteRequest,
   type PredictRedeemQuoteRequest
 } from "./predict-quote";
+import {
+  getTestnetWalletLeaderboards,
+  parseWalletLeaderboardRequest
+} from "./wallet-leaderboards";
 
 export interface Env {
   TABLE_ROOM: DurableObjectNamespace;
   fetch?: typeof fetch;
+  indexerReader?: PredictIndexerReader;
   inspectPredictQuoteQuantity?: InspectPredictQuoteQuantity;
 }
 
@@ -69,6 +75,33 @@ export default {
       }
 
       return json(await getTestnetMarketHeat({ fetchImpl: env.fetch ?? fetch }));
+    }
+
+    if (url.pathname === "/testnet/wallet-leaderboards") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      if (!env.indexerReader) {
+        return json({ error: "indexer_unavailable" }, 503);
+      }
+
+      try {
+        return json(
+          await getTestnetWalletLeaderboards({
+            reader: env.indexerReader,
+            ...parseWalletLeaderboardRequest(url)
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "wallet_leaderboards_failed",
+            message: error instanceof Error ? error.message : "Unable to load wallet leaderboards."
+          },
+          400
+        );
+      }
     }
 
     if (url.pathname === "/testnet/quote") {
@@ -173,6 +206,7 @@ export default {
             "/testnet/market-heat",
             "/testnet/oracle-settlement",
             "/testnet/oracle-prices",
+            "/testnet/wallet-leaderboards",
             "/testnet/quote",
             "/testnet/redeem-quote",
             "/tables/:tableId/summary",

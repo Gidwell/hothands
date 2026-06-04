@@ -182,6 +182,42 @@ describe("testnet market heat endpoint", () => {
     ).toBeGreaterThan(projection.rows[0].heatScore);
   });
 
+  test("returns indexed wallet leaderboards from an injected reader", async () => {
+    const response = await worker.fetch(
+      new Request("https://api.hot-hands.test/testnet/wallet-leaderboards?limit=5"),
+      { indexerReader: createIndexedMarketHeatReader() } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    const body = await response.json();
+    expect(body.source).toBe("indexed_testnet");
+    expect(body.leaderboards.longestWinningStreak[0]).toMatchObject({
+      wallet: "0xtrader-hot",
+      totalPnl: 3_000_000,
+      closedCount: 1,
+      winCount: 1,
+      longestWinningStreak: 1
+    });
+    expect(body.leaderboards.highestPnl[0]).toMatchObject({
+      wallet: "0xtrader-hot",
+      totalPnl: 3_000_000
+    });
+  });
+
+  test("requires an indexer reader for worker wallet leaderboards", async () => {
+    const response = await worker.fetch(
+      new Request("https://api.hot-hands.test/testnet/wallet-leaderboards"),
+      {} as Env
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "indexer_unavailable"
+    });
+  });
+
   test("returns oracle settlement details for portfolio claim previews", async () => {
     const response = await worker.fetch(
       new Request(
