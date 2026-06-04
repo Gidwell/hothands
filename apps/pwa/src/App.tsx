@@ -771,17 +771,17 @@ export function BottomNav({
       </button>
       <button
         type="button"
-        aria-pressed={activeView === "trade"}
-        onClick={() => onViewChange("trade")}
-      >
-        ↔ Trade
-      </button>
-      <button
-        type="button"
         aria-pressed={activeView === "leaderboards"}
         onClick={() => onViewChange("leaderboards")}
       >
         🏆 Leaders
+      </button>
+      <button
+        type="button"
+        aria-pressed={activeView === "trade"}
+        onClick={() => onViewChange("trade")}
+      >
+        ↔ Trade
       </button>
       <button
         type="button"
