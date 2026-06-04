@@ -66,6 +66,16 @@ export {
 } from "./postgres-reader";
 
 export {
+  DEFAULT_PRICE_POLL_INTERVAL_MS,
+  pollDeepBookPredictLatestPrices,
+  startDeepBookPredictPricePoller,
+  type DeepBookPredictPricePoller,
+  type DeepBookPredictPricePollerOptions,
+  type DeepBookPredictPricePollOptions,
+  type DeepBookPredictPricePollSummary,
+} from "./price-poller";
+
+export {
   buildLatestTradeFeedProjection,
   buildTraderHeatProjection,
   downsampleOraclePricePoints,

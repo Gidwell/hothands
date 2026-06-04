@@ -269,13 +269,15 @@ const positionSummaryColumns: readonly SqlColumn<PredictPositionSummary>[] = [
 ];
 
 function priceEventId(point: PredictOraclePricePoint): string {
-  return point.eventId ?? [
+  return [
     "price",
     point.oracleId,
-    point.checkpoint ?? "no-checkpoint",
-    point.timestampMs,
-    point.spot,
-    point.forward ?? "no-forward",
+    point.eventId ?? [
+      point.checkpoint ?? "no-checkpoint",
+      point.timestampMs,
+      point.spot,
+      point.forward ?? "no-forward",
+    ].join(":"),
   ].join(":");
 }
 

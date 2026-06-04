@@ -79,9 +79,11 @@ explicit:
 
 When `DATABASE_URL` is set for `bun run dev:testnet`, the local API prefers
 indexed reads for Market Heat, Trade markets, Portfolio events, and oracle price
-history. The chart requests up to 10,000 indexed/downsampled points and includes
-the full stored range metadata. Public Predict, captured rows, and direct Sui
-event reads remain fallbacks when the indexer is unavailable.
+history. It also starts a lightweight latest-price poller, every 1 second by
+default, so indexed BTC oracle prices keep moving while the app is open. The
+chart requests up to 10,000 indexed/downsampled points and includes the full
+stored range metadata. Public Predict, captured rows, and direct Sui event reads
+remain fallbacks when the indexer is unavailable.
 
 ## Current Demo Status
 

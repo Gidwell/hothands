@@ -57,6 +57,12 @@ serves them behind a narrow local setup:
    - Portfolio mint/redeem events for a connected `PredictManager`
    - Oracle price history for the BTC chart
 
+   The local API also starts a latest-price poller when `DATABASE_URL` is set.
+   It polls active BTC oracle `/prices/latest` rows every 1 second by default
+   and upserts them into `predict_oracle_prices`. Disable it with
+   `HOT_HANDS_INDEXER_PRICE_POLL=false` or change the interval with
+   `HOT_HANDS_INDEXER_PRICE_POLL_MS`.
+
    The chart endpoint requests downsampled full-range history from
    `predict_oracle_prices`, preserving the first and latest indexed points while
    returning at most the requested point budget.
