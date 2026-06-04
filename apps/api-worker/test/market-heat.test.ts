@@ -130,7 +130,7 @@ describe("testnet market heat endpoint", () => {
       {
         oracleId: "btc-indexed-short",
         market: "BTC-USD",
-        expiry: 1_779_158_100,
+        expiry: 1_779_158_100_000,
         expiryMs: 1_779_158_100_000,
         intervalLabel: "10m",
         active: true,
@@ -143,7 +143,7 @@ describe("testnet market heat endpoint", () => {
       {
         oracleId: "btc-indexed-long",
         market: "BTC-USD",
-        expiry: 1_779_158_400,
+        expiry: 1_779_158_400_000,
         expiryMs: 1_779_158_400_000,
         intervalLabel: "15m",
         active: true,

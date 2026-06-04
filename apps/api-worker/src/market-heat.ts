@@ -511,7 +511,7 @@ function mapIndexedBtcMarket(
   return {
     oracleId: oracle.oracle_id,
     market: "BTC-USD",
-    expiry: normalizeEpochSeconds(oracle.expiry),
+    expiry: oracle.expiry,
     expiryMs,
     intervalLabel: formatIndexedOracleIntervalLabel(oracle),
     active: oracle.status === "active",

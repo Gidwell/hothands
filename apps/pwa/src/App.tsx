@@ -1557,6 +1557,21 @@ export function MarketHeatPreview({
           </div>
         </div>
       </div>
+      {rows.length === 0 ? (
+        <div className="market-heat-empty" data-testid="market-heat-empty">
+          <strong>{showExpired ? "No positions for this filter" : "No live positions right now"}</strong>
+          <span>
+            {showExpired
+              ? "Try another duration."
+              : "Show expired to review recent testnet activity."}
+          </span>
+          {!showExpired ? (
+            <button type="button" onClick={() => onShowExpiredChange(true)}>
+              Show expired
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {rows.map((row) => {
         const isSelected = row.id === selectedRowId;
         const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;

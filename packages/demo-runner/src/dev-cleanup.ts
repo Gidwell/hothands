@@ -230,8 +230,8 @@ async function main() {
 
   const allPids = new Set(sortedPids);
 
-  for (let pass = 0; pass < 5; pass += 1) {
-    await new Promise((resolve) => setTimeout(resolve, pass === 0 ? 750 : 250));
+  for (let pass = 0; pass < 12; pass += 1) {
+    await new Promise((resolve) => setTimeout(resolve, pass === 0 ? 750 : 500));
 
     const latePids = collectLateListenerPids({
       cleanupPorts: config.cleanupPorts,
