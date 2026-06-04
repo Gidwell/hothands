@@ -140,6 +140,33 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Wallet request started");
   });
 
+  test("explains an empty live feed without hiding the expired-position toggle", () => {
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[]}
+        sourceLabel="Indexed Testnet"
+        sortMode="latest"
+        selectedRowId={null}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onCloseIntent={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="market-heat-empty"');
+    expect(html).toContain("No live positions right now");
+    expect(html).toContain("Show expired to review recent testnet activity.");
+    expect(html).toContain('data-testid="market-heat-show-expired"');
+  });
+
   test("renders a bottom show-more control when more feed rows are available", () => {
     const rows = buildMarketHeatPreview(
       Array.from({ length: 10 }, (_, index) => ({

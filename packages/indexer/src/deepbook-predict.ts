@@ -424,6 +424,19 @@ export function createPredictOraclePriceClient({
   fetchImpl = fetch,
 }: PredictOraclePriceClientOptions = {}) {
   return {
+    getLatestOraclePrice: async (
+      oracleId: string,
+    ): Promise<PredictOraclePricePoint | null> => {
+      const latestPrice = await fetchLatestPriceOrNull(
+        fetchImpl,
+        config.serverUrl,
+        oracleId,
+      );
+
+      return latestPrice
+        ? normalizePredictOraclePriceRow(latestPrice, oracleId)
+        : null;
+    },
     listOraclePrices: async (
       oracleId: string,
       options: PredictHistoryRequestOptions = {},
@@ -470,7 +483,7 @@ export function normalizePredictOraclePriceRow(
     "oracle_id",
   );
   const transactionDigest = stringValue(
-    row.digest ?? row.event_digest,
+    row.event_digest ?? row.digest,
   );
   const eventSeq = optionalNumber(row.event_index ?? row.event_seq);
 

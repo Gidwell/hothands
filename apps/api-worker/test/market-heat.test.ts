@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { DEEPBOOK_PREDICT_TESTNET_CONFIG } from "@hot-hands/indexer";
+import {
+  DEEPBOOK_PREDICT_TESTNET_CONFIG,
+  type PredictIndexerReader
+} from "@hot-hands/indexer";
 import worker, { type Env } from "../src/index";
 import { getTestnetMarketHeat } from "../src/market-heat";
+import { getTestnetOraclePrices } from "../src/oracle-prices";
 
 describe("testnet market heat endpoint", () => {
   test("returns live testnet market heat from injected Predict reads", async () => {
@@ -105,6 +109,79 @@ describe("testnet market heat endpoint", () => {
     ]);
   });
 
+  test("prefers injected indexed market heat with latest rows and active trade markets", async () => {
+    let publicPredictFetchCount = 0;
+    const projection = await getTestnetMarketHeat({
+      reader: createIndexedMarketHeatReader(),
+      fetchImpl: async () => {
+        publicPredictFetchCount += 1;
+        throw new Error("public Predict should not be read when indexed market heat exists");
+      }
+    });
+
+    expect(publicPredictFetchCount).toBe(0);
+    expect(projection.source).toBe("indexed_testnet");
+    expect(projection.marketPrice).toEqual({
+      market: "BTC-USD",
+      price: 72125,
+      source: "indexed_testnet"
+    });
+    expect(projection.markets).toEqual([
+      {
+        oracleId: "btc-indexed-short",
+        market: "BTC-USD",
+        expiry: 1_779_158_100_000,
+        expiryMs: 1_779_158_100_000,
+        intervalLabel: "10m",
+        active: true,
+        status: "active",
+        strikeCandidate: 71_500_000_000,
+        strikeCandidatePrice: 71500,
+        latestPrice: 71500,
+        latestPriceLabel: "$71,500"
+      },
+      {
+        oracleId: "btc-indexed-long",
+        market: "BTC-USD",
+        expiry: 1_779_158_400_000,
+        expiryMs: 1_779_158_400_000,
+        intervalLabel: "15m",
+        active: true,
+        status: "active",
+        strikeCandidate: 72_125_000_000,
+        strikeCandidatePrice: 72125,
+        latestPrice: 72125,
+        latestPriceLabel: "$72,125"
+      }
+    ]);
+    expect(projection.rows.slice(0, 3).map((row) => row.wallet)).toEqual([
+      "0xtrader-new",
+      "0xtrader-mid",
+      "0xtrader-hot"
+    ]);
+    expect(projection.rows.slice(0, 3).map((row) => row.observedAtMs)).toEqual([
+      1_779_071_200_000,
+      1_779_071_100_000,
+      1_779_070_000_000
+    ]);
+    expect(projection.rows[0]).toMatchObject({
+      id: expect.stringContaining("indexed-"),
+      wallet: "0xtrader-new",
+      manager: "manager-new",
+      oracleId: "btc-indexed-long",
+      side: "DOWN",
+      quantity: 1,
+      cost: 100_000,
+      costUsd: 0.1,
+      strike: 72125,
+      strikeRaw: 72_125_000_000,
+      status: "copy_ready"
+    });
+    expect(
+      projection.rows.find((row) => row.wallet === "0xtrader-hot")?.heatScore
+    ).toBeGreaterThan(projection.rows[0].heatScore);
+  });
+
   test("returns oracle settlement details for portfolio claim previews", async () => {
     const response = await worker.fetch(
       new Request(
@@ -154,6 +231,85 @@ describe("testnet market heat endpoint", () => {
           price: 72050,
           forwardPrice: 72070,
           checkpoint: 102
+        }
+      ]
+    });
+  });
+
+  test("prefers injected indexed oracle price history with full range metadata", async () => {
+    const indexedRequests: unknown[] = [];
+    const projection = await getTestnetOraclePrices({
+      fetchImpl: async () => {
+        throw new Error("public Predict should not be read when indexed history exists");
+      },
+      indexedOraclePriceHistoryLoader: async (request) => {
+        indexedRequests.push(request);
+
+        return {
+          points: [
+            {
+              timestampMs: 1_779_070_800_000,
+              price: 72000,
+              checkpoint: 101
+            },
+            {
+              timestampMs: 1_779_071_100_000,
+              price: 72075,
+              checkpoint: 106
+            },
+            {
+              timestampMs: 1_779_071_400_000,
+              price: 72100,
+              checkpoint: 111
+            }
+          ],
+          totalPointCount: 86_400,
+          startTimestampMs: 1_778_985_000_000,
+          endTimestampMs: 1_779_071_400_000,
+          downsampled: true
+        };
+      },
+      maxPoints: 10_000,
+      oracleId: "btc-indexed"
+    });
+
+    expect(indexedRequests).toEqual([
+      {
+        market: "BTC-USD",
+        maxPoints: 10_000,
+        oracleId: "btc-indexed"
+      }
+    ]);
+    expect(projection).toEqual({
+      source: "indexed_testnet",
+      market: "BTC-USD",
+      oracleId: "btc-indexed",
+      title: "DeepBook BTC oracle price",
+      detail: "DeepBook Predict oracle price used for BTC market settlement.",
+      latestPrice: 72100,
+      historyRange: {
+        startTimestampMs: 1_778_985_000_000,
+        endTimestampMs: 1_779_071_400_000,
+        totalPointCount: 86_400,
+        returnedPointCount: 3,
+        maxPoints: 10_000,
+        downsampled: true
+      },
+      points: [
+        {
+          timestampMs: 1_779_070_800_000,
+          price: 72000,
+          checkpoint: 101
+        },
+        {
+          timestampMs: 1_779_071_100_000,
+          price: 72075,
+          checkpoint: 106
+        },
+        {
+          timestampMs: 1_779_071_400_000,
+          price: 72100,
+          checkpoint: 111
         }
       ]
     });
@@ -653,6 +809,147 @@ function createLivePredictFetch(
   };
 }
 
+function createIndexedMarketHeatReader(): PredictIndexerReader {
+  const latestPrices = new Map([
+    [
+      "btc-indexed-short",
+      {
+        eventId: "price:btc-indexed-short:1",
+        oracleId: "btc-indexed-short",
+        spot: 71_500_000_000,
+        checkpoint: 101,
+        timestampMs: 1_779_071_000_000,
+        source: "oracles/prices" as const
+      }
+    ],
+    [
+      "btc-indexed-long",
+      {
+        eventId: "price:btc-indexed-long:1",
+        oracleId: "btc-indexed-long",
+        spot: 72_125_000_000,
+        checkpoint: 102,
+        timestampMs: 1_779_071_200_000,
+        source: "oracles/prices" as const
+      }
+    ]
+  ]);
+
+  return {
+    listBtcOracles: async () => [
+      btcIndexedOracle({
+        oracle_id: "btc-indexed-long",
+        expiry: 1_779_158_400_000,
+        activated_at: 1_779_157_500_000,
+        status: "active"
+      }),
+      btcIndexedOracle({
+        oracle_id: "btc-indexed-settled",
+        expiry: 1_779_157_000_000,
+        activated_at: 1_779_156_100_000,
+        status: "settled"
+      }),
+      btcIndexedOracle({
+        oracle_id: "btc-indexed-short",
+        expiry: 1_779_158_100_000,
+        activated_at: 1_779_157_500_000,
+        status: "active"
+      })
+    ],
+    listRecentTradeEvents: async () => [
+      indexedTradeEvent({
+        eventId: "mint:newer:1",
+        actor: "0xtrader-new",
+        managerId: "manager-new",
+        oracleId: "btc-indexed-long",
+        strike: 72_125_000_000,
+        isUp: false,
+        quantity: 1,
+        cost: 100_000,
+        timestampMs: 1_779_071_200_000
+      }),
+      indexedTradeEvent({
+        eventId: "mint:mid:1",
+        actor: "0xtrader-mid",
+        managerId: "manager-mid",
+        oracleId: "btc-indexed-short",
+        strike: 71_500_000_000,
+        quantity: 1,
+        cost: 200_000,
+        timestampMs: 1_779_071_100_000
+      }),
+      indexedTradeEvent({
+        eventId: "mint:hot-older:1",
+        actor: "0xtrader-hot",
+        managerId: "manager-hot",
+        oracleId: "btc-indexed-long",
+        strike: 72_000_000_000,
+        quantity: 6,
+        cost: 4_000_000,
+        timestampMs: 1_779_070_000_000
+      })
+    ],
+    listPositionSummaries: async () => [
+      {
+        id: "position-hot-win",
+        owner: "0xtrader-hot",
+        managerId: "manager-hot",
+        oracleId: "btc-indexed-long",
+        expiryMs: 1_779_158_400_000,
+        strike: 72_000_000_000,
+        isUp: true,
+        mintedQuantity: 6,
+        redeemedQuantity: 6,
+        openQuantity: 0,
+        cost: 5_000_000,
+        payout: 8_000_000,
+        realizedPnl: 3_000_000,
+        lastEventMs: 1_779_070_000_000,
+        status: "closed"
+      }
+    ],
+    listOraclePrices: async ({ oracleId }) => {
+      const price = latestPrices.get(oracleId);
+
+      return price ? [price] : [];
+    },
+    getLatestOraclePrice: async (oracleId) => latestPrices.get(oracleId) ?? null,
+    getOraclePriceStats: async () => null
+  };
+}
+
+function btcIndexedOracle(overrides: Record<string, unknown>) {
+  return {
+    predict_id: DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId,
+    oracle_id: "btc-indexed",
+    underlying_asset: "BTC",
+    expiry: 1_779_158_400_000,
+    activated_at: 1_779_157_500_000,
+    min_strike: 50_000_000_000,
+    tick_size: 1_000_000,
+    status: "active",
+    ...overrides
+  };
+}
+
+function indexedTradeEvent(overrides: Record<string, unknown>) {
+  return {
+    eventId: "mint:indexed:1",
+    kind: "mint",
+    actor: "0xtrader-indexed",
+    managerId: "manager-indexed",
+    oracleId: "btc-indexed-long",
+    expiryMs: 1_779_158_400_000,
+    strike: 72_000_000_000,
+    isUp: true,
+    quantity: 1,
+    cost: 100_000,
+    timestampMs: 1_779_071_000_000,
+    source: "trades/oracle",
+    ...overrides
+  };
+}
+
 function createOracleSettlementFetch(): typeof fetch {
   return async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -682,7 +979,7 @@ function createOraclePriceHistoryFetch(): typeof fetch {
   return async (input: RequestInfo | URL) => {
     const url = String(input);
 
-    if (url.endsWith("/oracles/btc-live/prices")) {
+    if (url.includes("/oracles/btc-live/prices")) {
       return jsonResponse({
         prices: [
           {

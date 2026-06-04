@@ -517,6 +517,51 @@ export function createPredictPortfolioCloseQuoteClient({
   };
 }
 
+export function createPredictPortfolioIndexedEventClient({
+  apiBaseUrl,
+  fallbackClient = createPredictPortfolioEventClient(),
+  fetcher = fetch,
+  managerObjectId,
+}: {
+  apiBaseUrl?: string | null;
+  fallbackClient?: PredictPortfolioEventClient;
+  fetcher?: typeof fetch;
+  managerObjectId?: string | null;
+}): PredictPortfolioEventClient | undefined {
+  const normalizedBaseUrl = apiBaseUrl?.trim();
+  const normalizedManagerId = managerObjectId?.trim();
+  if (!normalizedBaseUrl || !normalizedManagerId) {
+    return undefined;
+  }
+
+  return {
+    queryEvents: async (input) => {
+      const eventType = portfolioEventTypeForQuery(input.query);
+      if (!eventType) {
+        return emptyPaginatedEvents();
+      }
+
+      const url = new URL(`${normalizedBaseUrl.replace(/\/+$/, "")}/testnet/portfolio-events`);
+      url.searchParams.set("managerId", normalizedManagerId);
+      url.searchParams.set("eventType", eventType);
+      if (input.limit !== undefined) {
+        url.searchParams.set("limit", String(input.limit));
+      }
+
+      try {
+        const response = await fetcher(url.toString());
+        if (!response.ok) {
+          return fallbackClient.queryEvents(input);
+        }
+
+        return parseIndexedPortfolioEventsPayload(await response.json());
+      } catch {
+        return fallbackClient.queryEvents(input);
+      }
+    },
+  };
+}
+
 export function createPredictPortfolioSettlementClient({
   apiBaseUrl,
   fetcher = fetch,
@@ -543,6 +588,56 @@ export function createPredictPortfolioSettlementClient({
       return parseOracleSettlement(payload);
     },
   };
+}
+
+function portfolioEventTypeForQuery(
+  query: Pick<QueryEventsParams, "query">["query"],
+): PredictPortfolioEventType | null {
+  if (
+    "MoveEventType" in query &&
+    query.MoveEventType === POSITION_MINTED_EVENT_TYPE
+  ) {
+    return "mint";
+  }
+
+  if (
+    "MoveEventType" in query &&
+    query.MoveEventType === POSITION_REDEEMED_EVENT_TYPE
+  ) {
+    return "redeem";
+  }
+
+  return null;
+}
+
+function parseIndexedPortfolioEventsPayload(
+  payload: unknown,
+): Pick<PaginatedEvents, "data" | "hasNextPage" | "nextCursor"> {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return emptyPaginatedEvents();
+  }
+
+  return {
+    data: payload.data as PaginatedEvents["data"],
+    hasNextPage: payload.hasNextPage === true,
+    nextCursor: isEventId(payload.nextCursor) ? payload.nextCursor : null,
+  };
+}
+
+function emptyPaginatedEvents(): Pick<PaginatedEvents, "data" | "hasNextPage" | "nextCursor"> {
+  return {
+    data: [],
+    hasNextPage: false,
+    nextCursor: null,
+  };
+}
+
+function isEventId(value: unknown): value is EventId {
+  return (
+    isRecord(value) &&
+    stringValue(value.txDigest) !== null &&
+    stringValue(value.eventSeq) !== null
+  );
 }
 
 async function loadPortfolioEvents({

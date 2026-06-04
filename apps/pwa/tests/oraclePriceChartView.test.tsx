@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { OraclePriceChartModal } from "../src/OraclePriceChart";
+import {
+  getInitialOraclePriceChartView,
+  getOraclePriceChartMinBarSpacing,
+  OraclePriceChartModal,
+  shouldAutoFitOraclePriceChart,
+} from "../src/OraclePriceChart";
 import type { OraclePriceChart } from "../src/oraclePriceChartModel";
 
 const readyChart: OraclePriceChart = {
@@ -55,5 +60,76 @@ describe("OraclePriceChartModal", () => {
 
     expect(html).not.toContain("Updated ");
     expect(html).not.toContain("of oracle history");
+  });
+
+  test("preserves expanded chart zoom after the first price dataset", () => {
+    expect(
+      shouldAutoFitOraclePriceChart({
+        compact: false,
+        hasFitInitialData: false,
+        pointCount: 2,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldAutoFitOraclePriceChart({
+        compact: false,
+        hasFitInitialData: true,
+        pointCount: 3,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldAutoFitOraclePriceChart({
+        compact: true,
+        hasFitInitialData: true,
+        pointCount: 3,
+      }),
+    ).toBe(true);
+  });
+
+  test("allows the expanded chart to zoom out across dense one-second oracle history", () => {
+    expect(getOraclePriceChartMinBarSpacing({ compact: false })).toBeLessThanOrEqual(
+      0.03,
+    );
+
+    expect(getOraclePriceChartMinBarSpacing({ compact: true })).toBeLessThanOrEqual(
+      0.03,
+    );
+  });
+
+  test("defaults expanded charts to the latest thirty minutes when more history exists", () => {
+    expect(
+      getInitialOraclePriceChartView({
+        compact: false,
+        pointTimes: [100, 1_000, 1_900, 2_000],
+      }),
+    ).toEqual({
+      mode: "time-range",
+      from: 200,
+      to: 2_000,
+    });
+  });
+
+  test("defaults feed mini charts to the latest fifteen minutes when more history exists", () => {
+    expect(
+      getInitialOraclePriceChartView({
+        compact: true,
+        pointTimes: [100, 1_000, 1_900, 2_000],
+      }),
+    ).toEqual({
+      mode: "time-range",
+      from: 1_100,
+      to: 2_000,
+    });
+  });
+
+  test("fits short-history charts instead of forcing a thirty minute range", () => {
+    expect(
+      getInitialOraclePriceChartView({
+        compact: false,
+        pointTimes: [1_900, 2_000],
+      }),
+    ).toEqual({ mode: "fit-content" });
   });
 });

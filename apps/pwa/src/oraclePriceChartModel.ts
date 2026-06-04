@@ -7,6 +7,15 @@ export type OraclePriceChartPoint = {
   checkpoint?: number;
 };
 
+export type OraclePriceChartHistoryRange = {
+  startTimestampMs: number;
+  endTimestampMs: number;
+  totalPointCount: number;
+  returnedPointCount: number;
+  maxPoints: number;
+  downsampled: boolean;
+};
+
 export type OraclePriceChart = {
   status: OraclePriceChartStatus;
   oracleId: string;
@@ -15,6 +24,7 @@ export type OraclePriceChart = {
   title: string;
   detail: string;
   latestPriceLabel: string | null;
+  historyRange?: OraclePriceChartHistoryRange;
   points: OraclePriceChartPoint[];
 };
 
@@ -25,6 +35,7 @@ export type LoadOraclePriceChartOptions = {
 };
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8789";
+const ORACLE_CHART_MAX_POINTS = 10_000;
 
 export async function loadOraclePriceChart({
   apiBaseUrl = DEFAULT_API_BASE_URL,
@@ -51,6 +62,7 @@ function buildOraclePriceChartFromPayload(payload: unknown, oracleId: string): O
   const latestPriceLabel = formatUsdPrice(
     latestPrice && latestPrice > 0 ? latestPrice : latestPointPrice,
   );
+  const historyRange = parseOraclePriceChartHistoryRange(record.historyRange);
 
   if (points.length < 2) {
     return buildUnavailableOraclePriceChart(oracleId);
@@ -66,6 +78,7 @@ function buildOraclePriceChartFromPayload(payload: unknown, oracleId: string): O
       stringValue(record.detail) ??
       "DeepBook Predict oracle price used for BTC market settlement.",
     latestPriceLabel,
+    ...(historyRange === undefined ? {} : { historyRange }),
     points,
   };
 }
@@ -125,6 +138,7 @@ function parseOraclePriceChartPoint(value: unknown): OraclePriceChartPoint | nul
 function buildOraclePriceChartUrl(apiBaseUrl: string, oracleId: string): string {
   const url = new URL("/testnet/oracle-prices", normalizeBaseUrl(apiBaseUrl));
   url.searchParams.set("oracleId", oracleId);
+  url.searchParams.set("maxPoints", String(ORACLE_CHART_MAX_POINTS));
 
   return url.toString();
 }
@@ -137,6 +151,10 @@ function formatSourceLabel(value: unknown): string {
   const source = stringValue(value);
   if (source === "live_testnet") {
     return "Live Testnet";
+  }
+
+  if (source === "indexed_testnet") {
+    return "Indexed Testnet";
   }
 
   return "DeepBook";
@@ -163,6 +181,50 @@ function numberValue(value: unknown): number | undefined {
   return undefined;
 }
 
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
+}
+
+function parseOraclePriceChartHistoryRange(
+  value: unknown,
+): OraclePriceChartHistoryRange | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const startTimestampMs = numberValue(record.startTimestampMs);
+  const endTimestampMs = numberValue(record.endTimestampMs);
+  const totalPointCount = numberValue(record.totalPointCount);
+  const returnedPointCount = numberValue(record.returnedPointCount);
+  const maxPoints = numberValue(record.maxPoints);
+  const downsampled = booleanValue(record.downsampled);
+  if (
+    startTimestampMs === undefined ||
+    endTimestampMs === undefined ||
+    totalPointCount === undefined ||
+    returnedPointCount === undefined ||
+    maxPoints === undefined ||
+    downsampled === undefined ||
+    startTimestampMs <= 0 ||
+    endTimestampMs <= 0 ||
+    totalPointCount < 0 ||
+    returnedPointCount < 0 ||
+    maxPoints <= 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    startTimestampMs,
+    endTimestampMs,
+    totalPointCount,
+    returnedPointCount,
+    maxPoints,
+    downsampled,
+  };
 }

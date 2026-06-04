@@ -60,14 +60,15 @@ activity without a translation layer.
 ## Stage 3 Testnet Read Projection
 
 `GET /testnet/market-heat` returns the PWA's compact read-only Testnet mode
-projection. The route first tries live DeepBook Predict public testnet reads via
-the indexer package and returns `source: "live_testnet"` when recent activity is
-available. If Predict reads fail or return no usable rows, the route falls back
-to deterministic captured activity labelled with `source: "captured_testnet"`.
-Live rows are returned newest-first from the recent BTC Predict event stream, so
-different expiry buckets can appear together. The endpoint returns a bounded
-candidate set that includes the latest traders plus high-heat traders so the PWA
-can switch between `Latest` and `Heat` ordering without losing the live tape.
+projection. When `DATABASE_URL` is set, the local API first reads indexed
+Postgres projections and returns `source: "indexed_testnet"` when usable rows
+are available. If the indexer is unavailable, the route falls back to live
+DeepBook Predict public testnet reads labelled `source: "live_testnet"`, then to
+deterministic captured activity labelled `source: "captured_testnet"`.
+Rows are returned newest-first from the BTC Predict event stream, so different
+expiry buckets can appear together. The endpoint returns a bounded candidate
+set that includes the latest traders plus high-heat traders so the PWA can
+switch between `Latest` and `Heat` ordering without losing the live tape.
 
 Rows use the browser-facing input shape:
 
@@ -102,6 +103,19 @@ bun run --cwd apps/api-worker typecheck
 bun run --cwd apps/api-worker test:worker
 ```
 
-`dev:testnet` starts a local Bun server on `127.0.0.1:8789` by default and
-serves `GET /testnet/market-heat` without requiring Cloudflare Durable Object
-bindings. Override the port with `HOT_HANDS_TESTNET_API_PORT`.
+`dev:testnet` starts only this package's local Bun server on `127.0.0.1:8789`
+by default and serves the testnet endpoints without requiring Cloudflare Durable
+Object bindings. With `DATABASE_URL`, it also exposes read-only indexer
+freshness at `GET /testnet/indexer-status` and prefers indexed reads for Market
+Heat, Trade markets, Portfolio events, and BTC chart history. Override the port
+with `HOT_HANDS_TESTNET_API_PORT`.
+
+For the full teammate/agent app loop, prefer the root launcher instead:
+
+```bash
+export DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev
+bun run dev:testnet
+```
+
+The root launcher applies migrations, runs the bounded Predict backfill, starts
+this API, starts the PWA pointed at this API, and starts the live indexer.

@@ -12,3 +12,4 @@ test-results
 !.env.example
 .DS_Store
 Move.lock
+.hot-hands-dev-testnet.json

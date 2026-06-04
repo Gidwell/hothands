@@ -74,6 +74,7 @@ import {
 import { findPredictManagerForOwner } from "./predictManager";
 import {
   createPredictPortfolioCloseQuoteClient,
+  createPredictPortfolioIndexedEventClient,
   createPredictPortfolioSettlementClient,
   formatPortfolioTimeRemaining,
   loadPredictPortfolioSnapshot,
@@ -88,7 +89,7 @@ import {
 } from "./walletRefresh";
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
-const MARKET_HEAT_REFRESH_MS = 10_000;
+const MARKET_HEAT_REFRESH_MS = 1_000;
 const ORACLE_PRICE_CHART_REFRESH_MS = 1_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
@@ -171,6 +172,17 @@ const DISMISSED_PORTFOLIO_STORAGE_KEY = "hot-hands-dismissed-portfolio-position-
 
 export function getInitialPreviewMode(_apiBaseUrl: string | undefined): PreviewMode {
   return "market";
+}
+
+function getReadOnlyWalletAddress(): string | null {
+  const envAddress = import.meta.env.VITE_HOT_HANDS_DEV_WALLET_ADDRESS;
+  const urlAddress =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("devWallet");
+  const address = (urlAddress ?? envAddress ?? "").trim();
+
+  return /^0x[0-9a-fA-F]{64}$/.test(address) ? address : null;
 }
 
 function formatQuickAmount(amount: number): string {
@@ -298,6 +310,29 @@ function getTradeStrikeOptions(row: TradeMarketLadderRow): TradeStrikeOption[] {
   ];
 }
 
+function getTradeStrikeOptionsForSelection(
+  row: TradeMarketLadderRow,
+  selection: TradeMarketSelection | null,
+): TradeStrikeOption[] {
+  const options = getTradeStrikeOptions(row);
+  if (
+    !selection ||
+    selection.marketId !== row.id ||
+    options.some((option) => option.strikeRaw === selection.strikeRaw)
+  ) {
+    return options;
+  }
+
+  return [
+    {
+      strike: selection.strike,
+      strikeLabel: selection.strikeLabel,
+      strikeRaw: selection.strikeRaw,
+    },
+    ...options,
+  ];
+}
+
 function buildTradeMarketSelectionFromRow(row: TradeMarketLadderRow): TradeMarketSelection {
   const selectedOption =
     getTradeStrikeOptions(row).find((option) => option.strikeRaw === row.strikeRaw) ??
@@ -309,6 +344,21 @@ function buildTradeMarketSelectionFromRow(row: TradeMarketLadderRow): TradeMarke
     strikeLabel: selectedOption.strikeLabel,
     strikeRaw: selectedOption.strikeRaw,
   };
+}
+
+export function buildTradeQuoteKey(
+  market: TradeMarketLadderRow,
+  side: TradeSide,
+  spendUsd: number,
+): string {
+  return [
+    market.id,
+    market.oracleId,
+    market.expiry,
+    market.strikeRaw,
+    side,
+    spendUsd,
+  ].join(":");
 }
 
 function applyCustomStrikeToTradeMarket(
@@ -553,6 +603,7 @@ export function WalletStatusBar({
   networkLabel,
   predictManagerObjectId,
   predictManagerStatus,
+  readOnly = false,
   txState,
   walletCount,
   walletName,
@@ -565,6 +616,7 @@ export function WalletStatusBar({
   networkLabel: string;
   predictManagerObjectId: string | null;
   predictManagerStatus: PredictManagerStatus;
+  readOnly?: boolean;
   txState: WalletTransactionState;
   walletCount: number;
   walletName: string | null;
@@ -590,7 +642,7 @@ export function WalletStatusBar({
         <span>{isConnected ? walletName ?? "Sui wallet" : `${walletCount} wallets found`}</span>
       </div>
       <div className="wallet-status-actions">
-        {isConnected ? (
+        {isConnected && !readOnly ? (
           <button type="button" data-testid="wallet-disconnect" onClick={onDisconnect}>
             Disconnect
           </button>
@@ -610,8 +662,16 @@ export function WalletStatusBar({
           className={`predict-manager-status predict-manager-status-${predictManagerStatus}`}
           aria-live="polite"
         >
-          <span data-testid="predict-manager-status">
-            {predictManagerStatus === "checking"
+        <span data-testid="predict-manager-status">
+            {readOnly
+              ? predictManagerStatus === "ready"
+                ? `Read-only Predict account ${formatWalletAddress(predictManagerObjectId)}`
+                : predictManagerStatus === "checking"
+                  ? "Checking read-only Predict account..."
+                  : predictManagerStatus === "error"
+                    ? "Could not check read-only Predict account"
+                    : "No Predict account found"
+              : predictManagerStatus === "checking"
               ? "Checking Predict account..."
               : predictManagerStatus === "ready"
                 ? `Predict account ${formatWalletAddress(predictManagerObjectId)}`
@@ -619,7 +679,7 @@ export function WalletStatusBar({
                   ? "Could not check Predict account"
                   : "No Predict account yet"}
           </span>
-          {predictManagerStatus === "missing" || predictManagerStatus === "error" ? (
+          {!readOnly && (predictManagerStatus === "missing" || predictManagerStatus === "error") ? (
             <button
               type="button"
               data-testid="create-predict-manager"
@@ -866,6 +926,10 @@ export function TradeTicket({
             const market =
               applyCustomStrikeToTradeMarket(baseMarket, customStrike, "") ??
               baseMarket;
+            const strikeOptions = getTradeStrikeOptionsForSelection(
+              market,
+              selectedMarket?.id === market.id ? selectedCustomStrike : null,
+            );
 
             return (
               <div className="trade-market-item" key={baseMarket.id}>
@@ -983,7 +1047,7 @@ export function TradeTicket({
                         data-testid="trade-strike-select"
                         value={String(selectedCustomStrike?.strikeRaw ?? market.strikeRaw)}
                         onChange={(event) => {
-                          const selectedOption = getTradeStrikeOptions(market).find(
+                          const selectedOption = strikeOptions.find(
                             (option) => String(option.strikeRaw) === event.currentTarget.value,
                           );
                           if (selectedOption) {
@@ -991,7 +1055,7 @@ export function TradeTicket({
                           }
                         }}
                       >
-                        {getTradeStrikeOptions(market).map((option) => (
+                        {strikeOptions.map((option) => (
                           <option key={option.strikeRaw} value={option.strikeRaw}>
                             {option.strikeLabel}
                           </option>
@@ -1246,7 +1310,7 @@ export function PortfolioPanel({
         <span>
           {activeTab === "positions"
             ? positions.length
-              ? `${positions.length} active`
+              ? `${positions.length} positions`
               : "Positions"
             : historyItems.length
               ? `${historyItems.length} trades`
@@ -1514,6 +1578,21 @@ export function MarketHeatPreview({
           </div>
         </div>
       </div>
+      {rows.length === 0 ? (
+        <div className="market-heat-empty" data-testid="market-heat-empty">
+          <strong>{showExpired ? "No positions for this filter" : "No live positions right now"}</strong>
+          <span>
+            {showExpired
+              ? "Try another duration."
+              : "Show expired to review recent testnet activity."}
+          </span>
+          {!showExpired ? (
+            <button type="button" onClick={() => onShowExpiredChange(true)}>
+              Show expired
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {rows.map((row) => {
         const isSelected = row.id === selectedRowId;
         const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
@@ -1838,10 +1917,13 @@ export function App() {
   const currentNetwork = useCurrentNetwork();
   const walletConnection = useWalletConnection();
   const wallets = useWallets();
+  const readOnlyWalletAddress = useMemo(() => getReadOnlyWalletAddress(), []);
   const [scenario, setScenario] = useState(() => createReplayScenario("opening-night"));
   const [replayState, setReplayState] = useState(() => createInitialReplayState(scenario));
   const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
-  const [activeView, setActiveView] = useState<AppView>("feed");
+  const [activeView, setActiveView] = useState<AppView>(() =>
+    readOnlyWalletAddress ? "portfolio" : "feed",
+  );
   const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
   const [selectedTradeMarketId, setSelectedTradeMarketId] = useState<string | null>(null);
   const [customTradeStrikes, setCustomTradeStrikes] = useState<
@@ -2014,19 +2096,31 @@ export function App() {
     return selectedTradeMarket ?? marketRow;
   });
   const tradeQuoteKey = selectedTradeMarket
-    ? [
-        selectedTradeMarket.id,
-        selectedTradeMarket.oracleId,
-        selectedTradeMarket.expiry,
-        selectedTradeMarket.strikeRaw,
-        tradeSide,
-        copyState.copyAmount,
-      ].join(":")
+    ? buildTradeQuoteKey(selectedTradeMarket, tradeSide, copyState.copyAmount)
     : null;
   const activeTradeQuote =
     tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.quote : null;
   const activeTradeQuoteStatus =
     tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.status : "idle";
+
+  useEffect(() => {
+    if (activeView !== "trade" || !baseSelectedTradeMarket) {
+      return;
+    }
+
+    setSelectedTradeMarketId((marketId) => marketId ?? baseSelectedTradeMarket.id);
+    setCustomTradeStrikes((state) => {
+      if (state[baseSelectedTradeMarket.id]) {
+        return state;
+      }
+
+      return {
+        ...state,
+        [baseSelectedTradeMarket.id]: buildTradeMarketSelectionFromRow(baseSelectedTradeMarket),
+      };
+    });
+  }, [activeView, baseSelectedTradeMarket?.id]);
+
   const marketHeatVisibleTotal = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
     intervalLabel: activeMarketIntervalLabel,
     limit: Number.MAX_SAFE_INTEGER,
@@ -2052,7 +2146,8 @@ export function App() {
   const accountSummary = getReplayAccountSummary(replayState, frame);
   const receipt = frame.copyReceipt;
   const isWalletActionPending = walletTxState.status === "pending";
-  const connectedAccountAddress = currentAccount?.address ?? null;
+  const isReadOnlyWalletView = !currentAccount && Boolean(readOnlyWalletAddress);
+  const connectedAccountAddress = currentAccount?.address ?? readOnlyWalletAddress;
   const liveDusdcBalanceLabel =
     connectedAccountAddress &&
     dusdcBalanceState.accountAddress === connectedAccountAddress &&
@@ -2382,6 +2477,10 @@ export function App() {
     }));
 
     void loadPredictPortfolioSnapshot({
+      client: createPredictPortfolioIndexedEventClient({
+        apiBaseUrl: realtimeApiBaseUrl,
+        managerObjectId: activePredictManagerObjectId,
+      }),
       closeQuoteClient: createPredictPortfolioCloseQuoteClient({
         apiBaseUrl: realtimeApiBaseUrl,
       }),
@@ -2559,8 +2658,6 @@ export function App() {
     selectedTradeMarket?.id,
     selectedTradeMarket?.oracleId,
     selectedTradeMarket?.strikeRaw,
-    selectedTradeMarket?.up.estimatedPrice,
-    selectedTradeMarket?.down.estimatedPrice,
     tradeQuoteKey,
     tradeSide,
   ]);
@@ -3187,14 +3284,15 @@ export function App() {
         <div className="app-scroll" data-testid="app-scroll">
           <MarketHeader price={marketHeatPreview.marketPrice} />
           <WalletStatusBar
-            accountAddress={currentAccount?.address ?? null}
-            connectionStatus={walletConnection.status}
+            accountAddress={connectedAccountAddress}
+            connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
             networkLabel={String(currentNetwork)}
             predictManagerObjectId={visiblePredictManagerObjectId}
             predictManagerStatus={visiblePredictManagerStatus}
+            readOnly={isReadOnlyWalletView}
             txState={walletTxState}
             walletCount={wallets.length}
-            walletName={currentWallet?.name ?? null}
+            walletName={isReadOnlyWalletView ? "Read-only wallet" : currentWallet?.name ?? null}
             onConnect={handleWalletConnect}
             onCreatePredictManager={handleCreatePredictManager}
             onDisconnect={handleWalletDisconnect}
@@ -3221,7 +3319,7 @@ export function App() {
           ) : (
             <PortfolioPanel
               emptyLabel={
-                currentAccount
+                connectedAccountAddress
                   ? activePredictManagerObjectId
                     ? undefined
                     : "Create a Predict account first"

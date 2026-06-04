@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "bun run --cwd apps/pwa dev",
     "dev:live": "bun packages/demo-runner/src/dev-live.ts",
+    "dev:cleanup": "bun packages/demo-runner/src/dev-cleanup.ts",
     "dev:testnet": "bun packages/demo-runner/src/dev-testnet.ts",
     "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/fixtures typecheck && bun run --cwd packages/demo-runner typecheck && bun run --cwd packages/indexer typecheck && bun run --cwd packages/contracts typecheck && bun run --cwd apps/api-worker typecheck && bun run --cwd apps/pwa typecheck",
     "lint": "echo \"TODO: add lint\"",
@@ -18,6 +19,7 @@
     "test:contracts": "bun run --cwd packages/contracts test",
     "test:scoring": "bun test packages/shared/test/scoring.test.ts",
     "indexer:backfill:predict": "bun run --cwd packages/indexer backfill:predict",
+    "indexer:migrate": "bun run --cwd packages/indexer migrate",
     "build:pwa": "bun run --cwd apps/pwa build",
     "build:api": "bun run --cwd apps/api-worker build",
     "move:test": "echo \"TODO: run sui move test in packages/contracts\"",
@@ -30,6 +32,7 @@
     "verify:realtime:sim": "bun run test:worker && bun test packages/demo-runner/test && bun run verify:e2e",
     "verify:perf": "echo \"TODO: run spectator heartbeat simulation\"",
     "verify:testnet": "bun run --cwd packages/indexer verify:testnet && bun run --cwd packages/contracts verify:testnet",
-    "verify:visual": "echo \"TODO: run screenshot checks\""
+    "verify:visual": "echo \"TODO: run screenshot checks\"",
+    "indexer:live": "bun run --cwd packages/indexer live"
   }
 }

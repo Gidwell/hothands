@@ -4,7 +4,11 @@ import type {
   PredictOracleState,
   PredictOracleSviPoint,
 } from "./deepbook-predict";
-import type { PredictIndexerWriter, PredictPositionSummary } from "./store";
+import type {
+  PredictIndexerJobStatus,
+  PredictIndexerWriter,
+  PredictPositionSummary,
+} from "./store";
 
 export type SqlValue = string | number | boolean | null;
 
@@ -26,6 +30,8 @@ type SqlColumn<T> = {
   value: (row: T) => SqlValue;
   cast?: string;
 };
+
+const POSTGRES_PARAMETER_BUDGET = 60_000;
 
 export function createPostgresPredictIndexerStore({
   execute,
@@ -76,7 +82,86 @@ export function createPostgresPredictIndexerStore({
         touchColumn: "materialized_at",
         rows: summaries,
       }),
+    upsertIndexerJobStatus: (status) => upsertIndexerJobStatus(execute, status),
+    refreshPositionSummaries: () => refreshPositionSummaries(execute),
   };
+}
+
+async function upsertIndexerJobStatus(
+  execute: SqlExecutor,
+  status: PredictIndexerJobStatus,
+): Promise<number> {
+  const columns = indexerJobStatusColumns;
+  const params = columns.map((column) => column.value(status));
+  const updateSql = columns
+    .filter((column) => column.name !== "job_name")
+    .map((column) => `${column.name} = excluded.${column.name}`)
+    .join(", ");
+  const statement = [
+    `insert into predict_indexer_jobs (${columns.map((column) => column.name).join(", ")})`,
+    `values (${columns.map((column, index) => `$${index + 1}${column.cast ? `::${column.cast}` : ""}`).join(", ")})`,
+    `on conflict (job_name) do update set ${updateSql}`,
+    "returning 1",
+  ].join("\n");
+
+  return rowsAffected(await execute(statement, params));
+}
+
+async function refreshPositionSummaries(execute: SqlExecutor): Promise<number> {
+  const statement = [
+    "insert into predict_position_summaries (",
+    "  position_id, owner, manager_id, oracle_id, expiry_ms, strike, is_up,",
+    "  minted_quantity, redeemed_quantity, open_quantity, cost, payout,",
+    "  realized_pnl, status, last_event_ms",
+    ")",
+    "select",
+    "  manager_id || ':' || oracle_id || ':' || expiry_ms || ':' || strike || ':' || case when is_up then 'UP' else 'DOWN' end as position_id,",
+    "  (array_agg(coalesce(trader, actor) order by timestamp_ms desc, event_id desc))[1] as owner,",
+    "  manager_id,",
+    "  oracle_id,",
+    "  expiry_ms,",
+    "  strike,",
+    "  is_up,",
+    "  coalesce(sum(case when kind = 'mint' then quantity else 0 end), 0) as minted_quantity,",
+    "  coalesce(sum(case when kind = 'redeem' then quantity else 0 end), 0) as redeemed_quantity,",
+    "  greatest(",
+    "    coalesce(sum(case when kind = 'mint' then quantity else 0 end), 0) -",
+    "    coalesce(sum(case when kind = 'redeem' then quantity else 0 end), 0),",
+    "    0",
+    "  ) as open_quantity,",
+    "  coalesce(sum(case when kind = 'mint' then coalesce(cost, 0) else 0 end), 0) as cost,",
+    "  coalesce(sum(case when kind = 'redeem' then coalesce(payout, 0) else 0 end), 0) as payout,",
+    "  coalesce(sum(case when kind = 'redeem' then coalesce(payout, 0) else 0 end), 0) -",
+    "    coalesce(sum(case when kind = 'mint' then coalesce(cost, 0) else 0 end), 0) as realized_pnl,",
+    "  case when",
+    "    greatest(",
+    "      coalesce(sum(case when kind = 'mint' then quantity else 0 end), 0) -",
+    "      coalesce(sum(case when kind = 'redeem' then quantity else 0 end), 0),",
+    "      0",
+    "    ) > 0 then 'open' else 'closed' end as status,",
+    "  max(timestamp_ms) as last_event_ms",
+    "from predict_trade_events",
+    "group by manager_id, oracle_id, expiry_ms, strike, is_up",
+    "on conflict (position_id) do update set",
+    "  owner = excluded.owner,",
+    "  manager_id = excluded.manager_id,",
+    "  oracle_id = excluded.oracle_id,",
+    "  expiry_ms = excluded.expiry_ms,",
+    "  strike = excluded.strike,",
+    "  is_up = excluded.is_up,",
+    "  minted_quantity = excluded.minted_quantity,",
+    "  redeemed_quantity = excluded.redeemed_quantity,",
+    "  open_quantity = excluded.open_quantity,",
+    "  cost = excluded.cost,",
+    "  payout = excluded.payout,",
+    "  realized_pnl = excluded.realized_pnl,",
+    "  status = excluded.status,",
+    "  last_event_ms = excluded.last_event_ms,",
+    "  materialized_at = now()",
+    "returning 1",
+  ].join("\n");
+
+  return rowsAffected(await execute(statement, []));
 }
 
 async function upsertRows<T>({
@@ -98,6 +183,42 @@ async function upsertRows<T>({
     return 0;
   }
 
+  const uniqueRows = dedupeRowsByConflictKey(rows, columns, conflictColumns);
+  const maxRowsPerBatch = Math.max(
+    1,
+    Math.floor(POSTGRES_PARAMETER_BUDGET / columns.length),
+  );
+  let affectedRows = 0;
+
+  for (let index = 0; index < uniqueRows.length; index += maxRowsPerBatch) {
+    affectedRows += await upsertRowBatch({
+      execute,
+      table,
+      conflictColumns,
+      columns,
+      touchColumn,
+      rows: uniqueRows.slice(index, index + maxRowsPerBatch),
+    });
+  }
+
+  return affectedRows;
+}
+
+async function upsertRowBatch<T>({
+  execute,
+  table,
+  conflictColumns,
+  columns,
+  touchColumn,
+  rows,
+}: {
+  execute: SqlExecutor;
+  table: string;
+  conflictColumns: readonly string[];
+  columns: readonly SqlColumn<T>[];
+  touchColumn?: string;
+  rows: readonly T[];
+}): Promise<number> {
   const params: SqlValue[] = [];
   const valuesSql = rows.map((row) => {
     const placeholders = columns.map((column) => {
@@ -122,6 +243,31 @@ async function upsertRows<T>({
   const result = await execute(statement, params);
 
   return rowsAffected(result);
+}
+
+function dedupeRowsByConflictKey<T>(
+  rows: readonly T[],
+  columns: readonly SqlColumn<T>[],
+  conflictColumns: readonly string[],
+): readonly T[] {
+  const keyColumns = conflictColumns.map((name) => {
+    const column = columns.find((candidate) => candidate.name === name);
+    if (!column) {
+      throw new Error(`Conflict column ${name} is not present in upsert columns.`);
+    }
+
+    return column;
+  });
+  const rowsByKey = new Map<string, T>();
+
+  for (const row of rows) {
+    rowsByKey.set(
+      JSON.stringify(keyColumns.map((column) => column.value(row))),
+      row,
+    );
+  }
+
+  return [...rowsByKey.values()];
 }
 
 const oracleColumns: readonly SqlColumn<PredictOracleState>[] = [
@@ -205,14 +351,37 @@ const positionSummaryColumns: readonly SqlColumn<PredictPositionSummary>[] = [
   { name: "last_event_ms", value: (summary) => summary.lastEventMs },
 ];
 
+const indexerJobStatusColumns: readonly SqlColumn<PredictIndexerJobStatus>[] = [
+  { name: "job_name", value: (status) => status.jobName },
+  { name: "source", value: (status) => status.source },
+  { name: "poll_interval_ms", value: (status) => status.pollIntervalMs },
+  { name: "status", value: (status) => status.status },
+  { name: "last_poll_started_at_ms", value: (status) => status.lastPollStartedAtMs },
+  { name: "last_poll_completed_at_ms", value: (status) => optionalNumber(status.lastPollCompletedAtMs) },
+  { name: "last_success_at_ms", value: (status) => optionalNumber(status.lastSuccessAtMs) },
+  { name: "last_new_data_at_ms", value: (status) => optionalNumber(status.lastNewDataAtMs) },
+  { name: "last_source_timestamp_ms", value: (status) => optionalNumber(status.lastSourceTimestampMs) },
+  { name: "last_checkpoint", value: (status) => optionalNumber(status.lastCheckpoint) },
+  { name: "rows_fetched", value: (status) => status.rowsFetched },
+  { name: "rows_written", value: (status) => status.rowsWritten },
+  { name: "total_rows_written", value: (status) => status.totalRowsWritten },
+  { name: "consecutive_error_count", value: (status) => status.consecutiveErrorCount },
+  { name: "last_error", value: (status) => status.lastError ?? null },
+  { name: "observed_update_gap_ms", value: (status) => optionalNumber(status.observedUpdateGapMs) },
+  { name: "lag_ms", value: (status) => optionalNumber(status.lagMs) },
+  { name: "updated_at_ms", value: (status) => status.updatedAtMs },
+];
+
 function priceEventId(point: PredictOraclePricePoint): string {
-  return point.eventId ?? [
+  return [
     "price",
     point.oracleId,
-    point.checkpoint ?? "no-checkpoint",
-    point.timestampMs,
-    point.spot,
-    point.forward ?? "no-forward",
+    point.eventId ?? [
+      point.checkpoint ?? "no-checkpoint",
+      point.timestampMs,
+      point.spot,
+      point.forward ?? "no-forward",
+    ].join(":"),
   ].join(":");
 }
 

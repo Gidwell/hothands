@@ -107,6 +107,119 @@ describe("Postgres Predict indexer store", () => {
       normalizePredictTradeRow(mintedRow({ digest: "0xtwo" })),
     ])).resolves.toBe(2);
   });
+
+  test("dedupes repeated conflict keys before one upsert batch", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      return { rows: [{ inserted: 1 }], rowCount: 1 };
+    };
+    const store = createPostgresPredictIndexerStore({ execute });
+
+    await expect(store.upsertTradeEvents([
+      normalizePredictTradeRow(mintedRow({ cost: "1200000" })),
+      normalizePredictTradeRow(mintedRow({ cost: "1400000" })),
+    ])).resolves.toBe(1);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.params).toHaveLength(17);
+    expect(calls[0]?.params.slice(0, 12)).toEqual([
+      "mint:0xmint:1",
+      "mint",
+      "0xtrader",
+      "0xtrader",
+      "manager-btc",
+      "btc-15m",
+      1_779_158_400_000,
+      72_000_000_000,
+      true,
+      3,
+      1_400_000,
+      null,
+    ]);
+  });
+
+  test("chunks large upsert batches below the Postgres parameter cap", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      return { rowCount: params.length / 17 };
+    };
+    const store = createPostgresPredictIndexerStore({ execute });
+    const events = Array.from({ length: 4_000 }, (_, index) =>
+      normalizePredictTradeRow(mintedRow({
+        digest: `0xmint${index}`,
+        event_digest: `0xmint${index}`,
+      })),
+    );
+
+    await expect(store.upsertTradeEvents(events)).resolves.toBe(4_000);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.params.length).toBeLessThanOrEqual(60_000);
+    expect(calls[1]?.params.length).toBeLessThanOrEqual(60_000);
+    expect(calls[0]?.statement).toContain("insert into predict_trade_events");
+    expect(calls[1]?.statement).toContain("insert into predict_trade_events");
+  });
+
+  test("upserts live indexer job freshness status", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      return { rowCount: 1 };
+    };
+    const store = createPostgresPredictIndexerStore({ execute });
+
+    await expect(store.upsertIndexerJobStatus({
+      jobName: "predict.prices",
+      source: "oracles/prices/latest",
+      pollIntervalMs: 1_000,
+      status: "ok",
+      lastPollStartedAtMs: 1_779_070_801_000,
+      lastPollCompletedAtMs: 1_779_070_801_200,
+      lastSuccessAtMs: 1_779_070_801_200,
+      lastNewDataAtMs: 1_779_070_801_200,
+      lastSourceTimestampMs: 1_779_070_800_000,
+      lastCheckpoint: 4242,
+      rowsFetched: 3,
+      rowsWritten: 2,
+      totalRowsWritten: 12,
+      consecutiveErrorCount: 0,
+      observedUpdateGapMs: 1_000,
+      lagMs: 1_200,
+      updatedAtMs: 1_779_070_801_200,
+    })).resolves.toBe(1);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.statement).toContain("insert into predict_indexer_jobs");
+    expect(calls[0]?.statement).toContain("on conflict (job_name) do update");
+    expect(calls[0]?.params.slice(0, 6)).toEqual([
+      "predict.prices",
+      "oracles/prices/latest",
+      1_000,
+      "ok",
+      1_779_070_801_000,
+      1_779_070_801_200,
+    ]);
+  });
+
+  test("refreshes position summaries from all indexed trade events", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      return { rowCount: 4 };
+    };
+    const store = createPostgresPredictIndexerStore({ execute });
+
+    await expect(store.refreshPositionSummaries()).resolves.toBe(4);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.statement).toContain("insert into predict_position_summaries");
+    expect(calls[0]?.statement).toContain("from predict_trade_events");
+    expect(calls[0]?.statement).toContain("group by manager_id, oracle_id, expiry_ms, strike, is_up");
+    expect(calls[0]?.statement).toContain("on conflict (position_id) do update");
+    expect(calls[0]?.params).toEqual([]);
+  });
 });
 
 type SqlCall = {

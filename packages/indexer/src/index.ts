@@ -35,11 +35,20 @@ export {
 } from "./backfill";
 
 export {
+  listMigrationSqlFiles,
+  readIndexerMigrationFiles,
+  runIndexerMigrations,
+  splitSqlStatements,
+  type IndexerMigration,
+} from "./migrations";
+
+export {
   createInMemoryPredictIndexerStore,
   summarizePredictPositions,
   type PredictIndexerSnapshot,
   type PredictIndexerStore,
   type PredictIndexerWriter,
+  type PredictIndexerJobStatus,
   type PredictPositionSummary,
 } from "./store";
 
@@ -50,6 +59,44 @@ export {
   type SqlExecutor,
   type SqlValue,
 } from "./postgres-store";
+
+export {
+  createPostgresPredictIndexerReader,
+  type ListBtcOraclesOptions,
+  type ListOraclePricesOptions,
+  type ListPositionSummariesOptions,
+  type ListRecentTradeEventsOptions,
+  type OraclePriceStats,
+  type PostgresPredictIndexerReaderOptions,
+  type PredictIndexerReader,
+  type SqlQueryExecutor,
+  type SqlQueryResult,
+  type SqlRow,
+} from "./postgres-reader";
+
+export {
+  DEFAULT_PRICE_POLL_INTERVAL_MS,
+  pollDeepBookPredictLatestPrices,
+  startDeepBookPredictPricePoller,
+  type DeepBookPredictPricePoller,
+  type DeepBookPredictPricePollerOptions,
+  type DeepBookPredictPricePollOptions,
+  type DeepBookPredictPricePollSummary,
+} from "./price-poller";
+
+export {
+  DEFAULT_LIVE_INDEXER_INTERVALS,
+  parseLiveIndexerCliOptions,
+  runDeepBookPredictLiveIndexerOnce,
+  startDeepBookPredictLiveIndexer,
+  type DeepBookPredictLiveIndexer,
+  type DeepBookPredictLiveIndexerCliOptions,
+  type DeepBookPredictLiveIndexerIntervals,
+  type DeepBookPredictLiveIndexerJobSummary,
+  type DeepBookPredictLiveIndexerOnceOptions,
+  type DeepBookPredictLiveIndexerOnceSummary,
+  type DeepBookPredictLiveIndexerOptions,
+} from "./live-indexer";
 
 export {
   buildLatestTradeFeedProjection,

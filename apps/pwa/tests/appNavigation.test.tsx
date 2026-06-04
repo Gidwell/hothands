@@ -7,6 +7,7 @@ import {
   PortfolioPanel,
   TradeTicket,
   WalletStatusBar,
+  buildTradeQuoteKey,
 } from "../src/App";
 
 function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
@@ -33,6 +34,56 @@ function findElementByTestId(node: ReactNode, testId: string): ReactElement | nu
 }
 
 describe("mobile app navigation", () => {
+  test("keeps the trade quote key stable across live estimated price refreshes", () => {
+    const baseMarket = {
+      id: "btc-2h-72000",
+      oracleId: "0xoracle2h",
+      pairLabel: "BTC/USD",
+      intervalLabel: "2h",
+      roundLabel: "2h round",
+      expiry: 1_779_172_200_000,
+      expiryMs: 1_779_172_200_000,
+      expiryTimeLabel: "May 18, 23:30 PDT",
+      timeRemainingLabel: "2h left",
+      strike: 72_000,
+      strikeRaw: 72_000_000_000,
+      strikeLabel: "$72,000",
+      moneynessLabel: "+$950 vs spot",
+      activityLabel: "2 wallets",
+      uniqueWalletCount: 2,
+      tradeCount: 3,
+      distinctStrikeCount: 1,
+      volumeUsd: 12,
+      volumeLabel: "$12",
+      up: {
+        walletCount: 1,
+        tradeCount: 1,
+        volumeUsd: 5,
+        volumeLabel: "$5",
+        estimatedPrice: 0.48,
+      },
+      down: {
+        walletCount: 1,
+        tradeCount: 2,
+        volumeUsd: 7,
+        volumeLabel: "$7",
+        estimatedPrice: 0.52,
+      },
+    };
+
+    expect(buildTradeQuoteKey(baseMarket, "UP", 25)).toBe(
+      buildTradeQuoteKey(
+        {
+          ...baseMarket,
+          up: { ...baseMarket.up, estimatedPrice: 0.51 },
+          down: { ...baseMarket.down, estimatedPrice: 0.49 },
+        },
+        "UP",
+        25,
+      ),
+    );
+  });
+
   test("renders available wallet balance separately from Predict bankroll with a deposit action", () => {
     let depositClicked = false;
     const html = renderToStaticMarkup(
@@ -627,6 +678,73 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Strike</small>$71,050");
   });
 
+  test("keeps the selected strike option visible when live strike options refresh", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[
+          {
+            id: "btc-15m-71000",
+            oracleId: "0xoracle15",
+            pairLabel: "BTC/USD",
+            intervalLabel: "15m",
+            roundLabel: "15m round",
+            expiry: 1_779_165_900_000,
+            expiryMs: 1_779_165_900_000,
+            expiryTimeLabel: "May 18, 21:45 PDT",
+            timeRemainingLabel: "15m left",
+            strike: 71_100,
+            strikeRaw: 71_100_000_000,
+            strikeLabel: "$71,100",
+            moneynessLabel: "+$50 vs spot",
+            activityLabel: "No recent trades",
+            uniqueWalletCount: 0,
+            tradeCount: 0,
+            distinctStrikeCount: 1,
+            volumeUsd: 0,
+            volumeLabel: "$0",
+            strikeOptions: [
+              {
+                strike: 71_100,
+                strikeRaw: 71_100_000_000,
+                strikeLabel: "$71,100",
+              },
+            ],
+            up: {
+              walletCount: 0,
+              tradeCount: 0,
+              volumeUsd: 0,
+              volumeLabel: "$0",
+            },
+            down: {
+              walletCount: 0,
+              tradeCount: 0,
+              volumeUsd: 0,
+              volumeLabel: "$0",
+            },
+          },
+        ]}
+        copyAmount={25}
+        selectedMarketId="btc-15m-71000"
+        selectedSide="UP"
+        customStrike={{
+          marketId: "btc-15m-71000",
+          strike: 71_050,
+          strikeRaw: 71_050_000_000,
+          strikeLabel: "$71,050",
+        }}
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onStrikeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('<option value="71050000000" selected="">$71,050</option>');
+    expect(html).toContain('<option value="71100000000">$71,100</option>');
+    expect(html).toContain("Strike</small>$71,050");
+  });
+
   test("prompts connected users to create a Predict account from the wallet bar", () => {
     const html = renderToStaticMarkup(
       <WalletStatusBar
@@ -668,6 +786,31 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain("Predict account 0x0000...bbbb");
+    expect(html).not.toContain('data-testid="create-predict-manager"');
+  });
+
+  test("labels dev wallet override as read-only and hides account creation", () => {
+    const html = renderToStaticMarkup(
+      <WalletStatusBar
+        accountAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        connectionStatus="readonly"
+        networkLabel="testnet"
+        predictManagerObjectId="0x000000000000000000000000000000000000000000000000000000000000bbbb"
+        predictManagerStatus="ready"
+        readOnly={true}
+        txState={{ status: "idle", label: "Wallet ready", digest: null }}
+        walletCount={1}
+        walletName="Read-only wallet"
+        onConnect={() => undefined}
+        onCreatePredictManager={() => undefined}
+        onDisconnect={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Read-only wallet");
+    expect(html).toContain("Read-only Predict account 0x0000...bbbb");
+    expect(html).toContain("Connect wallet");
+    expect(html).not.toContain("Disconnect");
     expect(html).not.toContain('data-testid="create-predict-manager"');
   });
 

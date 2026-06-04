@@ -1,11 +1,16 @@
 import {
+  buildLatestTradeFeedProjection,
+  buildTraderHeatProjection,
   computeMarketHeat,
   createPredictReadCanary,
   createPredictTradeHistoryClient,
   type MarketHeatTrader,
   type PredictAvailableBtcMarket,
+  type PredictIndexerReader,
   type PredictNormalizedTradeEvent,
-  type PredictOracleState
+  type PredictOraclePricePoint,
+  type PredictOracleState,
+  type TraderHeatProjection
 } from "@hot-hands/indexer";
 
 export interface MarketHeatProjection {
@@ -19,7 +24,7 @@ export interface MarketHeatProjection {
   rows: MarketHeatRow[];
 }
 
-export type MarketHeatSource = "captured_testnet" | "live_testnet";
+export type MarketHeatSource = "captured_testnet" | "indexed_testnet" | "live_testnet";
 
 export interface MarketHeatPrice {
   market: "BTC-USD";
@@ -63,6 +68,7 @@ export interface MarketHeatRow {
 export interface TestnetMarketHeatOptions {
   fetchImpl?: typeof fetch;
   mode?: "live" | "captured";
+  reader?: PredictIndexerReader;
 }
 
 const LATEST_ACTIVITY_ROW_LIMIT = 48;
@@ -74,10 +80,22 @@ export function getCapturedTestnetMarketHeat(): MarketHeatProjection {
 
 export async function getTestnetMarketHeat({
   fetchImpl = fetch,
-  mode = "live"
+  mode = "live",
+  reader
 }: TestnetMarketHeatOptions = {}): Promise<MarketHeatProjection> {
   if (mode === "captured") {
     return getCapturedTestnetMarketHeat();
+  }
+
+  if (reader) {
+    try {
+      const indexed = await getIndexedTestnetMarketHeat(reader);
+      if (indexed.rows.length > 0) {
+        return indexed;
+      }
+    } catch {
+      // Fall through to public Predict reads below.
+    }
   }
 
   try {
@@ -86,6 +104,56 @@ export async function getTestnetMarketHeat({
   } catch {
     return getCapturedTestnetMarketHeat();
   }
+}
+
+async function getIndexedTestnetMarketHeat(
+  reader: PredictIndexerReader
+): Promise<MarketHeatProjection> {
+  const [oracles, tradeEvents, positionSummaries] = await Promise.all([
+    reader.listBtcOracles({ includeSettled: false }),
+    reader.listRecentTradeEvents({ limit: LATEST_ACTIVITY_ROW_LIMIT }),
+    reader.listPositionSummaries({ limit: HEAT_ACCOUNT_ROW_LIMIT })
+  ]);
+  const activeOracles = selectIndexedActiveBtcOracles(oracles);
+  const oraclesById = new Map(oracles.map((oracle) => [oracle.oracle_id, oracle]));
+  const latestPricesByOracleId = await loadLatestIndexedPricesByOracleId(
+    reader,
+    activeOracles
+  );
+  const events = dedupeEvents(tradeEvents);
+  const heat = buildTraderHeatProjection(events, positionSummaries, {
+    limit: HEAT_ACCOUNT_ROW_LIMIT
+  });
+  const heatByTrader = new Map(heat.map((trader) => [trader.trader, trader]));
+  const latestRows = buildLatestTradeFeedProjection(events, {
+    limit: LATEST_ACTIVITY_ROW_LIMIT
+  }).map((event) => mapIndexedTradeEventToRow(event, heatByTrader, oraclesById));
+  const heatRows = heat
+    .map((trader, index) => mapIndexedHeatTraderToRow(trader, events, oraclesById, index))
+    .filter((row): row is MarketHeatRow => row !== null);
+  const rows = mergeMarketHeatRows([...latestRows, ...heatRows])
+    .sort(compareMarketHeatRowsByLatest);
+  const selectedOracle = selectBestIndexedBtcOracle(activeOracles);
+  const selectedPrice = selectedOracle
+    ? latestPricesByOracleId.get(selectedOracle.oracle_id) ?? null
+    : null;
+
+  return {
+    source: "indexed_testnet",
+    title: "Testnet Market Heat",
+    mode: "testnet",
+    detail: "Indexed DeepBook Predict BTC market heat from testnet reader data.",
+    capturedAt: new Date().toISOString(),
+    marketPrice: {
+      market: "BTC-USD",
+      price: normalizeStrike(selectedPrice?.spot ?? 0),
+      source: "indexed_testnet"
+    },
+    markets: activeOracles.map((oracle) =>
+      mapIndexedBtcMarket(oracle, latestPricesByOracleId.get(oracle.oracle_id) ?? null)
+    ),
+    rows
+  };
 }
 
 async function getLiveTestnetMarketHeat(fetchImpl: typeof fetch): Promise<MarketHeatProjection> {
@@ -184,6 +252,84 @@ function compareMarketHeatRowsByLatest(left: MarketHeatRow, right: MarketHeatRow
   );
 }
 
+function selectIndexedActiveBtcOracles(oracles: PredictOracleState[]): PredictOracleState[] {
+  return oracles
+    .filter((oracle) => oracle.underlying_asset === "BTC" && oracle.status === "active")
+    .sort(
+      (left, right) =>
+        normalizeEpochMs(left.expiry) - normalizeEpochMs(right.expiry) ||
+        left.oracle_id.localeCompare(right.oracle_id)
+    );
+}
+
+function selectBestIndexedBtcOracle(oracles: PredictOracleState[]): PredictOracleState | null {
+  return [...oracles]
+    .sort(
+      (left, right) =>
+        normalizeEpochMs(right.expiry) - normalizeEpochMs(left.expiry) ||
+        left.oracle_id.localeCompare(right.oracle_id)
+    )[0] ?? null;
+}
+
+async function loadLatestIndexedPricesByOracleId(
+  reader: PredictIndexerReader,
+  oracles: PredictOracleState[]
+): Promise<Map<string, PredictOraclePricePoint>> {
+  const entries = await Promise.all(
+    oracles.map(async (oracle) => {
+      try {
+        const latestPrice = await reader.getLatestOraclePrice(oracle.oracle_id);
+
+        return latestPrice ? ([oracle.oracle_id, latestPrice] as const) : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return new Map(
+    entries.filter(
+      (entry): entry is readonly [string, PredictOraclePricePoint] => entry !== null
+    )
+  );
+}
+
+function mapIndexedHeatTraderToRow(
+  trader: TraderHeatProjection,
+  events: PredictNormalizedTradeEvent[],
+  oraclesById: Map<string, PredictOracleState>,
+  index: number
+): MarketHeatRow | null {
+  const traderEvents = [...events]
+    .filter((event) => indexedTradeWallet(event) === trader.trader)
+    .sort(compareEventsByLatest);
+  const latestMint = traderEvents.find((event) => event.kind === "mint");
+  const latestEvent = latestMint ?? traderEvents[0];
+
+  if (!latestEvent) {
+    return null;
+  }
+
+  const heatScore = normalizeHeatScore(trader.hotScore);
+
+  return {
+    id: `indexed-${latestEvent.managerId}-${shortWallet(trader.trader)}-${latestMint?.eventId ?? index}`,
+    wallet: trader.trader,
+    manager: latestEvent.managerId,
+    market: "BTC-USD",
+    oracleId: latestEvent.oracleId,
+    side: latestEvent.isUp === false ? "DOWN" : "UP",
+    ...mapTradeEventMetrics(latestEvent),
+    strike: normalizeStrike(latestEvent.strike),
+    strikeRaw: latestEvent.strike,
+    expiryMs: latestEvent.expiryMs,
+    intervalLabel: formatIntervalLabel(latestEvent, oraclesById.get(latestEvent.oracleId)),
+    observedAtMs: latestEvent.timestampMs,
+    heatScore,
+    status: latestMint ? "copy_ready" : "watching"
+  };
+}
+
 function mapHeatTraderToRow(
   trader: MarketHeatTrader,
   events: PredictNormalizedTradeEvent[],
@@ -262,6 +408,32 @@ function mapTradeEventToRow(
   };
 }
 
+function mapIndexedTradeEventToRow(
+  event: PredictNormalizedTradeEvent,
+  heatByTrader: Map<string, TraderHeatProjection>,
+  oraclesById: Map<string, PredictOracleState>
+): MarketHeatRow {
+  const wallet = indexedTradeWallet(event);
+  const heatScore = normalizeHeatScore(heatByTrader.get(wallet)?.hotScore ?? 0);
+
+  return {
+    id: `indexed-${event.managerId}-${shortWallet(wallet)}-${event.eventId}`,
+    wallet,
+    manager: event.managerId,
+    market: "BTC-USD",
+    oracleId: event.oracleId,
+    side: event.isUp === false ? "DOWN" : "UP",
+    ...mapTradeEventMetrics(event),
+    strike: normalizeStrike(event.strike),
+    strikeRaw: event.strike,
+    expiryMs: event.expiryMs,
+    intervalLabel: formatIntervalLabel(event, oraclesById.get(event.oracleId)),
+    observedAtMs: event.timestampMs,
+    heatScore,
+    status: event.kind === "mint" ? "copy_ready" : "watching"
+  };
+}
+
 function mapTradeEventMetrics(
   event: PredictNormalizedTradeEvent | undefined
 ): Pick<MarketHeatRow, "quantity" | "cost" | "costUsd"> {
@@ -278,6 +450,14 @@ function mapTradeEventMetrics(
 
 function traderKey(trader: string, managerId: string): string {
   return `${trader}:${managerId}`;
+}
+
+function indexedTradeWallet(event: PredictNormalizedTradeEvent): string {
+  return event.trader ?? event.actor;
+}
+
+function normalizeHeatScore(score: number): number {
+  return Math.min(99, Math.max(0, Math.round(score)));
 }
 
 function shortWallet(wallet: string): string {
@@ -314,6 +494,40 @@ function mapAvailableBtcMarket(market: PredictAvailableBtcMarket): MarketHeatTra
     latestPrice,
     latestPriceLabel: formatPriceLabel(latestPrice)
   };
+}
+
+function mapIndexedBtcMarket(
+  oracle: PredictOracleState,
+  latestPrice: PredictOraclePricePoint | null
+): MarketHeatTradeMarket {
+  const latestPriceValue = latestPrice ? normalizeStrike(latestPrice.spot) : null;
+  const strikeCandidate = latestPrice
+    ? snapIndexedStrikeToTick(latestPrice.forward ?? latestPrice.spot, oracle)
+    : null;
+  const strikeCandidatePrice =
+    strikeCandidate === null ? null : normalizeStrike(strikeCandidate);
+  const expiryMs = normalizeEpochMs(oracle.expiry);
+
+  return {
+    oracleId: oracle.oracle_id,
+    market: "BTC-USD",
+    expiry: oracle.expiry,
+    expiryMs,
+    intervalLabel: formatIndexedOracleIntervalLabel(oracle),
+    active: oracle.status === "active",
+    status: oracle.status,
+    strikeCandidate,
+    strikeCandidatePrice,
+    latestPrice: latestPriceValue,
+    latestPriceLabel: formatPriceLabel(latestPriceValue)
+  };
+}
+
+function snapIndexedStrikeToTick(price: number, oracle: PredictOracleState): number {
+  const tickSize = Math.max(1, oracle.tick_size);
+  const rounded = Math.round(price / tickSize) * tickSize;
+
+  return Math.max(oracle.min_strike, rounded);
 }
 
 function formatPriceLabel(price: number | null): string | null {
@@ -354,8 +568,22 @@ function formatDurationLabel(durationMs: number): string {
   return `${Math.round(minutes / (24 * 60))}d`;
 }
 
+function formatIndexedOracleIntervalLabel(oracle: PredictOracleState): string {
+  if (oracle.activated_at === undefined) {
+    return "Active";
+  }
+
+  const durationMs = normalizeEpochMs(oracle.expiry) - normalizeEpochMs(oracle.activated_at);
+
+  return durationMs > 0 ? formatDurationLabel(durationMs) : "Active";
+}
+
 function normalizeEpochMs(value: number): number {
   return value < 1_000_000_000_000 ? value * 1000 : value;
+}
+
+function normalizeEpochSeconds(value: number): number {
+  return value < 1_000_000_000_000 ? value : Math.floor(value / 1000);
 }
 
 const CAPTURED_TESTNET_MARKET_HEAT: MarketHeatProjection = {

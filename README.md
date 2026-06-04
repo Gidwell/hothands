@@ -4,11 +4,12 @@ Hot Hands is a mobile-first social copy/fade layer for DeepBook Predict. The cor
 
 This repository now has the Stage 1 fake-data vertical slice, the Stage 2 simulated realtime loop, and the first Stage 3 DeepBook Predict testnet bridge: deterministic mobile replay, worker-shaped table activity, an in-process socket contract, optional PWA live-mode checks, a local Wrangler-backed worker smoke, a Predict server read canary, and Sui SDK transaction builders for manager creation, quote deposit, and copied mint.
 
-## Testnet Quickstart
+## Indexed Testnet Quickstart
 
 Prerequisites:
 
 - Bun installed locally
+- a local Postgres database for the indexer-backed app loop
 - Chromium installed for Playwright only if you plan to run browser tests
 
 Install dependencies:
@@ -17,13 +18,23 @@ Install dependencies:
 bun install
 ```
 
-Start the local testnet API and PWA together:
+Create or choose a local database, then export `DATABASE_URL`. The exact
+connection string depends on your local Postgres user; these are common local
+defaults:
+
+```bash
+createdb hothands_dev
+export DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev
+```
+
+Start the full local testnet stack:
 
 ```bash
 bun run dev:testnet
 ```
 
-Then open:
+Wait for the launcher to print `Hot Hands testnet dev is ready`, then open the
+printed PWA URL. Default local URLs are:
 
 ```text
 http://127.0.0.1:5176
@@ -33,14 +44,30 @@ The launcher starts:
 
 - PWA: `http://127.0.0.1:5176`
 - API: `http://127.0.0.1:8789`
+- Indexer bootstrap: migrations plus bounded Predict backfill when `DATABASE_URL` is set
+- Live indexer: enabled when `DATABASE_URL` is set, unless `HOT_HANDS_INDEXER_LIVE=false`
 - Market heat API: `http://127.0.0.1:8789/testnet/market-heat`
+- Indexer status API: `http://127.0.0.1:8789/testnet/indexer-status`
 - Open-position close quote API: `http://127.0.0.1:8789/testnet/redeem-quote`
 
-With `dev:testnet`, the app opens directly in `Testnet` mode and shows live DeepBook Predict market heat rows.
-If public testnet reads fail, the API falls back to captured rows and labels the
-source as `Captured`. Market Heat opens in `Latest` order and refreshes while
-Testnet mode is open so live public trades are easier to watch, with a `Heat`
-toggle for the provisional score ranking.
+With `DATABASE_URL`, `dev:testnet` is the recommended teammate/agent loop. It
+applies indexer migrations, runs an idempotent bounded write backfill, starts
+the local API, starts the PWA pointed at that API, then starts the live indexer.
+The PWA opens directly in testnet mode and prefers indexed reads for Feed,
+Trade, Portfolio, and the BTC chart. If indexed reads are unavailable, the API
+falls back to public Predict reads or captured rows and labels the source.
+
+Quick health checks:
+
+```bash
+curl -sS http://127.0.0.1:8789/health
+curl -sS http://127.0.0.1:8789/testnet/indexer-status
+curl -sS http://127.0.0.1:8789/testnet/market-heat
+```
+
+`/testnet/indexer-status` should report the indexed jobs when `DATABASE_URL` is
+set. If it is missing indexed jobs, the app is probably running in fallback
+mode, not the durable local indexer mode.
 
 Useful checks:
 
@@ -58,40 +85,129 @@ bunx playwright install chromium
 Port overrides:
 
 ```bash
-HOT_HANDS_TESTNET_API_PORT=8790 HOT_HANDS_TESTNET_PWA_PORT=5177 bun run dev:testnet
+DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev HOT_HANDS_TESTNET_API_PORT=8792 HOT_HANDS_TESTNET_PWA_PORT=5184 bun run dev:testnet
 ```
+
+Use port overrides when another local run already owns the defaults, or when a
+teammate needs to match a shared browser URL.
+
+Read-only wallet debug mode:
+
+```text
+http://127.0.0.1:5176/?devWallet=0x29b8e29b80f2d332f130990ebe0b3bfc99ccef6657a01858e0c25d675721cd79
+```
+
+`devWallet` lets an agent inspect a wallet's discovered `PredictManager`,
+bankroll, portfolio, PnL, and history without the private wallet extension. It
+is read-only: signing, deposit, mint, redeem, and claim actions still require
+the real connected wallet. You can also set
+`VITE_HOT_HANDS_DEV_WALLET_ADDRESS` before starting the PWA.
+
+`dev:testnet` writes `.hot-hands-dev-testnet.json` with the exact child PIDs and
+prints `Hot Hands testnet dev is ready` only after both the API and PWA URLs
+respond. If Vite/esbuild hangs before opening the PWA port, the launcher exits
+instead of printing a dead URL.
+
+If a previous local run leaves the API or PWA port occupied, clean up the known
+Hot Hands dev processes before restarting:
+
+```bash
+bun run dev:cleanup
+```
+
+The cleanup command uses the pidfile first, then falls back to known ports and
+repo-local Bun/Vite/esbuild commands. The launcher starts API and indexer as
+direct Bun scripts, keeps the PWA inside its proven Vite package script, and
+shuts down each process group on exit. That keeps orphaned Bun/Vite/esbuild
+children from holding ports between Codex/browser test runs.
+
+If the PWA repeatedly times out before opening a port, run from a no-space git
+worktree. This repo has previously exposed Vite/esbuild hangs from paths like
+`Documents/New project`.
+
+```bash
+git worktree add --detach /private/tmp/hothands-dev HEAD
+cd /private/tmp/hothands-dev
+bun install
+export DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev
+bun run dev:testnet
+```
+
+If a port still looks occupied after cleanup, inspect the exact listener before
+killing anything:
+
+```bash
+lsof -nP -iTCP:5176 -sTCP:LISTEN
+lsof -nP -iTCP:8789 -sTCP:LISTEN
+```
+
+Only kill confirmed stale Hot Hands, Bun, Vite, or esbuild processes from this
+repo or its no-space worktree.
+
+Common local debugging notes:
+
+- An empty Feed usually means there are no unexpired indexed positions at that moment. Use `Show expired` to inspect older activity.
+- Quote and close quote URLs must use Predict's millisecond expiry key, such as `1779158400000`. Passing seconds, such as `1779158400`, can fail with `oracle_config::assert_key_matches`.
+- The Trade button waits for a quote because the transaction needs current Predict price and quantity data before it can build the wallet request.
+- The BTC chart can only show history that has been indexed locally or returned by the public Predict server. Keep the live indexer running to build longer local history.
 
 ## Durable Indexer Local Notes
 
-The durable indexer now has a DB writer, bounded public Predict backfill CLI,
-and pure projection helpers. Keep the local shape simple and explicit:
+The durable indexer now has migrations, a DB writer, bounded public Predict
+backfill CLI, Postgres readers, a dedicated live polling process, and API/PWA
+read-path hooks.
+Keep the local shape simple and explicit:
 
 - set `DATABASE_URL` to a local Postgres database before running DB-backed
   indexer work; do not commit real credentials
-- run migrations manually against that database until a root migration command
-  is wired
-- run the bounded Predict backfill CLI with `bun run indexer:backfill:predict -- --dry-run`
-  first, then with `--write` once migrations are applied
+- run `bun run dev:testnet` with `DATABASE_URL` set to automatically apply
+  indexer migrations, run an idempotent bounded Predict backfill, start the API,
+  start the PWA, and then start the live indexer
+- for manual debugging, run migrations with `bun run indexer:migrate`, then run
+  the bounded Predict backfill CLI with
+  `bun run indexer:backfill:predict -- --dry-run` first, then with `--write`
+- run the live indexer directly with `bun run indexer:live` when you want only
+  ingestion, or let `bun run dev:testnet` start it automatically when
+  `DATABASE_URL` is set
 - keep the data path as: public DeepBook Predict server -> Postgres raw tables
-  -> compact projections -> API worker endpoints -> PWA feeds
+  -> compact projections -> API worker endpoints -> PWA Feed, Trade,
+  Portfolio, and chart views
 
-The PWA/API may keep captured or public-read fallbacks while this comes online,
-but durable Heat, recent activity, attribution, and settlement views should read
-from projections instead of direct public Predict server responses.
+When `DATABASE_URL` is set for `bun run dev:testnet`, the launcher applies
+migrations, runs a bounded write backfill, and the local API prefers indexed
+reads for Market Heat, Trade markets, Portfolio events, and oracle price
+history. The launcher also starts a separate live indexer process. Disable
+automatic bootstrap with `HOT_HANDS_DEV_MIGRATE=false` or
+`HOT_HANDS_DEV_BACKFILL=false` when you intentionally want to skip either step.
+Prices,
+positions, and active-oracle trade activity poll every 1 second by default;
+oracle metadata polls every 30 seconds by default. Tune these with
+`HOT_HANDS_INDEXER_PRICE_POLL_MS`, `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`,
+`HOT_HANDS_INDEXER_TRADES_POLL_MS`, and
+`HOT_HANDS_INDEXER_ORACLES_POLL_MS`. The API exposes freshness at
+`/testnet/indexer-status`. The chart requests up to 10,000
+indexed/downsampled points and includes the full stored range metadata. Public
+Predict, captured rows, and direct Sui event reads remain fallbacks when the
+indexer is unavailable.
 
 ## Current Demo Status
 
 What is live today:
 
-- `Testnet` reads public DeepBook Predict testnet activity through the local API.
-- `Latest` shows the newest observed active trader rows first and refreshes every 10 seconds while the app is open.
+- `Testnet` reads indexed DeepBook Predict activity through the local API when
+  `DATABASE_URL` is set, with public/captured fallbacks when it is not.
+- `Latest` shows the newest observed active trader rows first and refreshes every second while the app is open.
 - Rows are grouped by trader/manager, so a repeat trade moves that row upward instead of creating a duplicate feed item.
 - On wallet connect, the PWA checks whether the user already has a
   `PredictManager`; if one is missing, the wallet bar is the place to create it.
   Trade surfaces assume that account setup has happened before preparing a
   quoted `predict::mint` transaction.
-- Portfolio reads open positions and, for settled expired positions, shows the
-  oracle settlement price plus the claim value before sending the wallet action.
+- Portfolio prefers indexed manager events when the local API has an indexer
+  reader, then falls back to direct Sui event reads. For settled expired
+  positions, it shows the oracle settlement price plus the claim value before
+  sending the wallet action.
+- The BTC oracle chart can render indexed, downsampled full-history price data
+  instead of only the current public Predict response window.
 - Open positions show an estimated close value from the local testnet redeem
   quote before sending the wallet action.
 
@@ -99,9 +215,8 @@ What is still in progress:
 
 - `Heat` is a provisional activity/performance score, not the final settled reputation model.
 - Feed copy/fade attribution is not yet backed by a Hot Hands database.
-- The PWA still uses local API reads of public/captured Predict activity; it
-  should move to indexed and downsampled projections as the indexer comes
-  online.
+- Production hosting still needs a deployed indexer/API topology; the local
+  testnet app already has the indexed read-path hooks behind `DATABASE_URL`.
 - Profiles, X linking, SuiNS-backed display names, follows, copy counts, fade counts, and durable leaderboards are not wired in yet.
 
 ## Product Loop
@@ -134,11 +249,15 @@ DeepBook Predict stays the source of truth for market execution, settlement, and
 
 For the hackathon, copy/fade attribution can be DB-verified by matching the follower's transaction digest back to the source trade parameters. A tiny Move event package can still be added later for cleaner chain-native proof, but it should not block profiles, leaderboards, or copy/fade counts.
 
-First indexer foundation slice: run bounded, high-limit public Predict server
-backfills for oracles, mints, redeems, trades, prices, and SVI into raw
-Postgres tables, then derive compact projections for market heat, recent
-activity, and PWA feeds. No cursor paging has been found on the public endpoints
-yet, so backfills should stay idempotent, timestamp-aware, and easy to replay.
+Indexer read path: run bounded, high-limit public Predict server backfills for
+oracles, mints, redeems, trades, prices, and SVI into raw Postgres tables, then
+serve compact projections for market heat, recent activity, portfolio events,
+and full-range downsampled chart history. No cursor paging has been found on the
+public endpoints yet, so backfills should stay idempotent, timestamp-aware, and
+easy to replay. Live ingestion is a first-class daemon, not API side work: each
+job writes `predict_indexer_jobs` freshness status with poll interval, latest
+source timestamp/checkpoint, rows fetched/written, lag, errors, and observed
+update gaps so polling cadence can be tuned empirically.
 
 ## Planned Stack
 
