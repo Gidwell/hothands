@@ -312,6 +312,21 @@ function buildTradeMarketSelectionFromRow(row: TradeMarketLadderRow): TradeMarke
   };
 }
 
+export function buildTradeQuoteKey(
+  market: TradeMarketLadderRow,
+  side: TradeSide,
+  spendUsd: number,
+): string {
+  return [
+    market.id,
+    market.oracleId,
+    market.expiry,
+    market.strikeRaw,
+    side,
+    spendUsd,
+  ].join(":");
+}
+
 function applyCustomStrikeToTradeMarket(
   market: TradeMarketLadderRow,
   customStrike: TradeMarketSelection | null | undefined,
@@ -2015,14 +2030,7 @@ export function App() {
     return selectedTradeMarket ?? marketRow;
   });
   const tradeQuoteKey = selectedTradeMarket
-    ? [
-        selectedTradeMarket.id,
-        selectedTradeMarket.oracleId,
-        selectedTradeMarket.expiry,
-        selectedTradeMarket.strikeRaw,
-        tradeSide,
-        copyState.copyAmount,
-      ].join(":")
+    ? buildTradeQuoteKey(selectedTradeMarket, tradeSide, copyState.copyAmount)
     : null;
   const activeTradeQuote =
     tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.quote : null;
@@ -2564,8 +2572,6 @@ export function App() {
     selectedTradeMarket?.id,
     selectedTradeMarket?.oracleId,
     selectedTradeMarket?.strikeRaw,
-    selectedTradeMarket?.up.estimatedPrice,
-    selectedTradeMarket?.down.estimatedPrice,
     tradeQuoteKey,
     tradeSide,
   ]);

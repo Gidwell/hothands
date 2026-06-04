@@ -7,6 +7,7 @@ import {
   PortfolioPanel,
   TradeTicket,
   WalletStatusBar,
+  buildTradeQuoteKey,
 } from "../src/App";
 
 function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
@@ -33,6 +34,56 @@ function findElementByTestId(node: ReactNode, testId: string): ReactElement | nu
 }
 
 describe("mobile app navigation", () => {
+  test("keeps the trade quote key stable across live estimated price refreshes", () => {
+    const baseMarket = {
+      id: "btc-2h-72000",
+      oracleId: "0xoracle2h",
+      pairLabel: "BTC/USD",
+      intervalLabel: "2h",
+      roundLabel: "2h round",
+      expiry: 1_779_172_200_000,
+      expiryMs: 1_779_172_200_000,
+      expiryTimeLabel: "May 18, 23:30 PDT",
+      timeRemainingLabel: "2h left",
+      strike: 72_000,
+      strikeRaw: 72_000_000_000,
+      strikeLabel: "$72,000",
+      moneynessLabel: "+$950 vs spot",
+      activityLabel: "2 wallets",
+      uniqueWalletCount: 2,
+      tradeCount: 3,
+      distinctStrikeCount: 1,
+      volumeUsd: 12,
+      volumeLabel: "$12",
+      up: {
+        walletCount: 1,
+        tradeCount: 1,
+        volumeUsd: 5,
+        volumeLabel: "$5",
+        estimatedPrice: 0.48,
+      },
+      down: {
+        walletCount: 1,
+        tradeCount: 2,
+        volumeUsd: 7,
+        volumeLabel: "$7",
+        estimatedPrice: 0.52,
+      },
+    };
+
+    expect(buildTradeQuoteKey(baseMarket, "UP", 25)).toBe(
+      buildTradeQuoteKey(
+        {
+          ...baseMarket,
+          up: { ...baseMarket.up, estimatedPrice: 0.51 },
+          down: { ...baseMarket.down, estimatedPrice: 0.49 },
+        },
+        "UP",
+        25,
+      ),
+    );
+  });
+
   test("renders available wallet balance separately from Predict bankroll with a deposit action", () => {
     let depositClicked = false;
     const html = renderToStaticMarkup(
