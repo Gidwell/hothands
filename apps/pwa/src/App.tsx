@@ -299,6 +299,29 @@ function getTradeStrikeOptions(row: TradeMarketLadderRow): TradeStrikeOption[] {
   ];
 }
 
+function getTradeStrikeOptionsForSelection(
+  row: TradeMarketLadderRow,
+  selection: TradeMarketSelection | null,
+): TradeStrikeOption[] {
+  const options = getTradeStrikeOptions(row);
+  if (
+    !selection ||
+    selection.marketId !== row.id ||
+    options.some((option) => option.strikeRaw === selection.strikeRaw)
+  ) {
+    return options;
+  }
+
+  return [
+    {
+      strike: selection.strike,
+      strikeLabel: selection.strikeLabel,
+      strikeRaw: selection.strikeRaw,
+    },
+    ...options,
+  ];
+}
+
 function buildTradeMarketSelectionFromRow(row: TradeMarketLadderRow): TradeMarketSelection {
   const selectedOption =
     getTradeStrikeOptions(row).find((option) => option.strikeRaw === row.strikeRaw) ??
@@ -882,6 +905,10 @@ export function TradeTicket({
             const market =
               applyCustomStrikeToTradeMarket(baseMarket, customStrike, "") ??
               baseMarket;
+            const strikeOptions = getTradeStrikeOptionsForSelection(
+              market,
+              selectedMarket?.id === market.id ? selectedCustomStrike : null,
+            );
 
             return (
               <div className="trade-market-item" key={baseMarket.id}>
@@ -999,7 +1026,7 @@ export function TradeTicket({
                         data-testid="trade-strike-select"
                         value={String(selectedCustomStrike?.strikeRaw ?? market.strikeRaw)}
                         onChange={(event) => {
-                          const selectedOption = getTradeStrikeOptions(market).find(
+                          const selectedOption = strikeOptions.find(
                             (option) => String(option.strikeRaw) === event.currentTarget.value,
                           );
                           if (selectedOption) {
@@ -1007,7 +1034,7 @@ export function TradeTicket({
                           }
                         }}
                       >
-                        {getTradeStrikeOptions(market).map((option) => (
+                        {strikeOptions.map((option) => (
                           <option key={option.strikeRaw} value={option.strikeRaw}>
                             {option.strikeLabel}
                           </option>

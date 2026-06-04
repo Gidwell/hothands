@@ -678,6 +678,73 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Strike</small>$71,050");
   });
 
+  test("keeps the selected strike option visible when live strike options refresh", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[
+          {
+            id: "btc-15m-71000",
+            oracleId: "0xoracle15",
+            pairLabel: "BTC/USD",
+            intervalLabel: "15m",
+            roundLabel: "15m round",
+            expiry: 1_779_165_900_000,
+            expiryMs: 1_779_165_900_000,
+            expiryTimeLabel: "May 18, 21:45 PDT",
+            timeRemainingLabel: "15m left",
+            strike: 71_100,
+            strikeRaw: 71_100_000_000,
+            strikeLabel: "$71,100",
+            moneynessLabel: "+$50 vs spot",
+            activityLabel: "No recent trades",
+            uniqueWalletCount: 0,
+            tradeCount: 0,
+            distinctStrikeCount: 1,
+            volumeUsd: 0,
+            volumeLabel: "$0",
+            strikeOptions: [
+              {
+                strike: 71_100,
+                strikeRaw: 71_100_000_000,
+                strikeLabel: "$71,100",
+              },
+            ],
+            up: {
+              walletCount: 0,
+              tradeCount: 0,
+              volumeUsd: 0,
+              volumeLabel: "$0",
+            },
+            down: {
+              walletCount: 0,
+              tradeCount: 0,
+              volumeUsd: 0,
+              volumeLabel: "$0",
+            },
+          },
+        ]}
+        copyAmount={25}
+        selectedMarketId="btc-15m-71000"
+        selectedSide="UP"
+        customStrike={{
+          marketId: "btc-15m-71000",
+          strike: 71_050,
+          strikeRaw: 71_050_000_000,
+          strikeLabel: "$71,050",
+        }}
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onStrikeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('<option value="71050000000" selected="">$71,050</option>');
+    expect(html).toContain('<option value="71100000000">$71,100</option>');
+    expect(html).toContain("Strike</small>$71,050");
+  });
+
   test("prompts connected users to create a Predict account from the wallet bar", () => {
     const html = renderToStaticMarkup(
       <WalletStatusBar
