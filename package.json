@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "bun run --cwd apps/pwa dev",
     "dev:live": "bun packages/demo-runner/src/dev-live.ts",
+    "dev:cleanup": "bun packages/demo-runner/src/dev-cleanup.ts",
     "dev:testnet": "bun packages/demo-runner/src/dev-testnet.ts",
     "typecheck": "bun run --cwd packages/shared typecheck && bun run --cwd packages/fixtures typecheck && bun run --cwd packages/demo-runner typecheck && bun run --cwd packages/indexer typecheck && bun run --cwd packages/contracts typecheck && bun run --cwd apps/api-worker typecheck && bun run --cwd apps/pwa typecheck",
     "lint": "echo \"TODO: add lint\"",

@@ -63,6 +63,28 @@ Port overrides:
 HOT_HANDS_TESTNET_API_PORT=8790 HOT_HANDS_TESTNET_PWA_PORT=5177 bun run dev:testnet
 ```
 
+`dev:testnet` writes `.hot-hands-dev-testnet.json` with the exact child PIDs and
+prints `Hot Hands testnet dev is ready` only after both the API and PWA URLs
+respond. If Vite/esbuild hangs before opening the PWA port, the launcher exits
+instead of printing a dead URL.
+
+If a previous local run leaves the API or PWA port occupied, clean up the known
+Hot Hands dev processes before restarting:
+
+```bash
+bun run dev:cleanup
+```
+
+The cleanup command uses the pidfile first, then falls back to known ports and
+repo-local Bun/Vite/esbuild commands. The launcher starts API and indexer as
+direct Bun scripts, keeps the PWA inside its proven Vite package script, and
+shuts down each process group on exit. That keeps orphaned Bun/Vite/esbuild
+children from holding ports between Codex/browser test runs.
+
+If the PWA repeatedly times out before opening a port, run from a no-space git
+worktree. This repo has previously exposed Vite/esbuild hangs from paths like
+`Documents/New project`.
+
 ## Durable Indexer Local Notes
 
 The durable indexer now has a DB writer, bounded public Predict backfill CLI,

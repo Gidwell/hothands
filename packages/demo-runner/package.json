@@ -10,6 +10,7 @@
   },
   "scripts": {
     "dev:live": "bun src/dev-live.ts",
+    "dev:cleanup": "bun src/dev-cleanup.ts",
     "dev:testnet": "bun src/dev-testnet.ts",
     "play": "bun src/cli.ts",
     "push-activity": "bun src/push-activity.ts",
