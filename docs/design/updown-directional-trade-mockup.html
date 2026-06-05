@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hot Hands Up/Down Directional Trade Mockup</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background: #eef4f8;
+        color: #111827;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        place-items: center;
+        background:
+          radial-gradient(circle at top left, rgba(124, 92, 255, 0.1), transparent 34rem),
+          linear-gradient(135deg, #f8fbfd 0%, #e8f0f6 100%);
+      }
+
+      .phone {
+        width: min(430px, calc(100vw - 32px));
+        min-height: 780px;
+        padding: 14px;
+        border: 1px solid #d8e2ec;
+        border-radius: 28px;
+        background: #f7fafc;
+        box-shadow: 0 28px 80px rgba(34, 48, 64, 0.18);
+      }
+
+      .shell {
+        display: grid;
+        gap: 10px;
+      }
+
+      .header,
+      .card,
+      .chart {
+        border: 1px solid #dbe5ee;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 8px 28px rgba(34, 48, 64, 0.07);
+      }
+
+      .header {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 10px;
+      }
+
+      .logo {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        background: #6f4ff2;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        font-style: italic;
+        line-height: 1;
+      }
+
+      .wallet {
+        display: grid;
+        gap: 2px;
+        text-align: right;
+      }
+
+      .wallet strong {
+        font-size: 0.78rem;
+      }
+
+      .wallet small,
+      .muted,
+      .label,
+      .micro {
+        color: #667085;
+        font-weight: 850;
+      }
+
+      .wallet small,
+      .micro {
+        font-size: 0.66rem;
+      }
+
+      .chart {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 140px;
+        gap: 10px;
+        align-items: center;
+        padding: 12px;
+      }
+
+      .chart strong {
+        display: block;
+        font-size: 1.8rem;
+        line-height: 1;
+      }
+
+      .spark {
+        width: 100%;
+        height: 46px;
+      }
+
+      .section-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding-top: 4px;
+      }
+
+      .section-heading h2 {
+        font-size: 1.42rem;
+      }
+
+      .section-heading span {
+        color: #667085;
+        font-size: 0.76rem;
+        font-weight: 900;
+      }
+
+      .card {
+        display: grid;
+        gap: 10px;
+        padding: 10px;
+      }
+
+      .mode-tabs,
+      .duration-tabs {
+        display: grid;
+        gap: 4px;
+        padding: 4px;
+        border-radius: 8px;
+        background: #eef3f8;
+      }
+
+      .mode-tabs {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .duration-tabs {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      button {
+        min-height: 36px;
+        border: 0;
+        border-radius: 8px;
+        color: #667085;
+        background: transparent;
+        font: inherit;
+        font-size: 0.82rem;
+        font-weight: 900;
+      }
+
+      button[aria-pressed="true"] {
+        color: #111827;
+        background: #ffffff;
+        box-shadow: 0 4px 12px rgba(34, 48, 64, 0.08);
+      }
+
+      .title-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+        align-items: start;
+      }
+
+      .title-row h2 {
+        font-size: 1rem;
+        line-height: 1.05;
+      }
+
+      .pill {
+        padding: 6px 9px;
+        border-radius: 8px;
+        color: #4f35e8;
+        background: #f0ebff;
+        font-size: 0.72rem;
+        font-weight: 950;
+      }
+
+      .info {
+        display: grid;
+        width: 28px;
+        height: 28px;
+        place-items: center;
+        border: 1px solid #dbe5ee;
+        border-radius: 999px;
+        color: #667085;
+        background: #ffffff;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .stat {
+        display: grid;
+        gap: 2px;
+        min-height: 52px;
+        padding: 8px;
+        align-content: center;
+        border: 1px solid #e3ebf3;
+        border-radius: 8px;
+        background: #f8fafc;
+      }
+
+      .stat strong {
+        font-size: 1.08rem;
+      }
+
+      .label {
+        font-size: 0.62rem;
+        text-transform: uppercase;
+      }
+
+      .chain {
+        overflow: hidden;
+        border: 1px solid #dbe5ee;
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      .chain-head,
+      .chain-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 0.72fr minmax(0, 1fr);
+        gap: 6px;
+        align-items: center;
+      }
+
+      .chain-head {
+        padding: 7px 8px;
+        color: #667085;
+        background: #f8fafc;
+        font-size: 0.62rem;
+        font-weight: 950;
+        text-transform: uppercase;
+      }
+
+      .chain-head span:nth-child(2),
+      .strike {
+        text-align: center;
+      }
+
+      .chain-head span:nth-child(3) {
+        text-align: right;
+      }
+
+      .chain-row {
+        min-height: 58px;
+        padding: 7px 8px;
+        border-top: 1px solid #edf2f7;
+      }
+
+      .spot-line {
+        grid-column: 1 / -1;
+        margin: -7px -8px 0;
+        padding: 5px 8px;
+        color: #07813f;
+        background: #ecfdf3;
+        font-size: 0.62rem;
+        font-weight: 950;
+        text-align: center;
+      }
+
+      .side {
+        display: grid;
+        gap: 2px;
+        min-height: 42px;
+        padding: 6px;
+        align-content: center;
+        border: 1px solid #dbe5ee;
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      .side strong {
+        font-size: 0.88rem;
+      }
+
+      .side small {
+        color: #667085;
+        font-size: 0.58rem;
+        font-weight: 850;
+      }
+
+      .side-up {
+        border-color: #b7efd0;
+        background: #f0fdf4;
+      }
+
+      .side-down {
+        border-color: #fecaca;
+        background: #fff7f7;
+      }
+
+      .strike {
+        font-size: 0.78rem;
+        font-weight: 950;
+      }
+
+      .order {
+        display: grid;
+        gap: 8px;
+        padding: 9px;
+        border: 1px solid #dbe5ee;
+        border-radius: 8px;
+        background: #fbfdff;
+      }
+
+      .amounts,
+      .metrics {
+        display: grid;
+        gap: 6px;
+      }
+
+      .amounts {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .amounts button {
+        min-height: 34px;
+        border: 1px solid #dbe5ee;
+        background: #ffffff;
+      }
+
+      .amounts button[aria-pressed="true"] {
+        border-color: #7c5cff;
+        color: #4f35e8;
+        background: #f0ebff;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .primary {
+        min-height: 42px;
+        color: #ffffff;
+        background: #111827;
+        box-shadow: 0 10px 18px rgba(17, 24, 39, 0.16);
+      }
+
+      .note {
+        max-width: 430px;
+        margin-top: 14px;
+        color: #667085;
+        font-size: 0.78rem;
+        font-weight: 750;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="phone" aria-label="Hot Hands Up/Down directional mockup">
+        <div class="shell">
+          <header class="header">
+            <div class="logo" aria-hidden="true"></div>
+            <h1>Hot Hands</h1>
+            <div class="wallet">
+              <strong>Connect wallet</strong>
+              <small>Testnet</small>
+            </div>
+          </header>
+
+          <section class="chart" aria-label="BTC oracle price">
+            <div>
+              <span class="label">BTC/USD</span>
+              <strong>$62,383</strong>
+              <p class="muted">DeepBook oracle price</p>
+            </div>
+            <svg class="spark" viewBox="0 0 140 46" role="img" aria-label="BTC price sparkline">
+              <polyline
+                fill="none"
+                stroke="#16a34a"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="4"
+                points="2,34 14,32 24,28 32,31 42,22 54,20 64,24 74,17 86,20 96,13 108,16 120,9 136,12"
+              />
+            </svg>
+          </section>
+
+          <div class="section-heading">
+            <h2>Trade</h2>
+            <span>Design reference</span>
+          </div>
+
+          <section class="card" aria-label="Directional trade discovery">
+            <div class="mode-tabs" aria-label="Trade product type">
+              <button type="button" aria-pressed="true">Up/Down</button>
+              <button type="button" aria-pressed="false">Range</button>
+            </div>
+
+            <div class="title-row">
+              <div>
+                <span class="label">Up/Down</span>
+                <h2>BTC strike ladder</h2>
+              </div>
+              <span class="pill">15m</span>
+              <button class="info" type="button" title="Pick a strike and choose UP or DOWN. The position wins based on where BTC settles at expiry.">?</button>
+            </div>
+
+            <div class="stats">
+              <div class="stat">
+                <span class="label">BTC/USD</span>
+                <strong>$62,383</strong>
+              </div>
+              <div class="stat">
+                <span class="label">Expiry</span>
+                <strong>21:45</strong>
+              </div>
+            </div>
+
+            <div class="duration-tabs" aria-label="Duration">
+              <button type="button" aria-pressed="true">15m</button>
+              <button type="button" aria-pressed="false">1h</button>
+              <button type="button" aria-pressed="false">1d</button>
+            </div>
+
+            <div class="chain" aria-label="Up Down strike ladder">
+              <div class="chain-head">
+                <span>UP</span>
+                <span>Strike</span>
+                <span>DOWN</span>
+              </div>
+
+              <div class="chain-row">
+                <div class="side side-up">
+                  <strong>$0.41</strong>
+                  <small>Pays $61.20</small>
+                </div>
+                <span class="strike">$62,000</span>
+                <div class="side side-down">
+                  <strong>$0.63</strong>
+                  <small>Pays $39.80</small>
+                </div>
+              </div>
+
+              <div class="chain-row">
+                <div class="side side-up">
+                  <strong>$0.48</strong>
+                  <small>Pays $52.10</small>
+                </div>
+                <span class="strike">$62,250</span>
+                <div class="side side-down">
+                  <strong>$0.55</strong>
+                  <small>Pays $45.30</small>
+                </div>
+              </div>
+
+              <div class="chain-row">
+                <div class="spot-line">Oracle price $62,383</div>
+                <div class="side side-up">
+                  <strong>$0.56</strong>
+                  <small>Pays $44.60</small>
+                </div>
+                <span class="strike">$62,500</span>
+                <div class="side side-down">
+                  <strong>$0.47</strong>
+                  <small>Pays $53.20</small>
+                </div>
+              </div>
+
+              <div class="chain-row">
+                <div class="side side-up">
+                  <strong>$0.68</strong>
+                  <small>Pays $36.80</small>
+                </div>
+                <span class="strike">$62,750</span>
+                <div class="side side-down">
+                  <strong>$0.35</strong>
+                  <small>Pays $71.40</small>
+                </div>
+              </div>
+            </div>
+
+            <section class="order" aria-label="Selected Up position">
+              <div>
+                <span class="label">Selected</span>
+                <h2>UP $62,500</h2>
+                <p class="muted">Wins if BTC settles above $62,500</p>
+              </div>
+              <div class="amounts" aria-label="Spend">
+                <button type="button">$10</button>
+                <button type="button" aria-pressed="true">$25</button>
+                <button type="button">$50</button>
+                <button type="button">MAX</button>
+              </div>
+              <div class="metrics">
+                <div class="stat">
+                  <span class="label">Spend</span>
+                  <strong>$25</strong>
+                </div>
+                <div class="stat">
+                  <span class="label">Est. payout</span>
+                  <strong>$44.60</strong>
+                </div>
+                <div class="stat">
+                  <span class="label">Max profit</span>
+                  <strong>+$19.60</strong>
+                </div>
+              </div>
+              <button type="button" class="primary">Open Position</button>
+            </section>
+          </section>
+        </div>
+      </section>
+      <p class="note">
+        Reference-only mockup. Not imported by the app runtime.
+      </p>
+    </main>
+  </body>
+</html>
