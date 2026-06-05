@@ -344,6 +344,76 @@ describe("Predict durable projections", () => {
       currentStreakLength: 1,
     });
   });
+
+  test("counts settled expired open positions in wallet leaderboard PnL", () => {
+    const positions = [
+      positionSummary({
+        id: "wallet-closed-win",
+        owner: "0xwallet",
+        oracleId: "btc-closed",
+        realizedPnl: 1_000_000,
+        cost: 1_000_000,
+        payout: 2_000_000,
+        status: "closed",
+        lastEventMs: 1_000,
+      }),
+      positionSummary({
+        id: "wallet-expired-loss",
+        owner: "0xwallet",
+        oracleId: "btc-expired-loss",
+        expiryMs: 2_000,
+        strike: 72_000_000_000,
+        isUp: true,
+        mintedQuantity: 3_000_000,
+        redeemedQuantity: 0,
+        openQuantity: 3_000_000,
+        cost: 2_500_000,
+        payout: 0,
+        status: "open",
+        lastEventMs: 2_000,
+      }),
+      positionSummary({
+        id: "wallet-active-open",
+        owner: "0xwallet",
+        oracleId: "btc-active-open",
+        expiryMs: 10_000,
+        mintedQuantity: 5_000_000,
+        redeemedQuantity: 0,
+        openQuantity: 5_000_000,
+        cost: 5_000_000,
+        payout: 0,
+        status: "open",
+        lastEventMs: 3_000,
+      }),
+    ];
+
+    const leaderboards = buildWalletPerformanceLeaderboards(positions, {
+      limit: 5,
+      nowMs: 5_000,
+      oracles: [
+        oracleState({
+          oracle_id: "btc-expired-loss",
+          settlement_price: 71_000_000_000,
+          status: "settled",
+        }),
+      ],
+    });
+
+    expect(leaderboards.highestPnl[0]).toMatchObject({
+      wallet: "0xwallet",
+      totalCost: 3_500_000,
+      totalPayout: 2_000_000,
+      totalPnl: -1_500_000,
+      openCount: 1,
+      closedCount: 2,
+      winCount: 1,
+      lossCount: 1,
+      longestWinningStreak: 1,
+      longestLosingStreak: 1,
+      currentStreakType: "loss",
+      currentStreakLength: 1,
+    });
+  });
 });
 
 function tradeEvent(
@@ -369,7 +439,7 @@ function tradeEvent(
 function positionSummary(
   overrides: Partial<PredictPositionSummary>,
 ): PredictPositionSummary {
-  return {
+  const summary = {
     id: "position",
     owner: "0xtrader",
     managerId: "manager-btc",
@@ -385,6 +455,34 @@ function positionSummary(
     realizedPnl: 0,
     lastEventMs: 0,
     status: "closed",
+    ...overrides,
+  };
+
+  if (
+    summary.status === "closed" &&
+    !("cost" in overrides) &&
+    !("payout" in overrides) &&
+    summary.realizedPnl !== 0
+  ) {
+    if (summary.realizedPnl > 0) {
+      summary.payout = summary.realizedPnl;
+    } else {
+      summary.cost = Math.abs(summary.realizedPnl);
+    }
+  }
+
+  return summary;
+}
+
+function oracleState(overrides: Record<string, unknown>) {
+  return {
+    predict_id: "predict",
+    oracle_id: "btc-15m",
+    underlying_asset: "BTC",
+    expiry: 20_000,
+    min_strike: 50_000_000_000,
+    tick_size: 1_000_000,
+    status: "active",
     ...overrides,
   };
 }

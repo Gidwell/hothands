@@ -16,11 +16,18 @@ export async function getTestnetWalletLeaderboards({
   nowMs = Date.now(),
   positionLimit = 10_000
 }: TestnetWalletLeaderboardsOptions) {
-  const positions = await reader.listPositionSummaries({ limit: positionLimit });
+  const [positions, oracles] = await Promise.all([
+    reader.listPositionSummaries({ limit: positionLimit }),
+    reader.listBtcOracles({ includeSettled: true }),
+  ]);
 
   return {
     source: "indexed_testnet",
-    leaderboards: buildWalletPerformanceLeaderboards(positions, { limit, nowMs })
+    leaderboards: buildWalletPerformanceLeaderboards(positions, {
+      limit,
+      nowMs,
+      oracles
+    })
   };
 }
 
