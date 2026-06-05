@@ -77,19 +77,19 @@ export type LoadWalletLeaderboardsOptions = BuildWalletLeaderboardsOptions & {
 
 export const WALLET_LEADERBOARD_BOARDS: WalletLeaderboardBoardDefinition[] = [
   {
-    key: "longestWinningStreak",
-    label: "Win Streak",
-    metricLabel: "Wins",
-  },
-  {
-    key: "longestLosingStreak",
-    label: "Loss Streak",
-    metricLabel: "Losses",
-  },
-  {
     key: "highestPnl",
     label: "Top PnL",
     metricLabel: "PNL",
+  },
+  {
+    key: "longestWinningStreak",
+    label: "Win Streaks",
+    metricLabel: "Top Streak",
+  },
+  {
+    key: "longestLosingStreak",
+    label: "Lose Streaks",
+    metricLabel: "Top Streak",
   },
   {
     key: "worstPnl",

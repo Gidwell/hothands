@@ -2120,7 +2120,7 @@ export function App() {
       status: "idle",
     }));
   const [activeWalletLeaderboard, setActiveWalletLeaderboard] =
-    useState<WalletLeaderboardBoardKey>("longestWinningStreak");
+    useState<WalletLeaderboardBoardKey>("highestPnl");
   const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
   const [dismissedPortfolioPositionIds, setDismissedPortfolioPositionIds] = useState<Set<string>>(
     () => new Set(),
