@@ -26,13 +26,20 @@ export type MainnetSuinsNamesOptions = {
 
 type CachedSuinsName = {
   fetchedAtMs: number;
-  name: string | null;
+  result: ResolvedSuinsName;
 };
+
+type ResolvedSuinsName =
+  | { status: "resolved"; name: string }
+  | { status: "missing" }
+  | { status: "failed" };
 
 const MAINNET_RPC_URL = "https://fullnode.mainnet.sui.io:443";
 const MAINNET_SUINS_CACHE_TTL_MS = 15 * 60_000;
+const MAINNET_SUINS_FAILURE_CACHE_TTL_MS = 60_000;
 const MAINNET_SUINS_CACHE_MAX = 500;
 const MAINNET_SUINS_LOOKUP_LIMIT = 50;
+const MAINNET_SUINS_RPC_TIMEOUT_MS = 1_500;
 
 const mainnetSuinsNameCache = new Map<string, CachedSuinsName>();
 
@@ -54,7 +61,10 @@ export async function getMainnetSuinsNames(
       continue;
     }
 
-    if (!normalizedWallets.includes(normalizedWallet)) {
+    if (
+      normalizedWallets.length < MAINNET_SUINS_LOOKUP_LIMIT &&
+      !normalizedWallets.includes(normalizedWallet)
+    ) {
       normalizedWallets.push(normalizedWallet);
     }
   }
@@ -63,24 +73,27 @@ export async function getMainnetSuinsNames(
   const missing: string[] = [];
   const failed: string[] = [];
 
-  for (const wallet of normalizedWallets.slice(0, MAINNET_SUINS_LOOKUP_LIMIT)) {
-    try {
-      const name = await resolveMainnetSuinsName(wallet, {
+  const results = await Promise.all(
+    normalizedWallets.map(async (wallet) => ({
+      wallet,
+      result: await resolveMainnetSuinsName(wallet, {
         fetchImpl,
         nowMs,
-      });
+      }),
+    })),
+  );
 
-      if (name) {
-        names.push({
-          wallet,
-          name,
-          source: "mainnet_suins",
-        });
-      } else {
-        missing.push(wallet);
-      }
-    } catch {
+  for (const { wallet, result } of results) {
+    if (result.status === "resolved") {
+      names.push({
+        wallet,
+        name: result.name,
+        source: "mainnet_suins",
+      });
+    } else if (result.status === "failed") {
       failed.push(wallet);
+    } else {
+      missing.push(wallet);
     }
   }
 
@@ -99,7 +112,7 @@ export function clearMainnetSuinsNameCacheForTest(): void {
 }
 
 function parseWalletsFromUrl(url: URL): string[] {
-  const wallets = [
+  return [
     ...url.searchParams.getAll("wallet"),
     ...url.searchParams
       .getAll("wallets")
@@ -107,8 +120,6 @@ function parseWalletsFromUrl(url: URL): string[] {
   ]
     .map((wallet) => wallet.trim())
     .filter(Boolean);
-
-  return wallets.slice(0, MAINNET_SUINS_LOOKUP_LIMIT);
 }
 
 function normalizeWalletAddress(wallet: string): string | null {
@@ -129,36 +140,51 @@ async function resolveMainnetSuinsName(
     fetchImpl,
     nowMs,
   }: Required<MainnetSuinsNamesOptions>,
-): Promise<string | null> {
+): Promise<ResolvedSuinsName> {
   const now = nowMs();
   const cached = mainnetSuinsNameCache.get(wallet);
 
-  if (cached && now - cached.fetchedAtMs < MAINNET_SUINS_CACHE_TTL_MS) {
-    return cached.name;
+  if (cached && isFreshCachedSuinsName(cached, now)) {
+    return cached.result;
   }
 
-  const response = await fetchImpl(MAINNET_RPC_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: wallet,
-      method: "suix_resolveNameServiceNames",
-      params: [wallet, null, 1],
-    }),
-  });
+  try {
+    const response = await fetchWithTimeout(
+      fetchImpl,
+      MAINNET_RPC_URL,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: wallet,
+          method: "suix_resolveNameServiceNames",
+          params: [wallet, null, 1],
+        }),
+      },
+      MAINNET_SUINS_RPC_TIMEOUT_MS,
+    );
 
-  if (!response.ok) {
-    throw new Error(`SuiNS lookup failed with ${response.status}`);
+    if (!response.ok) {
+      const result: ResolvedSuinsName = { status: "failed" };
+      writeMainnetSuinsNameCache(wallet, result, now);
+      return result;
+    }
+
+    const name = readPrimarySuinsName(await response.json());
+    const result: ResolvedSuinsName = name
+      ? { status: "resolved", name }
+      : { status: "missing" };
+
+    writeMainnetSuinsNameCache(wallet, result, now);
+    return result;
+  } catch {
+    const result: ResolvedSuinsName = { status: "failed" };
+    writeMainnetSuinsNameCache(wallet, result, now);
+    return result;
   }
-
-  const payload = await response.json();
-  const name = readPrimarySuinsName(payload);
-
-  writeMainnetSuinsNameCache(wallet, name, now);
-  return name;
 }
 
 function readPrimarySuinsName(payload: unknown): string | null {
@@ -181,7 +207,7 @@ function readPrimarySuinsName(payload: unknown): string | null {
 
 function writeMainnetSuinsNameCache(
   wallet: string,
-  name: string | null,
+  result: ResolvedSuinsName,
   fetchedAtMs: number,
 ): void {
   if (mainnetSuinsNameCache.size >= MAINNET_SUINS_CACHE_MAX) {
@@ -193,8 +219,36 @@ function writeMainnetSuinsNameCache(
 
   mainnetSuinsNameCache.set(wallet, {
     fetchedAtMs,
-    name,
+    result,
   });
+}
+
+function isFreshCachedSuinsName(cached: CachedSuinsName, nowMs: number): boolean {
+  const ttl =
+    cached.result.status === "failed"
+      ? MAINNET_SUINS_FAILURE_CACHE_TTL_MS
+      : MAINNET_SUINS_CACHE_TTL_MS;
+
+  return nowMs - cached.fetchedAtMs < ttl;
+}
+
+async function fetchWithTimeout(
+  fetchImpl: typeof fetch,
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetchImpl(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
