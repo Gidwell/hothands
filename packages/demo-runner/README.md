@@ -69,15 +69,18 @@ export DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev
 bun run dev:testnet
 ```
 
+`DATABASE_URL` is required by default. Without it, the launcher exits instead
+of silently starting a non-indexed fallback app.
+
 The launcher starts `apps/api-worker` with its Bun testnet server, waits for
 `/health`, then starts the PWA with `VITE_HOT_HANDS_API_URL` pointed at that
 local API and waits for the PWA URL to respond. It prints `Hot Hands testnet
-dev is ready` only after both URLs are reachable. When `DATABASE_URL` is set,
-it first applies indexer migrations, runs an idempotent bounded Predict
-backfill, and then starts the dedicated live Predict indexer process. The
-launcher starts API and indexer as direct Bun scripts, keeps the PWA on its
-proven Vite package script, writes `.hot-hands-dev-testnet.json` with exact
-child PIDs, and shuts down process groups on exit.
+dev is ready` only after both URLs are reachable. It first applies indexer
+migrations, runs an idempotent bounded Predict backfill, and then starts the
+dedicated live Predict indexer process. The launcher starts API and indexer as
+direct Bun scripts, keeps the PWA on its proven Vite package script, writes
+`.hot-hands-dev-testnet.json` with exact child PIDs, and shuts down process
+groups on exit.
 
 Defaults:
 
@@ -90,6 +93,14 @@ Override ports when another local run owns the defaults:
 
 ```bash
 DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev HOT_HANDS_TESTNET_API_PORT=8792 HOT_HANDS_TESTNET_PWA_PORT=5184 bun run dev:testnet
+```
+
+During product verification, `Live Testnet`, `Captured`, or
+`indexer_unavailable` means the environment is degraded and should be fixed.
+The public Predict fallback path is available only for explicit diagnostics:
+
+```bash
+HOT_HANDS_ALLOW_FALLBACK_TESTNET=true bun run dev:testnet
 ```
 
 Read-only wallet debugging is supported in the PWA with `devWallet`:
@@ -133,6 +144,7 @@ Environment overrides:
 - `HOT_HANDS_DEV_READY_TIMEOUT_MS`
 - `HOT_HANDS_DEV_MIGRATE=false`
 - `HOT_HANDS_DEV_BACKFILL=false`
+- `HOT_HANDS_ALLOW_FALLBACK_TESTNET=true`
 - `HOT_HANDS_INDEXER_LIVE=false`
 - `HOT_HANDS_INDEXER_PRICE_POLL_MS`
 - `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`

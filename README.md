@@ -27,7 +27,7 @@ createdb hothands_dev
 export DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev
 ```
 
-Start the full local testnet stack:
+Start the full local indexed testnet stack:
 
 ```bash
 bun run dev:testnet
@@ -40,22 +40,24 @@ printed PWA URL. Default local URLs are:
 http://127.0.0.1:5176
 ```
 
+The launcher requires `DATABASE_URL` by default. If it is missing, the launcher
+exits instead of quietly starting a public-read fallback app.
+
 The launcher starts:
 
 - PWA: `http://127.0.0.1:5176`
 - API: `http://127.0.0.1:8789`
-- Indexer bootstrap: migrations plus bounded Predict backfill when `DATABASE_URL` is set
-- Live indexer: enabled when `DATABASE_URL` is set, unless `HOT_HANDS_INDEXER_LIVE=false`
+- Indexer bootstrap: migrations plus bounded Predict backfill
+- Live indexer: enabled unless `HOT_HANDS_INDEXER_LIVE=false`
 - Market heat API: `http://127.0.0.1:8789/testnet/market-heat`
 - Indexer status API: `http://127.0.0.1:8789/testnet/indexer-status`
 - Open-position close quote API: `http://127.0.0.1:8789/testnet/redeem-quote`
 
-With `DATABASE_URL`, `dev:testnet` is the recommended teammate/agent loop. It
-applies indexer migrations, runs an idempotent bounded write backfill, starts
-the local API, starts the PWA pointed at that API, then starts the live indexer.
-The PWA opens directly in testnet mode and prefers indexed reads for Feed,
-Trade, Portfolio, and the BTC chart. If indexed reads are unavailable, the API
-falls back to public Predict reads or captured rows and labels the source.
+`dev:testnet` is the recommended teammate/agent loop. It applies indexer
+migrations, runs an idempotent bounded write backfill, starts the local API,
+starts the PWA pointed at that API, then starts the live indexer. The PWA opens
+directly in testnet mode and should read indexed data for Feed, Trade,
+Portfolio, Leaderboards, and the BTC chart.
 
 Quick health checks:
 
@@ -65,9 +67,15 @@ curl -sS http://127.0.0.1:8789/testnet/indexer-status
 curl -sS http://127.0.0.1:8789/testnet/market-heat
 ```
 
-`/testnet/indexer-status` should report the indexed jobs when `DATABASE_URL` is
-set. If it is missing indexed jobs, the app is probably running in fallback
-mode, not the durable local indexer mode.
+`/testnet/indexer-status` should report indexed jobs. If the app shows `Live
+Testnet`, `Captured`, or any `indexer_unavailable` response while you are
+verifying product behavior, treat that as a dev environment failure and restart
+with `DATABASE_URL`. The public Predict fallback is only for explicit
+diagnostics:
+
+```bash
+HOT_HANDS_ALLOW_FALLBACK_TESTNET=true bun run dev:testnet
+```
 
 Useful checks:
 
@@ -173,11 +181,11 @@ Keep the local shape simple and explicit:
   -> compact projections -> API worker endpoints -> PWA Feed, Trade,
   Portfolio, and chart views
 
-When `DATABASE_URL` is set for `bun run dev:testnet`, the launcher applies
-migrations, runs a bounded write backfill, and the local API prefers indexed
-reads for Market Heat, Trade markets, Portfolio events, and oracle price
-history. The launcher also starts a separate live indexer process. Disable
-automatic bootstrap with `HOT_HANDS_DEV_MIGRATE=false` or
+For `bun run dev:testnet`, the launcher requires `DATABASE_URL`, applies
+migrations, runs a bounded write backfill, and the local API uses indexed reads
+for Market Heat, Trade markets, Portfolio events, Leaderboards, and oracle
+price history. The launcher also starts a separate live indexer process.
+Disable automatic bootstrap with `HOT_HANDS_DEV_MIGRATE=false` or
 `HOT_HANDS_DEV_BACKFILL=false` when you intentionally want to skip either step.
 Prices,
 positions, and active-oracle trade activity poll every 1 second by default;
@@ -187,25 +195,25 @@ oracle metadata polls every 30 seconds by default. Tune these with
 `HOT_HANDS_INDEXER_ORACLES_POLL_MS`. The API exposes freshness at
 `/testnet/indexer-status`. The chart requests up to 10,000
 indexed/downsampled points and includes the full stored range metadata. Public
-Predict, captured rows, and direct Sui event reads remain fallbacks when the
-indexer is unavailable.
+Predict, captured rows, and direct Sui event reads are degraded diagnostics
+only; product verification should fix the indexer instead of accepting them.
 
 ## Current Demo Status
 
 What is live today:
 
-- `Testnet` reads indexed DeepBook Predict activity through the local API when
-  `DATABASE_URL` is set, with public/captured fallbacks when it is not.
+- `Testnet` reads indexed DeepBook Predict activity through the local API.
+  `Live Testnet`, `Captured`, or `indexer_unavailable` means the local indexed
+  dev environment needs attention.
 - `Latest` shows the newest observed active trader rows first and refreshes every second while the app is open.
 - Rows are grouped by trader/manager, so a repeat trade moves that row upward instead of creating a duplicate feed item.
 - On wallet connect, the PWA checks whether the user already has a
   `PredictManager`; if one is missing, the wallet bar is the place to create it.
   Trade surfaces assume that account setup has happened before preparing a
   quoted `predict::mint` transaction.
-- Portfolio prefers indexed manager events when the local API has an indexer
-  reader, then falls back to direct Sui event reads. For settled expired
-  positions, it shows the oracle settlement price plus the claim value before
-  sending the wallet action.
+- Portfolio reads indexed manager events from the local API in normal testnet
+  dev. For settled expired positions, it shows the oracle settlement price plus
+  the claim value before sending the wallet action.
 - The BTC oracle chart can render indexed, downsampled full-history price data
   instead of only the current public Predict response window.
 - Open positions show an estimated close value from the local testnet redeem
