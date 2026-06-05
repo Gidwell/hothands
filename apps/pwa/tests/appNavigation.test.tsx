@@ -817,7 +817,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Create Predict account");
   });
 
-  test("shows a discovered Predict account in the connected wallet bar", () => {
+  test("hides a discovered Predict account from the connected wallet bar", () => {
     const html = renderToStaticMarkup(
       <WalletStatusBar
         accountAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
@@ -834,8 +834,7 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("Predict account 0x0000...bbbb");
-    expect(html).not.toContain('data-testid="create-predict-manager"');
+    expect(html).toBe("");
   });
 
   test("labels dev wallet override as read-only and hides account creation", () => {
@@ -868,9 +867,7 @@ describe("mobile app navigation", () => {
 
     expect(headerHtml).toContain("Read-only");
     expect(headerHtml).toContain('data-testid="wallet-readonly"');
-    expect(statusHtml).toContain("Read-only Predict account 0x0000...bbbb");
-    expect(statusHtml).not.toContain("Disconnect");
-    expect(statusHtml).not.toContain('data-testid="create-predict-manager"');
+    expect(statusHtml).toBe("");
   });
 
   test("keeps return fields visible when a trade market still needs a quote", () => {

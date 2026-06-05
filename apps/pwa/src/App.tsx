@@ -680,13 +680,17 @@ export function WalletHeaderControl({
 
 export function WalletStatusBar({
   accountAddress,
-  predictManagerObjectId,
   predictManagerStatus,
   readOnly = false,
   txState,
   onCreatePredictManager,
 }: WalletStatusBarProps) {
-  if (!accountAddress) {
+  const needsPredictManagerAction =
+    accountAddress &&
+    !readOnly &&
+    (predictManagerStatus === "missing" || predictManagerStatus === "error");
+
+  if (!needsPredictManagerAction) {
     return null;
   }
 
@@ -697,32 +701,18 @@ export function WalletStatusBar({
         aria-live="polite"
       >
         <span data-testid="predict-manager-status">
-          {readOnly
-            ? predictManagerStatus === "ready"
-              ? `Read-only Predict account ${formatWalletAddress(predictManagerObjectId)}`
-              : predictManagerStatus === "checking"
-                ? "Checking read-only Predict account..."
-                : predictManagerStatus === "error"
-                  ? "Could not check read-only Predict account"
-                  : "No Predict account found"
-            : predictManagerStatus === "checking"
-              ? "Checking Predict account..."
-              : predictManagerStatus === "ready"
-                ? `Predict account ${formatWalletAddress(predictManagerObjectId)}`
-                : predictManagerStatus === "error"
-                  ? "Could not check Predict account"
-                  : "No Predict account yet"}
+          {predictManagerStatus === "error"
+            ? "Could not check Predict account"
+            : "No Predict account yet"}
         </span>
-        {!readOnly && (predictManagerStatus === "missing" || predictManagerStatus === "error") ? (
-          <button
-            type="button"
-            data-testid="create-predict-manager"
-            disabled={txState.status === "pending"}
-            onClick={onCreatePredictManager}
-          >
-            {txState.status === "pending" ? "Sending..." : "Create Predict account"}
-          </button>
-        ) : null}
+        <button
+          type="button"
+          data-testid="create-predict-manager"
+          disabled={txState.status === "pending"}
+          onClick={onCreatePredictManager}
+        >
+          {txState.status === "pending" ? "Sending..." : "Create Predict account"}
+        </button>
       </div>
     </section>
   );
