@@ -21,6 +21,7 @@ import { createTableActivityBroadcast } from "./table-activity";
 import { getTestnetMarketHeat } from "./market-heat";
 import { getTestnetOraclePrices } from "./oracle-prices";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
+import { getMainnetSuinsNames } from "./suins-names";
 import type { PredictIndexerReader } from "@hot-hands/indexer";
 import {
   getTestnetPredictRedeemQuote,
@@ -102,6 +103,14 @@ export default {
           400
         );
       }
+    }
+
+    if (url.pathname === "/testnet/mainnet-suins-names") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      return json(await getMainnetSuinsNames(url, { fetchImpl: env.fetch ?? fetch }));
     }
 
     if (url.pathname === "/testnet/quote") {

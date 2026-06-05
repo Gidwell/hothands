@@ -2780,7 +2780,10 @@ export function App() {
 
       isRefreshing = true;
       try {
-        const preview = await loadMarketHeatPreview({ apiBaseUrl: realtimeApiBaseUrl });
+        const preview = await loadMarketHeatPreview({
+          apiBaseUrl: realtimeApiBaseUrl,
+          useMainnetSuinsNames: true,
+        });
         if (isCurrent) {
           setMarketHeatPreview(preview);
         }
@@ -2827,6 +2830,7 @@ export function App() {
       try {
         const snapshot = await loadWalletLeaderboards({
           apiBaseUrl: realtimeApiBaseUrl,
+          useMainnetSuinsNames: true,
         });
 
         if (isCurrent) {

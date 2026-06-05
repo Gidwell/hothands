@@ -1,3 +1,10 @@
+import {
+  loadMainnetSuinsNames,
+  resolveWalletDisplayName,
+  type WalletDisplayNameSource,
+  type WalletDisplayNamesByAddress,
+} from "./suinsDisplayNames";
+
 export type WalletLeaderboardBoardKey =
   | "longestWinningStreak"
   | "longestLosingStreak"
@@ -49,6 +56,7 @@ export type WalletLeaderboardEntry = {
   rank: number;
   wallet: string;
   displayName: string;
+  displayNameSource?: WalletDisplayNameSource;
   totalCost: number;
   totalPayout: number;
   totalPnl: number;
@@ -77,12 +85,14 @@ export type WalletLeaderboardsSnapshot = {
 
 export type BuildWalletLeaderboardsOptions = {
   timeZone?: string;
+  walletDisplayNames?: WalletDisplayNamesByAddress;
 };
 
 export type LoadWalletLeaderboardsOptions = BuildWalletLeaderboardsOptions & {
   apiBaseUrl?: string;
   fetcher?: typeof fetch;
   nowMs?: number;
+  useMainnetSuinsNames?: boolean;
 };
 
 export const WALLET_LEADERBOARD_BOARDS: WalletLeaderboardBoardDefinition[] = [
@@ -121,6 +131,7 @@ export async function loadWalletLeaderboards({
   apiBaseUrl,
   fetcher = fetch,
   timeZone,
+  useMainnetSuinsNames = false,
 }: LoadWalletLeaderboardsOptions = {}): Promise<WalletLeaderboardsSnapshot> {
   if (!apiBaseUrl) {
     return buildWalletLeaderboards(undefined, { timeZone });
@@ -131,12 +142,21 @@ export async function loadWalletLeaderboards({
     throw new Error(`Wallet leaderboards failed with ${response.status}`);
   }
 
-  return buildWalletLeaderboards(await response.json(), { timeZone });
+  const payload = await response.json();
+  const walletDisplayNames = useMainnetSuinsNames
+    ? await loadMainnetSuinsNames({
+        apiBaseUrl,
+        fetcher,
+        wallets: collectLeaderboardWallets(payload),
+      }).catch(() => ({}))
+    : {};
+
+  return buildWalletLeaderboards(payload, { timeZone, walletDisplayNames });
 }
 
 export function buildWalletLeaderboards(
   response?: WalletLeaderboardsApiResponse,
-  { timeZone }: BuildWalletLeaderboardsOptions = {},
+  { timeZone, walletDisplayNames = {} }: BuildWalletLeaderboardsOptions = {},
 ): WalletLeaderboardsSnapshot {
   const source = typeof response?.source === "string" ? response.source : undefined;
   const leaderboards = response?.leaderboards;
@@ -154,21 +174,25 @@ export function buildWalletLeaderboards(
       longestWinningStreak: buildEntries(
         leaderboards.longestWinningStreak,
         timeZone,
+        walletDisplayNames,
       ),
       longestLosingStreak: buildEntries(
         leaderboards.longestLosingStreak,
         timeZone,
+        walletDisplayNames,
       ),
       currentWinningStreak: buildEntries(
         leaderboards.currentWinningStreak,
         timeZone,
+        walletDisplayNames,
       ),
       currentLosingStreak: buildEntries(
         leaderboards.currentLosingStreak,
         timeZone,
+        walletDisplayNames,
       ),
-      highestPnl: buildEntries(leaderboards.highestPnl, timeZone),
-      worstPnl: buildEntries(leaderboards.worstPnl, timeZone),
+      highestPnl: buildEntries(leaderboards.highestPnl, timeZone, walletDisplayNames),
+      worstPnl: buildEntries(leaderboards.worstPnl, timeZone, walletDisplayNames),
     },
   };
 }
@@ -183,9 +207,10 @@ export function selectWalletLeaderboardEntries(
 function buildEntries(
   entries: WalletLeaderboardApiEntry[] | undefined,
   timeZone?: string,
+  walletDisplayNames: WalletDisplayNamesByAddress = {},
 ): WalletLeaderboardEntry[] {
   return (entries ?? [])
-    .map((entry, index) => buildEntry(entry, index + 1, timeZone))
+    .map((entry, index) => buildEntry(entry, index + 1, timeZone, walletDisplayNames))
     .filter((entry): entry is WalletLeaderboardEntry => entry !== null)
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
 }
@@ -194,12 +219,14 @@ function buildEntry(
   entry: WalletLeaderboardApiEntry,
   rank: number,
   timeZone?: string,
+  walletDisplayNames: WalletDisplayNamesByAddress = {},
 ): WalletLeaderboardEntry | null {
   const wallet = typeof entry.wallet === "string" ? entry.wallet.trim() : "";
   if (!wallet) {
     return null;
   }
 
+  const walletDisplayName = resolveWalletDisplayName(wallet, walletDisplayNames);
   const totalPnl = readNumber(entry.totalPnl);
   const longestWinningStreak = readInteger(entry.longestWinningStreak);
   const longestLosingStreak = readInteger(entry.longestLosingStreak);
@@ -210,7 +237,10 @@ function buildEntry(
   return {
     rank,
     wallet,
-    displayName: formatWallet(wallet),
+    displayName: walletDisplayName?.name ?? formatWallet(wallet),
+    ...(walletDisplayName
+      ? { displayNameSource: walletDisplayName.source }
+      : {}),
     totalCost: readNumber(entry.totalCost),
     totalPayout: readNumber(entry.totalPayout),
     totalPnl,
@@ -235,6 +265,30 @@ function buildEntry(
 
 function buildWalletLeaderboardsUrl(apiBaseUrl: string): string {
   return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/wallet-leaderboards`;
+}
+
+function collectLeaderboardWallets(response: unknown): string[] {
+  if (!isRecord(response) || !isRecord(response.leaderboards)) {
+    return [];
+  }
+
+  const wallets: string[] = [];
+
+  for (const entries of Object.values(response.leaderboards)) {
+    if (!Array.isArray(entries)) {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!isRecord(entry) || typeof entry.wallet !== "string") {
+        continue;
+      }
+
+      wallets.push(entry.wallet);
+    }
+  }
+
+  return wallets;
 }
 
 function cloneEmptyLeaderboards(): Record<WalletLeaderboardBoardKey, WalletLeaderboardEntry[]> {
@@ -308,6 +362,10 @@ function formatPnlTone(value: number): WalletLeaderboardTone {
   }
 
   return value < 0 ? "negative" : "flat";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function formatCurrentStreak(type: WalletStreakType, count: number): string {

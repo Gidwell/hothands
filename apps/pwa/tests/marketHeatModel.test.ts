@@ -237,6 +237,68 @@ describe("market heat preview model", () => {
     });
   });
 
+  test("overlays mainnet SuiNS names on market heat rows when requested", async () => {
+    const wallet = "0x1111222233334444555566667777888899990000";
+    const calls: string[] = [];
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_000_000,
+      useMainnetSuinsNames: true,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        if (String(url).includes("/testnet/mainnet-suins-names")) {
+          return Response.json({
+            source: "mainnet_suins",
+            network: "mainnet",
+            names: [
+              {
+                wallet,
+                name: "alice.sui",
+                source: "mainnet_suins",
+              },
+            ],
+          });
+        }
+
+        return Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71234,
+            source: "live_testnet",
+          },
+          rows: [
+            {
+              id: "external-0x1111",
+              wallet,
+              manager: "manager 0xabcd...0001",
+              market: "BTC-USD",
+              side: "UP",
+              strike: 71000,
+              expiryMs: 1_779_165_900_000,
+              intervalLabel: "15m",
+              observedAtMs: 1_779_165_000_000,
+              heatScore: 74,
+              status: "copy_ready",
+            },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/market-heat",
+      `https://api.hot-hands.test/testnet/mainnet-suins-names?wallet=${wallet}`,
+    ]);
+    expect(preview.rows[0]).toMatchObject({
+      wallet,
+      displayName: "alice.sui",
+      displayNameSource: "mainnet_suins",
+    });
+  });
+
   test("keeps parsed trade market ids stable when live strike candidates update", async () => {
     const expiryMs = 1_779_165_900_000;
     const loadForStrike = (strikeCandidatePrice: number) =>

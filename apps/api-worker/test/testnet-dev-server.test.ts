@@ -1,8 +1,140 @@
 import { describe, expect, test } from "bun:test";
 import type { PredictIndexerReader } from "@hot-hands/indexer";
 import { createTestnetDevServerFetch } from "../src/testnet-dev-server";
+import {
+  clearMainnetSuinsNameCacheForTest,
+  getMainnetSuinsNames,
+} from "../src/suins-names";
 
 describe("testnet API dev server harness", () => {
+  test("serves mainnet SuiNS names as a display-only testnet overlay", async () => {
+    clearMainnetSuinsNameCacheForTest();
+
+    const wallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000a1";
+    const calls: unknown[] = [];
+    const fetchHandler = createTestnetDevServerFetch({
+      fetchImpl: async (_input, init) => {
+        calls.push(JSON.parse(String(init?.body)));
+
+        return Response.json({
+          result: {
+            data: ["alice.sui"],
+            hasNextPage: false,
+            nextCursor: null,
+          },
+        });
+      },
+    });
+
+    const response = await fetchHandler(
+      new Request(
+        `http://127.0.0.1:8789/testnet/mainnet-suins-names?wallet=${wallet}&wallet=not-a-wallet`,
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(calls).toEqual([
+      {
+        jsonrpc: "2.0",
+        id: wallet,
+        method: "suix_resolveNameServiceNames",
+        params: [wallet, null, 1],
+      },
+    ]);
+    await expect(response.json()).resolves.toEqual({
+      source: "mainnet_suins",
+      network: "mainnet",
+      names: [
+        {
+          wallet,
+          name: "alice.sui",
+          source: "mainnet_suins",
+        },
+      ],
+      missing: [],
+      skipped: ["not-a-wallet"],
+      failed: [],
+    });
+  });
+
+  test("backs off failed mainnet SuiNS lookups", async () => {
+    clearMainnetSuinsNameCacheForTest();
+
+    let now = 1_000;
+    let calls = 0;
+    const wallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000b2";
+    const url = new URL(
+      `http://127.0.0.1:8789/testnet/mainnet-suins-names?wallet=${wallet}`,
+    );
+    const fetchImpl = async () => {
+      calls += 1;
+      return new Response("mainnet unavailable", { status: 503 });
+    };
+
+    await expect(
+      getMainnetSuinsNames(url, { fetchImpl, nowMs: () => now }),
+    ).resolves.toMatchObject({
+      failed: [wallet],
+      missing: [],
+      names: [],
+    });
+
+    now += 1_000;
+    await expect(
+      getMainnetSuinsNames(url, { fetchImpl, nowMs: () => now }),
+    ).resolves.toMatchObject({
+      failed: [wallet],
+      missing: [],
+      names: [],
+    });
+    expect(calls).toBe(1);
+
+    now += 61_000;
+    await getMainnetSuinsNames(url, { fetchImpl, nowMs: () => now });
+    expect(calls).toBe(2);
+  });
+
+  test("applies mainnet SuiNS lookup limits after validation and dedupe", async () => {
+    clearMainnetSuinsNameCacheForTest();
+
+    const wallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000c3";
+    const url = new URL("http://127.0.0.1:8789/testnet/mainnet-suins-names");
+    for (let index = 0; index < 50; index += 1) {
+      url.searchParams.append("wallet", `not-a-wallet-${index}`);
+    }
+    url.searchParams.append("wallet", wallet);
+    url.searchParams.append("wallet", wallet);
+
+    const calls: unknown[] = [];
+    const response = await getMainnetSuinsNames(url, {
+      fetchImpl: async (_input, init) => {
+        calls.push(JSON.parse(String(init?.body)));
+
+        return Response.json({
+          result: {
+            data: ["limit-test.sui"],
+            hasNextPage: false,
+            nextCursor: null,
+          },
+        });
+      },
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(response.skipped).toHaveLength(50);
+    expect(response.names).toEqual([
+      {
+        wallet,
+        name: "limit-test.sui",
+        source: "mainnet_suins",
+      },
+    ]);
+  });
+
   test("serves market heat through the live-first projection with deterministic fallback", async () => {
     const fetchHandler = createTestnetDevServerFetch({
       fetchImpl: async () => {

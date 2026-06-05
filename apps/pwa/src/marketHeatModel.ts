@@ -1,3 +1,10 @@
+import {
+  loadMainnetSuinsNames,
+  resolveWalletDisplayName,
+  type WalletDisplayNameSource,
+  type WalletDisplayNamesByAddress,
+} from "./suinsDisplayNames";
+
 export type MarketHeatStatus = "copy_ready" | "watching";
 export type MarketHeatSortMode = "latest" | "heat";
 export type MarketDurationOption = {
@@ -71,6 +78,7 @@ export type MarketHeatPreviewRow = {
   oracleId?: string;
   wallet: string;
   displayName: string;
+  displayNameSource?: WalletDisplayNameSource;
   manager: string;
   pairLabel: string;
   side: "UP" | "DOWN";
@@ -121,12 +129,14 @@ export type LoadMarketHeatPreviewOptions = {
   fetcher?: typeof fetch;
   nowMs?: number;
   timeZone?: string;
+  useMainnetSuinsNames?: boolean;
 };
 
 export type BuildMarketHeatPreviewOptions = {
   marketPrice?: MarketHeatPriceInput;
   nowMs?: number;
   timeZone?: string;
+  walletDisplayNames?: WalletDisplayNamesByAddress;
 };
 
 export type SelectVisibleMarketHeatRowsOptions = {
@@ -273,6 +283,7 @@ export function buildMarketHeatPreview(
     marketPrice = CAPTURED_MARKET_PRICE,
     nowMs = Date.now(),
     timeZone,
+    walletDisplayNames = {},
   }: BuildMarketHeatPreviewOptions = {},
 ): MarketHeatPreview {
   return {
@@ -291,12 +302,16 @@ export function buildMarketHeatPreview(
         const cost = optionalNonNegativeNumber(row.cost);
         const costUsd = normalizeCostUsd(row);
         const strikeRaw = optionalNonNegativeNumber(row.strikeRaw);
+        const walletDisplayName = resolveWalletDisplayName(row.wallet, walletDisplayNames);
 
         return {
           id: row.id,
           ...(oracleId === undefined ? {} : { oracleId }),
           wallet: row.wallet,
-          displayName: formatWallet(row.wallet),
+          displayName: walletDisplayName?.name ?? formatWallet(row.wallet),
+          ...(walletDisplayName
+            ? { displayNameSource: walletDisplayName.source }
+            : {}),
           manager: formatManager(row.manager),
           pairLabel: formatPair(row.market),
           side: row.side,
@@ -607,6 +622,7 @@ export async function loadMarketHeatPreview({
   fetcher = fetch,
   nowMs = Date.now(),
   timeZone,
+  useMainnetSuinsNames = false,
 }: LoadMarketHeatPreviewOptions = {}): Promise<MarketHeatPreview> {
   const normalizedBaseUrl = apiBaseUrl?.trim();
 
@@ -633,12 +649,20 @@ export async function loadMarketHeatPreview({
       sourceLabel === "Captured" ? refreshCapturedRows(rows, nowMs) : rows;
     const marketPrice = parseMarketHeatPrice(payload) ?? CAPTURED_MARKET_PRICE;
     const availableMarkets = parseAvailableMarkets(payload, marketPrice, timeZone);
+    const walletDisplayNames = useMainnetSuinsNames
+      ? await loadMainnetSuinsNames({
+          apiBaseUrl: normalizedBaseUrl,
+          fetcher,
+          wallets: previewRows.map((row) => row.wallet),
+        }).catch(() => ({}))
+      : {};
 
     return {
       ...buildMarketHeatPreview(previewRows, MARKET_HEAT_CANDIDATE_LIMIT, {
         marketPrice,
         nowMs,
         timeZone,
+        walletDisplayNames,
       }),
       availableMarkets,
       sourceLabel,
