@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import {
   useCurrentClient,
   useCurrentAccount,
@@ -45,7 +45,6 @@ import {
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
   type MarketHeatIntentState,
-  type MarketHeatPrice,
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
   type MarketHeatSortMode,
@@ -69,9 +68,10 @@ import {
   WALLET_LEADERBOARD_BOARDS,
   type WalletLeaderboardBoardKey,
   type WalletLeaderboardEntry,
+  type WalletLeaderboardPanelBoardKey,
+  type WalletLeaderboardSortDirection,
   type WalletLeaderboardStreakMode,
   type WalletLeaderboardTone,
-  type WalletLeaderboardVisibleBoardKey,
   type WalletLeaderboardsSnapshot,
 } from "./walletLeaderboards";
 import { buildTradeMintTransaction } from "./walletTransactions";
@@ -113,6 +113,10 @@ const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "leaderboards" | "portfolio";
+export function shouldShowAccountSummary(view: AppView): boolean {
+  return view === "trade" || view === "portfolio";
+}
+
 export type TradeSide = "UP" | "DOWN";
 export type TradeMarketSelection = {
   marketId: string;
@@ -615,33 +619,32 @@ function writeDismissedPortfolioPositionIds(
   );
 }
 
-export function WalletStatusBar({
-  accountAddress,
-  connectionStatus,
-  networkLabel,
-  predictManagerObjectId,
-  predictManagerStatus,
-  readOnly = false,
-  txState,
-  walletCount,
-  walletName,
-  onConnect,
-  onCreatePredictManager,
-  onDisconnect,
-}: {
+type WalletHeaderControlProps = {
   accountAddress: string | null;
   connectionStatus: string;
+  readOnly?: boolean;
+  walletCount: number;
+  onConnect: () => void;
+  onDisconnect: () => void;
+};
+
+type WalletStatusBarProps = WalletHeaderControlProps & {
   networkLabel: string;
   predictManagerObjectId: string | null;
   predictManagerStatus: PredictManagerStatus;
-  readOnly?: boolean;
   txState: WalletTransactionState;
-  walletCount: number;
   walletName: string | null;
-  onConnect: () => void;
   onCreatePredictManager: () => void;
-  onDisconnect: () => void;
-}) {
+};
+
+export function WalletHeaderControl({
+  accountAddress,
+  connectionStatus,
+  readOnly = false,
+  walletCount,
+  onConnect,
+  onDisconnect,
+}: WalletHeaderControlProps) {
   const isConnected = Boolean(accountAddress);
   const connectLabel =
     walletCount === 0
@@ -650,65 +653,71 @@ export function WalletStatusBar({
         ? "Connecting"
         : "Connect wallet";
 
+  if (isConnected) {
+    return (
+      <button
+        type="button"
+        aria-label={readOnly ? "Read-only wallet" : "Disconnect wallet"}
+        className="wallet-header-button wallet-header-button-connected"
+        data-testid={readOnly ? "wallet-readonly" : "wallet-disconnect"}
+        disabled={readOnly}
+        onClick={readOnly ? undefined : onDisconnect}
+      >
+        <strong data-testid="wallet-address">{formatWalletAddress(accountAddress)}</strong>
+        <span>{readOnly ? "Read-only" : "Connected"}</span>
+      </button>
+    );
+  }
+
   return (
-    <section className="wallet-status-bar" aria-label="Wallet" data-testid="wallet-status">
-      <div className="wallet-status-main">
-        <small>{networkLabel}</small>
-        <strong data-testid="wallet-address">
-          {isConnected ? formatWalletAddress(accountAddress) : "Wallet disconnected"}
-        </strong>
-        <span>{isConnected ? walletName ?? "Sui wallet" : `${walletCount} wallets found`}</span>
-      </div>
-      <div className="wallet-status-actions">
-        {isConnected && !readOnly ? (
-          <button type="button" data-testid="wallet-disconnect" onClick={onDisconnect}>
-            Disconnect
-          </button>
-        ) : (
-          <button
-            type="button"
-            data-testid="wallet-connect"
-            disabled={walletCount === 0 || connectionStatus === "connecting"}
-            onClick={onConnect}
-          >
-            {connectLabel}
-          </button>
-        )}
-      </div>
-      {isConnected ? (
-        <div
-          className={`predict-manager-status predict-manager-status-${predictManagerStatus}`}
-          aria-live="polite"
-        >
+    <button
+      type="button"
+      className="wallet-header-button"
+      data-testid="wallet-connect"
+      disabled={walletCount === 0 || connectionStatus === "connecting"}
+      onClick={onConnect}
+    >
+      {connectLabel}
+    </button>
+  );
+}
+
+export function WalletStatusBar({
+  accountAddress,
+  predictManagerStatus,
+  readOnly = false,
+  txState,
+  onCreatePredictManager,
+}: WalletStatusBarProps) {
+  const needsPredictManagerAction =
+    accountAddress &&
+    !readOnly &&
+    (predictManagerStatus === "missing" || predictManagerStatus === "error");
+
+  if (!needsPredictManagerAction) {
+    return null;
+  }
+
+  return (
+    <section className="wallet-status-bar" aria-label="Predict account" data-testid="wallet-status">
+      <div
+        className={`predict-manager-status predict-manager-status-${predictManagerStatus}`}
+        aria-live="polite"
+      >
         <span data-testid="predict-manager-status">
-            {readOnly
-              ? predictManagerStatus === "ready"
-                ? `Read-only Predict account ${formatWalletAddress(predictManagerObjectId)}`
-                : predictManagerStatus === "checking"
-                  ? "Checking read-only Predict account..."
-                  : predictManagerStatus === "error"
-                    ? "Could not check read-only Predict account"
-                    : "No Predict account found"
-              : predictManagerStatus === "checking"
-              ? "Checking Predict account..."
-              : predictManagerStatus === "ready"
-                ? `Predict account ${formatWalletAddress(predictManagerObjectId)}`
-                : predictManagerStatus === "error"
-                  ? "Could not check Predict account"
-                  : "No Predict account yet"}
-          </span>
-          {!readOnly && (predictManagerStatus === "missing" || predictManagerStatus === "error") ? (
-            <button
-              type="button"
-              data-testid="create-predict-manager"
-              disabled={txState.status === "pending"}
-              onClick={onCreatePredictManager}
-            >
-              {txState.status === "pending" ? "Sending..." : "Create Predict account"}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+          {predictManagerStatus === "error"
+            ? "Could not check Predict account"
+            : "No Predict account yet"}
+        </span>
+        <button
+          type="button"
+          data-testid="create-predict-manager"
+          disabled={txState.status === "pending"}
+          onClick={onCreatePredictManager}
+        >
+          {txState.status === "pending" ? "Sending..." : "Create Predict account"}
+        </button>
+      </div>
     </section>
   );
 }
@@ -1521,29 +1530,35 @@ function walletLeaderboardMetricValue(
 }
 
 function walletLeaderboardEffectiveBoard(
-  board: WalletLeaderboardVisibleBoardKey,
+  board: WalletLeaderboardPanelBoardKey,
+  sortDirection: WalletLeaderboardSortDirection,
   streakMode: WalletLeaderboardStreakMode,
 ): WalletLeaderboardBoardKey {
-  if (streakMode === "current") {
-    if (board === "longestWinningStreak") {
-      return "currentWinningStreak";
-    }
-    if (board === "longestLosingStreak") {
-      return "currentLosingStreak";
-    }
+  if (board === "pnl") {
+    return sortDirection === "best" ? "highestPnl" : "worstPnl";
   }
 
-  return board;
+  if (streakMode === "current") {
+    return sortDirection === "best"
+      ? "currentWinningStreak"
+      : "currentLosingStreak";
+  }
+
+  return sortDirection === "best"
+    ? "longestWinningStreak"
+    : "longestLosingStreak";
 }
 
 function walletLeaderboardMetricLabel(board: WalletLeaderboardBoardKey): string {
   switch (board) {
     case "longestWinningStreak":
+      return "Win Streak";
     case "longestLosingStreak":
-      return "Top Streak";
+      return "Lose Streak";
     case "currentWinningStreak":
+      return "Current Wins";
     case "currentLosingStreak":
-      return "Current Streak";
+      return "Current Losses";
     case "highestPnl":
     case "worstPnl":
       return "PNL";
@@ -1567,23 +1582,38 @@ function walletLeaderboardMetricTone(
   }
 }
 
-function isWalletLeaderboardStreakBoard(board: WalletLeaderboardVisibleBoardKey): boolean {
-  return board === "longestWinningStreak" || board === "longestLosingStreak";
+function walletLeaderboardListLabel(
+  board: WalletLeaderboardPanelBoardKey,
+  sortDirection: WalletLeaderboardSortDirection,
+  streakMode: WalletLeaderboardStreakMode,
+): string {
+  if (board === "pnl") {
+    return sortDirection === "best" ? "Top PnL" : "Worst PnL";
+  }
+
+  const streakType = sortDirection === "best" ? "Win" : "Lose";
+  return streakMode === "current"
+    ? `Current ${streakType} Streaks`
+    : `${streakType} Streaks`;
 }
 
 export function WalletLeaderboardsPanel({
   activeBoard,
+  sortDirection = "best",
   streakMode = "allTime",
   snapshot,
   status = "ready",
   onBoardChange,
+  onSortDirectionChange,
   onStreakModeChange,
 }: {
-  activeBoard: WalletLeaderboardVisibleBoardKey;
+  activeBoard: WalletLeaderboardPanelBoardKey;
+  sortDirection?: WalletLeaderboardSortDirection;
   streakMode?: WalletLeaderboardStreakMode;
   snapshot: WalletLeaderboardsSnapshot;
   status?: WalletLeaderboardsStatus;
-  onBoardChange: (board: WalletLeaderboardVisibleBoardKey) => void;
+  onBoardChange: (board: WalletLeaderboardPanelBoardKey) => void;
+  onSortDirectionChange?: (direction: WalletLeaderboardSortDirection) => void;
   onStreakModeChange?: (mode: WalletLeaderboardStreakMode) => void;
 }) {
   const activeBoardDefinition =
@@ -1591,11 +1621,17 @@ export function WalletLeaderboardsPanel({
     WALLET_LEADERBOARD_BOARDS[0];
   const effectiveBoard = walletLeaderboardEffectiveBoard(
     activeBoardDefinition.key,
+    sortDirection,
     streakMode,
   );
   const coreMetricLabel = walletLeaderboardMetricLabel(effectiveBoard);
   const entries = selectWalletLeaderboardEntries(snapshot, effectiveBoard);
-  const isStreakBoard = isWalletLeaderboardStreakBoard(activeBoardDefinition.key);
+  const isStreakBoard = activeBoardDefinition.key === "streaks";
+  const listLabel = walletLeaderboardListLabel(
+    activeBoardDefinition.key,
+    sortDirection,
+    streakMode,
+  );
   const emptyLabel =
     status === "loading"
       ? "Loading wallet leaderboards..."
@@ -1615,18 +1651,35 @@ export function WalletLeaderboardsPanel({
         <p>Wallet Leaders</p>
         <span>{sourceLabel}</span>
       </div>
-      <div className="wallet-leaderboard-tabs" aria-label="Wallet leaderboard boards">
-        {WALLET_LEADERBOARD_BOARDS.map((board) => (
-          <button
-            type="button"
-            aria-pressed={activeBoardDefinition.key === board.key}
-            data-testid={`wallet-leaderboard-tab-${board.key}`}
-            key={board.key}
-            onClick={() => onBoardChange(board.key)}
-          >
-            {board.label}
-          </button>
-        ))}
+      <div className="wallet-leaderboard-toolbar">
+        <div className="wallet-leaderboard-tabs" aria-label="Wallet leaderboard boards">
+          {WALLET_LEADERBOARD_BOARDS.map((board) => (
+            <button
+              type="button"
+              aria-pressed={activeBoardDefinition.key === board.key}
+              data-testid={`wallet-leaderboard-tab-${board.key}`}
+              key={board.key}
+              onClick={() => onBoardChange(board.key)}
+            >
+              {board.label}
+            </button>
+          ))}
+        </div>
+        <button
+          className={`wallet-leaderboard-sort-toggle wallet-leaderboard-sort-toggle-${sortDirection}`}
+          type="button"
+          aria-label={
+            sortDirection === "best"
+              ? "Sort worst first"
+              : "Sort best first"
+          }
+          data-testid="wallet-leaderboard-sort-toggle"
+          onClick={() =>
+            onSortDirectionChange?.(sortDirection === "best" ? "worst" : "best")
+          }
+        >
+          <span aria-hidden="true">{sortDirection === "best" ? "↑" : "↓"}</span>
+        </button>
       </div>
       {isStreakBoard ? (
         <div className="wallet-leaderboard-streak-modes" aria-label="Streak range">
@@ -1664,7 +1717,7 @@ export function WalletLeaderboardsPanel({
                   <span className="wallet-leaderboard-rank">#{entry.rank}</span>
                   <div>
                     <strong>{entry.displayName}</strong>
-                    <small>{activeBoardDefinition.label}</small>
+                    <small>{listLabel}</small>
                   </div>
                   <div
                     className={`wallet-leaderboard-core wallet-leaderboard-core-${coreMetricTone}`}
@@ -1978,10 +2031,10 @@ export function MarketHeatPreview({
   );
 }
 
-function MarketHeader({
-  price,
+export function MarketHeader({
+  walletControl,
 }: {
-  price: MarketHeatPrice;
+  walletControl: ReactNode;
 }) {
   return (
     <header className="market-strip" data-testid="market-header">
@@ -1991,9 +2044,8 @@ function MarketHeader({
           <h1>Hot Hands</h1>
         </div>
       </div>
-      <div className="market-price">
-        <span>{price.marketLabel}</span>
-        <em>{price.statusLabel}</em>
+      <div className="market-header-wallet" data-testid="market-header-wallet">
+        {walletControl}
       </div>
     </header>
   );
@@ -2213,7 +2265,9 @@ export function App() {
       status: "idle",
     }));
   const [activeWalletLeaderboard, setActiveWalletLeaderboard] =
-    useState<WalletLeaderboardVisibleBoardKey>("highestPnl");
+    useState<WalletLeaderboardPanelBoardKey>("pnl");
+  const [walletLeaderboardSortDirection, setWalletLeaderboardSortDirection] =
+    useState<WalletLeaderboardSortDirection>("best");
   const [walletLeaderboardStreakMode, setWalletLeaderboardStreakMode] =
     useState<WalletLeaderboardStreakMode>("allTime");
   const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
@@ -3592,7 +3646,23 @@ export function App() {
     <main className="app-shell" data-testid="app-shell">
       <section className="phone-frame" aria-label="Hot Hands market shell">
         <div className="app-scroll" data-testid="app-scroll">
-          <MarketHeader price={marketHeatPreview.marketPrice} />
+          <MarketHeader
+            walletControl={
+              <WalletHeaderControl
+                accountAddress={connectedAccountAddress}
+                connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
+                readOnly={isReadOnlyWalletView}
+                walletCount={wallets.length}
+                onConnect={handleWalletConnect}
+                onDisconnect={handleWalletDisconnect}
+              />
+            }
+          />
+          <OraclePriceChartCard
+            chart={oraclePriceChart}
+            fallbackPriceLabel={marketHeatPreview.marketPrice.priceLabel}
+            onOpen={() => setIsOracleChartOpen(true)}
+          />
           <WalletStatusBar
             accountAddress={connectedAccountAddress}
             connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
@@ -3607,21 +3677,18 @@ export function App() {
             onCreatePredictManager={handleCreatePredictManager}
             onDisconnect={handleWalletDisconnect}
           />
-          <AccountSummary
-            availableLabel={liveDusdcBalanceLabel}
-            bankrollLabel={livePredictManagerBankrollLabel}
-            depositAmount={depositAmount}
-            onDeposit={handleDepositBankroll}
-            onDepositAmountChange={handleDepositAmountChange}
-            pnlLabel={visiblePortfolioPnl.pnlLabel}
-            pnlTone={visiblePortfolioPnl.pnlTone}
-            summary={accountSummary}
-          />
-          <OraclePriceChartCard
-            chart={oraclePriceChart}
-            fallbackPriceLabel={marketHeatPreview.marketPrice.priceLabel}
-            onOpen={() => setIsOracleChartOpen(true)}
-          />
+          {shouldShowAccountSummary(activeView) ? (
+            <AccountSummary
+              availableLabel={liveDusdcBalanceLabel}
+              bankrollLabel={livePredictManagerBankrollLabel}
+              depositAmount={depositAmount}
+              onDeposit={handleDepositBankroll}
+              onDepositAmountChange={handleDepositAmountChange}
+              pnlLabel={visiblePortfolioPnl.pnlLabel}
+              pnlTone={visiblePortfolioPnl.pnlTone}
+              summary={accountSummary}
+            />
+          ) : null}
           {activeView === "feed" ? (
             renderMarketHeatPreview()
           ) : activeView === "trade" ? (
@@ -3629,10 +3696,12 @@ export function App() {
           ) : activeView === "leaderboards" ? (
             <WalletLeaderboardsPanel
               activeBoard={activeWalletLeaderboard}
+              sortDirection={walletLeaderboardSortDirection}
               streakMode={walletLeaderboardStreakMode}
               snapshot={walletLeaderboardsState.snapshot}
               status={walletLeaderboardsState.status}
               onBoardChange={setActiveWalletLeaderboard}
+              onSortDirectionChange={setWalletLeaderboardSortDirection}
               onStreakModeChange={setWalletLeaderboardStreakMode}
             />
           ) : (

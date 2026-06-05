@@ -137,7 +137,6 @@ button:disabled {
 .market-strip p,
 .signal-strip-top p,
 .signal-strip-leader span,
-.market-price span,
 .account-value span,
 .account-pnl p,
 .account-summary-stats span,
@@ -151,24 +150,10 @@ button:disabled {
   font-weight: 800;
 }
 
-.market-price {
-  display: grid;
-  justify-items: end;
-  gap: 1px;
-  text-align: right;
-}
-
-.market-price strong {
-  color: #111827;
-  font-size: 1.02rem;
-  line-height: 1;
-}
-
-.market-price em {
-  color: #16a34a;
-  font-size: 0.78rem;
-  font-style: normal;
-  font-weight: 900;
+.market-header-wallet {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .oracle-mini-chart {
@@ -505,6 +490,7 @@ button:disabled {
 .bottom-nav button,
 .portfolio-tabs button,
 .wallet-leaderboard-tabs button,
+.wallet-leaderboard-sort-toggle,
 .wallet-leaderboard-streak-modes button,
 .market-heat-sort button,
 .trader-row-main button,
@@ -735,8 +721,31 @@ button:disabled {
   font-weight: 900;
 }
 
-.wallet-leaderboard-tabs {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.wallet-leaderboard-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.wallet-leaderboard-sort-toggle {
+  width: 42px;
+  min-height: 42px;
+  border: 1px solid #dbe5ee;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.wallet-leaderboard-sort-toggle-best {
+  border-color: #b7efd0;
+  color: #067647;
+  background: #dcfae6;
+}
+
+.wallet-leaderboard-sort-toggle-worst {
+  border-color: #f3b8b1;
+  color: #b42318;
+  background: #fee4e2;
 }
 
 .wallet-leaderboard-streak-modes {
@@ -1095,44 +1104,12 @@ button:disabled {
 }
 
 .wallet-status-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: center;
+  display: block;
   margin-top: 8px;
-  padding: 9px;
+  padding: 0;
 }
 
-.wallet-status-main {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.wallet-status-main small {
-  color: #667085;
-  font-size: 0.62rem;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.wallet-status-main strong {
-  min-width: 0;
-  overflow: hidden;
-  color: #111827;
-  font-size: 0.86rem;
-  font-weight: 950;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wallet-status-main span {
-  color: #667085;
-  font-size: 0.72rem;
-  font-weight: 800;
-}
-
-.wallet-status-actions button,
+.wallet-header-button,
 .predict-manager-status button {
   min-height: 34px;
   padding: 0 10px;
@@ -1144,7 +1121,46 @@ button:disabled {
   font-weight: 950;
 }
 
-.wallet-status-actions button:not(:disabled),
+.wallet-header-button {
+  display: grid;
+  align-content: center;
+  justify-items: end;
+  min-width: 112px;
+  min-height: 42px;
+  border-color: #111827;
+  color: #ffffff;
+  background: #111827;
+  line-height: 1.05;
+  text-align: right;
+}
+
+.wallet-header-button strong {
+  color: inherit;
+  font-size: 0.78rem;
+  line-height: 1.05;
+}
+
+.wallet-header-button span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.wallet-header-button-connected {
+  border-color: #d8e2ec;
+  color: #111827;
+  background: #ffffff;
+}
+
+.wallet-header-button-connected span {
+  color: #16a34a;
+}
+
+.wallet-header-button:disabled {
+  opacity: 0.72;
+}
+
+.wallet-header-button:not(:disabled),
 .predict-manager-status button:not(:disabled) {
   box-shadow: 0 7px 18px rgba(34, 48, 64, 0.08);
 }

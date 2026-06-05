@@ -109,9 +109,13 @@ export async function getTestnetMarketHeat({
 async function getIndexedTestnetMarketHeat(
   reader: PredictIndexerReader
 ): Promise<MarketHeatProjection> {
+  const nowMs = Date.now();
   const [oracles, tradeEvents, positionSummaries] = await Promise.all([
     reader.listBtcOracles({ includeSettled: false }),
-    reader.listRecentTradeEvents({ limit: LATEST_ACTIVITY_ROW_LIMIT }),
+    reader.listRecentTradeEvents({
+      hideExpiredAtMs: nowMs,
+      limit: LATEST_ACTIVITY_ROW_LIMIT
+    }),
     reader.listPositionSummaries({ limit: HEAT_ACCOUNT_ROW_LIMIT })
   ]);
   const activeOracles = selectIndexedActiveBtcOracles(oracles);

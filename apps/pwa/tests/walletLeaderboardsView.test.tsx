@@ -4,7 +4,7 @@ import { WalletLeaderboardsPanel } from "../src/App";
 import { buildWalletLeaderboards } from "../src/walletLeaderboards";
 
 describe("WalletLeaderboardsPanel component", () => {
-  test("renders segmented wallet leaderboard boards with compact rows", () => {
+  test("renders PnL and Streaks sections with best/worst sorting", () => {
     const snapshot = buildWalletLeaderboards(
       {
         source: "indexed_testnet",
@@ -33,23 +33,26 @@ describe("WalletLeaderboardsPanel component", () => {
     );
     const html = renderToStaticMarkup(
       <WalletLeaderboardsPanel
-        activeBoard="highestPnl"
+        activeBoard="pnl"
+        sortDirection="best"
         snapshot={snapshot}
         status="ready"
         onBoardChange={() => undefined}
+        onSortDirectionChange={() => undefined}
       />,
     );
 
     expect(html).toContain('data-testid="wallet-leaderboards-view"');
     expect(html).toContain("Wallet Leaders");
     expect(html).toContain("Indexed Testnet");
-    expect(html).toContain('data-testid="wallet-leaderboard-tab-highestPnl"');
-    expect(html).toContain('data-testid="wallet-leaderboard-tab-longestWinningStreak"');
-    expect(html).toContain('data-testid="wallet-leaderboard-tab-longestLosingStreak"');
-    expect(html).toContain('data-testid="wallet-leaderboard-tab-worstPnl"');
-    expect(html.indexOf("Top PnL")).toBeLessThan(html.indexOf("Win Streaks"));
-    expect(html.indexOf("Win Streaks")).toBeLessThan(html.indexOf("Lose Streaks"));
-    expect(html.indexOf("Lose Streaks")).toBeLessThan(html.indexOf("Worst PnL"));
+    expect(html).toContain('data-testid="wallet-leaderboard-tab-pnl"');
+    expect(html).toContain('data-testid="wallet-leaderboard-tab-streaks"');
+    expect(html).not.toContain('data-testid="wallet-leaderboard-tab-highestPnl"');
+    expect(html).not.toContain('data-testid="wallet-leaderboard-tab-longestWinningStreak"');
+    expect(html.indexOf(">PnL</button>")).toBeLessThan(html.indexOf(">Streaks</button>"));
+    expect(html).toContain('data-testid="wallet-leaderboard-sort-toggle"');
+    expect(html).toContain('aria-label="Sort worst first"');
+    expect(html).toContain("↑");
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('data-testid="wallet-leaderboard-row"');
     expect(html).toContain("#1");
@@ -64,7 +67,62 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain("Last</small>May 18, 21:40 PDT");
   });
 
-  test("labels streak board primary metric as Top Streak", () => {
+  test("switches PnL sort between best and worst", () => {
+    const snapshot = buildWalletLeaderboards(
+      {
+        source: "indexed_testnet",
+        leaderboards: {
+          highestPnl: [
+            {
+              wallet: "0xaaaa222233334444555566667777888899990001",
+              totalPnl: 12_345_678,
+              winCount: 4,
+              lossCount: 1,
+              closedCount: 5,
+              longestWinningStreak: 3,
+              longestLosingStreak: 1,
+              currentStreakType: "win",
+              currentStreakLength: 2,
+            },
+          ],
+          worstPnl: [
+            {
+              wallet: "0xdddd222233334444555566667777888899990004",
+              totalPnl: -9_500_000,
+              winCount: 1,
+              lossCount: 5,
+              closedCount: 6,
+              longestWinningStreak: 1,
+              longestLosingStreak: 4,
+              currentStreakType: "loss",
+              currentStreakLength: 3,
+            },
+          ],
+        },
+      },
+      { timeZone: "America/Los_Angeles" },
+    );
+    const html = renderToStaticMarkup(
+      <WalletLeaderboardsPanel
+        activeBoard="pnl"
+        sortDirection="worst"
+        snapshot={snapshot}
+        status="ready"
+        onBoardChange={() => undefined}
+        onSortDirectionChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="wallet-leaderboard-sort-toggle"');
+    expect(html).toContain('aria-label="Sort best first"');
+    expect(html).toContain("↓");
+    expect(html).toContain("Worst PnL");
+    expect(html).toContain("0xdddd...0004");
+    expect(html).toContain("PNL</small><strong>-$9.50");
+    expect(html).not.toContain("0xaaaa...0001");
+  });
+
+  test("labels streak board primary metric by selected sort", () => {
     const snapshot = buildWalletLeaderboards(
       {
         source: "indexed_testnet",
@@ -107,11 +165,13 @@ describe("WalletLeaderboardsPanel component", () => {
     );
     const html = renderToStaticMarkup(
       <WalletLeaderboardsPanel
-        activeBoard="longestWinningStreak"
+        activeBoard="streaks"
+        sortDirection="best"
         streakMode="allTime"
         snapshot={snapshot}
         status="ready"
         onBoardChange={() => undefined}
+        onSortDirectionChange={() => undefined}
         onStreakModeChange={() => undefined}
       />,
     );
@@ -119,7 +179,7 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain('data-testid="wallet-leaderboard-streak-mode-allTime"');
     expect(html).toContain('data-testid="wallet-leaderboard-streak-mode-current"');
     expect(html).toContain('data-testid="wallet-leaderboard-core-metric"');
-    expect(html).toContain("Top Streak</small><strong>3 wins");
+    expect(html).toContain("Win Streak</small><strong>3 wins");
     expect(html).toContain("PNL</small>+$12.35");
     expect(html).not.toContain("Wins</small>3 wins");
   });
@@ -180,42 +240,50 @@ describe("WalletLeaderboardsPanel component", () => {
     );
     const winHtml = renderToStaticMarkup(
       <WalletLeaderboardsPanel
-        activeBoard="longestWinningStreak"
+        activeBoard="streaks"
+        sortDirection="best"
         streakMode="current"
         snapshot={snapshot}
         status="ready"
         onBoardChange={() => undefined}
+        onSortDirectionChange={() => undefined}
         onStreakModeChange={() => undefined}
       />,
     );
     const lossHtml = renderToStaticMarkup(
       <WalletLeaderboardsPanel
-        activeBoard="longestLosingStreak"
+        activeBoard="streaks"
+        sortDirection="worst"
         streakMode="current"
         snapshot={snapshot}
         status="ready"
         onBoardChange={() => undefined}
+        onSortDirectionChange={() => undefined}
         onStreakModeChange={() => undefined}
       />,
     );
 
     expect(winHtml).toContain('aria-pressed="true" data-testid="wallet-leaderboard-streak-mode-current"');
+    expect(winHtml).toContain('aria-label="Sort worst first"');
     expect(winHtml).toContain("0xbbbb...0002");
-    expect(winHtml).toContain("Current Streak</small><strong>2 wins");
+    expect(winHtml).toContain("Current Wins</small><strong>2 wins");
     expect(winHtml).toContain("PNL</small>+$3.45");
     expect(winHtml).not.toContain("0xaaaa...0001");
+    expect(lossHtml).toContain('aria-label="Sort best first"');
     expect(lossHtml).toContain("0xcccc...0003");
-    expect(lossHtml).toContain("Current Streak</small><strong>2 losses");
+    expect(lossHtml).toContain("Current Losses</small><strong>2 losses");
     expect(lossHtml).toContain("PNL</small>-$4.20");
   });
 
   test("renders an empty state for a loaded board with no entries", () => {
     const html = renderToStaticMarkup(
       <WalletLeaderboardsPanel
-        activeBoard="worstPnl"
+        activeBoard="pnl"
+        sortDirection="worst"
         snapshot={buildWalletLeaderboards()}
         status="ready"
         onBoardChange={() => undefined}
+        onSortDirectionChange={() => undefined}
       />,
     );
 

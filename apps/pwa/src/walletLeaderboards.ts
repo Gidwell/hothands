@@ -13,18 +13,14 @@ export type WalletLeaderboardBoardKey =
   | "highestPnl"
   | "worstPnl";
 
-export type WalletLeaderboardVisibleBoardKey =
-  | "highestPnl"
-  | "longestWinningStreak"
-  | "longestLosingStreak"
-  | "worstPnl";
+export type WalletLeaderboardPanelBoardKey = "pnl" | "streaks";
+export type WalletLeaderboardSortDirection = "best" | "worst";
 
 export type WalletLeaderboardStreakMode = "allTime" | "current";
 
 export type WalletLeaderboardBoardDefinition = {
-  key: WalletLeaderboardVisibleBoardKey;
+  key: WalletLeaderboardPanelBoardKey;
   label: string;
-  metricLabel: string;
 };
 
 export type WalletLeaderboardTone = "positive" | "negative" | "flat";
@@ -97,24 +93,12 @@ export type LoadWalletLeaderboardsOptions = BuildWalletLeaderboardsOptions & {
 
 export const WALLET_LEADERBOARD_BOARDS: WalletLeaderboardBoardDefinition[] = [
   {
-    key: "highestPnl",
-    label: "Top PnL",
-    metricLabel: "PNL",
+    key: "pnl",
+    label: "PnL",
   },
   {
-    key: "longestWinningStreak",
-    label: "Win Streaks",
-    metricLabel: "Top Streak",
-  },
-  {
-    key: "longestLosingStreak",
-    label: "Lose Streaks",
-    metricLabel: "Top Streak",
-  },
-  {
-    key: "worstPnl",
-    label: "Worst PnL",
-    metricLabel: "PNL",
+    key: "streaks",
+    label: "Streaks",
   },
 ];
 
