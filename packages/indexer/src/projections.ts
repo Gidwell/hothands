@@ -59,6 +59,7 @@ export type WalletStats = {
 
 export type WalletLeaderboardOptions = {
   limit?: number;
+  nowMs?: number;
 };
 
 export type WalletStreakType = "win" | "loss" | "none";
@@ -252,9 +253,9 @@ export function summarizeWalletStats(
 
 export function buildWalletPerformanceLeaderboards(
   positions: PredictPositionSummary[],
-  { limit }: WalletLeaderboardOptions = {},
+  { limit, nowMs = Date.now() }: WalletLeaderboardOptions = {},
 ): WalletPerformanceLeaderboards {
-  const entries = buildWalletPerformanceEntries(positions);
+  const entries = buildWalletPerformanceEntries(positions, { nowMs });
 
   return {
     longestWinningStreak: applyLimit(
@@ -294,6 +295,7 @@ export function buildWalletPerformanceLeaderboards(
 
 export function buildWalletPerformanceEntries(
   positions: PredictPositionSummary[],
+  { nowMs = Date.now() }: { nowMs?: number } = {},
 ): WalletPerformanceEntry[] {
   const groups = new Map<string, PredictPositionSummary[]>();
 
@@ -303,7 +305,7 @@ export function buildWalletPerformanceEntries(
 
   return [...groups.entries()]
     .map(([wallet, walletPositions]) =>
-      buildWalletPerformanceEntry(wallet, walletPositions),
+      buildWalletPerformanceEntry(wallet, walletPositions, { nowMs }),
     )
     .filter((entry) => entry.closedCount > 0)
     .sort(compareByHighestPnl);
@@ -312,11 +314,15 @@ export function buildWalletPerformanceEntries(
 function buildWalletPerformanceEntry(
   wallet: string,
   positions: PredictPositionSummary[],
+  { nowMs }: { nowMs: number },
 ): WalletPerformanceEntry {
   const sortedClosed = positions
     .filter((position) => position.status === "closed")
     .sort(comparePositionsOldestFirst);
   const stats = summarizeWalletStats(positions, { owner: wallet });
+  const activeOpenCount = positions.filter(
+    (position) => position.status === "open" && position.expiryMs > nowMs,
+  ).length;
   let longestWinningStreak = 0;
   let longestLosingStreak = 0;
   let currentStreakType: WalletStreakType = "none";
@@ -349,7 +355,7 @@ function buildWalletPerformanceEntry(
     totalCost: stats.totalCost,
     totalPayout: stats.totalPayout,
     totalPnl: stats.realizedPnl,
-    openCount: stats.openCount,
+    openCount: activeOpenCount,
     closedCount: stats.closedCount,
     winCount: stats.winCount,
     lossCount: stats.lossCount,

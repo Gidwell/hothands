@@ -6,19 +6,21 @@ import {
 export type TestnetWalletLeaderboardsOptions = {
   reader: PredictIndexerReader;
   limit?: number;
+  nowMs?: number;
   positionLimit?: number;
 };
 
 export async function getTestnetWalletLeaderboards({
   reader,
   limit = 25,
+  nowMs = Date.now(),
   positionLimit = 10_000
 }: TestnetWalletLeaderboardsOptions) {
   const positions = await reader.listPositionSummaries({ limit: positionLimit });
 
   return {
     source: "indexed_testnet",
-    leaderboards: buildWalletPerformanceLeaderboards(positions, { limit })
+    leaderboards: buildWalletPerformanceLeaderboards(positions, { limit, nowMs })
   };
 }
 

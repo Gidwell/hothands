@@ -263,9 +263,28 @@ describe("Predict durable projections", () => {
         status: "open",
         lastEventMs: 5_000,
       }),
+      positionSummary({
+        id: "beta-active-open",
+        owner: "0xbeta",
+        expiryMs: 30_000,
+        realizedPnl: 0,
+        status: "open",
+        lastEventMs: 4_500,
+      }),
+      positionSummary({
+        id: "beta-expired-open",
+        owner: "0xbeta",
+        expiryMs: 10_000,
+        realizedPnl: 0,
+        status: "open",
+        lastEventMs: 4_800,
+      }),
     ];
 
-    const leaderboards = buildWalletPerformanceLeaderboards(positions, { limit: 2 });
+    const leaderboards = buildWalletPerformanceLeaderboards(positions, {
+      limit: 2,
+      nowMs: 20_000,
+    });
 
     expect(leaderboards.longestWinningStreak.map((entry) => entry.wallet)).toEqual([
       "0xalpha",
@@ -294,6 +313,7 @@ describe("Predict durable projections", () => {
       currentStreakLength: 1,
       longestWinningStreak: 1,
       totalPnl: 380_000,
+      openCount: 1,
     });
     expect(leaderboards.currentLosingStreak.map((entry) => entry.wallet)).toEqual([
       "0gamma",
@@ -317,7 +337,7 @@ describe("Predict durable projections", () => {
     expect(leaderboards.worstPnl[0]).toMatchObject({
       wallet: "0gamma",
       totalPnl: -900_000,
-      openCount: 1,
+      openCount: 0,
       closedCount: 1,
       longestLosingStreak: 1,
       currentStreakType: "loss",
