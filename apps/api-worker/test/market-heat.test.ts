@@ -182,6 +182,31 @@ describe("testnet market heat endpoint", () => {
     ).toBeGreaterThan(projection.rows[0].heatScore);
   });
 
+  test("requests non-expired indexed activity for the default feed", async () => {
+    const requests: unknown[] = [];
+    const reader = createIndexedMarketHeatReader();
+    const projection = await getTestnetMarketHeat({
+      reader: {
+        ...reader,
+        listRecentTradeEvents: async (options) => {
+          requests.push(options);
+          return reader.listRecentTradeEvents(options);
+        }
+      },
+      fetchImpl: async () => {
+        throw new Error("public Predict should not be read when indexed market heat exists");
+      }
+    });
+
+    expect(projection.source).toBe("indexed_testnet");
+    expect(requests).toEqual([
+      {
+        hideExpiredAtMs: expect.any(Number),
+        limit: expect.any(Number)
+      }
+    ]);
+  });
+
   test("returns indexed wallet leaderboards from an injected reader", async () => {
     const response = await worker.fetch(
       new Request("https://api.hot-hands.test/testnet/wallet-leaderboards?limit=5"),
