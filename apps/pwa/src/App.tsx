@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
 import {
   useCurrentClient,
   useCurrentAccount,
@@ -45,7 +45,6 @@ import {
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
   type MarketHeatIntentState,
-  type MarketHeatPrice,
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
   type MarketHeatSortMode,
@@ -616,33 +615,32 @@ function writeDismissedPortfolioPositionIds(
   );
 }
 
-export function WalletStatusBar({
-  accountAddress,
-  connectionStatus,
-  networkLabel,
-  predictManagerObjectId,
-  predictManagerStatus,
-  readOnly = false,
-  txState,
-  walletCount,
-  walletName,
-  onConnect,
-  onCreatePredictManager,
-  onDisconnect,
-}: {
+type WalletHeaderControlProps = {
   accountAddress: string | null;
   connectionStatus: string;
+  readOnly?: boolean;
+  walletCount: number;
+  onConnect: () => void;
+  onDisconnect: () => void;
+};
+
+type WalletStatusBarProps = WalletHeaderControlProps & {
   networkLabel: string;
   predictManagerObjectId: string | null;
   predictManagerStatus: PredictManagerStatus;
-  readOnly?: boolean;
   txState: WalletTransactionState;
-  walletCount: number;
   walletName: string | null;
-  onConnect: () => void;
   onCreatePredictManager: () => void;
-  onDisconnect: () => void;
-}) {
+};
+
+export function WalletHeaderControl({
+  accountAddress,
+  connectionStatus,
+  readOnly = false,
+  walletCount,
+  onConnect,
+  onDisconnect,
+}: WalletHeaderControlProps) {
   const isConnected = Boolean(accountAddress);
   const connectLabel =
     walletCount === 0
@@ -651,65 +649,81 @@ export function WalletStatusBar({
         ? "Connecting"
         : "Connect wallet";
 
+  if (isConnected) {
+    return (
+      <button
+        type="button"
+        aria-label={readOnly ? "Read-only wallet" : "Disconnect wallet"}
+        className="wallet-header-button wallet-header-button-connected"
+        data-testid={readOnly ? "wallet-readonly" : "wallet-disconnect"}
+        disabled={readOnly}
+        onClick={readOnly ? undefined : onDisconnect}
+      >
+        <strong data-testid="wallet-address">{formatWalletAddress(accountAddress)}</strong>
+        <span>{readOnly ? "Read-only" : "Connected"}</span>
+      </button>
+    );
+  }
+
   return (
-    <section className="wallet-status-bar" aria-label="Wallet" data-testid="wallet-status">
-      <div className="wallet-status-main">
-        <small>{networkLabel}</small>
-        <strong data-testid="wallet-address">
-          {isConnected ? formatWalletAddress(accountAddress) : "Wallet disconnected"}
-        </strong>
-        <span>{isConnected ? walletName ?? "Sui wallet" : `${walletCount} wallets found`}</span>
-      </div>
-      <div className="wallet-status-actions">
-        {isConnected && !readOnly ? (
-          <button type="button" data-testid="wallet-disconnect" onClick={onDisconnect}>
-            Disconnect
-          </button>
-        ) : (
-          <button
-            type="button"
-            data-testid="wallet-connect"
-            disabled={walletCount === 0 || connectionStatus === "connecting"}
-            onClick={onConnect}
-          >
-            {connectLabel}
-          </button>
-        )}
-      </div>
-      {isConnected ? (
-        <div
-          className={`predict-manager-status predict-manager-status-${predictManagerStatus}`}
-          aria-live="polite"
-        >
+    <button
+      type="button"
+      className="wallet-header-button"
+      data-testid="wallet-connect"
+      disabled={walletCount === 0 || connectionStatus === "connecting"}
+      onClick={onConnect}
+    >
+      {connectLabel}
+    </button>
+  );
+}
+
+export function WalletStatusBar({
+  accountAddress,
+  predictManagerObjectId,
+  predictManagerStatus,
+  readOnly = false,
+  txState,
+  onCreatePredictManager,
+}: WalletStatusBarProps) {
+  if (!accountAddress) {
+    return null;
+  }
+
+  return (
+    <section className="wallet-status-bar" aria-label="Predict account" data-testid="wallet-status">
+      <div
+        className={`predict-manager-status predict-manager-status-${predictManagerStatus}`}
+        aria-live="polite"
+      >
         <span data-testid="predict-manager-status">
-            {readOnly
-              ? predictManagerStatus === "ready"
-                ? `Read-only Predict account ${formatWalletAddress(predictManagerObjectId)}`
-                : predictManagerStatus === "checking"
-                  ? "Checking read-only Predict account..."
-                  : predictManagerStatus === "error"
-                    ? "Could not check read-only Predict account"
-                    : "No Predict account found"
+          {readOnly
+            ? predictManagerStatus === "ready"
+              ? `Read-only Predict account ${formatWalletAddress(predictManagerObjectId)}`
               : predictManagerStatus === "checking"
+                ? "Checking read-only Predict account..."
+                : predictManagerStatus === "error"
+                  ? "Could not check read-only Predict account"
+                  : "No Predict account found"
+            : predictManagerStatus === "checking"
               ? "Checking Predict account..."
               : predictManagerStatus === "ready"
                 ? `Predict account ${formatWalletAddress(predictManagerObjectId)}`
                 : predictManagerStatus === "error"
                   ? "Could not check Predict account"
                   : "No Predict account yet"}
-          </span>
-          {!readOnly && (predictManagerStatus === "missing" || predictManagerStatus === "error") ? (
-            <button
-              type="button"
-              data-testid="create-predict-manager"
-              disabled={txState.status === "pending"}
-              onClick={onCreatePredictManager}
-            >
-              {txState.status === "pending" ? "Sending..." : "Create Predict account"}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+        </span>
+        {!readOnly && (predictManagerStatus === "missing" || predictManagerStatus === "error") ? (
+          <button
+            type="button"
+            data-testid="create-predict-manager"
+            disabled={txState.status === "pending"}
+            onClick={onCreatePredictManager}
+          >
+            {txState.status === "pending" ? "Sending..." : "Create Predict account"}
+          </button>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -2023,10 +2037,10 @@ export function MarketHeatPreview({
   );
 }
 
-function MarketHeader({
-  price,
+export function MarketHeader({
+  walletControl,
 }: {
-  price: MarketHeatPrice;
+  walletControl: ReactNode;
 }) {
   return (
     <header className="market-strip" data-testid="market-header">
@@ -2036,9 +2050,8 @@ function MarketHeader({
           <h1>Hot Hands</h1>
         </div>
       </div>
-      <div className="market-price">
-        <span>{price.marketLabel}</span>
-        <em>{price.statusLabel}</em>
+      <div className="market-header-wallet" data-testid="market-header-wallet">
+        {walletControl}
       </div>
     </header>
   );
@@ -3639,7 +3652,18 @@ export function App() {
     <main className="app-shell" data-testid="app-shell">
       <section className="phone-frame" aria-label="Hot Hands market shell">
         <div className="app-scroll" data-testid="app-scroll">
-          <MarketHeader price={marketHeatPreview.marketPrice} />
+          <MarketHeader
+            walletControl={
+              <WalletHeaderControl
+                accountAddress={connectedAccountAddress}
+                connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
+                readOnly={isReadOnlyWalletView}
+                walletCount={wallets.length}
+                onConnect={handleWalletConnect}
+                onDisconnect={handleWalletDisconnect}
+              />
+            }
+          />
           <WalletStatusBar
             accountAddress={connectedAccountAddress}
             connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}

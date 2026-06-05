@@ -4,8 +4,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   AccountSummary,
   BottomNav,
+  MarketHeader,
   PortfolioPanel,
   TradeTicket,
+  WalletHeaderControl,
   WalletStatusBar,
   buildTradeQuoteKey,
 } from "../src/App";
@@ -34,6 +36,49 @@ function findElementByTestId(node: ReactNode, testId: string): ReactElement | nu
 }
 
 describe("mobile app navigation", () => {
+  test("places wallet connection in the market header action slot", () => {
+    const html = renderToStaticMarkup(
+      <MarketHeader
+        walletControl={
+          <WalletHeaderControl
+            accountAddress={null}
+            connectionStatus="disconnected"
+            readOnly={false}
+            walletCount={1}
+            onConnect={() => undefined}
+            onDisconnect={() => undefined}
+          />
+        }
+      />,
+    );
+
+    expect(html).toContain('data-testid="market-header-wallet"');
+    expect(html).toContain('data-testid="wallet-connect"');
+    expect(html).toContain("Connect wallet");
+    expect(html).not.toContain("BTC/USD");
+  });
+
+  test("shows connected wallet address in the market header action slot", () => {
+    const html = renderToStaticMarkup(
+      <MarketHeader
+        walletControl={
+          <WalletHeaderControl
+            accountAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+            connectionStatus="connected"
+            readOnly={false}
+            walletCount={1}
+            onConnect={() => undefined}
+            onDisconnect={() => undefined}
+          />
+        }
+      />,
+    );
+
+    expect(html).toContain('data-testid="wallet-address"');
+    expect(html).toContain("0x0000...00aa");
+    expect(html).toContain("Connected");
+  });
+
   test("keeps the trade quote key stable across live estimated price refreshes", () => {
     const baseMarket = {
       id: "btc-2h-72000",
@@ -794,7 +839,17 @@ describe("mobile app navigation", () => {
   });
 
   test("labels dev wallet override as read-only and hides account creation", () => {
-    const html = renderToStaticMarkup(
+    const headerHtml = renderToStaticMarkup(
+      <WalletHeaderControl
+        accountAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        connectionStatus="readonly"
+        readOnly={true}
+        walletCount={1}
+        onConnect={() => undefined}
+        onDisconnect={() => undefined}
+      />,
+    );
+    const statusHtml = renderToStaticMarkup(
       <WalletStatusBar
         accountAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
         connectionStatus="readonly"
@@ -811,11 +866,11 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("Read-only wallet");
-    expect(html).toContain("Read-only Predict account 0x0000...bbbb");
-    expect(html).toContain("Connect wallet");
-    expect(html).not.toContain("Disconnect");
-    expect(html).not.toContain('data-testid="create-predict-manager"');
+    expect(headerHtml).toContain("Read-only");
+    expect(headerHtml).toContain('data-testid="wallet-readonly"');
+    expect(statusHtml).toContain("Read-only Predict account 0x0000...bbbb");
+    expect(statusHtml).not.toContain("Disconnect");
+    expect(statusHtml).not.toContain('data-testid="create-predict-manager"');
   });
 
   test("keeps return fields visible when a trade market still needs a quote", () => {
