@@ -505,6 +505,7 @@ button:disabled {
 .bottom-nav button,
 .portfolio-tabs button,
 .wallet-leaderboard-tabs button,
+.wallet-leaderboard-sort-toggle,
 .wallet-leaderboard-streak-modes button,
 .market-heat-sort button,
 .trader-row-main button,
@@ -735,8 +736,31 @@ button:disabled {
   font-weight: 900;
 }
 
-.wallet-leaderboard-tabs {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.wallet-leaderboard-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.wallet-leaderboard-sort-toggle {
+  width: 42px;
+  min-height: 42px;
+  border: 1px solid #dbe5ee;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.wallet-leaderboard-sort-toggle-best {
+  border-color: #b7efd0;
+  color: #067647;
+  background: #dcfae6;
+}
+
+.wallet-leaderboard-sort-toggle-worst {
+  border-color: #f3b8b1;
+  color: #b42318;
+  background: #fee4e2;
 }
 
 .wallet-leaderboard-streak-modes {

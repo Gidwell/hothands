@@ -69,9 +69,10 @@ import {
   WALLET_LEADERBOARD_BOARDS,
   type WalletLeaderboardBoardKey,
   type WalletLeaderboardEntry,
+  type WalletLeaderboardPanelBoardKey,
+  type WalletLeaderboardSortDirection,
   type WalletLeaderboardStreakMode,
   type WalletLeaderboardTone,
-  type WalletLeaderboardVisibleBoardKey,
   type WalletLeaderboardsSnapshot,
 } from "./walletLeaderboards";
 import { buildTradeMintTransaction } from "./walletTransactions";
@@ -1521,29 +1522,35 @@ function walletLeaderboardMetricValue(
 }
 
 function walletLeaderboardEffectiveBoard(
-  board: WalletLeaderboardVisibleBoardKey,
+  board: WalletLeaderboardPanelBoardKey,
+  sortDirection: WalletLeaderboardSortDirection,
   streakMode: WalletLeaderboardStreakMode,
 ): WalletLeaderboardBoardKey {
-  if (streakMode === "current") {
-    if (board === "longestWinningStreak") {
-      return "currentWinningStreak";
-    }
-    if (board === "longestLosingStreak") {
-      return "currentLosingStreak";
-    }
+  if (board === "pnl") {
+    return sortDirection === "best" ? "highestPnl" : "worstPnl";
   }
 
-  return board;
+  if (streakMode === "current") {
+    return sortDirection === "best"
+      ? "currentWinningStreak"
+      : "currentLosingStreak";
+  }
+
+  return sortDirection === "best"
+    ? "longestWinningStreak"
+    : "longestLosingStreak";
 }
 
 function walletLeaderboardMetricLabel(board: WalletLeaderboardBoardKey): string {
   switch (board) {
     case "longestWinningStreak":
+      return "Win Streak";
     case "longestLosingStreak":
-      return "Top Streak";
+      return "Lose Streak";
     case "currentWinningStreak":
+      return "Current Wins";
     case "currentLosingStreak":
-      return "Current Streak";
+      return "Current Losses";
     case "highestPnl":
     case "worstPnl":
       return "PNL";
@@ -1567,23 +1574,38 @@ function walletLeaderboardMetricTone(
   }
 }
 
-function isWalletLeaderboardStreakBoard(board: WalletLeaderboardVisibleBoardKey): boolean {
-  return board === "longestWinningStreak" || board === "longestLosingStreak";
+function walletLeaderboardListLabel(
+  board: WalletLeaderboardPanelBoardKey,
+  sortDirection: WalletLeaderboardSortDirection,
+  streakMode: WalletLeaderboardStreakMode,
+): string {
+  if (board === "pnl") {
+    return sortDirection === "best" ? "Top PnL" : "Worst PnL";
+  }
+
+  const streakType = sortDirection === "best" ? "Win" : "Lose";
+  return streakMode === "current"
+    ? `Current ${streakType} Streaks`
+    : `${streakType} Streaks`;
 }
 
 export function WalletLeaderboardsPanel({
   activeBoard,
+  sortDirection = "best",
   streakMode = "allTime",
   snapshot,
   status = "ready",
   onBoardChange,
+  onSortDirectionChange,
   onStreakModeChange,
 }: {
-  activeBoard: WalletLeaderboardVisibleBoardKey;
+  activeBoard: WalletLeaderboardPanelBoardKey;
+  sortDirection?: WalletLeaderboardSortDirection;
   streakMode?: WalletLeaderboardStreakMode;
   snapshot: WalletLeaderboardsSnapshot;
   status?: WalletLeaderboardsStatus;
-  onBoardChange: (board: WalletLeaderboardVisibleBoardKey) => void;
+  onBoardChange: (board: WalletLeaderboardPanelBoardKey) => void;
+  onSortDirectionChange?: (direction: WalletLeaderboardSortDirection) => void;
   onStreakModeChange?: (mode: WalletLeaderboardStreakMode) => void;
 }) {
   const activeBoardDefinition =
@@ -1591,11 +1613,17 @@ export function WalletLeaderboardsPanel({
     WALLET_LEADERBOARD_BOARDS[0];
   const effectiveBoard = walletLeaderboardEffectiveBoard(
     activeBoardDefinition.key,
+    sortDirection,
     streakMode,
   );
   const coreMetricLabel = walletLeaderboardMetricLabel(effectiveBoard);
   const entries = selectWalletLeaderboardEntries(snapshot, effectiveBoard);
-  const isStreakBoard = isWalletLeaderboardStreakBoard(activeBoardDefinition.key);
+  const isStreakBoard = activeBoardDefinition.key === "streaks";
+  const listLabel = walletLeaderboardListLabel(
+    activeBoardDefinition.key,
+    sortDirection,
+    streakMode,
+  );
   const emptyLabel =
     status === "loading"
       ? "Loading wallet leaderboards..."
@@ -1615,18 +1643,35 @@ export function WalletLeaderboardsPanel({
         <p>Wallet Leaders</p>
         <span>{sourceLabel}</span>
       </div>
-      <div className="wallet-leaderboard-tabs" aria-label="Wallet leaderboard boards">
-        {WALLET_LEADERBOARD_BOARDS.map((board) => (
-          <button
-            type="button"
-            aria-pressed={activeBoardDefinition.key === board.key}
-            data-testid={`wallet-leaderboard-tab-${board.key}`}
-            key={board.key}
-            onClick={() => onBoardChange(board.key)}
-          >
-            {board.label}
-          </button>
-        ))}
+      <div className="wallet-leaderboard-toolbar">
+        <div className="wallet-leaderboard-tabs" aria-label="Wallet leaderboard boards">
+          {WALLET_LEADERBOARD_BOARDS.map((board) => (
+            <button
+              type="button"
+              aria-pressed={activeBoardDefinition.key === board.key}
+              data-testid={`wallet-leaderboard-tab-${board.key}`}
+              key={board.key}
+              onClick={() => onBoardChange(board.key)}
+            >
+              {board.label}
+            </button>
+          ))}
+        </div>
+        <button
+          className={`wallet-leaderboard-sort-toggle wallet-leaderboard-sort-toggle-${sortDirection}`}
+          type="button"
+          aria-label={
+            sortDirection === "best"
+              ? "Sort worst first"
+              : "Sort best first"
+          }
+          data-testid="wallet-leaderboard-sort-toggle"
+          onClick={() =>
+            onSortDirectionChange?.(sortDirection === "best" ? "worst" : "best")
+          }
+        >
+          <span aria-hidden="true">{sortDirection === "best" ? "↑" : "↓"}</span>
+        </button>
       </div>
       {isStreakBoard ? (
         <div className="wallet-leaderboard-streak-modes" aria-label="Streak range">
@@ -1664,7 +1709,7 @@ export function WalletLeaderboardsPanel({
                   <span className="wallet-leaderboard-rank">#{entry.rank}</span>
                   <div>
                     <strong>{entry.displayName}</strong>
-                    <small>{activeBoardDefinition.label}</small>
+                    <small>{listLabel}</small>
                   </div>
                   <div
                     className={`wallet-leaderboard-core wallet-leaderboard-core-${coreMetricTone}`}
@@ -2213,7 +2258,9 @@ export function App() {
       status: "idle",
     }));
   const [activeWalletLeaderboard, setActiveWalletLeaderboard] =
-    useState<WalletLeaderboardVisibleBoardKey>("highestPnl");
+    useState<WalletLeaderboardPanelBoardKey>("pnl");
+  const [walletLeaderboardSortDirection, setWalletLeaderboardSortDirection] =
+    useState<WalletLeaderboardSortDirection>("best");
   const [walletLeaderboardStreakMode, setWalletLeaderboardStreakMode] =
     useState<WalletLeaderboardStreakMode>("allTime");
   const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
@@ -3629,10 +3676,12 @@ export function App() {
           ) : activeView === "leaderboards" ? (
             <WalletLeaderboardsPanel
               activeBoard={activeWalletLeaderboard}
+              sortDirection={walletLeaderboardSortDirection}
               streakMode={walletLeaderboardStreakMode}
               snapshot={walletLeaderboardsState.snapshot}
               status={walletLeaderboardsState.status}
               onBoardChange={setActiveWalletLeaderboard}
+              onSortDirectionChange={setWalletLeaderboardSortDirection}
               onStreakModeChange={setWalletLeaderboardStreakMode}
             />
           ) : (

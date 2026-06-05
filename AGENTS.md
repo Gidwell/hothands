@@ -40,9 +40,10 @@ For product verification, `Live Testnet`, `Captured`, or
 Postgres, migrations, backfill, or the live indexer before continuing. Only use
 `HOT_HANDS_ALLOW_FALLBACK_TESTNET=true` for explicit fallback diagnostics.
 
-When restarting local dev, prefer `bun run dev:cleanup` followed by the indexed
-`dev:testnet` command above. Do not start a standalone PWA or fallback API while
-the user is testing the product loop unless explicitly asked.
+When restarting local dev or opening the app for browser verification, prefer
+`bun run dev:cleanup` followed by the indexed `dev:testnet` command above. Do
+not start a standalone PWA or fallback API while the user is testing the product
+loop, including UI-only checks, unless explicitly asked.
 
 ## Workstream Ownership
 
