@@ -237,6 +237,76 @@ describe("testnet API dev server harness", () => {
     });
   });
 
+  test("serves wallet leaderboards from indexed position summaries", async () => {
+    const fetchHandler = createTestnetDevServerFetch({
+      indexerReader: createTestIndexerReader()
+    });
+
+    const response = await fetchHandler(
+      new Request("http://127.0.0.1:8789/testnet/wallet-leaderboards?limit=5")
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    const body = await response.json();
+
+    expect(body.source).toBe("indexed_testnet");
+    expect(body.leaderboards.longestWinningStreak[0]).toMatchObject({
+      wallet: "0xalpha",
+      totalPnl: 300_000,
+      closedCount: 2,
+      winCount: 2,
+      lossCount: 0,
+      longestWinningStreak: 2,
+      currentStreakType: "win",
+      currentStreakLength: 2
+    });
+    expect(body.leaderboards.longestLosingStreak[0]).toMatchObject({
+      wallet: "0xbeta",
+      totalPnl: -300_000,
+      closedCount: 2,
+      winCount: 0,
+      lossCount: 2,
+      longestLosingStreak: 2,
+      currentStreakType: "loss",
+      currentStreakLength: 2
+    });
+    expect(body.leaderboards.currentWinningStreak[0]).toMatchObject({
+      wallet: "0xalpha",
+      totalPnl: 300_000,
+      currentStreakType: "win",
+      currentStreakLength: 2
+    });
+    expect(body.leaderboards.currentLosingStreak[0]).toMatchObject({
+      wallet: "0xbeta",
+      totalPnl: -300_000,
+      currentStreakType: "loss",
+      currentStreakLength: 2
+    });
+    expect(body.leaderboards.highestPnl[0]).toMatchObject({
+      wallet: "0xalpha",
+      totalPnl: 300_000
+    });
+    expect(body.leaderboards.worstPnl[0]).toMatchObject({
+      wallet: "0xbeta",
+      totalPnl: -300_000
+    });
+  });
+
+  test("requires an indexer reader for wallet leaderboards", async () => {
+    const fetchHandler = createTestnetDevServerFetch();
+
+    const response = await fetchHandler(
+      new Request("http://127.0.0.1:8789/testnet/wallet-leaderboards")
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "indexer_unavailable",
+    });
+  });
+
   test("serves oracle price history for the local BTC chart", async () => {
     const fetchHandler = createTestnetDevServerFetch({
       fetchImpl: async (input) => {
@@ -334,7 +404,80 @@ function createTestIndexerReader(): PredictIndexerReader {
         source: "positions/minted",
       },
     ],
-    listPositionSummaries: async () => [],
+    listPositionSummaries: async ({ owner } = {}) => {
+      const positions = [
+        {
+          id: "alpha-win-1",
+          owner: "0xalpha",
+          managerId: "manager-alpha",
+          oracleId: "btc-indexed",
+          expiryMs: 1_779_158_400_000,
+          strike: 72_000_000_000,
+          isUp: true,
+          mintedQuantity: 1,
+          redeemedQuantity: 1,
+          openQuantity: 0,
+          cost: 100_000,
+          payout: 250_000,
+          realizedPnl: 150_000,
+          lastEventMs: 1_779_070_700_000,
+          status: "closed" as const,
+        },
+        {
+          id: "alpha-win-2",
+          owner: "0xalpha",
+          managerId: "manager-alpha",
+          oracleId: "btc-indexed",
+          expiryMs: 1_779_158_500_000,
+          strike: 72_100_000_000,
+          isUp: true,
+          mintedQuantity: 1,
+          redeemedQuantity: 1,
+          openQuantity: 0,
+          cost: 100_000,
+          payout: 250_000,
+          realizedPnl: 150_000,
+          lastEventMs: 1_779_070_800_000,
+          status: "closed" as const,
+        },
+        {
+          id: "beta-loss-1",
+          owner: "0xbeta",
+          managerId: "manager-beta",
+          oracleId: "btc-indexed",
+          expiryMs: 1_779_158_400_000,
+          strike: 72_000_000_000,
+          isUp: false,
+          mintedQuantity: 1,
+          redeemedQuantity: 1,
+          openQuantity: 0,
+          cost: 100_000,
+          payout: 0,
+          realizedPnl: -100_000,
+          lastEventMs: 1_779_070_710_000,
+          status: "closed" as const,
+        },
+        {
+          id: "beta-loss-2",
+          owner: "0xbeta",
+          managerId: "manager-beta",
+          oracleId: "btc-indexed",
+          expiryMs: 1_779_158_500_000,
+          strike: 72_100_000_000,
+          isUp: false,
+          mintedQuantity: 1,
+          redeemedQuantity: 1,
+          openQuantity: 0,
+          cost: 200_000,
+          payout: 0,
+          realizedPnl: -200_000,
+          lastEventMs: 1_779_070_810_000,
+          status: "closed" as const,
+        },
+      ];
+
+      return positions.filter((position) => owner === undefined || position.owner === owner);
+    },
     listOraclePrices: async () => [],
     getLatestOraclePrice: async () => ({
       eventId: "price:indexed:1",

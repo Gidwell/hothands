@@ -1,5 +1,6 @@
 import type {
   PredictNormalizedTradeEvent,
+  PredictOracleState,
   PredictOraclePricePoint,
 } from "./deepbook-predict";
 import type { PredictPositionSummary } from "./store";
@@ -57,6 +58,40 @@ export type WalletStats = {
   lossCount: number;
 };
 
+export type WalletLeaderboardOptions = {
+  limit?: number;
+  nowMs?: number;
+  oracles?: PredictOracleState[];
+};
+
+export type WalletStreakType = "win" | "loss" | "none";
+
+export type WalletPerformanceEntry = {
+  wallet: string;
+  totalCost: number;
+  totalPayout: number;
+  totalPnl: number;
+  openCount: number;
+  closedCount: number;
+  winCount: number;
+  lossCount: number;
+  longestWinningStreak: number;
+  longestLosingStreak: number;
+  currentStreakType: WalletStreakType;
+  currentStreakLength: number;
+  lastSettledAtMs: number;
+  lastSeenMs: number;
+};
+
+export type WalletPerformanceLeaderboards = {
+  longestWinningStreak: WalletPerformanceEntry[];
+  longestLosingStreak: WalletPerformanceEntry[];
+  currentWinningStreak: WalletPerformanceEntry[];
+  currentLosingStreak: WalletPerformanceEntry[];
+  highestPnl: WalletPerformanceEntry[];
+  worstPnl: WalletPerformanceEntry[];
+};
+
 type TraderHeatAccumulator = {
   trader: string;
   eventCount: number;
@@ -72,6 +107,14 @@ type TraderHeatAccumulator = {
   winCount: number;
   lossCount: number;
   lastSeenMs: number;
+};
+
+type WalletResolvedPosition = {
+  cost: number;
+  payout: number;
+  pnl: number;
+  result: WalletStreakType;
+  resolvedAtMs: number;
 };
 
 export function buildLatestTradeFeedProjection(
@@ -218,6 +261,267 @@ export function summarizeWalletStats(
     );
 }
 
+export function buildWalletPerformanceLeaderboards(
+  positions: PredictPositionSummary[],
+  { limit, nowMs = Date.now(), oracles = [] }: WalletLeaderboardOptions = {},
+): WalletPerformanceLeaderboards {
+  const entries = buildWalletPerformanceEntries(positions, { nowMs, oracles });
+
+  return {
+    longestWinningStreak: applyLimit(
+      entries
+        .filter((entry) => entry.longestWinningStreak > 0)
+        .sort(compareByWinningStreak),
+      limit,
+    ),
+    longestLosingStreak: applyLimit(
+      entries
+        .filter((entry) => entry.longestLosingStreak > 0)
+        .sort(compareByLosingStreak),
+      limit,
+    ),
+    currentWinningStreak: applyLimit(
+      entries
+        .filter(
+          (entry) =>
+            entry.currentStreakType === "win" && entry.currentStreakLength > 0,
+        )
+        .sort(compareByCurrentWinningStreak),
+      limit,
+    ),
+    currentLosingStreak: applyLimit(
+      entries
+        .filter(
+          (entry) =>
+            entry.currentStreakType === "loss" && entry.currentStreakLength > 0,
+        )
+        .sort(compareByCurrentLosingStreak),
+      limit,
+    ),
+    highestPnl: applyLimit([...entries].sort(compareByHighestPnl), limit),
+    worstPnl: applyLimit([...entries].sort(compareByWorstPnl), limit),
+  };
+}
+
+export function buildWalletPerformanceEntries(
+  positions: PredictPositionSummary[],
+  { nowMs = Date.now(), oracles = [] }: { nowMs?: number; oracles?: PredictOracleState[] } = {},
+): WalletPerformanceEntry[] {
+  const groups = new Map<string, PredictPositionSummary[]>();
+  const settlementsByOracleId = buildSettlementMap(oracles);
+
+  for (const position of positions) {
+    groups.set(position.owner, [...(groups.get(position.owner) ?? []), position]);
+  }
+
+  return [...groups.entries()]
+    .map(([wallet, walletPositions]) =>
+      buildWalletPerformanceEntry(wallet, walletPositions, {
+        nowMs,
+        settlementsByOracleId,
+      }),
+    )
+    .filter((entry) => entry.closedCount > 0)
+    .sort(compareByHighestPnl);
+}
+
+function buildWalletPerformanceEntry(
+  wallet: string,
+  positions: PredictPositionSummary[],
+  {
+    nowMs,
+    settlementsByOracleId,
+  }: { nowMs: number; settlementsByOracleId: Map<string, PredictOracleState> },
+): WalletPerformanceEntry {
+  const resolvedPositions = positions
+    .flatMap((position) =>
+      buildResolvedWalletPositions(
+        position,
+        nowMs,
+        settlementsByOracleId.get(position.oracleId),
+      ),
+    )
+    .sort(compareResolvedPositionsOldestFirst);
+  const activeOpenCount = positions.filter(
+    (position) => position.status === "open" && position.expiryMs > nowMs,
+  ).length;
+  const totals = resolvedPositions.reduce(
+    (stats, position) => {
+      stats.totalCost += position.cost;
+      stats.totalPayout += position.payout;
+      stats.totalPnl += position.pnl;
+      if (position.pnl > 0) {
+        stats.winCount += 1;
+      } else {
+        stats.lossCount += 1;
+      }
+
+      return stats;
+    },
+    {
+      totalCost: 0,
+      totalPayout: 0,
+      totalPnl: 0,
+      winCount: 0,
+      lossCount: 0,
+    },
+  );
+  let longestWinningStreak = 0;
+  let longestLosingStreak = 0;
+  let currentStreakType: WalletStreakType = "none";
+  let currentStreakLength = 0;
+
+  for (const position of resolvedPositions) {
+    const result = position.result;
+    if (result === "none") {
+      currentStreakType = "none";
+      currentStreakLength = 0;
+      continue;
+    }
+
+    if (result === currentStreakType) {
+      currentStreakLength += 1;
+    } else {
+      currentStreakType = result;
+      currentStreakLength = 1;
+    }
+
+    if (result === "win") {
+      longestWinningStreak = Math.max(longestWinningStreak, currentStreakLength);
+    } else {
+      longestLosingStreak = Math.max(longestLosingStreak, currentStreakLength);
+    }
+  }
+
+  return {
+    wallet,
+    totalCost: totals.totalCost,
+    totalPayout: totals.totalPayout,
+    totalPnl: totals.totalPnl,
+    openCount: activeOpenCount,
+    closedCount: resolvedPositions.length,
+    winCount: totals.winCount,
+    lossCount: totals.lossCount,
+    longestWinningStreak,
+    longestLosingStreak,
+    currentStreakType,
+    currentStreakLength,
+    lastSettledAtMs: resolvedPositions.at(-1)?.resolvedAtMs ?? 0,
+    lastSeenMs: positions.reduce(
+      (lastSeen, position) => Math.max(lastSeen, position.lastEventMs),
+      0,
+    ),
+  };
+}
+
+function buildResolvedWalletPositions(
+  position: PredictPositionSummary,
+  nowMs: number,
+  oracle?: PredictOracleState,
+): WalletResolvedPosition[] {
+  if (position.status === "closed") {
+    return [
+      buildResolvedWalletPosition({
+        cost: position.cost,
+        payout: position.payout,
+        resolvedAtMs: position.lastEventMs,
+      }),
+    ];
+  }
+
+  const settlement = settledOraclePrice(oracle);
+  if (position.expiryMs <= nowMs && settlement !== null) {
+    const didWin = didPositionWin({
+      isUp: position.isUp,
+      settlementPrice: settlement.price,
+      strike: position.strike,
+    });
+    const payout = position.payout + (didWin ? position.openQuantity : 0);
+
+    return [
+      buildResolvedWalletPosition({
+        cost: position.cost,
+        payout,
+        resolvedAtMs: Math.max(position.lastEventMs, settlement.settledAtMs ?? position.expiryMs),
+      }),
+    ];
+  }
+
+  const redeemedCost = redeemedCostBasis(position);
+  if (redeemedCost <= 0 && position.payout <= 0) {
+    return [];
+  }
+
+  return [
+    buildResolvedWalletPosition({
+      cost: redeemedCost,
+      payout: position.payout,
+      resolvedAtMs: position.lastEventMs,
+    }),
+  ];
+}
+
+function buildResolvedWalletPosition({
+  cost,
+  payout,
+  resolvedAtMs,
+}: {
+  cost: number;
+  payout: number;
+  resolvedAtMs: number;
+}): WalletResolvedPosition {
+  const pnl = payout - cost;
+
+  return {
+    cost,
+    payout,
+    pnl,
+    result: pnl > 0 ? "win" : pnl < 0 ? "loss" : "none",
+    resolvedAtMs,
+  };
+}
+
+function redeemedCostBasis(position: PredictPositionSummary): number {
+  if (position.redeemedQuantity <= 0 || position.mintedQuantity <= 0) {
+    return 0;
+  }
+
+  const redeemedQuantity = Math.min(position.redeemedQuantity, position.mintedQuantity);
+
+  return Math.floor((position.cost * redeemedQuantity) / position.mintedQuantity);
+}
+
+function buildSettlementMap(oracles: PredictOracleState[]): Map<string, PredictOracleState> {
+  const settlements = new Map<string, PredictOracleState>();
+
+  for (const oracle of oracles) {
+    settlements.set(oracle.oracle_id, oracle);
+  }
+
+  return settlements;
+}
+
+function settledOraclePrice(
+  oracle: PredictOracleState | undefined,
+): { price: number; settledAtMs: number | null } | null {
+  if (
+    !oracle ||
+    oracle.status !== "settled" ||
+    typeof oracle.settlement_price !== "number" ||
+    !Number.isFinite(oracle.settlement_price)
+  ) {
+    return null;
+  }
+
+  return {
+    price: oracle.settlement_price,
+    settledAtMs:
+      typeof oracle.settled_at === "number" && Number.isFinite(oracle.settled_at)
+        ? normalizeEpochMs(oracle.settled_at)
+        : null,
+  };
+}
+
 function projectTraderHeat(group: TraderHeatAccumulator): TraderHeatProjection {
   const observedVolume =
     group.positionCount > 0
@@ -349,4 +653,128 @@ function compareOraclePricePoints(
     left.timestampMs - right.timestampMs ||
     (left.eventId ?? "").localeCompare(right.eventId ?? "")
   );
+}
+
+function compareResolvedPositionsOldestFirst(
+  left: WalletResolvedPosition,
+  right: WalletResolvedPosition,
+): number {
+  return left.resolvedAtMs - right.resolvedAtMs || left.pnl - right.pnl;
+}
+
+function compareByWinningStreak(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.longestWinningStreak - left.longestWinningStreak ||
+    right.totalPnl - left.totalPnl ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByLosingStreak(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.longestLosingStreak - left.longestLosingStreak ||
+    left.totalPnl - right.totalPnl ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByCurrentWinningStreak(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.currentStreakLength - left.currentStreakLength ||
+    right.totalPnl - left.totalPnl ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByCurrentLosingStreak(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.currentStreakLength - left.currentStreakLength ||
+    left.totalPnl - right.totalPnl ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByHighestPnl(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.totalPnl - left.totalPnl ||
+    right.longestWinningStreak - left.longestWinningStreak ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByWorstPnl(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    left.totalPnl - right.totalPnl ||
+    right.longestLosingStreak - left.longestLosingStreak ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function didPositionWin({
+  isUp,
+  settlementPrice,
+  strike,
+}: {
+  isUp: boolean;
+  settlementPrice: number;
+  strike: number;
+}): boolean {
+  const normalizedSettlementPrice = normalizePredictPrice(settlementPrice);
+  const normalizedStrike = normalizeStrike(strike);
+
+  return isUp
+    ? normalizedSettlementPrice > normalizedStrike
+    : normalizedSettlementPrice <= normalizedStrike;
+}
+
+function normalizeStrike(value: number): number {
+  if (value >= 1_000_000_000_000) {
+    return Math.round(value / 1_000_000_000);
+  }
+
+  if (value >= 1_000_000_000) {
+    return Math.round(value / 1_000_000);
+  }
+
+  return Math.round(value);
+}
+
+function normalizePredictPrice(value: number): number {
+  if (value >= 1_000_000_000_000) {
+    return value / 1_000_000_000;
+  }
+
+  if (value >= 1_000_000_000) {
+    return value / 1_000_000;
+  }
+
+  return value;
+}
+
+function normalizeEpochMs(value: number): number {
+  return value < 10_000_000_000 ? value * 1_000 : value;
 }

@@ -26,6 +26,24 @@ codex/
 
 Once the first repository commit exists, larger parallel work should happen in git worktrees. Agents should not commit directly to the shared integration branch unless the orchestrator explicitly asks them to.
 
+## Local Testnet Dev Loop
+
+Use indexed testnet mode as the default development loop:
+
+```bash
+export DATABASE_URL=postgres://$USER@127.0.0.1:5432/hothands_dev
+HOT_HANDS_TESTNET_API_PORT=8792 HOT_HANDS_TESTNET_PWA_PORT=5184 bun run dev:testnet
+```
+
+For product verification, `Live Testnet`, `Captured`, or
+`indexer_unavailable` is a failed/dev-degraded environment, not success. Fix
+Postgres, migrations, backfill, or the live indexer before continuing. Only use
+`HOT_HANDS_ALLOW_FALLBACK_TESTNET=true` for explicit fallback diagnostics.
+
+When restarting local dev, prefer `bun run dev:cleanup` followed by the indexed
+`dev:testnet` command above. Do not start a standalone PWA or fallback API while
+the user is testing the product loop unless explicitly asked.
+
 ## Workstream Ownership
 
 Keep write scopes disjoint when running agents in parallel.

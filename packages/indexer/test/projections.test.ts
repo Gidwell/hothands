@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildWalletPerformanceLeaderboards,
   buildLatestTradeFeedProjection,
   buildTraderHeatProjection,
   downsampleOraclePricePoints,
@@ -210,6 +211,209 @@ describe("Predict durable projections", () => {
       lossCount: 0,
     });
   });
+
+  test("builds wallet leaderboards for streaks and realized PnL", () => {
+    const positions = [
+      positionSummary({
+        id: "alpha-win-1",
+        owner: "0xalpha",
+        realizedPnl: 100_000,
+        lastEventMs: 1_000,
+      }),
+      positionSummary({
+        id: "alpha-win-2",
+        owner: "0xalpha",
+        realizedPnl: 120_000,
+        lastEventMs: 2_000,
+      }),
+      positionSummary({
+        id: "alpha-loss",
+        owner: "0xalpha",
+        realizedPnl: -30_000,
+        lastEventMs: 3_000,
+      }),
+      positionSummary({
+        id: "beta-loss-1",
+        owner: "0xbeta",
+        realizedPnl: -50_000,
+        lastEventMs: 1_500,
+      }),
+      positionSummary({
+        id: "beta-loss-2",
+        owner: "0xbeta",
+        realizedPnl: -70_000,
+        lastEventMs: 2_500,
+      }),
+      positionSummary({
+        id: "beta-win",
+        owner: "0xbeta",
+        realizedPnl: 500_000,
+        lastEventMs: 3_500,
+      }),
+      positionSummary({
+        id: "gamma-loss",
+        owner: "0gamma",
+        realizedPnl: -900_000,
+        lastEventMs: 4_000,
+      }),
+      positionSummary({
+        id: "gamma-open",
+        owner: "0gamma",
+        realizedPnl: 1_000_000,
+        status: "open",
+        lastEventMs: 5_000,
+      }),
+      positionSummary({
+        id: "beta-active-open",
+        owner: "0xbeta",
+        expiryMs: 30_000,
+        realizedPnl: 0,
+        status: "open",
+        lastEventMs: 4_500,
+      }),
+      positionSummary({
+        id: "beta-expired-open",
+        owner: "0xbeta",
+        expiryMs: 10_000,
+        realizedPnl: 0,
+        status: "open",
+        lastEventMs: 4_800,
+      }),
+    ];
+
+    const leaderboards = buildWalletPerformanceLeaderboards(positions, {
+      limit: 2,
+      nowMs: 20_000,
+    });
+
+    expect(leaderboards.longestWinningStreak.map((entry) => entry.wallet)).toEqual([
+      "0xalpha",
+      "0xbeta",
+    ]);
+    expect(leaderboards.longestWinningStreak[0]).toMatchObject({
+      wallet: "0xalpha",
+      totalPnl: 190_000,
+      winCount: 2,
+      lossCount: 1,
+      longestWinningStreak: 2,
+      longestLosingStreak: 1,
+      currentStreakType: "loss",
+      currentStreakLength: 1,
+    });
+    expect(leaderboards.longestLosingStreak.map((entry) => entry.wallet)).toEqual([
+      "0xbeta",
+      "0gamma",
+    ]);
+    expect(leaderboards.currentWinningStreak.map((entry) => entry.wallet)).toEqual([
+      "0xbeta",
+    ]);
+    expect(leaderboards.currentWinningStreak[0]).toMatchObject({
+      wallet: "0xbeta",
+      currentStreakType: "win",
+      currentStreakLength: 1,
+      longestWinningStreak: 1,
+      totalPnl: 380_000,
+      openCount: 1,
+    });
+    expect(leaderboards.currentLosingStreak.map((entry) => entry.wallet)).toEqual([
+      "0gamma",
+      "0xalpha",
+    ]);
+    expect(leaderboards.currentLosingStreak[0]).toMatchObject({
+      wallet: "0gamma",
+      currentStreakType: "loss",
+      currentStreakLength: 1,
+      longestLosingStreak: 1,
+      totalPnl: -900_000,
+    });
+    expect(leaderboards.highestPnl.map((entry) => entry.wallet)).toEqual([
+      "0xbeta",
+      "0xalpha",
+    ]);
+    expect(leaderboards.worstPnl.map((entry) => entry.wallet)).toEqual([
+      "0gamma",
+      "0xalpha",
+    ]);
+    expect(leaderboards.worstPnl[0]).toMatchObject({
+      wallet: "0gamma",
+      totalPnl: -900_000,
+      openCount: 0,
+      closedCount: 1,
+      longestLosingStreak: 1,
+      currentStreakType: "loss",
+      currentStreakLength: 1,
+    });
+  });
+
+  test("counts settled expired open positions in wallet leaderboard PnL", () => {
+    const positions = [
+      positionSummary({
+        id: "wallet-closed-win",
+        owner: "0xwallet",
+        oracleId: "btc-closed",
+        realizedPnl: 1_000_000,
+        cost: 1_000_000,
+        payout: 2_000_000,
+        status: "closed",
+        lastEventMs: 1_000,
+      }),
+      positionSummary({
+        id: "wallet-expired-loss",
+        owner: "0xwallet",
+        oracleId: "btc-expired-loss",
+        expiryMs: 2_000,
+        strike: 72_000_000_000,
+        isUp: true,
+        mintedQuantity: 3_000_000,
+        redeemedQuantity: 0,
+        openQuantity: 3_000_000,
+        cost: 2_500_000,
+        payout: 0,
+        status: "open",
+        lastEventMs: 2_000,
+      }),
+      positionSummary({
+        id: "wallet-active-open",
+        owner: "0xwallet",
+        oracleId: "btc-active-open",
+        expiryMs: 10_000,
+        mintedQuantity: 5_000_000,
+        redeemedQuantity: 0,
+        openQuantity: 5_000_000,
+        cost: 5_000_000,
+        payout: 0,
+        status: "open",
+        lastEventMs: 3_000,
+      }),
+    ];
+
+    const leaderboards = buildWalletPerformanceLeaderboards(positions, {
+      limit: 5,
+      nowMs: 5_000,
+      oracles: [
+        oracleState({
+          oracle_id: "btc-expired-loss",
+          settlement_price: 71_000_000_000,
+          status: "settled",
+        }),
+      ],
+    });
+
+    expect(leaderboards.highestPnl[0]).toMatchObject({
+      wallet: "0xwallet",
+      totalCost: 3_500_000,
+      totalPayout: 2_000_000,
+      totalPnl: -1_500_000,
+      openCount: 1,
+      closedCount: 2,
+      winCount: 1,
+      lossCount: 1,
+      longestWinningStreak: 1,
+      longestLosingStreak: 1,
+      currentStreakType: "loss",
+      currentStreakLength: 1,
+    });
+  });
 });
 
 function tradeEvent(
@@ -235,7 +439,7 @@ function tradeEvent(
 function positionSummary(
   overrides: Partial<PredictPositionSummary>,
 ): PredictPositionSummary {
-  return {
+  const summary = {
     id: "position",
     owner: "0xtrader",
     managerId: "manager-btc",
@@ -251,6 +455,34 @@ function positionSummary(
     realizedPnl: 0,
     lastEventMs: 0,
     status: "closed",
+    ...overrides,
+  };
+
+  if (
+    summary.status === "closed" &&
+    !("cost" in overrides) &&
+    !("payout" in overrides) &&
+    summary.realizedPnl !== 0
+  ) {
+    if (summary.realizedPnl > 0) {
+      summary.payout = summary.realizedPnl;
+    } else {
+      summary.cost = Math.abs(summary.realizedPnl);
+    }
+  }
+
+  return summary;
+}
+
+function oracleState(overrides: Record<string, unknown>) {
+  return {
+    predict_id: "predict",
+    oracle_id: "btc-15m",
+    underlying_asset: "BTC",
+    expiry: 20_000,
+    min_strike: 50_000_000_000,
+    tick_size: 1_000_000,
+    status: "active",
     ...overrides,
   };
 }

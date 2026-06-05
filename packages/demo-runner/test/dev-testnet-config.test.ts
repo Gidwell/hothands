@@ -3,15 +3,19 @@ import { resolveDevTestnetConfig } from "../src/dev-testnet-config";
 
 describe("testnet dev launcher config", () => {
   test("uses local ports that do not collide with the live worker harness", () => {
-    expect(resolveDevTestnetConfig({})).toEqual({
+    expect(resolveDevTestnetConfig({ DATABASE_URL: "postgres://hot-hands.test" })).toEqual({
       apiHost: "127.0.0.1",
       apiCommand: ["bun", "apps/api-worker/src/testnet-dev-server.ts"],
       apiPort: 8789,
       apiUrl: "http://127.0.0.1:8789",
-      bootstrapBackfillCommand: null,
+      bootstrapBackfillCommand: [
+        "bun",
+        "packages/indexer/src/backfill-predict.ts",
+        "--write",
+      ],
       cleanupPorts: [8789, 5176],
-      liveIndexerCommand: null,
-      migrationCommand: null,
+      liveIndexerCommand: ["bun", "packages/indexer/src/live.ts"],
+      migrationCommand: ["bun", "packages/indexer/src/migrate.ts"],
       readinessTimeoutMs: 30000,
       pwaCommand: [
         "bun",
@@ -34,6 +38,7 @@ describe("testnet dev launcher config", () => {
   test("allows testnet API and PWA host/port overrides", () => {
     expect(
       resolveDevTestnetConfig({
+        DATABASE_URL: "postgres://hot-hands.test",
         HOT_HANDS_TESTNET_HOST: "0.0.0.0",
         HOT_HANDS_TESTNET_API_PORT: "8899",
         HOT_HANDS_TESTNET_PWA_HOST: "localhost",
@@ -44,10 +49,14 @@ describe("testnet dev launcher config", () => {
       apiCommand: ["bun", "apps/api-worker/src/testnet-dev-server.ts"],
       apiPort: 8899,
       apiUrl: "http://0.0.0.0:8899",
-      bootstrapBackfillCommand: null,
+      bootstrapBackfillCommand: [
+        "bun",
+        "packages/indexer/src/backfill-predict.ts",
+        "--write",
+      ],
       cleanupPorts: [8899, 5299],
-      liveIndexerCommand: null,
-      migrationCommand: null,
+      liveIndexerCommand: ["bun", "packages/indexer/src/live.ts"],
+      migrationCommand: ["bun", "packages/indexer/src/migrate.ts"],
       readinessTimeoutMs: 30000,
       pwaCommand: [
         "bun",
@@ -81,8 +90,18 @@ describe("testnet dev launcher config", () => {
     ]);
   });
 
-  test("does not enable the live indexer without DATABASE_URL", () => {
-    expect(resolveDevTestnetConfig({}).liveIndexerCommand).toBeNull();
+  test("requires DATABASE_URL unless fallback mode is explicit", () => {
+    expect(() => resolveDevTestnetConfig({})).toThrow("DATABASE_URL is required");
+  });
+
+  test("allows explicit fallback testnet debugging without DATABASE_URL", () => {
+    const config = resolveDevTestnetConfig({
+      HOT_HANDS_ALLOW_FALLBACK_TESTNET: "true",
+    });
+
+    expect(config.liveIndexerCommand).toBeNull();
+    expect(config.migrationCommand).toBeNull();
+    expect(config.bootstrapBackfillCommand).toBeNull();
   });
 
   test("allows HOT_HANDS_INDEXER_LIVE=false to disable the live indexer", () => {
@@ -109,6 +128,7 @@ describe("testnet dev launcher config", () => {
   test("allows readiness timeout override for tighter local diagnostics", () => {
     expect(
       resolveDevTestnetConfig({
+        DATABASE_URL: "postgres://hot-hands.test",
         HOT_HANDS_DEV_READY_TIMEOUT_MS: "5000",
       }).readinessTimeoutMs,
     ).toBe(5000);

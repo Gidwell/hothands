@@ -22,10 +22,21 @@ const API_COMMAND = ["bun", "apps/api-worker/src/testnet-dev-server.ts"];
 const BACKFILL_COMMAND = ["bun", "packages/indexer/src/backfill-predict.ts", "--write"];
 const LIVE_INDEXER_COMMAND = ["bun", "packages/indexer/src/live.ts"];
 const MIGRATION_COMMAND = ["bun", "packages/indexer/src/migrate.ts"];
+const FALLBACK_TESTNET_OPT_IN = "HOT_HANDS_ALLOW_FALLBACK_TESTNET";
 
 export function resolveDevTestnetConfig(
   env: Record<string, string | undefined>,
 ): DevTestnetConfig {
+  if (!env.DATABASE_URL && env[FALLBACK_TESTNET_OPT_IN] !== "true") {
+    throw new Error(
+      [
+        "DATABASE_URL is required for bun run dev:testnet.",
+        "Hot Hands treats non-indexed testnet mode as degraded; set DATABASE_URL to a local Postgres database.",
+        `Only set ${FALLBACK_TESTNET_OPT_IN}=true for explicit fallback debugging.`,
+      ].join(" "),
+    );
+  }
+
   const sharedHost = env.HOT_HANDS_TESTNET_HOST;
   const apiHost = env.HOT_HANDS_TESTNET_API_HOST ?? sharedHost ?? DEFAULT_HOST;
   const pwaHost = env.HOT_HANDS_TESTNET_PWA_HOST ?? sharedHost ?? DEFAULT_HOST;

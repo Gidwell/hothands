@@ -101,12 +101,18 @@ export {
 export {
   buildLatestTradeFeedProjection,
   buildTraderHeatProjection,
+  buildWalletPerformanceEntries,
+  buildWalletPerformanceLeaderboards,
   downsampleOraclePricePoints,
   summarizeWalletStats,
   type LatestTradeFeedProjectionOptions,
   type TraderHeatComponents,
   type TraderHeatProjection,
   type TraderHeatProjectionOptions,
+  type WalletLeaderboardOptions,
+  type WalletPerformanceEntry,
+  type WalletPerformanceLeaderboards,
   type WalletStats,
   type WalletStatsOptions,
+  type WalletStreakType,
 } from "./projections";

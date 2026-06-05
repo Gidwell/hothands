@@ -156,7 +156,7 @@ describe("mobile app navigation", () => {
     expect(changedAmount).toBe(12.34);
   });
 
-  test("renders feed and trade as bottom navigation tabs", () => {
+  test("renders bottom navigation tabs in primary product order", () => {
     const html = renderToStaticMarkup(
       <BottomNav activeView="feed" onViewChange={() => undefined} />,
     );
@@ -164,7 +164,11 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="bottom-nav"');
     expect(html).toContain("🔥 Feed");
     expect(html).toContain("↔ Trade");
+    expect(html).toContain("🏆 Leaders");
     expect(html).toContain("💵 Portfolio");
+    expect(html.indexOf("🔥 Feed")).toBeLessThan(html.indexOf("🏆 Leaders"));
+    expect(html.indexOf("🏆 Leaders")).toBeLessThan(html.indexOf("↔ Trade"));
+    expect(html.indexOf("↔ Trade")).toBeLessThan(html.indexOf("💵 Portfolio"));
     expect(html).toContain('aria-pressed="true"');
   });
 

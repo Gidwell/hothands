@@ -15,6 +15,10 @@ import {
   type InspectPredictQuoteQuantity
 } from "./predict-quote";
 import { createIndexerReadersFromDatabaseUrl } from "./indexer-readers";
+import {
+  getTestnetWalletLeaderboards,
+  parseWalletLeaderboardRequest
+} from "./wallet-leaderboards";
 
 interface BunServer {
   readonly url: URL;
@@ -55,7 +59,8 @@ const TESTNET_DEV_SERVER_ROUTES = [
   "/testnet/oracle-prices",
   "/testnet/portfolio-events",
   "/testnet/quote",
-  "/testnet/redeem-quote"
+  "/testnet/redeem-quote",
+  "/testnet/wallet-leaderboards"
 ];
 
 const JSON_HEADERS = {
@@ -109,6 +114,33 @@ export function createTestnetDevServerFetch({
       }
 
       return json(await getIndexedIndexerStatus(indexerReader));
+    }
+
+    if (url.pathname === "/testnet/wallet-leaderboards") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      if (!indexerReader) {
+        return json({ error: "indexer_unavailable" }, 503);
+      }
+
+      try {
+        return json(
+          await getTestnetWalletLeaderboards({
+            reader: indexerReader,
+            ...parseWalletLeaderboardRequest(url)
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "wallet_leaderboards_failed",
+            message: error instanceof Error ? error.message : "Unable to load wallet leaderboards."
+          },
+          400
+        );
+      }
     }
 
     if (url.pathname === "/testnet/quote") {
