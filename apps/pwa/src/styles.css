@@ -505,6 +505,7 @@ button:disabled {
 .bottom-nav button,
 .portfolio-tabs button,
 .wallet-leaderboard-tabs button,
+.wallet-leaderboard-streak-modes button,
 .market-heat-sort button,
 .trader-row-main button,
 .market-heat-main button,
@@ -551,7 +552,8 @@ button:disabled {
 }
 
 .portfolio-tabs,
-.wallet-leaderboard-tabs {
+.wallet-leaderboard-tabs,
+.wallet-leaderboard-streak-modes {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
@@ -561,7 +563,8 @@ button:disabled {
 }
 
 .portfolio-tabs button,
-.wallet-leaderboard-tabs button {
+.wallet-leaderboard-tabs button,
+.wallet-leaderboard-streak-modes button {
   min-height: 34px;
   color: #667085;
   background: transparent;
@@ -569,7 +572,8 @@ button:disabled {
 }
 
 .portfolio-tabs button[aria-pressed="true"],
-.wallet-leaderboard-tabs button[aria-pressed="true"] {
+.wallet-leaderboard-tabs button[aria-pressed="true"],
+.wallet-leaderboard-streak-modes button[aria-pressed="true"] {
   color: #111827;
   background: #ffffff;
   box-shadow: 0 4px 12px rgba(34, 48, 64, 0.08);
@@ -735,6 +739,11 @@ button:disabled {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.wallet-leaderboard-streak-modes {
+  max-width: 260px;
+  justify-self: stretch;
+}
+
 .wallet-leaderboard-tabs button {
   padding: 0 6px;
   font-size: 0.72rem;
@@ -783,6 +792,31 @@ button:disabled {
   font-weight: 850;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.wallet-leaderboard-core {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  min-width: 74px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.wallet-leaderboard-core strong {
+  font-size: 0.82rem;
+}
+
+.wallet-leaderboard-core-positive strong {
+  color: #07813f;
+}
+
+.wallet-leaderboard-core-negative strong {
+  color: #dc2626;
+}
+
+.wallet-leaderboard-core-flat strong {
+  color: #667085;
 }
 
 .wallet-leaderboard-pnl {

@@ -83,6 +83,8 @@ export type WalletPerformanceEntry = {
 export type WalletPerformanceLeaderboards = {
   longestWinningStreak: WalletPerformanceEntry[];
   longestLosingStreak: WalletPerformanceEntry[];
+  currentWinningStreak: WalletPerformanceEntry[];
+  currentLosingStreak: WalletPerformanceEntry[];
   highestPnl: WalletPerformanceEntry[];
   worstPnl: WalletPerformanceEntry[];
 };
@@ -265,6 +267,24 @@ export function buildWalletPerformanceLeaderboards(
       entries
         .filter((entry) => entry.longestLosingStreak > 0)
         .sort(compareByLosingStreak),
+      limit,
+    ),
+    currentWinningStreak: applyLimit(
+      entries
+        .filter(
+          (entry) =>
+            entry.currentStreakType === "win" && entry.currentStreakLength > 0,
+        )
+        .sort(compareByCurrentWinningStreak),
+      limit,
+    ),
+    currentLosingStreak: applyLimit(
+      entries
+        .filter(
+          (entry) =>
+            entry.currentStreakType === "loss" && entry.currentStreakLength > 0,
+        )
+        .sort(compareByCurrentLosingStreak),
       limit,
     ),
     highestPnl: applyLimit([...entries].sort(compareByHighestPnl), limit),
@@ -503,6 +523,30 @@ function compareByLosingStreak(
 ): number {
   return (
     right.longestLosingStreak - left.longestLosingStreak ||
+    left.totalPnl - right.totalPnl ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByCurrentWinningStreak(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.currentStreakLength - left.currentStreakLength ||
+    right.totalPnl - left.totalPnl ||
+    right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByCurrentLosingStreak(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.currentStreakLength - left.currentStreakLength ||
     left.totalPnl - right.totalPnl ||
     right.lastSettledAtMs - left.lastSettledAtMs ||
     left.wallet.localeCompare(right.wallet)

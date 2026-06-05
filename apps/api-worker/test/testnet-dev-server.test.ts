@@ -272,6 +272,18 @@ describe("testnet API dev server harness", () => {
       currentStreakType: "loss",
       currentStreakLength: 2
     });
+    expect(body.leaderboards.currentWinningStreak[0]).toMatchObject({
+      wallet: "0xalpha",
+      totalPnl: 300_000,
+      currentStreakType: "win",
+      currentStreakLength: 2
+    });
+    expect(body.leaderboards.currentLosingStreak[0]).toMatchObject({
+      wallet: "0xbeta",
+      totalPnl: -300_000,
+      currentStreakType: "loss",
+      currentStreakLength: 2
+    });
     expect(body.leaderboards.highestPnl[0]).toMatchObject({
       wallet: "0xalpha",
       totalPnl: 300_000

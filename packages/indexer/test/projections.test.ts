@@ -285,6 +285,27 @@ describe("Predict durable projections", () => {
       "0xbeta",
       "0gamma",
     ]);
+    expect(leaderboards.currentWinningStreak.map((entry) => entry.wallet)).toEqual([
+      "0xbeta",
+    ]);
+    expect(leaderboards.currentWinningStreak[0]).toMatchObject({
+      wallet: "0xbeta",
+      currentStreakType: "win",
+      currentStreakLength: 1,
+      longestWinningStreak: 1,
+      totalPnl: 380_000,
+    });
+    expect(leaderboards.currentLosingStreak.map((entry) => entry.wallet)).toEqual([
+      "0gamma",
+      "0xalpha",
+    ]);
+    expect(leaderboards.currentLosingStreak[0]).toMatchObject({
+      wallet: "0gamma",
+      currentStreakType: "loss",
+      currentStreakLength: 1,
+      longestLosingStreak: 1,
+      totalPnl: -900_000,
+    });
     expect(leaderboards.highestPnl.map((entry) => entry.wallet)).toEqual([
       "0xbeta",
       "0xalpha",

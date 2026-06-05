@@ -1,11 +1,21 @@
 export type WalletLeaderboardBoardKey =
   | "longestWinningStreak"
   | "longestLosingStreak"
+  | "currentWinningStreak"
+  | "currentLosingStreak"
   | "highestPnl"
   | "worstPnl";
 
+export type WalletLeaderboardVisibleBoardKey =
+  | "highestPnl"
+  | "longestWinningStreak"
+  | "longestLosingStreak"
+  | "worstPnl";
+
+export type WalletLeaderboardStreakMode = "allTime" | "current";
+
 export type WalletLeaderboardBoardDefinition = {
-  key: WalletLeaderboardBoardKey;
+  key: WalletLeaderboardVisibleBoardKey;
   label: string;
   metricLabel: string;
 };
@@ -101,6 +111,8 @@ export const WALLET_LEADERBOARD_BOARDS: WalletLeaderboardBoardDefinition[] = [
 const EMPTY_LEADERBOARDS: Record<WalletLeaderboardBoardKey, WalletLeaderboardEntry[]> = {
   longestWinningStreak: [],
   longestLosingStreak: [],
+  currentWinningStreak: [],
+  currentLosingStreak: [],
   highestPnl: [],
   worstPnl: [],
 };
@@ -145,6 +157,14 @@ export function buildWalletLeaderboards(
       ),
       longestLosingStreak: buildEntries(
         leaderboards.longestLosingStreak,
+        timeZone,
+      ),
+      currentWinningStreak: buildEntries(
+        leaderboards.currentWinningStreak,
+        timeZone,
+      ),
+      currentLosingStreak: buildEntries(
+        leaderboards.currentLosingStreak,
         timeZone,
       ),
       highestPnl: buildEntries(leaderboards.highestPnl, timeZone),
@@ -221,6 +241,8 @@ function cloneEmptyLeaderboards(): Record<WalletLeaderboardBoardKey, WalletLeade
   return {
     longestWinningStreak: [...EMPTY_LEADERBOARDS.longestWinningStreak],
     longestLosingStreak: [...EMPTY_LEADERBOARDS.longestLosingStreak],
+    currentWinningStreak: [...EMPTY_LEADERBOARDS.currentWinningStreak],
+    currentLosingStreak: [...EMPTY_LEADERBOARDS.currentLosingStreak],
     highestPnl: [...EMPTY_LEADERBOARDS.highestPnl],
     worstPnl: [...EMPTY_LEADERBOARDS.worstPnl],
   };

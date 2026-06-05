@@ -46,6 +46,34 @@ describe("wallet leaderboards model", () => {
                 lastSettledAtMs: 1_779_165_000_000,
               },
             ],
+            currentWinningStreak: [
+              {
+                wallet: "0xcccc222233334444555566667777888899990003",
+                totalPnl: 1_000_000,
+                winCount: 3,
+                lossCount: 1,
+                closedCount: 4,
+                longestWinningStreak: 2,
+                longestLosingStreak: 1,
+                currentStreakType: "win",
+                currentStreakLength: 2,
+                lastSettledAtMs: 1_779_166_000_000,
+              },
+            ],
+            currentLosingStreak: [
+              {
+                wallet: "0xdddd222233334444555566667777888899990004",
+                totalPnl: -1_000_000,
+                winCount: 1,
+                lossCount: 3,
+                closedCount: 4,
+                longestWinningStreak: 1,
+                longestLosingStreak: 2,
+                currentStreakType: "loss",
+                currentStreakLength: 2,
+                lastSettledAtMs: 1_779_166_100_000,
+              },
+            ],
             highestPnl: [
               {
                 wallet: "0xaaaa222233334444555566667777888899990001",
@@ -96,6 +124,16 @@ describe("wallet leaderboards model", () => {
       totalPnlLabel: "-$0.90",
       totalPnlTone: "negative",
       currentStreakLabel: "3 losses",
+    });
+    expect(snapshot.leaderboards.currentWinningStreak[0]).toMatchObject({
+      wallet: "0xcccc222233334444555566667777888899990003",
+      currentStreakLabel: "2 wins",
+      longestWinningStreakLabel: "2 wins",
+    });
+    expect(snapshot.leaderboards.currentLosingStreak[0]).toMatchObject({
+      wallet: "0xdddd222233334444555566667777888899990004",
+      totalPnlLabel: "-$1.00",
+      currentStreakLabel: "2 losses",
     });
   });
 

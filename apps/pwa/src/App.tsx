@@ -69,6 +69,9 @@ import {
   WALLET_LEADERBOARD_BOARDS,
   type WalletLeaderboardBoardKey,
   type WalletLeaderboardEntry,
+  type WalletLeaderboardStreakMode,
+  type WalletLeaderboardTone,
+  type WalletLeaderboardVisibleBoardKey,
   type WalletLeaderboardsSnapshot,
 } from "./walletLeaderboards";
 import { buildTradeMintTransaction } from "./walletTransactions";
@@ -1508,27 +1511,91 @@ function walletLeaderboardMetricValue(
       return entry.longestWinningStreakLabel;
     case "longestLosingStreak":
       return entry.longestLosingStreakLabel;
+    case "currentWinningStreak":
+    case "currentLosingStreak":
+      return entry.currentStreakLabel;
     case "highestPnl":
     case "worstPnl":
       return entry.totalPnlLabel;
   }
 }
 
+function walletLeaderboardEffectiveBoard(
+  board: WalletLeaderboardVisibleBoardKey,
+  streakMode: WalletLeaderboardStreakMode,
+): WalletLeaderboardBoardKey {
+  if (streakMode === "current") {
+    if (board === "longestWinningStreak") {
+      return "currentWinningStreak";
+    }
+    if (board === "longestLosingStreak") {
+      return "currentLosingStreak";
+    }
+  }
+
+  return board;
+}
+
+function walletLeaderboardMetricLabel(board: WalletLeaderboardBoardKey): string {
+  switch (board) {
+    case "longestWinningStreak":
+    case "longestLosingStreak":
+      return "Top Streak";
+    case "currentWinningStreak":
+    case "currentLosingStreak":
+      return "Current Streak";
+    case "highestPnl":
+    case "worstPnl":
+      return "PNL";
+  }
+}
+
+function walletLeaderboardMetricTone(
+  entry: WalletLeaderboardEntry,
+  board: WalletLeaderboardBoardKey,
+): WalletLeaderboardTone {
+  switch (board) {
+    case "longestWinningStreak":
+    case "currentWinningStreak":
+      return "positive";
+    case "longestLosingStreak":
+    case "currentLosingStreak":
+      return "negative";
+    case "highestPnl":
+    case "worstPnl":
+      return entry.totalPnlTone;
+  }
+}
+
+function isWalletLeaderboardStreakBoard(board: WalletLeaderboardVisibleBoardKey): boolean {
+  return board === "longestWinningStreak" || board === "longestLosingStreak";
+}
+
 export function WalletLeaderboardsPanel({
   activeBoard,
+  streakMode = "allTime",
   snapshot,
   status = "ready",
   onBoardChange,
+  onStreakModeChange,
 }: {
-  activeBoard: WalletLeaderboardBoardKey;
+  activeBoard: WalletLeaderboardVisibleBoardKey;
+  streakMode?: WalletLeaderboardStreakMode;
   snapshot: WalletLeaderboardsSnapshot;
   status?: WalletLeaderboardsStatus;
-  onBoardChange: (board: WalletLeaderboardBoardKey) => void;
+  onBoardChange: (board: WalletLeaderboardVisibleBoardKey) => void;
+  onStreakModeChange?: (mode: WalletLeaderboardStreakMode) => void;
 }) {
   const activeBoardDefinition =
     WALLET_LEADERBOARD_BOARDS.find((board) => board.key === activeBoard) ??
     WALLET_LEADERBOARD_BOARDS[0];
-  const entries = selectWalletLeaderboardEntries(snapshot, activeBoardDefinition.key);
+  const effectiveBoard = walletLeaderboardEffectiveBoard(
+    activeBoardDefinition.key,
+    streakMode,
+  );
+  const coreMetricLabel = walletLeaderboardMetricLabel(effectiveBoard);
+  const entries = selectWalletLeaderboardEntries(snapshot, effectiveBoard);
+  const isStreakBoard = isWalletLeaderboardStreakBoard(activeBoardDefinition.key);
   const emptyLabel =
     status === "loading"
       ? "Loading wallet leaderboards..."
@@ -1561,55 +1628,81 @@ export function WalletLeaderboardsPanel({
           </button>
         ))}
       </div>
+      {isStreakBoard ? (
+        <div className="wallet-leaderboard-streak-modes" aria-label="Streak range">
+          <button
+            type="button"
+            aria-pressed={streakMode === "allTime"}
+            data-testid="wallet-leaderboard-streak-mode-allTime"
+            onClick={() => onStreakModeChange?.("allTime")}
+          >
+            All Time
+          </button>
+          <button
+            type="button"
+            aria-pressed={streakMode === "current"}
+            data-testid="wallet-leaderboard-streak-mode-current"
+            onClick={() => onStreakModeChange?.("current")}
+          >
+            Current
+          </button>
+        </div>
+      ) : null}
       {entries.length ? (
         <div className="wallet-leaderboard-list">
-          {entries.map((entry) => (
-            <article
-              className={`wallet-leaderboard-row wallet-leaderboard-row-${entry.totalPnlTone}`}
-              data-testid="wallet-leaderboard-row"
-              key={`${activeBoardDefinition.key}-${entry.wallet}-${entry.rank}`}
-            >
-              <div className="wallet-leaderboard-main">
-                <span className="wallet-leaderboard-rank">#{entry.rank}</span>
-                <div>
-                  <strong>{entry.displayName}</strong>
-                  <small>
-                    {activeBoardDefinition.metricLabel}{" "}
-                    {walletLeaderboardMetricValue(entry, activeBoardDefinition.key)}
-                  </small>
+          {entries.map((entry) => {
+            const coreMetricValue = walletLeaderboardMetricValue(entry, effectiveBoard);
+            const coreMetricTone = walletLeaderboardMetricTone(entry, effectiveBoard);
+
+            return (
+              <article
+                className={`wallet-leaderboard-row wallet-leaderboard-row-${entry.totalPnlTone}`}
+                data-testid="wallet-leaderboard-row"
+                key={`${effectiveBoard}-${entry.wallet}-${entry.rank}`}
+              >
+                <div className="wallet-leaderboard-main">
+                  <span className="wallet-leaderboard-rank">#{entry.rank}</span>
+                  <div>
+                    <strong>{entry.displayName}</strong>
+                    <small>{activeBoardDefinition.label}</small>
+                  </div>
+                  <div
+                    className={`wallet-leaderboard-core wallet-leaderboard-core-${coreMetricTone}`}
+                    data-testid="wallet-leaderboard-core-metric"
+                  >
+                    <small>{coreMetricLabel}</small>
+                    <strong>{coreMetricValue}</strong>
+                  </div>
                 </div>
-                <strong className={`wallet-leaderboard-pnl wallet-leaderboard-pnl-${entry.totalPnlTone}`}>
-                  {entry.totalPnlLabel}
-                </strong>
-              </div>
-              <div className="wallet-leaderboard-metrics">
-                <span>
-                  <small>{activeBoardDefinition.metricLabel}</small>
-                  {walletLeaderboardMetricValue(entry, activeBoardDefinition.key)}
-                </span>
-                <span>
-                  <small>Wins</small>
-                  {entry.winCount}
-                </span>
-                <span>
-                  <small>Losses</small>
-                  {entry.lossCount}
-                </span>
-                <span>
-                  <small>Closed</small>
-                  {entry.closedCount}
-                </span>
-                <span>
-                  <small>Current</small>
-                  {entry.currentStreakLabel}
-                </span>
-                <span>
-                  <small>Last</small>
-                  {entry.lastSettledLabel}
-                </span>
-              </div>
-            </article>
-          ))}
+                <div className="wallet-leaderboard-metrics">
+                  <span>
+                    <small>PNL</small>
+                    {entry.totalPnlLabel}
+                  </span>
+                  <span>
+                    <small>Wins</small>
+                    {entry.winCount}
+                  </span>
+                  <span>
+                    <small>Losses</small>
+                    {entry.lossCount}
+                  </span>
+                  <span>
+                    <small>Open</small>
+                    {entry.openCount}
+                  </span>
+                  <span>
+                    <small>Current</small>
+                    {entry.currentStreakLabel}
+                  </span>
+                  <span>
+                    <small>Last</small>
+                    {entry.lastSettledLabel}
+                  </span>
+                </div>
+              </article>
+            );
+          })}
         </div>
       ) : (
         <div className="wallet-leaderboard-empty" data-testid="wallet-leaderboard-empty">
@@ -2120,7 +2213,9 @@ export function App() {
       status: "idle",
     }));
   const [activeWalletLeaderboard, setActiveWalletLeaderboard] =
-    useState<WalletLeaderboardBoardKey>("highestPnl");
+    useState<WalletLeaderboardVisibleBoardKey>("highestPnl");
+  const [walletLeaderboardStreakMode, setWalletLeaderboardStreakMode] =
+    useState<WalletLeaderboardStreakMode>("allTime");
   const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
   const [dismissedPortfolioPositionIds, setDismissedPortfolioPositionIds] = useState<Set<string>>(
     () => new Set(),
@@ -3530,9 +3625,11 @@ export function App() {
           ) : activeView === "leaderboards" ? (
             <WalletLeaderboardsPanel
               activeBoard={activeWalletLeaderboard}
+              streakMode={walletLeaderboardStreakMode}
               snapshot={walletLeaderboardsState.snapshot}
               status={walletLeaderboardsState.status}
               onBoardChange={setActiveWalletLeaderboard}
+              onStreakModeChange={setWalletLeaderboardStreakMode}
             />
           ) : (
             <PortfolioPanel

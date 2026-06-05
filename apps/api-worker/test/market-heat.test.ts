@@ -200,6 +200,13 @@ describe("testnet market heat endpoint", () => {
       winCount: 1,
       longestWinningStreak: 1
     });
+    expect(body.leaderboards.currentWinningStreak[0]).toMatchObject({
+      wallet: "0xtrader-hot",
+      totalPnl: 3_000_000,
+      currentStreakType: "win",
+      currentStreakLength: 1
+    });
+    expect(body.leaderboards.currentLosingStreak).toEqual([]);
     expect(body.leaderboards.highestPnl[0]).toMatchObject({
       wallet: "0xtrader-hot",
       totalPnl: 3_000_000
