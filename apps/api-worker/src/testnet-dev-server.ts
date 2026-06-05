@@ -9,6 +9,7 @@ import type {
   PredictNormalizedTradeEvent
 } from "@hot-hands/indexer";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
+import { getMainnetSuinsNames } from "./suins-names";
 import {
   getTestnetPredictRedeemQuote,
   getTestnetPredictQuote,
@@ -57,6 +58,7 @@ const TESTNET_DEV_SERVER_ROUTES = [
   "/testnet/market-heat",
   "/testnet/oracle-settlement",
   "/testnet/oracle-prices",
+  "/testnet/mainnet-suins-names",
   "/testnet/portfolio-events",
   "/testnet/quote",
   "/testnet/redeem-quote",
@@ -141,6 +143,14 @@ export function createTestnetDevServerFetch({
           400
         );
       }
+    }
+
+    if (url.pathname === "/testnet/mainnet-suins-names") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      return json(await getMainnetSuinsNames(url, { fetchImpl }));
     }
 
     if (url.pathname === "/testnet/quote") {

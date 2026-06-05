@@ -1,8 +1,61 @@
 import { describe, expect, test } from "bun:test";
 import type { PredictIndexerReader } from "@hot-hands/indexer";
 import { createTestnetDevServerFetch } from "../src/testnet-dev-server";
+import { clearMainnetSuinsNameCacheForTest } from "../src/suins-names";
 
 describe("testnet API dev server harness", () => {
+  test("serves mainnet SuiNS names as a display-only testnet overlay", async () => {
+    clearMainnetSuinsNameCacheForTest();
+
+    const wallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000a1";
+    const calls: unknown[] = [];
+    const fetchHandler = createTestnetDevServerFetch({
+      fetchImpl: async (_input, init) => {
+        calls.push(JSON.parse(String(init?.body)));
+
+        return Response.json({
+          result: {
+            data: ["alice.sui"],
+            hasNextPage: false,
+            nextCursor: null,
+          },
+        });
+      },
+    });
+
+    const response = await fetchHandler(
+      new Request(
+        `http://127.0.0.1:8789/testnet/mainnet-suins-names?wallet=${wallet}&wallet=not-a-wallet`,
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(calls).toEqual([
+      {
+        jsonrpc: "2.0",
+        id: wallet,
+        method: "suix_resolveNameServiceNames",
+        params: [wallet, null, 1],
+      },
+    ]);
+    await expect(response.json()).resolves.toEqual({
+      source: "mainnet_suins",
+      network: "mainnet",
+      names: [
+        {
+          wallet,
+          name: "alice.sui",
+          source: "mainnet_suins",
+        },
+      ],
+      missing: [],
+      skipped: ["not-a-wallet"],
+      failed: [],
+    });
+  });
+
   test("serves market heat through the live-first projection with deterministic fallback", async () => {
     const fetchHandler = createTestnetDevServerFetch({
       fetchImpl: async () => {

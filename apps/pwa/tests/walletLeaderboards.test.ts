@@ -137,6 +137,57 @@ describe("wallet leaderboards model", () => {
     });
   });
 
+  test("overlays mainnet SuiNS names on leaderboard entries when requested", async () => {
+    const wallet = "0xaaaa222233334444555566667777888899990001";
+    const calls: string[] = [];
+    const snapshot = await loadWalletLeaderboards({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      useMainnetSuinsNames: true,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        if (String(url).includes("/testnet/mainnet-suins-names")) {
+          return Response.json({
+            source: "mainnet_suins",
+            network: "mainnet",
+            names: [
+              {
+                wallet,
+                name: "alice.sui",
+                source: "mainnet_suins",
+              },
+            ],
+          });
+        }
+
+        return Response.json({
+          source: "indexed_testnet",
+          leaderboards: {
+            highestPnl: [
+              {
+                wallet,
+                totalPnl: 12_345_678,
+                winCount: 4,
+                lossCount: 1,
+                closedCount: 5,
+              },
+            ],
+          },
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/wallet-leaderboards",
+      `https://api.hot-hands.test/testnet/mainnet-suins-names?wallet=${wallet}`,
+    ]);
+    expect(snapshot.leaderboards.highestPnl[0]).toMatchObject({
+      wallet,
+      displayName: "alice.sui",
+      displayNameSource: "mainnet_suins",
+    });
+  });
+
   test("preserves backend board ordering and filters malformed entries", () => {
     const snapshot = buildWalletLeaderboards({
       source: "indexed_testnet",
