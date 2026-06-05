@@ -10,6 +10,7 @@ import {
   WalletHeaderControl,
   WalletStatusBar,
   buildTradeQuoteKey,
+  shouldShowAccountSummary,
 } from "../src/App";
 
 function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
@@ -77,6 +78,13 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="wallet-address"');
     expect(html).toContain("0x0000...00aa");
     expect(html).toContain("Connected");
+  });
+
+  test("shows account summary only on trade and portfolio views", () => {
+    expect(shouldShowAccountSummary("feed")).toBe(false);
+    expect(shouldShowAccountSummary("leaderboards")).toBe(false);
+    expect(shouldShowAccountSummary("trade")).toBe(true);
+    expect(shouldShowAccountSummary("portfolio")).toBe(true);
   });
 
   test("keeps the trade quote key stable across live estimated price refreshes", () => {

@@ -113,6 +113,10 @@ const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "leaderboards" | "portfolio";
+export function shouldShowAccountSummary(view: AppView): boolean {
+  return view === "trade" || view === "portfolio";
+}
+
 export type TradeSide = "UP" | "DOWN";
 export type TradeMarketSelection = {
   marketId: string;
@@ -3654,6 +3658,11 @@ export function App() {
               />
             }
           />
+          <OraclePriceChartCard
+            chart={oraclePriceChart}
+            fallbackPriceLabel={marketHeatPreview.marketPrice.priceLabel}
+            onOpen={() => setIsOracleChartOpen(true)}
+          />
           <WalletStatusBar
             accountAddress={connectedAccountAddress}
             connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
@@ -3668,21 +3677,18 @@ export function App() {
             onCreatePredictManager={handleCreatePredictManager}
             onDisconnect={handleWalletDisconnect}
           />
-          <AccountSummary
-            availableLabel={liveDusdcBalanceLabel}
-            bankrollLabel={livePredictManagerBankrollLabel}
-            depositAmount={depositAmount}
-            onDeposit={handleDepositBankroll}
-            onDepositAmountChange={handleDepositAmountChange}
-            pnlLabel={visiblePortfolioPnl.pnlLabel}
-            pnlTone={visiblePortfolioPnl.pnlTone}
-            summary={accountSummary}
-          />
-          <OraclePriceChartCard
-            chart={oraclePriceChart}
-            fallbackPriceLabel={marketHeatPreview.marketPrice.priceLabel}
-            onOpen={() => setIsOracleChartOpen(true)}
-          />
+          {shouldShowAccountSummary(activeView) ? (
+            <AccountSummary
+              availableLabel={liveDusdcBalanceLabel}
+              bankrollLabel={livePredictManagerBankrollLabel}
+              depositAmount={depositAmount}
+              onDeposit={handleDepositBankroll}
+              onDepositAmountChange={handleDepositAmountChange}
+              pnlLabel={visiblePortfolioPnl.pnlLabel}
+              pnlTone={visiblePortfolioPnl.pnlTone}
+              summary={accountSummary}
+            />
+          ) : null}
           {activeView === "feed" ? (
             renderMarketHeatPreview()
           ) : activeView === "trade" ? (
