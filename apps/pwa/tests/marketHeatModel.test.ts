@@ -47,7 +47,7 @@ describe("market heat preview model", () => {
           expiryTimeLabel: "May 18, 19:40 PDT",
           observedAtMs: 1_779_158_400_000,
           heatScore: 92,
-          actionLabel: "Watch next",
+          actionLabel: "Copy now",
           status: "watching",
           statusLabel: "2h ago",
         },
@@ -65,7 +65,7 @@ describe("market heat preview model", () => {
           expiryTimeLabel: "May 18, 19:40 PDT",
           observedAtMs: 1_779_151_200_000,
           heatScore: 87,
-          actionLabel: "Watch next",
+          actionLabel: "Copy now",
           status: "watching",
           statusLabel: "4h ago",
         },
@@ -83,12 +83,39 @@ describe("market heat preview model", () => {
           expiryTimeLabel: "May 18, 19:40 PDT",
           observedAtMs: 1_779_079_200_000,
           heatScore: 81,
-          actionLabel: "Watch next",
+          actionLabel: "Copy now",
           status: "watching",
           statusLabel: "1d ago",
         },
       ],
     });
+  });
+
+  test("formats local timezone offsets with UTC labels", () => {
+    const preview = buildMarketHeatPreview(
+      [
+        {
+          id: "tokyo-expiry",
+          wallet: "0x1111222233334444555566667777888899990000",
+          manager: "manager 0xabcd...0001",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 60_914,
+          expiryMs: Date.UTC(2026, 5, 7, 8, 0, 0),
+          intervalLabel: "1d",
+          observedAtMs: Date.UTC(2026, 5, 7, 7, 0, 0),
+          heatScore: 74,
+          status: "copy_ready",
+        },
+      ],
+      1,
+      {
+        nowMs: Date.UTC(2026, 5, 7, 7, 0, 0),
+        timeZone: "Asia/Tokyo",
+      },
+    );
+
+    expect(preview.rows[0]?.expiryTimeLabel).toBe("Jun 7, 17:00 UTC+9");
   });
 
   test("selects and closes a next-mint row without implying a ready signature", () => {
@@ -104,17 +131,17 @@ describe("market heat preview model", () => {
 
     expect(selected.selectedRowId).toBe("external-0x28b7");
     expect(buildMarketHeatIntentPanel(watchingRow)).toEqual({
-      actionLabel: "Watch next",
+      actionLabel: "Copy now",
       closeLabel: "Cancel",
       detailLabel: "Next observed mint",
       signatureLabel: "We'll watch this wallet and prepare the next mint for your signature",
       statusLabel: "4h ago",
-      title: "Watch 0x28b7...4c10",
+      title: "Copy 0x28b7...4c10",
     });
     expect(closeMarketHeatIntent(selected)).toEqual({ selectedRowId: null });
   });
 
-  test("labels copy-now intent only when an observed mint is available", () => {
+  test("labels copy intent as wallet-ready when an observed mint is available", () => {
     const [copyReadyRow] = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
       nowMs: 1_779_158_000_000,
     }).rows;
@@ -212,7 +239,7 @@ describe("market heat preview model", () => {
         id: "0xoracle2h-1779172200000",
         oracleId: "0xoracle2h",
         pairLabel: "BTC/USD",
-        intervalLabel: "2h",
+        intervalLabel: "1h",
         expiry: 1_779_172_200_000,
         expiryMs: 1_779_172_200_000,
         expiryTimeLabel: "May 18, 23:30 PDT",
@@ -232,7 +259,7 @@ describe("market heat preview model", () => {
       strikeLabel: "Strike $3,400",
       intervalLabel: "1h",
       expiryTimeLabel: "May 18, 19:40 PDT",
-      actionLabel: "Watch next",
+      actionLabel: "Copy now",
       statusLabel: "just now",
     });
   });
@@ -909,9 +936,69 @@ describe("market heat preview model", () => {
       pairLabel: "BTC/USD",
       side: "DOWN",
       intervalLabel: "1d",
-      actionLabel: "Watch next",
+      actionLabel: "Copy now",
       statusLabel: "just now",
     });
+  });
+
+  test("normalizes indexed market intervals into product duration filters", async () => {
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_000_000,
+      fetcher: async () =>
+        Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 60910,
+            source: "indexed_testnet",
+          },
+          markets: [
+            {
+              oracleId: "0xabc",
+              market: "BTC-USD",
+              expiryMs: 1_780_732_800_000,
+              intervalLabel: "4d",
+              strikeCandidatePrice: 60910,
+              status: "active",
+            },
+            {
+              oracleId: "0xdef",
+              market: "BTC-USD",
+              expiryMs: 1_781_251_200_000,
+              intervalLabel: "23d",
+              strikeCandidatePrice: 60910,
+              status: "active",
+            },
+          ],
+          rows: [
+            {
+              id: "indexed-long",
+              wallet: "0x3333444455556666777788889999000011112222",
+              manager: "manager 0xabcd...0003",
+              market: "BTC-USD",
+              side: "UP",
+              strike: 69000,
+              expiryMs: 1_781_251_200_000,
+              intervalLabel: "23d",
+              observedAtMs: 1_779_165_000_000,
+              heatScore: 88,
+              status: "copy_ready",
+            },
+          ],
+        }),
+    });
+
+    expect(preview.sourceLabel).toBe("Indexed Testnet");
+    expect(preview.rows.map((row) => row.intervalLabel)).toEqual(["1d"]);
+    expect(preview.availableMarkets?.map((market) => market.intervalLabel)).toEqual([
+      "1d",
+      "1d",
+    ]);
+    expect(buildMarketDurationOptions(preview, { nowMs: 1_779_165_000_000 })).toEqual([
+      { count: 1, label: "1d", value: "1d" },
+    ]);
   });
 
   test("uses captured rows when no API URL is configured", async () => {

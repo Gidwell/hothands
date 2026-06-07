@@ -44,7 +44,7 @@ describe("WalletLeaderboardsPanel component", () => {
 
     expect(html).toContain('data-testid="wallet-leaderboards-view"');
     expect(html).toContain("Wallet Leaders");
-    expect(html).toContain("Indexed Testnet");
+    expect(html).not.toContain("Indexed Testnet");
     expect(html).toContain('data-testid="wallet-leaderboard-tab-pnl"');
     expect(html).toContain('data-testid="wallet-leaderboard-tab-streaks"');
     expect(html).not.toContain('data-testid="wallet-leaderboard-tab-highestPnl"');
@@ -58,7 +58,7 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain("#1");
     expect(html).toContain("0xaaaa...0001");
     expect(html).toContain("+$12.35");
-    expect(html).toContain("PNL</small>+$12.35");
+    expect(html).toContain("PNL</small><strong>+$12.35");
     expect(html).toContain("Wins</small>4");
     expect(html).toContain("Losses</small>1");
     expect(html).toContain("Open</small>2");

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MarketHeatPreview } from "../src/App";
+import { MarketHeatPreview, resolveMarketHeatSwipeAction } from "../src/App";
 import { buildMarketHeatPreview, type MarketHeatPreviewRowInput } from "../src/marketHeatModel";
 
 const watchingOnlyRows: MarketHeatPreviewRowInput[] = [
@@ -38,6 +38,13 @@ const copyReadyRows: MarketHeatPreviewRowInput[] = [
 ];
 
 describe("MarketHeatPreview component", () => {
+  test("resolves compact row right swipes into safe actions", () => {
+    expect(resolveMarketHeatSwipeAction(92, 6, "copy_ready")).toBe("submit");
+    expect(resolveMarketHeatSwipeAction(92, 6, "watching")).toBe("select");
+    expect(resolveMarketHeatSwipeAction(42, 6, "copy_ready")).toBe("none");
+    expect(resolveMarketHeatSwipeAction(92, 44, "copy_ready")).toBe("none");
+  });
+
   test("renders a compact inline watch panel for the selected row", () => {
     const [row] = buildMarketHeatPreview(watchingOnlyRows, 1).rows;
     const html = renderToStaticMarkup(
@@ -61,11 +68,15 @@ describe("MarketHeatPreview component", () => {
     );
 
     expect(html).toContain('data-testid="market-heat-intent-panel"');
-    expect(html).toContain("Watch 0xaaaa...0000");
+    expect(html).toContain('title="Captured BTC markets"');
+    expect(html).toContain('aria-label="Alpha Feed, Captured BTC markets"');
+    expect(html).not.toContain("<span>Captured BTC markets</span>");
+    expect(html).toContain("Copy 0xaaaa...0000");
     expect(html).toContain("Next observed mint");
     expect(html).toContain('data-testid="custom-copy-amount"');
     expect(html).toContain('aria-label="Custom copy amount"');
-    expect(html).toContain("We&#x27;ll watch this wallet and prepare the next mint for your signature");
+    expect(html).not.toContain("Copy now</strong>");
+    expect(html).not.toContain("We&#x27;ll watch this wallet and prepare the next mint for your signature");
     expect(html).not.toContain("Manager 0xaaaa...0000");
     expect(html).not.toContain("Hot Hands prepares the transaction");
     expect(html).toContain('data-testid="market-heat-sort-latest"');
@@ -107,9 +118,9 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Est. payout</small>$937.50");
     expect(html).toContain("Max profit</small>+$562.50");
     expect(html).toContain('data-testid="market-heat-wallet-submit"');
-    expect(html).toContain("Send to wallet");
+    expect(html).toContain("Confirm transaction");
     expect(html).not.toContain("Manager 0xbbbb...0000");
-    expect(html).not.toContain("No wallet request until you tap Send to wallet");
+    expect(html).not.toContain("No wallet request until you tap Confirm transaction");
   });
 
   test("keeps feed wallet notifications in the toast layer", () => {
@@ -235,5 +246,43 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("1h");
     expect(html).toContain("1d");
     expect(html).toContain('aria-pressed="true"');
+  });
+
+  test("renders compact feed rows for faster scanning", () => {
+    const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        density="compact"
+        selectedRowId={null}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onCloseIntent={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("market-heat-list-compact");
+    expect(html).toContain("market-heat-row-compact");
+    expect(html).toContain('data-testid="market-heat-density-compact"');
+    expect(html).toContain("Swipe");
+    expect(html).toContain("0xbbbb...0000");
+    expect(html).toContain("UP");
+    expect(html).toContain("$7,100");
+    expect(html).toContain("Heat");
+    expect(html).toContain("94");
+    expect(html).not.toContain("Cost</small>");
+    expect(html).not.toContain("Expiry</small>");
   });
 });

@@ -12,6 +12,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { OraclePriceChart, OraclePriceChartPoint } from "./oraclePriceChartModel";
+import { formatUtcTimeZoneText } from "./timeZoneLabels";
 
 const COMPACT_CHART_MIN_BAR_SPACING = 0.02;
 const EXPANDED_CHART_MIN_BAR_SPACING = 0.02;
@@ -322,14 +323,14 @@ function formatCrosshairLocalTime(time: Time): string {
     return "";
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return formatUtcTimeZoneText(new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
     timeZoneName: "short",
-  }).format(date);
+  }).format(date));
 }
 
 function formatTickMarkLocalTime(time: Time, tickMarkType: TickMarkType): string | null {

@@ -4,6 +4,7 @@ import {
   type WalletDisplayNameSource,
   type WalletDisplayNamesByAddress,
 } from "./suinsDisplayNames";
+import { formatUtcTimeZoneLabel } from "./timeZoneLabels";
 
 export type MarketHeatStatus = "copy_ready" | "watching";
 export type MarketHeatSortMode = "latest" | "heat";
@@ -93,7 +94,7 @@ export type MarketHeatPreviewRow = {
   expiryTimeLabel: string;
   observedAtMs: number;
   heatScore: number;
-  actionLabel: "Copy now" | "Watch next";
+  actionLabel: "Copy now";
   status: MarketHeatStatus;
   statusLabel: string;
 };
@@ -103,7 +104,7 @@ export type MarketHeatIntentState = {
 };
 
 export type MarketHeatIntentPanel = {
-  actionLabel: "Copy now" | "Watch next";
+  actionLabel: "Copy now";
   closeLabel: "Cancel";
   detailLabel: "Next observed mint" | "Recent mint";
   signatureLabel:
@@ -326,7 +327,7 @@ export function buildMarketHeatPreview(
           expiryTimeLabel: formatExpiryTime(row.expiryMs, timeZone),
           observedAtMs: row.observedAtMs,
           heatScore: row.heatScore,
-          actionLabel: isActionableCopy ? "Copy now" : "Watch next",
+          actionLabel: "Copy now",
           status: isActionableCopy ? "copy_ready" : "watching",
           statusLabel: formatTradeTime(row.observedAtMs, nowMs),
         };
@@ -613,7 +614,7 @@ export function buildMarketHeatIntentPanel(
       ? "Ready for your wallet signature"
       : "We'll watch this wallet and prepare the next mint for your signature",
     statusLabel: row.statusLabel,
-    title: `${isCopyReady ? "Copy" : "Watch"} ${row.displayName}`,
+    title: `Copy ${row.displayName}`,
   };
 }
 
@@ -982,7 +983,7 @@ function formatExpiryWithIntl(expiry: Date, timeZone?: string): string | null {
       return null;
     }
 
-    return `${month} ${day}, ${hour}:${minute} ${timeZoneName}`;
+    return `${month} ${day}, ${hour}:${minute} ${formatUtcTimeZoneLabel(timeZoneName)}`;
   } catch {
     return null;
   }
@@ -1017,7 +1018,12 @@ function parseMarketHeatRows(payload: unknown): MarketHeatPreviewRowInput[] | nu
     return null;
   }
 
-  const rows = payload.rows.filter(isMarketHeatRowInput);
+  const rows = payload.rows
+    .filter(isMarketHeatRowInput)
+    .map((row) => ({
+      ...row,
+      intervalLabel: normalizeMarketDurationLabel(row.intervalLabel),
+    }));
 
   return rows.length > 0 ? rows : null;
 }
@@ -1100,7 +1106,9 @@ function parseAvailableMarket(
 
   const oracleId = isNonEmptyString(value.oracleId) ? value.oracleId : null;
   const market = isNonEmptyString(value.market) ? value.market : marketPrice.market;
-  const intervalLabel = isNonEmptyString(value.intervalLabel) ? value.intervalLabel : null;
+  const intervalLabel = isNonEmptyString(value.intervalLabel)
+    ? normalizeMarketDurationLabel(value.intervalLabel)
+    : null;
   const expiry = firstNonNegativeNumber([value.expiry, value.expiryMs]);
   const expiryMs = expiry === null ? null : normalizeEpochMs(expiry);
   const status = isNonEmptyString(value.status) ? value.status : "active";
@@ -1133,6 +1141,45 @@ function parseAvailableMarket(
     strikeLabel: formatStrike(strike),
     status,
   };
+}
+
+function normalizeMarketDurationLabel(intervalLabel: string): string {
+  const durationMs = parseDurationMsFromIntervalLabel(intervalLabel);
+
+  if (durationMs === null) {
+    return intervalLabel.trim() || "1d";
+  }
+
+  if (durationMs <= 30 * 60_000) {
+    return "15m";
+  }
+
+  if (durationMs <= 2 * 60 * 60_000) {
+    return "1h";
+  }
+
+  return "1d";
+}
+
+function parseDurationMsFromIntervalLabel(intervalLabel: string): number | null {
+  const match = /^(\d+)\s*([mhd])$/i.exec(intervalLabel.trim());
+
+  if (!match) {
+    return null;
+  }
+
+  const value = Number(match[1]);
+  const unit = match[2].toLowerCase();
+
+  if (unit === "d") {
+    return value * 24 * 60 * 60_000;
+  }
+
+  if (unit === "h") {
+    return value * 60 * 60_000;
+  }
+
+  return value * 60_000;
 }
 
 function parseTradeQuote(payload: unknown): TradeQuote | null {

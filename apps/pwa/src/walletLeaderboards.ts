@@ -4,6 +4,7 @@ import {
   type WalletDisplayNameSource,
   type WalletDisplayNamesByAddress,
 } from "./suinsDisplayNames";
+import { formatUtcTimeZoneText } from "./timeZoneLabels";
 
 export type WalletLeaderboardBoardKey =
   | "longestWinningStreak"
@@ -384,7 +385,7 @@ function formatLastSettled(timestampMs: number | null, timeZone?: string): strin
 
 function formatDate(date: Date, timeZone?: string): string | null {
   try {
-    return new Intl.DateTimeFormat("en-US", {
+    const label = new Intl.DateTimeFormat("en-US", {
       day: "numeric",
       hour: "2-digit",
       hourCycle: "h23",
@@ -395,6 +396,8 @@ function formatDate(date: Date, timeZone?: string): string | null {
     })
       .format(date)
       .replace(" at ", ", ");
+
+    return formatUtcTimeZoneText(label);
   } catch {
     return null;
   }
