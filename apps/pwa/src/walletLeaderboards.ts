@@ -17,7 +17,7 @@ export type WalletLeaderboardBoardKey =
 export type WalletLeaderboardPanelBoardKey = "pnl" | "streaks";
 export type WalletLeaderboardSortDirection = "best" | "worst";
 
-export type WalletLeaderboardStreakMode = "allTime" | "current";
+export type WalletLeaderboardRangeMode = "allTime" | "current";
 
 export type WalletLeaderboardBoardDefinition = {
   key: WalletLeaderboardPanelBoardKey;

@@ -59,25 +59,19 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("BTC/USD");
   });
 
-  test("renders a light and dark mode control in the market header", () => {
-    const lightHtml = renderToStaticMarkup(
+  test("renders the theme toggle in the market header action slot", () => {
+    const html = renderToStaticMarkup(
       <MarketHeader
-        themeMode="light"
-        walletControl={
-          <WalletHeaderControl
-            accountAddress={null}
-            connectionStatus="disconnected"
-            readOnly={false}
-            walletCount={1}
-            onConnect={() => undefined}
-            onDisconnect={() => undefined}
-          />
+        themeControl={
+          <button
+            type="button"
+            className="theme-toggle"
+            data-testid="theme-toggle"
+            aria-label="Switch to dark mode"
+          >
+            <svg aria-hidden="true" />
+          </button>
         }
-      />,
-    );
-    const darkHtml = renderToStaticMarkup(
-      <MarketHeader
-        themeMode="dark"
         walletControl={
           <WalletHeaderControl
             accountAddress={null}
@@ -91,10 +85,13 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(lightHtml).toContain('aria-label="Switch to dark mode"');
-    expect(lightHtml).toContain("<strong>Dark</strong>");
-    expect(darkHtml).toContain('aria-label="Switch to light mode"');
-    expect(darkHtml).toContain("<strong>Light</strong>");
+    expect(html).toContain('data-testid="market-header-actions"');
+    expect(html).toContain('data-testid="theme-toggle"');
+    expect(html).toContain('data-testid="market-header-wallet"');
+    expect(html).toContain("Switch to dark mode");
+    expect(html).not.toContain(">Dark<");
+    expect(html).not.toContain(">Light<");
+    expect(html).not.toContain("theme-stage-toggle");
   });
 
   test("asks users to choose when multiple wallets are eligible", () => {
@@ -279,13 +276,14 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain('data-testid="bottom-nav"');
-    expect(html).toContain("🔥 Feed");
-    expect(html).toContain("↔ Trade");
-    expect(html).toContain("🏆 Leaders");
-    expect(html).toContain("💵 Portfolio");
-    expect(html.indexOf("🔥 Feed")).toBeLessThan(html.indexOf("🏆 Leaders"));
-    expect(html.indexOf("🏆 Leaders")).toBeLessThan(html.indexOf("↔ Trade"));
-    expect(html.indexOf("↔ Trade")).toBeLessThan(html.indexOf("💵 Portfolio"));
+    expect(html).toContain('class="bottom-nav-icon"');
+    expect(html).toContain("<span>Feed</span>");
+    expect(html).toContain("<span>Trade</span>");
+    expect(html).toContain("<span>Leaders</span>");
+    expect(html).toContain("<span>Portfolio</span>");
+    expect(html.indexOf("<span>Feed</span>")).toBeLessThan(html.indexOf("<span>Leaders</span>"));
+    expect(html.indexOf("<span>Leaders</span>")).toBeLessThan(html.indexOf("<span>Trade</span>"));
+    expect(html.indexOf("<span>Trade</span>")).toBeLessThan(html.indexOf("<span>Portfolio</span>"));
     expect(html).toContain('aria-pressed="true"');
   });
 
@@ -350,10 +348,20 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Quoted now");
     expect(html).toContain("$2.41");
     expect(html).toContain("$4");
-    expect(html).toContain("Claim value");
     expect(html).toContain("No payout");
-    expect(html).toContain("Settled BTC");
     expect(html).toContain("$65,100.00");
+  });
+
+  test("keeps empty portfolio copy sparse", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        positions={[]}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("No open positions");
+    expect(html).not.toContain("Live positions will appear here after you trade or copy a signal.");
   });
 
   test("renders zero-payout expired portfolio rows as dismissible", () => {
@@ -430,12 +438,14 @@ describe("mobile app navigation", () => {
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('data-testid="portfolio-history"');
     expect(html).toContain("Trade history");
-    expect(html).toContain("BTC/USD $65,000.00");
+    expect(html).toContain("BTC/USD");
+    expect(html).toContain("$65,000.00");
     expect(html).toContain("Redeemed");
-    expect(html).toContain("Cost</small>$2");
-    expect(html).toContain("Payout</small>$3.25");
+    expect(html).toContain("Cost</span>");
+    expect(html).toContain("$2");
+    expect(html).toContain("Payout</span>");
+    expect(html).toContain("$3.25");
     expect(html).toContain("PNL</small><strong>+$1.25");
-    expect(html).toContain("Opened</small>May 17, 2026, 7:33 AM");
   });
 
   test("renders portfolio time remaining from the current clock", () => {
@@ -507,10 +517,8 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain("<small>Expired</small>");
     expect(html).not.toContain("Expired · Expired");
-    expect(html).toContain("Claim value");
     expect(html).toContain("Pending");
     expect(html).toContain("Claim</button>");
-    expect(html).not.toContain("Est. close");
     expect(html).not.toContain("Quoted now");
     expect(html).not.toContain("Redeem</button>");
   });

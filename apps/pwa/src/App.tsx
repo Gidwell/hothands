@@ -77,8 +77,8 @@ import {
   type WalletLeaderboardBoardKey,
   type WalletLeaderboardEntry,
   type WalletLeaderboardPanelBoardKey,
+  type WalletLeaderboardRangeMode,
   type WalletLeaderboardSortDirection,
-  type WalletLeaderboardStreakMode,
   type WalletLeaderboardTone,
   type WalletLeaderboardsSnapshot,
 } from "./walletLeaderboards";
@@ -1097,37 +1097,103 @@ export function BottomNav({
   activeView: AppView;
   onViewChange: (view: AppView) => void;
 }) {
+  const items: Array<{ label: string; view: AppView }> = [
+    { label: "Feed", view: "feed" },
+    { label: "Leaders", view: "leaderboards" },
+    { label: "Trade", view: "trade" },
+    { label: "Portfolio", view: "portfolio" },
+  ];
+
   return (
     <nav className="bottom-nav" aria-label="Primary" data-testid="bottom-nav">
-      <button
-        type="button"
-        aria-pressed={activeView === "feed"}
-        onClick={() => onViewChange("feed")}
-      >
-        🔥 Feed
-      </button>
-      <button
-        type="button"
-        aria-pressed={activeView === "leaderboards"}
-        onClick={() => onViewChange("leaderboards")}
-      >
-        🏆 Leaders
-      </button>
-      <button
-        type="button"
-        aria-pressed={activeView === "trade"}
-        onClick={() => onViewChange("trade")}
-      >
-        ↔ Trade
-      </button>
-      <button
-        type="button"
-        aria-pressed={activeView === "portfolio"}
-        onClick={() => onViewChange("portfolio")}
-      >
-        💵 Portfolio
-      </button>
+      {items.map((item) => (
+        <button
+          type="button"
+          aria-pressed={activeView === item.view}
+          key={item.view}
+          onClick={() => onViewChange(item.view)}
+        >
+          <NavIcon view={item.view} />
+          <span>{item.label}</span>
+        </button>
+      ))}
     </nav>
+  );
+}
+
+function NavIcon({ view }: { view: AppView }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="bottom-nav-icon"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      {view === "feed" ? (
+        <>
+          <path d="M13.2 2.6c.6 2.9-.8 4.6-2.1 6.1-1.2 1.3-2.3 2.6-1.8 4.7" />
+          <path d="M17.8 8.1c2 2.1 2.8 5.3 1.3 8.2-1.4 2.8-4.1 4.5-7.1 4.5s-5.4-1.5-6.8-4.1c-1.4-2.7-.7-5.8 1.8-8.4" />
+          <path d="M12.1 20.8c2.1-1 2.8-2.7 2.3-4.6-.4-1.5-1.5-2.4-2.8-3.3-.4 1.7-2.2 2.3-2.5 4.1-.3 1.7.8 3.1 3 3.8Z" />
+        </>
+      ) : view === "leaderboards" ? (
+        <>
+          <path d="M7 4h10v3.5a5 5 0 0 1-10 0V4Z" />
+          <path d="M7 6H4.5a2.5 2.5 0 0 0 2.8 3.6" />
+          <path d="M17 6h2.5a2.5 2.5 0 0 1-2.8 3.6" />
+          <path d="M12 12.5V17" />
+          <path d="M8.5 20h7" />
+          <path d="M10 17h4" />
+        </>
+      ) : view === "trade" ? (
+        <>
+          <path d="M7 7h11" />
+          <path d="m15 4 3 3-3 3" />
+          <path d="M17 17H6" />
+          <path d="m9 14-3 3 3 3" />
+        </>
+      ) : (
+        <>
+          <path d="M4.5 8.5h15a1.5 1.5 0 0 1 1.5 1.5v7.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h12" />
+          <path d="M16.5 13.5H21" />
+          <path d="M17.8 13.5h.1" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function ThemeModeIcon({ mode }: { mode: ThemeMode }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="theme-mode-icon"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      {mode === "light" ? (
+        <>
+          <path d="M12 3v2" />
+          <path d="M12 19v2" />
+          <path d="M4.22 4.22l1.42 1.42" />
+          <path d="M18.36 18.36l1.42 1.42" />
+          <path d="M3 12h2" />
+          <path d="M19 12h2" />
+          <path d="M4.22 19.78l1.42-1.42" />
+          <path d="M18.36 5.64l1.42-1.42" />
+          <circle cx="12" cy="12" r="4" />
+        </>
+      ) : (
+        <path d="M20.5 14.2A7.8 7.8 0 0 1 9.8 3.5 8.7 8.7 0 1 0 20.5 14.2Z" />
+      )}
+    </svg>
   );
 }
 
@@ -1777,6 +1843,14 @@ export function PortfolioPanel({
       </div>
       {activeTab === "positions" && positions.length ? (
         <div className="portfolio-list">
+          <div className="portfolio-table-head" aria-hidden="true">
+            <span>Market / side</span>
+            <span>Exp</span>
+            <span>Cost</span>
+            <span>Est. close</span>
+            <span>Max payout</span>
+            <span />
+          </div>
           {positions.map((position) => {
             const isExpired =
               typeof nowMs === "number" ? position.expiryMs <= nowMs : position.isExpired;
@@ -1812,14 +1886,29 @@ export function PortfolioPanel({
 
             return (
               <article className="portfolio-row" key={position.id}>
-                <div className="portfolio-row-main">
+                <div className="portfolio-market-cell">
                   <span className={position.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
                     {position.direction}
                   </span>
                   <div>
-                    <strong>BTC/USD {position.strikeLabel}</strong>
-                    <small>{statusSummary}</small>
+                    <strong>BTC/USD</strong>
+                    <small>Strike {position.strikeLabel}</small>
                   </div>
+                </div>
+                <div className="portfolio-expiry-cell">
+                  <strong>{position.expiryTimeLabel}</strong>
+                  <small>{statusSummary}</small>
+                </div>
+                <span className="portfolio-table-cell">{position.costBasisLabel}</span>
+                <span className="portfolio-table-cell">
+                  {isExpired
+                    ? position.claimValueLabel ?? (status === "loading" ? "Checking" : "Pending")
+                    : position.closeValueLabel ?? (status === "loading" ? "Checking" : "Unavailable")}
+                </span>
+                <span className="portfolio-table-cell">
+                  {isExpired ? position.settlementPriceLabel ?? "Pending" : position.maxPayoutLabel}
+                </span>
+                <div className="portfolio-action-cell">
                   <button
                     type="button"
                     className="portfolio-action-button portfolio-row-action"
@@ -1838,24 +1927,6 @@ export function PortfolioPanel({
                       : actionLabel}
                   </button>
                 </div>
-                <div className="portfolio-row-metrics">
-                  <span>
-                    <small>{isExpired ? "Claim value" : "Est. close"}</small>
-                    {isExpired
-                      ? position.claimValueLabel ?? (status === "loading" ? "Checking" : "Pending")
-                      : position.closeValueLabel ?? (status === "loading" ? "Checking" : "Unavailable")}
-                  </span>
-                  <span>
-                    <small>Cost</small>
-                    {position.costBasisLabel}
-                  </span>
-                  <span>
-                    <small>{isExpired ? "Settled BTC" : "Max payout"}</small>
-                    {isExpired
-                      ? position.settlementPriceLabel ?? "Pending"
-                      : position.maxPayoutLabel}
-                  </span>
-                </div>
               </article>
             );
           })}
@@ -1863,55 +1934,43 @@ export function PortfolioPanel({
       ) : activeTab === "positions" ? (
         <div className="portfolio-empty">
           <strong>{emptyLabel}</strong>
-          {emptyLabel === "No open positions" ? (
-            <span>Live positions will appear here after you trade or copy a signal.</span>
-          ) : null}
         </div>
       ) : historyItems.length ? (
         <div className="portfolio-history" data-testid="portfolio-history">
           <p className="portfolio-history-title">Trade history</p>
+          <div className="portfolio-table-head portfolio-history-table-head" aria-hidden="true">
+            <span>Market / side</span>
+            <span>Closed</span>
+            <span>Cost</span>
+            <span>Payout</span>
+            <span>PNL</span>
+            <span />
+          </div>
           {historyItems.map((item) => (
             <article
               className={`portfolio-history-row portfolio-history-row-${item.pnlTone}`}
               key={item.id}
             >
-              <div className="portfolio-row-main">
+              <div className="portfolio-market-cell">
                 <span className={item.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
                   {item.direction}
                 </span>
                 <div>
-                  <strong>BTC/USD {item.strikeLabel}</strong>
-                  <small>
-                    {item.statusLabel} · Exp {item.expiryTimeLabel}
-                  </small>
-                </div>
-                <div className={`portfolio-history-pnl portfolio-history-pnl-${item.pnlTone}`}>
-                  <small>PNL</small>
-                  <strong>{item.pnlLabel}</strong>
+                  <strong>BTC/USD</strong>
+                  <small>{item.strikeLabel}</small>
                 </div>
               </div>
-              <div className="portfolio-row-metrics portfolio-history-metrics">
-                <span>
-                  <small>Cost</small>
-                  {item.costLabel}
-                </span>
-                <span>
-                  <small>Payout</small>
-                  {item.payoutLabel}
-                </span>
-                <span>
-                  <small>Opened</small>
-                  {item.openedAtLabel}
-                </span>
-                <span>
-                  <small>Updated</small>
-                  {item.updatedAtLabel}
-                </span>
-                <span>
-                  <small>Remaining</small>
-                  {item.remainingLabel}
-                </span>
+              <div className="portfolio-expiry-cell">
+                <strong>{item.expiryTimeLabel}</strong>
+                <small>{item.statusLabel}</small>
               </div>
+              <span className="portfolio-table-cell">{item.costLabel}</span>
+              <span className="portfolio-table-cell">{item.payoutLabel}</span>
+              <div className={`portfolio-history-pnl portfolio-history-pnl-${item.pnlTone}`}>
+                <small>PNL</small>
+                <strong>{item.pnlLabel}</strong>
+              </div>
+              <span className="portfolio-table-cell">{item.remainingLabel}</span>
             </article>
           ))}
         </div>
@@ -1943,13 +2002,13 @@ function walletLeaderboardMetricValue(
 function walletLeaderboardEffectiveBoard(
   board: WalletLeaderboardPanelBoardKey,
   sortDirection: WalletLeaderboardSortDirection,
-  streakMode: WalletLeaderboardStreakMode,
+  rangeMode: WalletLeaderboardRangeMode,
 ): WalletLeaderboardBoardKey {
   if (board === "pnl") {
     return sortDirection === "best" ? "highestPnl" : "worstPnl";
   }
 
-  if (streakMode === "current") {
+  if (rangeMode === "current") {
     return sortDirection === "best"
       ? "currentWinningStreak"
       : "currentLosingStreak";
@@ -1993,55 +2052,62 @@ function walletLeaderboardMetricTone(
   }
 }
 
+function compactWalletLeaderboardLastLabel(label: string): string {
+  const withoutZone = label.replace(/\s(?:UTC|GMT|PDT|PST|EDT|EST|CDT|CST|MDT|MST).*/, "");
+  const [datePart] = withoutZone.split(",");
+  return datePart.trim() || label;
+}
+
 function walletLeaderboardListLabel(
   board: WalletLeaderboardPanelBoardKey,
   sortDirection: WalletLeaderboardSortDirection,
-  streakMode: WalletLeaderboardStreakMode,
+  rangeMode: WalletLeaderboardRangeMode,
 ): string {
   if (board === "pnl") {
     return sortDirection === "best" ? "Top PnL" : "Worst PnL";
   }
 
   const streakType = sortDirection === "best" ? "Win" : "Lose";
-  return streakMode === "current"
+  return rangeMode === "current"
     ? `Current ${streakType} Streaks`
     : `${streakType} Streaks`;
 }
 
 export function WalletLeaderboardsPanel({
   activeBoard,
+  rangeMode = "allTime",
   sortDirection = "best",
-  streakMode = "allTime",
   snapshot,
   status = "ready",
   onBoardChange,
+  onRangeModeChange,
   onSortDirectionChange,
-  onStreakModeChange,
 }: {
   activeBoard: WalletLeaderboardPanelBoardKey;
+  rangeMode?: WalletLeaderboardRangeMode;
   sortDirection?: WalletLeaderboardSortDirection;
-  streakMode?: WalletLeaderboardStreakMode;
   snapshot: WalletLeaderboardsSnapshot;
   status?: WalletLeaderboardsStatus;
   onBoardChange: (board: WalletLeaderboardPanelBoardKey) => void;
+  onRangeModeChange?: (mode: WalletLeaderboardRangeMode) => void;
   onSortDirectionChange?: (direction: WalletLeaderboardSortDirection) => void;
-  onStreakModeChange?: (mode: WalletLeaderboardStreakMode) => void;
 }) {
   const activeBoardDefinition =
     WALLET_LEADERBOARD_BOARDS.find((board) => board.key === activeBoard) ??
     WALLET_LEADERBOARD_BOARDS[0];
+  const hasCurrentRange = activeBoardDefinition.key === "streaks";
+  const effectiveRangeMode = hasCurrentRange ? rangeMode : "allTime";
   const effectiveBoard = walletLeaderboardEffectiveBoard(
     activeBoardDefinition.key,
     sortDirection,
-    streakMode,
+    effectiveRangeMode,
   );
   const coreMetricLabel = walletLeaderboardMetricLabel(effectiveBoard);
   const entries = selectWalletLeaderboardEntries(snapshot, effectiveBoard);
-  const isStreakBoard = activeBoardDefinition.key === "streaks";
   const listLabel = walletLeaderboardListLabel(
     activeBoardDefinition.key,
     sortDirection,
-    streakMode,
+    effectiveRangeMode,
   );
   const emptyLabel =
     status === "loading"
@@ -2088,35 +2154,53 @@ export function WalletLeaderboardsPanel({
           <span aria-hidden="true">{sortDirection === "best" ? "↑" : "↓"}</span>
         </button>
       </div>
-      {isStreakBoard ? (
-        <div className="wallet-leaderboard-streak-modes" aria-label="Streak range">
-          <button
-            type="button"
-            aria-pressed={streakMode === "allTime"}
-            data-testid="wallet-leaderboard-streak-mode-allTime"
-            onClick={() => onStreakModeChange?.("allTime")}
-          >
-            All Time
-          </button>
-          <button
-            type="button"
-            aria-pressed={streakMode === "current"}
-            data-testid="wallet-leaderboard-streak-mode-current"
-            onClick={() => onStreakModeChange?.("current")}
-          >
-            Current
-          </button>
-        </div>
-      ) : null}
+      <div className="wallet-leaderboard-range-modes" aria-label="Leaderboard range">
+        <button
+          type="button"
+          aria-pressed={effectiveRangeMode === "allTime"}
+          data-testid="wallet-leaderboard-range-mode-allTime"
+          onClick={() => onRangeModeChange?.("allTime")}
+        >
+          All Time
+        </button>
+        <button
+          type="button"
+          aria-pressed={effectiveRangeMode === "current"}
+          data-testid="wallet-leaderboard-range-mode-current"
+          disabled={!hasCurrentRange}
+          title={
+            hasCurrentRange
+              ? undefined
+              : "Current PnL needs open-position PnL from the indexer"
+          }
+          onClick={() => onRangeModeChange?.("current")}
+        >
+          Current
+        </button>
+      </div>
       {entries.length ? (
         <div className="wallet-leaderboard-list">
+          <div
+            className={`wallet-leaderboard-table-head wallet-leaderboard-table-head-${activeBoardDefinition.key}`}
+            aria-hidden="true"
+          >
+            <span>Rank</span>
+            <span>Wallet</span>
+            <span>{coreMetricLabel}</span>
+            {activeBoardDefinition.key === "streaks" ? <span>PNL</span> : null}
+            <span>Wins</span>
+            <span>Losses</span>
+            <span>Open</span>
+            <span>{activeBoardDefinition.key === "streaks" ? "Current" : "Streak"}</span>
+            <span>Last</span>
+          </div>
           {entries.map((entry) => {
             const coreMetricValue = walletLeaderboardMetricValue(entry, effectiveBoard);
             const coreMetricTone = walletLeaderboardMetricTone(entry, effectiveBoard);
 
             return (
               <article
-                className={`wallet-leaderboard-row wallet-leaderboard-row-${entry.totalPnlTone}`}
+                className={`wallet-leaderboard-row wallet-leaderboard-row-${activeBoardDefinition.key} wallet-leaderboard-row-${entry.totalPnlTone}`}
                 data-testid="wallet-leaderboard-row"
                 key={`${effectiveBoard}-${entry.wallet}-${entry.rank}`}
               >
@@ -2159,7 +2243,9 @@ export function WalletLeaderboardsPanel({
                   </span>
                   <span>
                     <small>Last</small>
-                    {entry.lastSettledLabel}
+                    <span title={entry.lastSettledLabel}>
+                      {compactWalletLeaderboardLastLabel(entry.lastSettledLabel)}
+                    </span>
                   </span>
                 </div>
               </article>
@@ -2397,6 +2483,16 @@ export function MarketHeatPreview({
           ) : null}
         </div>
       ) : null}
+      {rows.length > 0 && isCompact ? (
+        <div className="market-heat-table-head" aria-hidden="true">
+          <span>Wallet</span>
+          <span>Direction</span>
+          <span>Strike</span>
+          <span>Duration</span>
+          <span>Heat</span>
+          <span />
+        </div>
+      ) : null}
       {rows.map((row) => {
         const isSelected = row.id === selectedRowId;
         const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
@@ -2410,53 +2506,49 @@ export function MarketHeatPreview({
             className={`inline-watch-panel inline-watch-panel-${row.status}`}
             data-testid="market-heat-intent-panel"
           >
-            <div className="inline-copy-header">
-              <div className="inline-copy-summary market-heat-copy-summary">
-                <strong>{intentPanel.title}</strong>
-              </div>
-              <button
-                type="button"
-                aria-label={`Cancel ${row.displayName} watch`}
-                className="close-copy-button"
-                data-testid="close-market-heat-intent"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onCloseIntent();
-                }}
-              >
-                {intentPanel.closeLabel}
-              </button>
-            </div>
-            <div className="market-heat-intent-meta" aria-label={`${row.displayName} intent`}>
+            <div className="market-heat-intent-targets" aria-label={`${row.displayName} intent`}>
               <span>
-                <small>Spend</small>
-                {formatCopyAmount(copyAmount)}
+                <small>Target</small>
+                <strong>
+                  {row.side === "UP" ? "Above" : "Below"}{" "}
+                  {row.strikeLabel.replace(/^Strike\s+/, "")}
+                </strong>
+                <em>at expiry</em>
               </span>
-              {returnPreview ? (
-                <>
-                  <span>
-                    <small>Est. payout</small>
-                    {returnPreview.payoutLabel}
-                  </span>
-                  <span>
-                    <small>Max profit</small>
-                    {returnPreview.profitLabel}
-                  </span>
-                </>
-              ) : null}
+              <span>
+                <small>Expiry</small>
+                <strong>{row.expiryTimeLabel}</strong>
+              </span>
+              <span>
+                <small>Potential payout</small>
+                <strong>{returnPreview?.profitLabel ?? intentPanel.detailLabel}</strong>
+              </span>
             </div>
-            <div className="market-heat-intent-support">
-              <span>{intentPanel.detailLabel}</span>
-              <span>{row.expiryTimeLabel}</span>
-            </div>
+            <div className="market-heat-stake-label">Stake amount</div>
             <CopyAmountControls
               ariaLabel="Quick spend amounts"
               copyAmount={copyAmount}
               onAmountSet={onAmountSet}
               stopPropagation={true}
             />
-            {isWalletSubmitReady ? (
-              <div className="wallet-submit-row">
+            <div className="market-heat-intent-footer">
+              <span>
+                <small>Est. payout</small>
+                <strong>{returnPreview?.payoutLabel ?? "Quote needed"}</strong>
+              </span>
+              <span>
+                <small>Max profit</small>
+                <strong>{returnPreview?.profitLabel ?? "Quote needed"}</strong>
+              </span>
+              <span>
+                <small>Cost</small>
+                <strong>{formatCopyAmount(copyAmount)}</strong>
+              </span>
+              <span>
+                <small>Heat</small>
+                <strong>{row.heatScore}</strong>
+              </span>
+              {isWalletSubmitReady ? (
                 <button
                   type="button"
                   className="wallet-submit-button"
@@ -2468,8 +2560,8 @@ export function MarketHeatPreview({
                 >
                   Confirm transaction
                 </button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         ) : null;
 
@@ -2519,30 +2611,32 @@ export function MarketHeatPreview({
                       : undefined
                   }
                 >
-                  <span className="market-heat-swipe-copy" aria-hidden="true">
-                    →
-                  </span>
-                  <div className="wallet-avatar wallet-avatar-compact" aria-hidden="true">
-                    {walletAvatarLabel(row.displayName)}
-                  </div>
-                  <div className="market-heat-compact-identity">
-                    <strong>{row.displayName}</strong>
-                    <span>{row.statusLabel}</span>
+                  <div className="market-heat-compact-wallet">
+                    <div className="wallet-avatar wallet-avatar-compact" aria-hidden="true">
+                      {walletAvatarLabel(row.displayName)}
+                    </div>
+                    <div className="market-heat-compact-identity">
+                      <strong>{row.displayName}</strong>
+                      <span>{row.statusLabel}</span>
+                    </div>
                   </div>
                   <strong className={`direction-pill direction-pill-${sideClass}`}>
                     {row.side}
                   </strong>
                   <div className="market-heat-compact-strike">
                     <strong>{row.strikeLabel.replace(/^Strike\s+/, "")}</strong>
-                    <span>{row.intervalLabel}</span>
+                  </div>
+                  <div className="market-heat-compact-duration">
+                    <strong>{row.intervalLabel}</strong>
                   </div>
                   <div className="market-heat-compact-heat">
-                    <small>Heat</small>
                     <strong>{row.heatScore}</strong>
                   </div>
-                  <span className="market-heat-compact-hint">
-                    {isSwipeConfirming ? "Release" : "Swipe"}
-                  </span>
+                  <ChevronIcon
+                    className={`market-heat-compact-chevron ${
+                      isSelected ? "market-heat-compact-chevron-open" : ""
+                    }`}
+                  />
                 </div>
                 {intentPanelElement}
               </>
@@ -2598,7 +2692,7 @@ export function MarketHeatPreview({
           </article>
         );
       })}
-      {canShowMore ? (
+      {canShowMore && !isCompact ? (
         <button
           type="button"
           className="market-heat-show-more"
@@ -2612,13 +2706,28 @@ export function MarketHeatPreview({
   );
 }
 
+function ChevronIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
 export function MarketHeader({
-  onThemeToggle = () => undefined,
-  themeMode = "light",
+  themeControl = null,
   walletControl,
 }: {
-  onThemeToggle?: () => void;
-  themeMode?: ThemeMode;
+  themeControl?: ReactNode;
   walletControl: ReactNode;
 }) {
   return (
@@ -2629,17 +2738,11 @@ export function MarketHeader({
           <h1>Hot Hands</h1>
         </div>
       </div>
-      <div className="market-header-actions">
-        <button
-          type="button"
-          className="theme-toggle"
-          aria-label={`Switch to ${themeMode === "light" ? "dark" : "light"} mode`}
-          onClick={onThemeToggle}
-        >
-          <span aria-hidden="true">{themeMode === "light" ? "☾" : "☼"}</span>
-          <strong>{themeMode === "light" ? "Dark" : "Light"}</strong>
-        </button>
-      </div>
+      {themeControl ? (
+        <div className="market-header-actions" data-testid="market-header-actions">
+          {themeControl}
+        </div>
+      ) : null}
       <div className="market-header-wallet" data-testid="market-header-wallet">
         {walletControl}
       </div>
@@ -2808,6 +2911,7 @@ export function App() {
   const [activeView, setActiveView] = useState<AppView>(() =>
     readOnlyWalletAddress ? "portfolio" : "feed",
   );
+  const appScrollRef = useRef<HTMLDivElement | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialThemeMode());
   const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
   const [selectedTradeMarketId, setSelectedTradeMarketId] = useState<string | null>(null);
@@ -2866,8 +2970,8 @@ export function App() {
     useState<WalletLeaderboardPanelBoardKey>("pnl");
   const [walletLeaderboardSortDirection, setWalletLeaderboardSortDirection] =
     useState<WalletLeaderboardSortDirection>("best");
-  const [walletLeaderboardStreakMode, setWalletLeaderboardStreakMode] =
-    useState<WalletLeaderboardStreakMode>("allTime");
+  const [walletLeaderboardRangeMode, setWalletLeaderboardRangeMode] =
+    useState<WalletLeaderboardRangeMode>("allTime");
   const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
   const [dismissedPortfolioPositionIds, setDismissedPortfolioPositionIds] = useState<Set<string>>(
     () => new Set(),
@@ -2892,7 +2996,7 @@ export function App() {
   const [marketHeatSortMode, setMarketHeatSortMode] =
     useState<MarketHeatSortMode>("latest");
   const [marketHeatDensity, setMarketHeatDensity] =
-    useState<MarketHeatDensity>("expanded");
+    useState<MarketHeatDensity>("compact");
   const [marketHeatShowExpired, setMarketHeatShowExpired] = useState(false);
   const [selectedMarketDuration, setSelectedMarketDuration] = useState("all");
   const [selectedTradeDuration, setSelectedTradeDuration] = useState("all");
@@ -3170,6 +3274,12 @@ export function App() {
   useEffect(() => {
     writeThemeMode(themeMode);
   }, [themeMode]);
+
+  useEffect(() => {
+    if (appScrollRef.current) {
+      appScrollRef.current.scrollTop = 0;
+    }
+  }, [activeView]);
 
   useEffect(() => {
     const toast = buildWalletToast(walletTxState);
@@ -4301,11 +4411,25 @@ export function App() {
         data-theme={themeMode}
         aria-label="Hot Hands market shell"
       >
-        <div className="app-scroll" data-testid="app-scroll">
+        <div className="app-scroll" data-testid="app-scroll" ref={appScrollRef}>
           <MarketHeader
-            themeMode={themeMode}
-            onThemeToggle={() =>
-              setThemeMode((currentTheme) => (currentTheme === "light" ? "dark" : "light"))
+            themeControl={
+              <button
+                type="button"
+                className="theme-toggle"
+                data-testid="theme-toggle"
+                aria-label={`Switch to ${themeMode === "light" ? "dark" : "light"} mode`}
+                title={`Switch to ${themeMode === "light" ? "dark" : "light"} mode`}
+                onClick={() =>
+                  setThemeMode((currentTheme) =>
+                    currentTheme === "light" ? "dark" : "light",
+                  )
+                }
+              >
+                <span aria-hidden="true">
+                  <ThemeModeIcon mode={themeMode === "light" ? "dark" : "light"} />
+                </span>
+              </button>
             }
             walletControl={
               <WalletHeaderControl
@@ -4360,13 +4484,13 @@ export function App() {
           ) : activeView === "leaderboards" ? (
             <WalletLeaderboardsPanel
               activeBoard={activeWalletLeaderboard}
+              rangeMode={walletLeaderboardRangeMode}
               sortDirection={walletLeaderboardSortDirection}
-              streakMode={walletLeaderboardStreakMode}
               snapshot={walletLeaderboardsState.snapshot}
               status={walletLeaderboardsState.status}
               onBoardChange={setActiveWalletLeaderboard}
+              onRangeModeChange={setWalletLeaderboardRangeMode}
               onSortDirectionChange={setWalletLeaderboardSortDirection}
-              onStreakModeChange={setWalletLeaderboardStreakMode}
             />
           ) : (
             <PortfolioPanel
