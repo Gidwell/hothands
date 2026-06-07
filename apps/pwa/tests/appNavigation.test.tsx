@@ -59,6 +59,44 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("BTC/USD");
   });
 
+  test("renders a light and dark mode control in the market header", () => {
+    const lightHtml = renderToStaticMarkup(
+      <MarketHeader
+        themeMode="light"
+        walletControl={
+          <WalletHeaderControl
+            accountAddress={null}
+            connectionStatus="disconnected"
+            readOnly={false}
+            walletCount={1}
+            onConnect={() => undefined}
+            onDisconnect={() => undefined}
+          />
+        }
+      />,
+    );
+    const darkHtml = renderToStaticMarkup(
+      <MarketHeader
+        themeMode="dark"
+        walletControl={
+          <WalletHeaderControl
+            accountAddress={null}
+            connectionStatus="disconnected"
+            readOnly={false}
+            walletCount={1}
+            onConnect={() => undefined}
+            onDisconnect={() => undefined}
+          />
+        }
+      />,
+    );
+
+    expect(lightHtml).toContain('aria-label="Switch to dark mode"');
+    expect(lightHtml).toContain("<strong>Dark</strong>");
+    expect(darkHtml).toContain('aria-label="Switch to light mode"');
+    expect(darkHtml).toContain("<strong>Light</strong>");
+  });
+
   test("asks users to choose when multiple wallets are eligible", () => {
     const html = renderToStaticMarkup(
       <MarketHeader

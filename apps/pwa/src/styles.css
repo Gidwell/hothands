@@ -2316,3 +2316,734 @@ button:disabled {
     height: min(900px, calc(100vh - 36px));
   }
 }
+
+/* Pro-market visual system ------------------------------------------------- */
+.app-shell {
+  --hh-bg: #eef2f7;
+  --hh-bg-soft: #f7f9fc;
+  --hh-shell: #fbfcfe;
+  --hh-surface: #ffffff;
+  --hh-surface-2: #f4f7fb;
+  --hh-surface-3: #edf2f8;
+  --hh-line: #dbe3ee;
+  --hh-line-strong: #cbd6e3;
+  --hh-text: #101828;
+  --hh-muted: #667085;
+  --hh-subtle: #98a2b3;
+  --hh-accent: #6d4aff;
+  --hh-accent-strong: #5a35f0;
+  --hh-accent-soft: #f0ebff;
+  --hh-up: #12965a;
+  --hh-up-soft: #e4fbea;
+  --hh-up-line: #95e7bb;
+  --hh-down: #ef4444;
+  --hh-down-soft: #fff0f0;
+  --hh-down-line: #f6aaa5;
+  --hh-shadow: 0 18px 60px rgba(35, 48, 68, 0.14);
+  --hh-font-ui:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: var(--hh-text);
+  background: linear-gradient(180deg, #f8fafc 0%, var(--hh-bg) 100%);
+  font-family: var(--hh-font-ui);
+}
+
+.app-shell[data-theme="dark"] {
+  color-scheme: dark;
+  --hh-bg: #090d13;
+  --hh-bg-soft: #0d121a;
+  --hh-shell: #0c1118;
+  --hh-surface: #121821;
+  --hh-surface-2: #171e29;
+  --hh-surface-3: #202938;
+  --hh-line: #2a3443;
+  --hh-line-strong: #384556;
+  --hh-text: #f4f7fb;
+  --hh-muted: #a5afc0;
+  --hh-subtle: #6f7b8f;
+  --hh-accent: #8b6cff;
+  --hh-accent-strong: #9f86ff;
+  --hh-accent-soft: rgba(139, 108, 255, 0.16);
+  --hh-up: #3ed982;
+  --hh-up-soft: rgba(23, 155, 88, 0.18);
+  --hh-up-line: rgba(62, 217, 130, 0.45);
+  --hh-down: #ff6b6b;
+  --hh-down-soft: rgba(239, 68, 68, 0.16);
+  --hh-down-line: rgba(255, 107, 107, 0.42);
+  --hh-shadow: 0 22px 70px rgba(0, 0, 0, 0.44);
+  background: linear-gradient(180deg, #111821 0%, #090d13 100%);
+}
+
+.phone-frame {
+  color: var(--hh-text);
+  border-color: color-mix(in srgb, var(--hh-line) 80%, transparent);
+  border-radius: 18px;
+  background: var(--hh-shell);
+  box-shadow: var(--hh-shadow);
+}
+
+.market-strip,
+.oracle-mini-chart,
+.account-summary,
+.trade-ticket-panel,
+.wallet-status-bar,
+.market-heat-row,
+.trader-row,
+.portfolio-row,
+.portfolio-history-row,
+.wallet-leaderboard-row,
+.oracle-chart-modal-panel {
+  border-color: var(--hh-line);
+  border-radius: 9px;
+  background: var(--hh-surface);
+  box-shadow: none;
+}
+
+.market-strip {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  min-height: 58px;
+  padding: 9px;
+}
+
+.market-live > span {
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--hh-accent), var(--hh-accent-strong));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.market-strip h1 {
+  color: var(--hh-text);
+  font-size: 1.18rem;
+  letter-spacing: 0;
+}
+
+.market-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--hh-line);
+  border-radius: 8px;
+  color: var(--hh-muted);
+  background: var(--hh-surface-2);
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.theme-toggle span {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  color: var(--hh-accent);
+  font-size: 0.78rem;
+}
+
+.theme-toggle strong {
+  color: var(--hh-muted);
+  font-size: inherit;
+}
+
+.market-strip p,
+.signal-strip-top p,
+.signal-strip-leader span,
+.account-value span,
+.account-pnl p,
+.account-summary-stats span,
+.section-heading span,
+.trader-identity p,
+.inline-copy-summary p,
+.spectator-copy span,
+.oracle-mini-chart-copy span,
+.oracle-mini-chart-copy em,
+.trade-ticket-title p,
+.trade-ticket-stats small,
+.trade-ticket-metrics small,
+.portfolio-row-main small,
+.portfolio-row-metrics small,
+.portfolio-history-pnl small,
+.wallet-leaderboard-main small,
+.wallet-leaderboard-metrics small,
+.market-heat-compact-identity span,
+.market-heat-compact-strike span,
+.market-heat-compact-heat small,
+.trader-row-metrics small,
+.market-heat-intent-meta small {
+  color: var(--hh-muted);
+}
+
+.market-strip h1,
+.section-heading p,
+.trader-title-row h2,
+.oracle-mini-chart-copy strong,
+.account-pnl strong,
+.account-value strong,
+.account-summary-stats strong,
+.trade-ticket-title strong,
+.trade-ticket-stats span,
+.trade-ladder-strike strong,
+.trade-row-ticket-heading strong,
+.trade-ticket-metrics span,
+.portfolio-row-main strong,
+.portfolio-row-metrics span,
+.wallet-leaderboard-main strong,
+.wallet-leaderboard-metrics span,
+.market-heat-compact-identity strong,
+.market-heat-compact-strike strong,
+.market-heat-compact-heat strong,
+.inline-copy-summary strong,
+.custom-copy-amount-field input,
+.amount-stepper strong,
+.trader-row-metrics span,
+.market-heat-intent-meta span {
+  color: var(--hh-text);
+}
+
+.oracle-mini-chart {
+  grid-template-columns: minmax(112px, 0.72fr) minmax(0, 1fr);
+  min-height: 74px;
+  padding: 10px 12px;
+}
+
+.oracle-mini-chart-copy strong {
+  font-size: 1.34rem;
+}
+
+.oracle-chart-empty,
+.portfolio-empty,
+.wallet-leaderboard-empty,
+.market-heat-empty,
+.trade-ladder-empty,
+.oracle-chart-modal-empty {
+  border-color: var(--hh-line);
+  color: var(--hh-muted);
+  background: var(--hh-surface-2);
+}
+
+.account-summary {
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.account-summary-main {
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--hh-line);
+}
+
+.account-pnl strong {
+  font-size: 1.2rem;
+}
+
+.account-summary-stats {
+  gap: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.account-summary-stats div {
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 0;
+  border-right: 1px solid var(--hh-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.account-summary-stats div:last-child {
+  border-right: 0;
+}
+
+.account-deposit-amount,
+.custom-copy-amount-field,
+.amount-stepper strong,
+.chip-row button {
+  border-color: var(--hh-line);
+  color: var(--hh-muted);
+  background: var(--hh-surface);
+}
+
+.trader-row-metrics span,
+.market-heat-intent-meta span,
+.market-heat-intent-support span,
+.portfolio-row-metrics span,
+.wallet-leaderboard-metrics span,
+.trade-ticket-metrics span,
+.trade-ticket-stats span {
+  border-color: var(--hh-line);
+  color: var(--hh-text);
+  background: var(--hh-surface-2);
+}
+
+.trader-row-metrics span small,
+.market-heat-intent-meta span small,
+.market-heat-intent-support span small,
+.portfolio-row-metrics span small,
+.wallet-leaderboard-metrics span small,
+.trade-ticket-metrics span small,
+.trade-ticket-stats span small {
+  color: var(--hh-muted);
+}
+
+.account-deposit-button,
+.trade-wallet-button,
+.wallet-submit-button,
+.portfolio-action-button,
+.market-heat-main button,
+.trader-row-main button,
+.market-heat-empty button {
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--hh-accent), var(--hh-accent-strong));
+  box-shadow: none;
+}
+
+.wallet-header-button {
+  min-width: 116px;
+  border-color: var(--hh-line);
+  color: var(--hh-text);
+  background: var(--hh-surface);
+  box-shadow: none;
+}
+
+.wallet-header-button span {
+  color: var(--hh-up);
+}
+
+.wallet-header-button:not(.wallet-header-button-connected) {
+  color: #ffffff;
+  border-color: var(--hh-accent);
+  background: var(--hh-accent);
+}
+
+.wallet-picker,
+.wallet-picker-option,
+.toast,
+.oracle-chart-modal,
+.oracle-chart-modal-panel,
+.oracle-chart-modal-meta,
+.predict-manager-status,
+.inline-watch-panel,
+.inline-copy-panel,
+.trade-order-panel {
+  border-color: var(--hh-line);
+  color: var(--hh-text);
+  background: var(--hh-surface);
+}
+
+.predict-manager-status,
+.inline-watch-panel,
+.inline-copy-panel,
+.trade-order-panel,
+.oracle-chart-modal-meta {
+  background: var(--hh-surface-2);
+}
+
+.bottom-nav {
+  gap: 8px;
+  margin-top: 10px;
+  padding: 7px;
+  border-color: var(--hh-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--hh-surface) 94%, transparent);
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+}
+
+.bottom-nav button {
+  display: grid;
+  gap: 3px;
+  min-height: 50px;
+  align-content: center;
+  color: var(--hh-muted);
+  background: transparent;
+  font-size: 0.72rem;
+}
+
+.bottom-nav button[aria-pressed="true"] {
+  color: var(--hh-accent);
+  background: var(--hh-accent-soft);
+}
+
+.portfolio-tabs,
+.wallet-leaderboard-tabs,
+.wallet-leaderboard-streak-modes,
+.market-duration-toggle,
+.market-heat-sort,
+.market-heat-density-toggle,
+.trade-duration-toggle {
+  border: 1px solid color-mix(in srgb, var(--hh-line) 70%, transparent);
+  background: var(--hh-surface-2);
+}
+
+.portfolio-tabs button,
+.wallet-leaderboard-tabs button,
+.wallet-leaderboard-streak-modes button,
+.market-duration-toggle button,
+.market-heat-sort button,
+.market-heat-density-toggle button,
+.trade-duration-toggle button {
+  color: var(--hh-muted);
+  background: transparent;
+  box-shadow: none;
+}
+
+.portfolio-tabs button[aria-pressed="true"],
+.wallet-leaderboard-tabs button[aria-pressed="true"],
+.wallet-leaderboard-streak-modes button[aria-pressed="true"],
+.market-duration-toggle button[aria-pressed="true"],
+.market-heat-sort button[aria-pressed="true"],
+.market-heat-density-toggle button[aria-pressed="true"],
+.trade-duration-toggle button[aria-pressed="true"] {
+  color: var(--hh-accent);
+  background: var(--hh-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 42%, transparent);
+}
+
+.market-heat-expired-toggle,
+.market-heat-show-more {
+  border-color: var(--hh-line);
+  color: var(--hh-muted);
+  background: var(--hh-surface);
+}
+
+.market-heat-list,
+.portfolio-panel,
+.wallet-leaderboards-panel,
+.trade-ticket {
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.section-heading p {
+  font-size: 1.15rem;
+}
+
+.market-heat-row,
+.portfolio-row,
+.portfolio-history-row,
+.wallet-leaderboard-row {
+  border-radius: 8px;
+  background: var(--hh-surface);
+}
+
+.market-heat-list-compact .market-heat-row,
+.portfolio-row,
+.portfolio-history-row,
+.wallet-leaderboard-row {
+  border-left: 0;
+  border-right: 0;
+  border-radius: 0;
+}
+
+.market-heat-list-compact .market-heat-row:first-of-type,
+.portfolio-list .portfolio-row:first-of-type,
+.portfolio-history .portfolio-history-row:first-of-type,
+.wallet-leaderboard-list .wallet-leaderboard-row:first-of-type {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.market-heat-list-compact .market-heat-row:last-of-type,
+.portfolio-list .portfolio-row:last-of-type,
+.portfolio-history .portfolio-history-row:last-of-type,
+.wallet-leaderboard-list .wallet-leaderboard-row:last-of-type {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.market-heat-row-compact {
+  padding: 0;
+}
+
+.market-heat-compact-row {
+  min-height: 50px;
+  padding: 8px;
+  border-radius: inherit;
+  background: var(--hh-surface);
+}
+
+.market-heat-list-compact .market-heat-row-selected {
+  border-color: var(--hh-accent);
+  box-shadow: inset 2px 0 0 var(--hh-accent);
+}
+
+.market-heat-swipe-action,
+.market-heat-swipe-copy,
+.market-heat-compact-hint {
+  color: var(--hh-up);
+  background: var(--hh-up-soft);
+}
+
+.direction-pill-up,
+.portfolio-side-up,
+.trade-ladder-side-up,
+.wallet-leaderboard-sort-toggle-best {
+  color: var(--hh-up);
+  border-color: var(--hh-up-line);
+  background: var(--hh-up-soft);
+}
+
+.direction-pill-down,
+.portfolio-side-down,
+.trade-ladder-side-down,
+.wallet-leaderboard-sort-toggle-worst {
+  color: var(--hh-down);
+  border-color: var(--hh-down-line);
+  background: var(--hh-down-soft);
+}
+
+.market-heat-row-copy_ready {
+  border-color: color-mix(in srgb, var(--hh-up-line) 60%, var(--hh-line));
+}
+
+.market-heat-row-selected,
+.wallet-leaderboard-row:hover,
+.portfolio-row:hover,
+.trade-ladder-row:hover {
+  border-color: var(--hh-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 24%, transparent);
+}
+
+.trade-expiry-rail {
+  gap: 9px;
+}
+
+.trade-expiry-option {
+  flex-basis: 92px;
+  border-color: var(--hh-line);
+  color: var(--hh-muted);
+  background: var(--hh-surface);
+}
+
+.trade-expiry-option strong {
+  color: var(--hh-text);
+}
+
+.trade-expiry-option small {
+  color: var(--hh-muted);
+}
+
+.trade-expiry-option[aria-pressed="true"] {
+  border-color: var(--hh-accent);
+  color: var(--hh-accent);
+  background: var(--hh-accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 22%, transparent);
+}
+
+.trade-ticket-panel {
+  gap: 10px;
+  padding: 10px;
+}
+
+.trade-duration-pill {
+  color: var(--hh-accent);
+  background: var(--hh-accent-soft);
+}
+
+.trade-ticket-stats span,
+.trade-ticket-metrics span {
+  border-color: var(--hh-line);
+  background: var(--hh-surface-2);
+}
+
+.trade-market-ladder {
+  border-color: var(--hh-line);
+  background: var(--hh-surface);
+}
+
+.trade-ladder-heading {
+  color: var(--hh-muted);
+  background: var(--hh-surface-2);
+}
+
+.trade-ladder-row {
+  border-color: var(--hh-line);
+}
+
+.trade-spot-line {
+  color: var(--hh-up);
+  background: var(--hh-up-soft);
+}
+
+.trade-ladder-side {
+  border-radius: 7px;
+  color: var(--hh-text);
+  background: var(--hh-surface);
+}
+
+.trade-ladder-side-up.selected {
+  border-color: var(--hh-accent);
+  box-shadow: inset 3px 0 0 var(--hh-accent);
+}
+
+.trade-ladder-side-down.selected {
+  border-color: var(--hh-accent);
+  box-shadow: inset -3px 0 0 var(--hh-accent);
+}
+
+.trade-wallet-button,
+.wallet-submit-button {
+  min-height: 42px;
+  font-size: 0.92rem;
+}
+
+.portfolio-list,
+.portfolio-history,
+.wallet-leaderboard-list {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--hh-line);
+  border-radius: 8px;
+  background: var(--hh-surface);
+}
+
+.portfolio-row,
+.portfolio-history-row,
+.wallet-leaderboard-row {
+  border-top: 0;
+  border-color: var(--hh-line);
+}
+
+.portfolio-row + .portfolio-row,
+.portfolio-history-row + .portfolio-history-row,
+.wallet-leaderboard-row + .wallet-leaderboard-row {
+  border-top: 1px solid var(--hh-line);
+}
+
+.portfolio-row-main > span,
+.wallet-leaderboard-rank {
+  border-radius: 7px;
+  background: var(--hh-surface-3);
+}
+
+.portfolio-row-metrics,
+.wallet-leaderboard-metrics {
+  gap: 7px 12px;
+}
+
+.portfolio-action-button {
+  color: var(--hh-accent);
+  border: 1px solid color-mix(in srgb, var(--hh-accent) 52%, var(--hh-line));
+  background: transparent;
+}
+
+.portfolio-history-row-positive,
+.wallet-leaderboard-row-positive {
+  border-left: 2px solid var(--hh-up);
+}
+
+.portfolio-history-row-negative,
+.wallet-leaderboard-row-negative {
+  border-left: 2px solid var(--hh-down);
+}
+
+.portfolio-history-pnl-positive strong,
+.wallet-leaderboard-core-positive strong,
+.wallet-leaderboard-pnl-positive,
+.account-summary-positive .account-pnl strong {
+  color: var(--hh-up);
+}
+
+.portfolio-history-pnl-negative strong,
+.wallet-leaderboard-core-negative strong,
+.wallet-leaderboard-pnl-negative,
+.account-summary-negative .account-pnl strong {
+  color: var(--hh-down);
+}
+
+.wallet-leaderboard-toolbar {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.wallet-leaderboard-sort-toggle {
+  border-color: var(--hh-line);
+  background: var(--hh-surface);
+}
+
+.wallet-leaderboard-list::before,
+.portfolio-list::before {
+  display: grid;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hh-line);
+  color: var(--hh-muted);
+  background: var(--hh-surface-2);
+  font-size: 0.58rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.wallet-leaderboard-list::before {
+  content: "Rank        Wallet                          PNL        W/L";
+}
+
+.portfolio-list::before {
+  content: "Market / side        Status              Value";
+}
+
+.chip-row .selected-chip {
+  border-color: var(--hh-accent);
+  color: var(--hh-accent);
+  background: var(--hh-accent-soft);
+}
+
+.toast strong,
+.oracle-chart-modal-header h2,
+.oracle-chart-modal-meta strong,
+.market-heat-empty strong,
+.portfolio-empty strong {
+  color: var(--hh-text);
+}
+
+.toast span,
+.toast small,
+.oracle-chart-modal-header span,
+.oracle-chart-modal-header p,
+.oracle-chart-modal-meta span,
+.market-heat-intent-support,
+.inline-copy-summary span,
+.close-copy-button,
+.custom-copy-amount {
+  color: var(--hh-muted);
+}
+
+.toast button,
+.close-copy-button {
+  border-color: var(--hh-line);
+  background: var(--hh-surface-2);
+}
+
+.app-shell[data-theme="dark"] .oracle-chart-modal {
+  background: rgba(9, 13, 19, 0.94);
+}
+
+.app-shell[data-theme="dark"] .oracle-chart-canvas canvas,
+.app-shell[data-theme="dark"] .oracle-chart-shell canvas {
+  filter: saturate(1.06) brightness(0.92);
+}
+
+@media (max-width: 390px) {
+  .theme-toggle strong {
+    display: none;
+  }
+
+  .market-strip {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .market-live {
+    gap: 8px;
+  }
+
+  .wallet-header-button {
+    min-width: 98px;
+  }
+}

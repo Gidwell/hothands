@@ -119,8 +119,10 @@ const DEPOSIT_AMOUNT_DEFAULT = 25;
 const DEPOSIT_AMOUNT_MIN = 0.01;
 const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
+const THEME_STORAGE_KEY = "hot-hands-theme-mode";
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "leaderboards" | "portfolio";
+type ThemeMode = "light" | "dark";
 type MarketHeatDensity = "compact" | "expanded";
 export type MarketHeatSwipeAction = "none" | "select" | "submit";
 type MarketHeatSwipePreview = {
@@ -130,6 +132,27 @@ type MarketHeatSwipePreview = {
 };
 export function shouldShowAccountSummary(view: AppView): boolean {
   return view === "trade" || view === "portfolio";
+}
+
+function getInitialThemeMode(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (storedTheme === "light" || storedTheme === "dark") {
+    return storedTheme;
+  }
+
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function writeThemeMode(themeMode: ThemeMode): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
 }
 
 export type TradeSide = "UP" | "DOWN";
@@ -2590,8 +2613,12 @@ export function MarketHeatPreview({
 }
 
 export function MarketHeader({
+  onThemeToggle = () => undefined,
+  themeMode = "light",
   walletControl,
 }: {
+  onThemeToggle?: () => void;
+  themeMode?: ThemeMode;
   walletControl: ReactNode;
 }) {
   return (
@@ -2601,6 +2628,17 @@ export function MarketHeader({
         <div>
           <h1>Hot Hands</h1>
         </div>
+      </div>
+      <div className="market-header-actions">
+        <button
+          type="button"
+          className="theme-toggle"
+          aria-label={`Switch to ${themeMode === "light" ? "dark" : "light"} mode`}
+          onClick={onThemeToggle}
+        >
+          <span aria-hidden="true">{themeMode === "light" ? "☾" : "☼"}</span>
+          <strong>{themeMode === "light" ? "Dark" : "Light"}</strong>
+        </button>
       </div>
       <div className="market-header-wallet" data-testid="market-header-wallet">
         {walletControl}
@@ -2770,6 +2808,7 @@ export function App() {
   const [activeView, setActiveView] = useState<AppView>(() =>
     readOnlyWalletAddress ? "portfolio" : "feed",
   );
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialThemeMode());
   const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
   const [selectedTradeMarketId, setSelectedTradeMarketId] = useState<string | null>(null);
   const [customTradeStrikes, setCustomTradeStrikes] = useState<
@@ -3127,6 +3166,10 @@ export function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    writeThemeMode(themeMode);
+  }, [themeMode]);
 
   useEffect(() => {
     const toast = buildWalletToast(walletTxState);
@@ -4252,13 +4295,18 @@ export function App() {
   );
 
   return (
-    <main className="app-shell" data-testid="app-shell">
+    <main className="app-shell" data-theme={themeMode} data-testid="app-shell">
       <section
         className={`phone-frame phone-frame-${activeView}`}
+        data-theme={themeMode}
         aria-label="Hot Hands market shell"
       >
         <div className="app-scroll" data-testid="app-scroll">
           <MarketHeader
+            themeMode={themeMode}
+            onThemeToggle={() =>
+              setThemeMode((currentTheme) => (currentTheme === "light" ? "dark" : "light"))
+            }
             walletControl={
               <WalletHeaderControl
                 accountAddress={connectedAccountAddress}
