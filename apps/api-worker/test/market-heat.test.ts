@@ -292,12 +292,12 @@ describe("testnet market heat endpoint", () => {
                 expiryMs: 1_779_158_400_000,
                 strike: 72_125_000_000,
                 isUp: false,
-                mintedQuantity: 5,
-                redeemedQuantity: 1,
+                mintedQuantity: 4,
+                redeemedQuantity: 0,
                 openQuantity: 4,
                 cost: 2_500_000,
-                payout: 500_000,
-                realizedPnl: -2_000_000,
+                payout: 0,
+                realizedPnl: 0,
                 lastEventMs: 1_779_070_700_000,
                 status: "open"
               },
@@ -321,7 +321,25 @@ describe("testnet market heat endpoint", () => {
             ];
           }
 
-          return [];
+          return [
+            {
+              id: "manager-open:btc-indexed-settled:1779070000000:71000000000:UP",
+              owner: "0xopenfeed",
+              managerId: "manager-open",
+              oracleId: "btc-indexed-settled",
+              expiryMs: 1_779_070_000_000,
+              strike: 71_000_000_000,
+              isUp: true,
+              mintedQuantity: 1,
+              redeemedQuantity: 1,
+              openQuantity: 0,
+              cost: 1_000_000,
+              payout: 2_500_000,
+              realizedPnl: 1_500_000,
+              lastEventMs: 1_779_070_500_000,
+              status: "closed"
+            }
+          ];
         }
       },
       nowMs
@@ -339,6 +357,12 @@ describe("testnet market heat endpoint", () => {
         costUsd: 2.5,
         strike: 72125,
         strikeRaw: 72_125_000_000,
+        walletStats: expect.objectContaining({
+          totalPnl: 1_500_000,
+          currentStreakType: "win",
+          currentStreakLength: 1,
+          lastSeenMs: 1_779_070_700_000
+        }),
         status: "copy_ready"
       })
     ]);

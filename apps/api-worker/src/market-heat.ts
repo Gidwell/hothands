@@ -1,6 +1,7 @@
 import {
   buildLatestTradeFeedProjection,
   buildTraderHeatProjection,
+  buildWalletPerformanceEntries,
   computeMarketHeat,
   createPredictReadCanary,
   createPredictTradeHistoryClient,
@@ -13,7 +14,9 @@ import {
   type PredictPositionSummary,
   type PredictOracleState,
   type PredictOracleSviPoint,
-  type TraderHeatProjection
+  type TraderHeatProjection,
+  type WalletPerformanceEntry,
+  type WalletStreakType
 } from "@hot-hands/indexer";
 
 export interface MarketHeatProjection {
@@ -63,6 +66,13 @@ export interface MarketHeatPricingModel {
   timestampMs: number;
 }
 
+export interface MarketHeatWalletStats {
+  totalPnl: number;
+  currentStreakType: WalletStreakType;
+  currentStreakLength: number;
+  lastSeenMs: number;
+}
+
 export interface MarketHeatRow {
   id: string;
   wallet: string;
@@ -79,6 +89,7 @@ export interface MarketHeatRow {
   intervalLabel: string;
   observedAtMs: number;
   heatScore: number;
+  walletStats?: MarketHeatWalletStats;
   status: "copy_ready" | "watching";
 }
 
@@ -92,6 +103,7 @@ export interface TestnetMarketHeatOptions {
 const LATEST_ACTIVITY_ROW_LIMIT = 48;
 const HEAT_ACCOUNT_ROW_LIMIT = 48;
 const OPEN_POSITION_FEED_ROW_LIMIT = 512;
+const WALLET_STATS_POSITION_LIMIT = 2_048;
 
 export function getCapturedTestnetMarketHeat(): MarketHeatProjection {
   return CAPTURED_TESTNET_MARKET_HEAT;
@@ -130,7 +142,13 @@ async function getIndexedTestnetMarketHeat(
   reader: PredictIndexerReader,
   nowMs: number
 ): Promise<MarketHeatProjection> {
-  const [oracles, tradeEvents, positionSummaries, openPositionSummaries] = await Promise.all([
+  const [
+    oracles,
+    tradeEvents,
+    positionSummaries,
+    openPositionSummaries,
+    walletStatsPositionSummaries
+  ] = await Promise.all([
     reader.listBtcOracles({ includeSettled: false }),
     reader.listRecentTradeEvents({
       hideExpiredAtMs: nowMs,
@@ -141,7 +159,8 @@ async function getIndexedTestnetMarketHeat(
       hideExpiredAtMs: nowMs,
       limit: OPEN_POSITION_FEED_ROW_LIMIT,
       status: "open"
-    })
+    }),
+    reader.listPositionSummaries({ limit: WALLET_STATS_POSITION_LIMIT })
   ]);
   const activeOracles = selectIndexedActiveBtcOracles(oracles);
   const oraclesById = new Map(oracles.map((oracle) => [oracle.oracle_id, oracle]));
@@ -158,6 +177,11 @@ async function getIndexedTestnetMarketHeat(
     ...positionSummaries,
     ...openPositionSummaries
   ]);
+  const walletStatsByWallet = buildWalletStatsByWallet(
+    mergePositionSummaries([...walletStatsPositionSummaries, ...openPositionSummaries]),
+    oracles,
+    nowMs
+  );
   const heat = buildTraderHeatProjection(events, heatPositionSummaries, {
     limit: HEAT_ACCOUNT_ROW_LIMIT
   });
@@ -174,8 +198,11 @@ async function getIndexedTestnetMarketHeat(
   const heatRows = heat
     .map((trader, index) => mapIndexedHeatTraderToRow(trader, events, oraclesById, index))
     .filter((row): row is MarketHeatRow => row !== null);
-  const rows = mergeMarketHeatRows([...latestRows, ...activeOpenRows, ...heatRows])
-    .sort(compareMarketHeatRowsByLatest);
+  const rows = attachWalletStatsToRows(
+    mergeMarketHeatRows([...latestRows, ...activeOpenRows, ...heatRows])
+      .sort(compareMarketHeatRowsByLatest),
+    walletStatsByWallet
+  );
   const selectedOracle = selectBestIndexedBtcOracle(activeOracles);
   const selectedPrice = selectedOracle
     ? latestPricesByOracleId.get(selectedOracle.oracle_id) ?? null
@@ -329,6 +356,41 @@ function mergeMarketHeatRows(rows: MarketHeatRow[]): MarketHeatRow[] {
   }
 
   return [...byId.values()];
+}
+
+function buildWalletStatsByWallet(
+  positionSummaries: PredictPositionSummary[],
+  oracles: PredictOracleState[],
+  nowMs: number
+): Map<string, MarketHeatWalletStats> {
+  return new Map(
+    buildWalletPerformanceEntries(positionSummaries, { nowMs, oracles }).map((entry) => [
+      entry.wallet,
+      mapWalletPerformanceEntryToMarketHeatStats(entry)
+    ])
+  );
+}
+
+function mapWalletPerformanceEntryToMarketHeatStats(
+  entry: WalletPerformanceEntry
+): MarketHeatWalletStats {
+  return {
+    totalPnl: entry.totalPnl,
+    currentStreakType: entry.currentStreakType,
+    currentStreakLength: entry.currentStreakLength,
+    lastSeenMs: entry.lastSeenMs
+  };
+}
+
+function attachWalletStatsToRows(
+  rows: MarketHeatRow[],
+  walletStatsByWallet: Map<string, MarketHeatWalletStats>
+): MarketHeatRow[] {
+  return rows.map((row) => {
+    const walletStats = walletStatsByWallet.get(row.wallet);
+
+    return walletStats ? { ...row, walletStats } : row;
+  });
 }
 
 function compareMarketHeatRowsByLatest(left: MarketHeatRow, right: MarketHeatRow): number {

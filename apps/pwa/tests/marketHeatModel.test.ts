@@ -212,6 +212,12 @@ describe("market heat preview model", () => {
               observedAtMs: 1_779_165_000_000,
               heatScore: 74,
               status: "watching",
+              walletStats: {
+                totalPnl: 22_230_000,
+                currentStreakType: "win",
+                currentStreakLength: 12,
+                lastSeenMs: 1_779_164_940_000,
+              },
             },
           ],
         });
@@ -265,6 +271,7 @@ describe("market heat preview model", () => {
       expiryTimeLabel: "May 18, 19:40 PDT",
       actionLabel: "Copy now",
       statusLabel: "just now",
+      walletStatsLabel: "+$22.23 · 12 wins · 1m ago",
     });
   });
 

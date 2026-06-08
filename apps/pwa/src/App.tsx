@@ -2793,7 +2793,7 @@ export function MarketHeatPreview({
                     </div>
                     <div className="market-heat-compact-identity">
                       <strong>{row.displayName}</strong>
-                      <span>{row.statusLabel}</span>
+                      <span>{row.walletStatsLabel ?? row.statusLabel}</span>
                     </div>
                   </div>
                   <strong className={`direction-pill direction-pill-${sideClass}`}>
@@ -2825,7 +2825,7 @@ export function MarketHeatPreview({
                   <div className="market-heat-identity">
                     <div className="trader-title-row">
                       <h2>{row.displayName}</h2>
-                      <span>{row.statusLabel}</span>
+                      <span>{row.walletStatsLabel ?? row.statusLabel}</span>
                     </div>
                   </div>
                   <button

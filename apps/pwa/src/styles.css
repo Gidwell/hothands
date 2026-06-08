@@ -3343,7 +3343,7 @@ button:disabled {
 .market-heat-table-head,
 .market-heat-compact-row {
   display: grid;
-  grid-template-columns: minmax(92px, 1.35fr) 64px 78px 58px 42px 18px;
+  grid-template-columns: minmax(92px, 1.35fr) 64px 72px 58px 42px 18px;
   gap: 6px;
   align-items: center;
 }
@@ -3415,7 +3415,17 @@ button:disabled {
   font-size: 0.76rem;
 }
 
-.market-heat-compact-duration,
+.market-heat-compact-strike,
+.market-heat-table-head span:nth-child(3) {
+  justify-self: start;
+  text-align: left;
+}
+
+.market-heat-compact-duration {
+  justify-self: start;
+  text-align: left;
+}
+
 .market-heat-compact-heat {
   justify-self: center;
 }
@@ -3618,7 +3628,7 @@ button:disabled {
 @media (max-width: 430px) {
   .market-heat-table-head,
   .market-heat-compact-row {
-    grid-template-columns: minmax(86px, 1.35fr) 58px 70px 50px 38px 14px;
+    grid-template-columns: minmax(86px, 1.35fr) 58px 64px 50px 38px 14px;
     gap: 5px;
   }
 
