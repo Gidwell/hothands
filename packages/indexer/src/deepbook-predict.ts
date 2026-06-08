@@ -542,9 +542,9 @@ export function normalizePredictOracleSviRow(
     a: requiredNumber(row.a, "a"),
     b: requiredNumber(row.b, "b"),
     rho: requiredNumber(row.rho, "rho"),
-    rhoNegative: requiredNumber(row.rho_negative ?? row.rhoNegative, "rho_negative"),
+    rhoNegative: signFlagNumber(row.rho_negative ?? row.rhoNegative, "rho_negative"),
     m: requiredNumber(row.m, "m"),
-    mNegative: requiredNumber(row.m_negative ?? row.mNegative, "m_negative"),
+    mNegative: signFlagNumber(row.m_negative ?? row.mNegative, "m_negative"),
     sigma: requiredNumber(row.sigma, "sigma"),
     ...(optionalNumber(row.checkpoint) === undefined
       ? {}
@@ -940,6 +940,19 @@ function optionalNumber(value: unknown): number | undefined {
   }
 
   return undefined;
+}
+
+function signFlagNumber(value: unknown, field: string): number {
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+
+  const parsed = optionalNumber(value);
+  if (parsed === undefined) {
+    throw new Error(`Predict trade row is missing numeric ${field}.`);
+  }
+
+  return parsed;
 }
 
 function booleanValue(value: unknown): boolean {

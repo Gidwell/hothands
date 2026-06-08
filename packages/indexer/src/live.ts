@@ -42,6 +42,7 @@ async function main() {
         intervals: cli.intervals,
         oracleTradeLimit: cli.oracleTradeLimit,
         reader,
+        sviLimit: cli.sviLimit,
         tradeLimit: cli.tradeLimit,
         writer,
       });
@@ -57,6 +58,7 @@ async function main() {
       "DeepBook Predict live indexer started.",
       `Oracles: every ${cli.intervals.oracles}ms`,
       `Prices: every ${cli.intervals.prices}ms`,
+      `SVI: every ${cli.intervals.svi}ms`,
       `Positions: every ${cli.intervals.positions}ms`,
       `Oracle trades: every ${cli.intervals.oracleTrades}ms`,
       "",
@@ -75,6 +77,7 @@ async function main() {
       process.stdout.write(formatJobSummary(summary));
     },
     oracleTradeLimit: cli.oracleTradeLimit,
+    sviLimit: cli.sviLimit,
     reader,
     tradeLimit: cli.tradeLimit,
     writer,

@@ -49,6 +49,7 @@ import {
   buildTradeMarketForMarketHeatRow,
   buildTradeMarketLadder,
   closeMarketHeatIntent,
+  computeOracleIndicativeUpPrice,
   loadTradeQuote,
   loadMarketHeatPreview,
   selectMarketHeatIntent,
@@ -119,8 +120,6 @@ const PORTFOLIO_DATA_REFRESH_MS = 15_000;
 const PORTFOLIO_TIME_REFRESH_MS = 15_000;
 const TRADE_LADDER_VISIBLE_STRIKE_COUNT = 4;
 const TRADE_LADDER_BELOW_TARGET_COUNT = 2;
-const TRADE_LADDER_QUOTE_STAGGER_MS = 350;
-const TRADE_LADDER_QUOTE_RETRY_MS = 15_000;
 const DEPOSIT_AMOUNT_DEFAULT = 25;
 const DEPOSIT_AMOUNT_MIN = 0.01;
 const TOAST_LIMIT = 3;
@@ -169,7 +168,6 @@ export type TradeMarketSelection = {
   strikeRaw: number;
 };
 type TradeQuoteStatus = "idle" | "loading" | "ready" | "error";
-type TradeQuoteByKey = Record<string, TradeQuote | undefined>;
 export type WalletTransactionStatus = "idle" | "pending" | "success" | "error";
 export type WalletTransactionState = {
   status: WalletTransactionStatus;
@@ -656,19 +654,6 @@ type TradeLadderDisplayRow = {
   selection: TradeMarketSelection;
 };
 
-export type TradeLadderQuoteTarget = {
-  key: string;
-  market: TradeMarketLadderRow;
-  side: TradeSide;
-};
-type TradeLadderQuoteSelectionOptions = {
-  activeQuoteKey?: string | null;
-  cachedQuotes?: Record<string, unknown>;
-  failedAtByKey?: Map<string, number>;
-  inFlightKeys?: Set<string>;
-  nowMs?: number;
-};
-
 function buildTradeLadderDisplayRows({
   customStrike,
   marketPriceLabel,
@@ -825,52 +810,6 @@ function compareTradeLadderDisplayRows(
   );
 }
 
-function buildTradeLadderQuoteTargets(
-  ladderRows: TradeLadderDisplayRow[],
-  spendUsd: number,
-): TradeLadderQuoteTarget[] {
-  const seen = new Set<string>();
-  const targets: TradeLadderQuoteTarget[] = [];
-
-  for (const row of ladderRows) {
-    for (const side of ["UP", "DOWN"] as const) {
-      const key = buildTradeQuoteKey(row.market, side, spendUsd);
-      if (seen.has(key)) {
-        continue;
-      }
-
-      seen.add(key);
-      targets.push({ key, market: row.market, side });
-    }
-  }
-
-  return targets;
-}
-
-export function selectPendingTradeLadderQuoteTargets(
-  targets: TradeLadderQuoteTarget[],
-  {
-    activeQuoteKey = null,
-    cachedQuotes = {},
-    failedAtByKey = new Map(),
-    inFlightKeys = new Set(),
-    nowMs = Date.now(),
-  }: TradeLadderQuoteSelectionOptions = {},
-): TradeLadderQuoteTarget[] {
-  return targets.filter((target) => {
-    if (
-      target.key === activeQuoteKey ||
-      cachedQuotes[target.key] ||
-      inFlightKeys.has(target.key)
-    ) {
-      return false;
-    }
-
-    const failedAt = failedAtByKey.get(target.key);
-    return failedAt === undefined || nowMs - failedAt >= TRADE_LADDER_QUOTE_RETRY_MS;
-  });
-}
-
 function applyCustomStrikeToTradeMarket(
   market: TradeMarketLadderRow,
   customStrike: TradeMarketSelection | null | undefined,
@@ -888,12 +827,41 @@ function applyCustomStrikeToTradeMarket(
     strike: customStrike.strike,
     strikeLabel: customStrike.strikeLabel,
     strikeRaw: customStrike.strikeRaw,
-    up: isBaseStrike ? market.up : withoutEstimatedPrice(market.up),
-    down: isBaseStrike ? market.down : withoutEstimatedPrice(market.down),
+    ...selectTradeMarketStrikePrices(market, customStrike.strikeRaw, isBaseStrike),
     moneynessLabel:
       spot === null
         ? market.moneynessLabel
         : formatTradeMoneyness(customStrike.strike - spot),
+  };
+}
+
+function selectTradeMarketStrikePrices(
+  market: TradeMarketLadderRow,
+  strikeRaw: number,
+  isBaseStrike: boolean,
+): Pick<TradeMarketLadderRow, "up" | "down"> {
+  const indicativeUp = computeOracleIndicativeUpPrice(market.pricingModel, strikeRaw);
+
+  if (indicativeUp !== undefined) {
+    return {
+      up: withEstimatedPrice(market.up, indicativeUp),
+      down: withEstimatedPrice(market.down, Math.max(0, Math.min(1, 1 - indicativeUp))),
+    };
+  }
+
+  return {
+    up: isBaseStrike ? market.up : withoutEstimatedPrice(market.up),
+    down: isBaseStrike ? market.down : withoutEstimatedPrice(market.down),
+  };
+}
+
+function withEstimatedPrice(
+  summary: TradeMarketSideSummary,
+  estimatedPrice: number,
+): TradeMarketSideSummary {
+  return {
+    ...summary,
+    estimatedPrice,
   };
 }
 
@@ -1508,7 +1476,6 @@ export function TradeTicket({
   selectedSide,
   selectedDuration = "all",
   durationOptions = [],
-  ladderQuotes = {},
   quote = null,
   quoteStatus = "idle",
   predictManagerObjectId = "",
@@ -1532,7 +1499,6 @@ export function TradeTicket({
   selectedSide: TradeSide;
   selectedDuration?: string;
   durationOptions?: MarketDurationOption[];
-  ladderQuotes?: TradeQuoteByKey;
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
   predictManagerObjectId?: string;
@@ -1584,9 +1550,13 @@ export function TradeTicket({
         ? "Create Predict account first"
         : quoteStatus === "loading"
           ? "Wait for quote"
-          : walletActionPending
-            ? "Sending..."
-            : "Confirm transaction";
+          : quoteStatus === "error"
+            ? "Quote unavailable"
+            : quoteStatus !== "ready"
+              ? "Select a price"
+              : walletActionPending
+                ? "Sending..."
+                : "Confirm transaction";
 
   return (
     <section className="trade-ticket" aria-label="Trade" data-testid={testId}>
@@ -1643,13 +1613,9 @@ export function TradeTicket({
               const isSelectedUp = isSelectedStrike && selectedSide === "UP";
               const isSelectedDown = isSelectedStrike && selectedSide === "DOWN";
               const upQuote =
-                ladderQuotes[buildTradeQuoteKey(market, "UP", copyAmount)] ??
-                (isSelectedUp && quoteStatus === "ready" && quote?.side === "UP" ? quote : null);
+                isSelectedUp && quoteStatus === "ready" && quote?.side === "UP" ? quote : null;
               const downQuote =
-                ladderQuotes[buildTradeQuoteKey(market, "DOWN", copyAmount)] ??
-                (isSelectedDown && quoteStatus === "ready" && quote?.side === "DOWN"
-                  ? quote
-                  : null);
+                isSelectedDown && quoteStatus === "ready" && quote?.side === "DOWN" ? quote : null;
 
               return (
                 <div className="trade-ladder-row" key={key}>
@@ -3182,12 +3148,7 @@ export function App() {
     status: "idle",
     quote: null,
   });
-  const [ladderQuoteState, setLadderQuoteState] = useState<TradeQuoteByKey>({});
-  const [ladderQuoteRetryTick, setLadderQuoteRetryTick] = useState(0);
-  const ladderQuoteStateRef = useRef<TradeQuoteByKey>({});
-  const ladderQuoteVisibleKeysRef = useRef<Set<string>>(new Set());
-  const ladderQuoteInFlightRef = useRef<Set<string>>(new Set());
-  const ladderQuoteFailedAtRef = useRef<Map<string, number>>(new Map());
+  const [tradeQuoteRequested, setTradeQuoteRequested] = useState(false);
   const previewMode = getInitialPreviewMode(realtimeApiBaseUrl);
   const [marketHeatPreview, setMarketHeatPreview] = useState<MarketHeatPreviewModel>(() =>
     buildMarketHeatPreview(),
@@ -3324,46 +3285,17 @@ export function App() {
 
     return selectedTradeMarket ?? marketRow;
   });
-  const tradeLadderQuoteTargets = buildTradeLadderQuoteTargets(
-    buildTradeLadderDisplayRows({
-      customStrike: selectedTradeCustomStrike,
-      marketPriceLabel: marketHeatPreview.marketPrice.priceLabel,
-      marketRows: displayedTradeMarketRows,
-      selectedMarketId: baseSelectedTradeMarket?.id ?? "",
-    }).ladderRows,
-    copyState.copyAmount,
-  );
-  const tradeLadderQuoteTargetKey = tradeLadderQuoteTargets
-    .map((target) => target.key)
-    .join("|");
   const tradeQuoteKey = selectedTradeMarket
     ? buildTradeQuoteKey(selectedTradeMarket, tradeSide, copyState.copyAmount)
     : null;
-  const activeLadderQuote = tradeQuoteKey ? ladderQuoteState[tradeQuoteKey] ?? null : null;
   const activeTradeQuote =
-    activeLadderQuote ?? (tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.quote : null);
+    tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.quote : null;
   const activeTradeQuoteStatus =
     activeTradeQuote
       ? "ready"
       : tradeQuoteState.key === tradeQuoteKey
         ? tradeQuoteState.status
         : "idle";
-
-  useEffect(() => {
-    ladderQuoteStateRef.current = ladderQuoteState;
-  }, [ladderQuoteState]);
-
-  useEffect(() => {
-    if (activeView !== "trade" || previewMode !== "market" || !realtimeApiBaseUrl) {
-      return undefined;
-    }
-
-    const retryTimer = window.setInterval(() => {
-      setLadderQuoteRetryTick((tick) => tick + 1);
-    }, TRADE_LADDER_QUOTE_RETRY_MS);
-
-    return () => window.clearInterval(retryTimer);
-  }, [activeView, previewMode, realtimeApiBaseUrl]);
 
   useEffect(() => {
     if (activeView !== "trade" || !baseSelectedTradeMarket) {
@@ -3937,6 +3869,7 @@ export function App() {
       activeView !== "trade" ||
       previewMode !== "market" ||
       !realtimeApiBaseUrl ||
+      !tradeQuoteRequested ||
       !selectedTradeMarket ||
       !tradeQuoteKey
     ) {
@@ -3997,135 +3930,8 @@ export function App() {
     selectedTradeMarket?.oracleId,
     selectedTradeMarket?.strikeRaw,
     tradeQuoteKey,
+    tradeQuoteRequested,
     tradeSide,
-  ]);
-
-  useEffect(() => {
-    if (
-      activeView !== "trade" ||
-      previewMode !== "market" ||
-      !realtimeApiBaseUrl ||
-      tradeLadderQuoteTargets.length === 0
-    ) {
-      setLadderQuoteState({});
-      ladderQuoteVisibleKeysRef.current = new Set();
-      return undefined;
-    }
-
-    const visibleQuoteKeys = new Set(tradeLadderQuoteTargets.map((target) => target.key));
-    ladderQuoteVisibleKeysRef.current = visibleQuoteKeys;
-    for (const key of Array.from(ladderQuoteFailedAtRef.current.keys())) {
-      if (!visibleQuoteKeys.has(key)) {
-        ladderQuoteFailedAtRef.current.delete(key);
-      }
-    }
-
-    setLadderQuoteState((state) => {
-      let changed = false;
-      const nextState: TradeQuoteByKey = {};
-
-      for (const [key, quote] of Object.entries(state)) {
-        if (!visibleQuoteKeys.has(key)) {
-          changed = true;
-          continue;
-        }
-
-        nextState[key] = quote;
-      }
-
-      return changed ? nextState : state;
-    });
-
-    const missingTargets = selectPendingTradeLadderQuoteTargets(tradeLadderQuoteTargets, {
-      activeQuoteKey: tradeQuoteKey,
-      cachedQuotes: ladderQuoteStateRef.current,
-      failedAtByKey: ladderQuoteFailedAtRef.current,
-      inFlightKeys: ladderQuoteInFlightRef.current,
-      nowMs: Date.now(),
-    });
-    if (missingTargets.length === 0) {
-      return undefined;
-    }
-
-    let isCurrent = true;
-    let activeRequestKey: string | null = null;
-    const queuedKeys = new Set(missingTargets.map((target) => target.key));
-    for (const key of queuedKeys) {
-      ladderQuoteInFlightRef.current.add(key);
-    }
-
-    const waitForNextQuoteSlot = () =>
-      new Promise<void>((resolve) => {
-        window.setTimeout(() => {
-          resolve();
-        }, TRADE_LADDER_QUOTE_STAGGER_MS);
-      });
-
-    const loadQueuedQuotes = async () => {
-      for (const target of missingTargets) {
-        if (!isCurrent) {
-          break;
-        }
-
-        activeRequestKey = target.key;
-        const quote = await loadTradeQuote({
-          apiBaseUrl: realtimeApiBaseUrl,
-          market: target.market,
-          side: target.side,
-          spendUsd: copyState.copyAmount,
-        });
-        activeRequestKey = null;
-        ladderQuoteInFlightRef.current.delete(target.key);
-
-        const isVisible = ladderQuoteVisibleKeysRef.current.has(target.key);
-        if (!isVisible) {
-          if (!isCurrent) {
-            break;
-          }
-          continue;
-        }
-
-        if (!quote) {
-          ladderQuoteFailedAtRef.current.set(target.key, Date.now());
-          await waitForNextQuoteSlot();
-          continue;
-        }
-
-        ladderQuoteFailedAtRef.current.delete(target.key);
-        setLadderQuoteState((state) => {
-          if (state[target.key]) {
-            return state;
-          }
-
-          return { ...state, [target.key]: quote };
-        });
-        if (!isCurrent) {
-          break;
-        }
-        await waitForNextQuoteSlot();
-      }
-    };
-
-    void loadQueuedQuotes();
-
-    return () => {
-      isCurrent = false;
-      for (const key of queuedKeys) {
-        if (key === activeRequestKey) {
-          continue;
-        }
-
-        ladderQuoteInFlightRef.current.delete(key);
-      }
-    };
-  }, [
-    activeView,
-    copyState.copyAmount,
-    ladderQuoteRetryTick,
-    previewMode,
-    realtimeApiBaseUrl,
-    tradeQuoteKey,
-    tradeLadderQuoteTargetKey,
   ]);
 
   useEffect(() => {
@@ -4181,6 +3987,10 @@ export function App() {
   };
 
   const handleAmountSet = (amount: number) => {
+    if (activeView === "trade") {
+      setTradeQuoteRequested(true);
+    }
+
     setReplayState((state) => updateReplayCopy(state, (copy) => setCopyAmount(copy, amount)));
   };
 
@@ -4347,10 +4157,12 @@ export function App() {
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
   };
   const handleTradeDurationChange = (duration: string) => {
+    setTradeQuoteRequested(false);
     setSelectedTradeDuration(duration);
     setSelectedTradeExpiryDate(null);
   };
   const handleTradeExpiryChange = (expiryDate: string) => {
+    setTradeQuoteRequested(false);
     setSelectedTradeExpiryDate(expiryDate);
     const nextMarket = tradeDurationMarketRows.find(
       (marketRow) => tradeExpiryDateKey(marketRow.expiryMs) === expiryDate,
@@ -4371,9 +4183,11 @@ export function App() {
     setDepositAmount(clampDepositAmount(amount));
   };
   const handleTradeSideChange = (side: TradeSide) => {
+    setTradeQuoteRequested(true);
     setTradeSide(side);
   };
   const handleTradeMarketChange = (selection: TradeMarketSelection) => {
+    setTradeQuoteRequested(true);
     setSelectedTradeMarketId(selection.marketId);
     setCustomTradeStrikes((state) => ({
       ...state,
@@ -4755,7 +4569,6 @@ export function App() {
       selectedDuration={activeTradeDuration}
       selectedSide={tradeSide}
       durationOptions={marketDurationOptions}
-      ladderQuotes={ladderQuoteState}
       quote={activeTradeQuote}
       quoteStatus={activeTradeQuoteStatus}
       predictManagerObjectId={activePredictManagerObjectId}

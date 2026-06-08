@@ -19,7 +19,12 @@ const DEFAULT_API_PORT = 8789;
 const DEFAULT_PWA_PORT = 5176;
 const DEFAULT_READINESS_TIMEOUT_MS = 30_000;
 const API_COMMAND = ["bun", "apps/api-worker/src/testnet-dev-server.ts"];
-const BACKFILL_COMMAND = ["bun", "packages/indexer/src/backfill-predict.ts", "--write"];
+const BACKFILL_COMMAND = [
+  "bun",
+  "packages/indexer/src/backfill-predict.ts",
+  "--write",
+  "--include-svi",
+];
 const LIVE_INDEXER_COMMAND = ["bun", "packages/indexer/src/live.ts"];
 const MIGRATION_COMMAND = ["bun", "packages/indexer/src/migrate.ts"];
 const FALLBACK_TESTNET_OPT_IN = "HOT_HANDS_ALLOW_FALLBACK_TESTNET";

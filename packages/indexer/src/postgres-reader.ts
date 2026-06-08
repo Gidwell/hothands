@@ -1,6 +1,7 @@
 import type {
   PredictNormalizedTradeEvent,
   PredictOraclePricePoint,
+  PredictOracleSviPoint,
   PredictOracleState,
 } from "./deepbook-predict";
 import { downsampleOraclePricePoints } from "./projections";
@@ -59,6 +60,7 @@ export type PredictIndexerReader = {
   listPositionSummaries(options?: ListPositionSummariesOptions): Promise<PredictPositionSummary[]>;
   listOraclePrices(options: ListOraclePricesOptions): Promise<PredictOraclePricePoint[]>;
   getLatestOraclePrice(oracleId: string): Promise<PredictOraclePricePoint | null>;
+  getLatestOracleSvi?: (oracleId: string) => Promise<PredictOracleSviPoint | null>;
   getOraclePriceStats(oracleId: string): Promise<OraclePriceStats | null>;
   listIndexerJobStatuses(): Promise<PredictIndexerJobStatus[]>;
 };
@@ -247,6 +249,21 @@ export function createPostgresPredictIndexerReader({
 
       return result.rows[0] ? mapOraclePriceRow(result.rows[0]) : null;
     },
+    getLatestOracleSvi: async (oracleId) => {
+      const result = await execute(
+        [
+          "select event_id, oracle_id, a, b, rho, rho_negative, m, m_negative, sigma,",
+          "checkpoint, timestamp_ms, source",
+          "from predict_oracle_svi",
+          "where oracle_id = $1",
+          "order by timestamp_ms desc, event_id asc",
+          "limit 1",
+        ].join("\n"),
+        [oracleId],
+      );
+
+      return result.rows[0] ? mapOracleSviRow(result.rows[0]) : null;
+    },
     getOraclePriceStats: async (oracleId) => {
       const result = await execute(
         [
@@ -379,6 +396,25 @@ function mapOraclePriceRow(row: SqlRow): PredictOraclePricePoint {
       : { checkpoint: optionalNumber(row.checkpoint) }),
     timestampMs: requiredNumber(row.timestamp_ms, "timestamp_ms"),
     source: "oracles/prices",
+  };
+}
+
+function mapOracleSviRow(row: SqlRow): PredictOracleSviPoint {
+  return {
+    eventId: requiredString(row.event_id, "event_id"),
+    oracleId: requiredString(row.oracle_id, "oracle_id"),
+    a: requiredNumber(row.a, "a"),
+    b: requiredNumber(row.b, "b"),
+    rho: requiredNumber(row.rho, "rho"),
+    rhoNegative: requiredNumber(row.rho_negative, "rho_negative"),
+    m: requiredNumber(row.m, "m"),
+    mNegative: requiredNumber(row.m_negative, "m_negative"),
+    sigma: requiredNumber(row.sigma, "sigma"),
+    ...(optionalNumber(row.checkpoint) === undefined
+      ? {}
+      : { checkpoint: optionalNumber(row.checkpoint) }),
+    timestampMs: requiredNumber(row.timestamp_ms, "timestamp_ms"),
+    source: "oracles/svi",
   };
 }
 

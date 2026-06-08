@@ -264,6 +264,74 @@ describe("market heat preview model", () => {
     });
   });
 
+  test("uses oracle SVI pricing for trade ladder indicative prices", async () => {
+    const nowMs = 1_779_165_000_000;
+    const expiryMs = nowMs + 15 * 60_000;
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs,
+      fetcher: async () =>
+        Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71_000,
+            source: "indexed_testnet",
+          },
+          markets: [
+            {
+              oracleId: "0xoracle15",
+              market: "BTC-USD",
+              intervalLabel: "15m",
+              expiry: expiryMs,
+              expiryMs,
+              strikeCandidate: 71_000_000_000,
+              strikeCandidatePrice: 71_000,
+              status: "active",
+              pricingModel: {
+                forward: 71_000_000_000,
+                forwardPrice: 71_000,
+                a: 40_000_000,
+                b: 0,
+                rho: 0,
+                m: 0,
+                sigma: 150_000_000,
+                timestampMs: nowMs,
+              },
+            },
+          ],
+          rows: [
+            {
+              id: "mint-oracle-priced",
+              oracleId: "0xoracle15",
+              wallet: "0x1111222233334444555566667777888899990000",
+              manager: "manager-a",
+              market: "BTC-USD",
+              side: "UP",
+              strike: 71_000,
+              strikeRaw: 71_000_000_000,
+              expiryMs,
+              intervalLabel: "15m",
+              observedAtMs: nowMs,
+              heatScore: 10,
+              status: "copy_ready",
+              quantity: 100_000_000,
+              cost: 90_000_000,
+            },
+          ],
+        }),
+    });
+    const [market] = buildTradeMarketLadder(preview, { nowMs });
+
+    expect(market.pricingModel).toMatchObject({
+      forward: 71_000_000_000,
+      a: 40_000_000,
+    });
+    expect(market.up.estimatedPrice).toBeCloseTo(0.4602, 3);
+    expect(market.down.estimatedPrice).toBeCloseTo(0.5398, 3);
+  });
+
   test("overlays mainnet SuiNS names on market heat rows when requested", async () => {
     const wallet = "0x1111222233334444555566667777888899990000";
     const calls: string[] = [];

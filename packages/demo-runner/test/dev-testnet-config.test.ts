@@ -12,6 +12,7 @@ describe("testnet dev launcher config", () => {
         "bun",
         "packages/indexer/src/backfill-predict.ts",
         "--write",
+        "--include-svi",
       ],
       cleanupPorts: [8789, 5176],
       liveIndexerCommand: ["bun", "packages/indexer/src/live.ts"],
@@ -53,6 +54,7 @@ describe("testnet dev launcher config", () => {
         "bun",
         "packages/indexer/src/backfill-predict.ts",
         "--write",
+        "--include-svi",
       ],
       cleanupPorts: [8899, 5299],
       liveIndexerCommand: ["bun", "packages/indexer/src/live.ts"],
@@ -87,6 +89,7 @@ describe("testnet dev launcher config", () => {
       "bun",
       "packages/indexer/src/backfill-predict.ts",
       "--write",
+      "--include-svi",
     ]);
   });
 

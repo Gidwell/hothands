@@ -10,9 +10,7 @@ import {
   WalletHeaderControl,
   WalletStatusBar,
   buildTradeQuoteKey,
-  selectPendingTradeLadderQuoteTargets,
   shouldShowAccountSummary,
-  type TradeLadderQuoteTarget,
 } from "../src/App";
 
 function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
@@ -198,37 +196,6 @@ describe("mobile app navigation", () => {
         25,
       ),
     );
-  });
-
-  test("selects only ladder quote targets that are safe to request", () => {
-    const makeTarget = (key: string): TradeLadderQuoteTarget => ({
-      key,
-      market: {} as TradeLadderQuoteTarget["market"],
-      side: "UP",
-    });
-
-    const pendingTargets = selectPendingTradeLadderQuoteTargets(
-      [
-        makeTarget("active"),
-        makeTarget("cached"),
-        makeTarget("in-flight"),
-        makeTarget("backing-off"),
-        makeTarget("retryable"),
-        makeTarget("fresh"),
-      ],
-      {
-        activeQuoteKey: "active",
-        cachedQuotes: { cached: true },
-        failedAtByKey: new Map([
-          ["backing-off", 10_000],
-          ["retryable", 0],
-        ]),
-        inFlightKeys: new Set(["in-flight"]),
-        nowMs: 20_000,
-      },
-    );
-
-    expect(pendingTargets.map((target) => target.key)).toEqual(["retryable", "fresh"]);
   });
 
   test("renders available wallet balance separately from Predict bankroll with a deposit action", () => {

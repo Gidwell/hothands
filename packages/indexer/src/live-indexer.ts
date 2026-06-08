@@ -1,9 +1,11 @@
 import {
   DEEPBOOK_PREDICT_TESTNET_CONFIG,
+  createPredictOracleSviClient,
   createPredictReadCanary,
   createPredictTradeHistoryClient,
   type PredictCanaryConfig,
   type PredictNormalizedTradeEvent,
+  type PredictOracleSviPoint,
 } from "./deepbook-predict";
 import {
   DEFAULT_PRICE_POLL_INTERVAL_MS,
@@ -15,6 +17,7 @@ import type { PredictIndexerJobStatus, PredictIndexerWriter } from "./store";
 export type DeepBookPredictLiveIndexerIntervals = {
   oracles: number;
   prices: number;
+  svi: number;
   positions: number;
   oracleTrades: number;
 };
@@ -24,6 +27,7 @@ export type DeepBookPredictLiveIndexerCliOptions = {
   intervals: DeepBookPredictLiveIndexerIntervals;
   once: boolean;
   oracleTradeLimit: number;
+  sviLimit: number;
   tradeLimit: number;
 };
 
@@ -33,6 +37,7 @@ export type DeepBookPredictLiveIndexerOnceOptions = {
   intervals?: Partial<DeepBookPredictLiveIndexerIntervals>;
   nowMs?: () => number;
   oracleTradeLimit?: number;
+  sviLimit?: number;
   reader: Pick<PredictIndexerReader, "listBtcOracles" | "listIndexerJobStatuses">;
   tradeLimit?: number;
   writer: PredictIndexerWriter;
@@ -72,10 +77,12 @@ const DEFAULT_ORACLE_TRADES_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_ORACLES_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_TRADE_LIMIT = 5_000;
 const DEFAULT_ORACLE_TRADE_LIMIT = 500;
+const DEFAULT_SVI_LIMIT = 20;
 
 export const DEFAULT_LIVE_INDEXER_INTERVALS: DeepBookPredictLiveIndexerIntervals = {
   oracles: DEFAULT_ORACLES_POLL_INTERVAL_MS,
   prices: DEFAULT_PRICE_POLL_INTERVAL_MS,
+  svi: DEFAULT_PRICE_POLL_INTERVAL_MS,
   positions: DEFAULT_POSITIONS_POLL_INTERVAL_MS,
   oracleTrades: DEFAULT_ORACLE_TRADES_POLL_INTERVAL_MS,
 };
@@ -100,6 +107,10 @@ export function parseLiveIndexerCliOptions({
         lastValue(parsed, "price-poll-ms") ?? env.HOT_HANDS_INDEXER_PRICE_POLL_MS,
         DEFAULT_LIVE_INDEXER_INTERVALS.prices,
       ),
+      svi: positiveInt(
+        lastValue(parsed, "svi-poll-ms") ?? env.HOT_HANDS_INDEXER_SVI_POLL_MS,
+        DEFAULT_LIVE_INDEXER_INTERVALS.svi,
+      ),
       positions: positiveInt(
         lastValue(parsed, "positions-poll-ms") ?? env.HOT_HANDS_INDEXER_POSITIONS_POLL_MS,
         DEFAULT_LIVE_INDEXER_INTERVALS.positions,
@@ -113,6 +124,10 @@ export function parseLiveIndexerCliOptions({
     oracleTradeLimit: positiveInt(
       lastValue(parsed, "oracle-trade-limit") ?? env.HOT_HANDS_INDEXER_ORACLE_TRADE_LIMIT,
       DEFAULT_ORACLE_TRADE_LIMIT,
+    ),
+    sviLimit: positiveInt(
+      lastValue(parsed, "svi-limit") ?? env.HOT_HANDS_INDEXER_SVI_LIMIT,
+      DEFAULT_SVI_LIMIT,
     ),
     tradeLimit: positiveInt(
       lastValue(parsed, "trade-limit") ?? env.HOT_HANDS_INDEXER_TRADE_LIMIT,
@@ -155,6 +170,7 @@ function createLiveIndexerJobs({
   intervals = {},
   oracleTradeLimit = DEFAULT_ORACLE_TRADE_LIMIT,
   reader,
+  sviLimit = DEFAULT_SVI_LIMIT,
   tradeLimit = DEFAULT_TRADE_LIMIT,
   writer,
 }: DeepBookPredictLiveIndexerOnceOptions): LiveIndexerJob[] {
@@ -163,6 +179,7 @@ function createLiveIndexerJobs({
     ...intervals,
   };
   const tradeClient = createPredictTradeHistoryClient({ config, fetchImpl });
+  const sviClient = createPredictOracleSviClient({ config, fetchImpl });
 
   return [
     {
@@ -199,6 +216,28 @@ function createLiveIndexerJobs({
             : { lastSourceTimestampMs: summary.latestSourceTimestampMs }),
           rowsFetched: summary.fetchedPriceCount,
           rowsWritten: summary.upsertedPriceCount,
+        };
+      },
+    },
+    {
+      intervalMs: resolvedIntervals.svi,
+      jobName: "predict.svi",
+      source: "oracles/svi",
+      run: async () => {
+        const activeOracles = await reader.listBtcOracles({ includeSettled: false });
+        const points = await Promise.all(
+          activeOracles.map((oracle) =>
+            sviClient
+              .listOracleSvi(oracle.oracle_id, { limit: sviLimit })
+              .catch(() => []),
+          ),
+        ).then((groups) => groups.flat());
+        const rowsWritten = await writer.upsertOracleSvi(points);
+
+        return {
+          ...latestSviMetadata(points),
+          rowsFetched: points.length,
+          rowsWritten,
         };
       },
     },
@@ -438,6 +477,23 @@ function latestTradeMetadata(
     : {};
 }
 
+function latestSviMetadata(
+  points: readonly PredictOracleSviPoint[],
+): Pick<LiveIndexerJobResult, "lastCheckpoint" | "lastSourceTimestampMs"> {
+  const latest = points.reduce<PredictOracleSviPoint | null>(
+    (current, point) =>
+      current === null || point.timestampMs > current.timestampMs ? point : current,
+    null,
+  );
+
+  return latest
+    ? {
+        ...(latest.checkpoint === undefined ? {} : { lastCheckpoint: latest.checkpoint }),
+        lastSourceTimestampMs: latest.timestampMs,
+      }
+    : {};
+}
+
 type ParsedArgs = {
   flags: Set<string>;
   values: Map<string, string[]>;
@@ -478,6 +534,8 @@ function expectsValue(key: string): boolean {
     "oracles-poll-ms",
     "positions-poll-ms",
     "price-poll-ms",
+    "svi-limit",
+    "svi-poll-ms",
     "trade-limit",
     "trades-poll-ms",
   ].includes(key);
