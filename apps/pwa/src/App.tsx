@@ -59,6 +59,7 @@ import {
   type MarketDurationOption,
   type TradeQuote,
   type TradeMarketLadderRow,
+  type TradeMarketSideSummary,
   type TradeStrikeOption,
 } from "./marketHeatModel";
 import {
@@ -658,17 +659,26 @@ function applyCustomStrikeToTradeMarket(
   }
 
   const spot = parseTradeStrikeInputValue(spotPriceLabel);
+  const isBaseStrike = customStrike.strikeRaw === market.strikeRaw;
 
   return {
     ...market,
     strike: customStrike.strike,
     strikeLabel: customStrike.strikeLabel,
     strikeRaw: customStrike.strikeRaw,
+    up: isBaseStrike ? market.up : withoutEstimatedPrice(market.up),
+    down: isBaseStrike ? market.down : withoutEstimatedPrice(market.down),
     moneynessLabel:
       spot === null
         ? market.moneynessLabel
         : formatTradeMoneyness(customStrike.strike - spot),
   };
+}
+
+function withoutEstimatedPrice(summary: TradeMarketSideSummary): TradeMarketSideSummary {
+  const { estimatedPrice, ...summaryWithoutEstimate } = summary;
+  void estimatedPrice;
+  return summaryWithoutEstimate;
 }
 
 function formatTradeMoneyness(delta: number): string {
@@ -1944,7 +1954,6 @@ export function PortfolioPanel({
             <span>Cost</span>
             <span>Payout</span>
             <span>PNL</span>
-            <span />
           </div>
           {historyItems.map((item) => (
             <article
@@ -1970,7 +1979,6 @@ export function PortfolioPanel({
                 <small>PNL</small>
                 <strong>{item.pnlLabel}</strong>
               </div>
-              <span className="portfolio-table-cell">{item.remainingLabel}</span>
             </article>
           ))}
         </div>

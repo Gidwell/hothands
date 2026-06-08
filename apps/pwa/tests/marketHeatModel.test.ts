@@ -471,6 +471,71 @@ describe("market heat preview model", () => {
     });
   });
 
+  test("returns null when trade quote requests fail or time out", async () => {
+    const nowMs = 1_779_165_000_000;
+    const expiryMs = nowMs + 15 * 60_000;
+    const [market] = buildTradeMarketLadder(
+      {
+        ...buildMarketHeatPreview([], 8, {
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71_050,
+            source: "live_testnet",
+          },
+          nowMs,
+        }),
+        availableMarkets: [
+          {
+            id: "0xoracle15-1779165900000",
+            oracleId: "0xoracle15",
+            pairLabel: "BTC/USD",
+            intervalLabel: "15m",
+            expiry: 1_779_165_900_000,
+            expiryMs,
+            expiryTimeLabel: "May 18, 21:15 PDT",
+            strike: 71_100,
+            strikeRaw: 71_100_000_000,
+            strikeLabel: "$71,100",
+            status: "active",
+          },
+        ],
+      },
+      { nowMs },
+    );
+    const failedQuote = await loadTradeQuote({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      market,
+      side: "UP",
+      spendUsd: 25,
+      fetcher: async () => {
+        throw new Error("upstream unavailable");
+      },
+    });
+    let aborted = false;
+    const timedOutQuote = await loadTradeQuote({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      market,
+      side: "UP",
+      spendUsd: 25,
+      timeoutMs: 1,
+      fetcher: ((_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              reject(new Error("aborted"));
+            },
+            { once: true },
+          );
+        })) as typeof fetch,
+    });
+
+    expect(failedQuote).toBeNull();
+    expect(timedOutQuote).toBeNull();
+    expect(aborted).toBe(true);
+  });
+
   test("builds trade ladder rows with market activity and moneyness", () => {
     const nowMs = 1_779_165_000_000;
     const expiryMs = nowMs + 15 * 60_000;

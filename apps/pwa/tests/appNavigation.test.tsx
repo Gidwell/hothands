@@ -420,7 +420,7 @@ describe("mobile app navigation", () => {
             pnlLabel: "+$1.25",
             pnlTone: "positive",
             quantityLabel: "$5",
-            remainingLabel: "$0",
+            remainingLabel: "$123.45",
             statusLabel: "Redeemed",
             strikeLabel: "$65,000.00",
             updatedAtLabel: "May 17, 2026, 7:50 AM",
@@ -446,6 +446,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Payout</span>");
     expect(html).toContain("$3.25");
     expect(html).toContain("PNL</small><strong>+$1.25");
+    expect(html).not.toContain("$123.45");
   });
 
   test("renders portfolio time remaining from the current clock", () => {
@@ -813,6 +814,9 @@ describe("mobile app navigation", () => {
     expect(html).toContain('aria-label="Trade DOWN $71,050"');
     expect(html).toContain("UP $71,050");
     expect(html).toContain("Wins if BTC settles above $71,050");
+    expect(html).toContain("Pays $250");
+    expect(html).toContain("Est. payout</small>Quote needed");
+    expect(html).not.toContain("Est. payout</small>$250");
     expect(html).not.toContain('data-testid="trade-strike-select"');
     expect(html).not.toContain('data-testid="trade-custom-strike"');
   });

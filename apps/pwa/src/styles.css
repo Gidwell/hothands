@@ -3664,6 +3664,11 @@ button:disabled {
   border-left: 2px solid var(--hh-up);
 }
 
+.portfolio-history-table-head,
+.portfolio-history-row {
+  grid-template-columns: minmax(126px, 1.7fr) 76px 58px 68px 74px;
+}
+
 .portfolio-history-row-negative,
 .portfolio-row:has(.portfolio-side-down) {
   border-left-color: var(--hh-down);
@@ -3838,6 +3843,11 @@ button:disabled {
   .portfolio-history-row {
     grid-template-columns: minmax(116px, 1.8fr) 70px 52px 64px 66px 56px;
     gap: 6px;
+  }
+
+  .portfolio-history-table-head,
+  .portfolio-history-row {
+    grid-template-columns: minmax(116px, 1.8fr) 70px 52px 64px 66px;
   }
 
   .wallet-leaderboard-table-head,

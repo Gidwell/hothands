@@ -224,9 +224,11 @@ export type LoadTradeQuoteOptions = {
   market: TradeMarketLadderRow;
   side: TradeQuoteSide;
   spendUsd: number;
+  timeoutMs?: number;
 };
 
 const MARKET_HEAT_CANDIDATE_LIMIT = 96;
+const TRADE_QUOTE_TIMEOUT_MS = 6_000;
 const CAPTURED_ROW_BASE_AGE_MS = 5 * 60_000;
 const CAPTURED_ROW_AGE_STEP_MS = 15 * 60_000;
 const CAPTURED_MARKET_PRICE: MarketHeatPriceInput = {
@@ -679,6 +681,7 @@ export async function loadTradeQuote({
   market,
   side,
   spendUsd,
+  timeoutMs = TRADE_QUOTE_TIMEOUT_MS,
 }: LoadTradeQuoteOptions): Promise<TradeQuote | null> {
   const normalizedBaseUrl = apiBaseUrl?.trim();
 
@@ -686,14 +689,33 @@ export async function loadTradeQuote({
     return null;
   }
 
-  const response = await fetcher(
+  const response = await fetchWithTimeout(
+    fetcher,
     buildTradeQuoteUrl(normalizedBaseUrl, market, side, spendUsd),
+    timeoutMs,
   );
-  if (!response.ok) {
+  if (!response?.ok) {
     return null;
   }
 
   return parseTradeQuote(await response.json());
+}
+
+async function fetchWithTimeout(
+  fetcher: typeof fetch,
+  url: string,
+  timeoutMs: number,
+): Promise<Response | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetcher(url, { signal: controller.signal });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function buildMarketHeatUrl(apiBaseUrl: string): string {
