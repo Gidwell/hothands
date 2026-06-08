@@ -1227,6 +1227,11 @@ button:disabled {
   text-align: center;
 }
 
+.trade-spot-line-standalone {
+  margin: 0;
+  border-top: 1px solid #edf2f7;
+}
+
 .trade-ladder-side {
   display: grid;
   gap: 2px;
@@ -2895,6 +2900,10 @@ button:disabled {
 .trade-spot-line {
   color: var(--hh-up);
   background: var(--hh-up-soft);
+}
+
+.trade-spot-line-standalone {
+  border-color: var(--hh-line);
 }
 
 .trade-ladder-side {

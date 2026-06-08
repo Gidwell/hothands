@@ -891,6 +891,74 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain('aria-label="Trade UP $75,000"');
   });
 
+  test("keeps the oracle price marker visible when spot is above the ladder slice", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketPriceLabel="$76,000"
+        marketRows={[
+          {
+            id: "btc-15m-73000",
+            oracleId: "0xoracle15",
+            pairLabel: "BTC/USD",
+            intervalLabel: "15m",
+            roundLabel: "15m round",
+            expiry: 1_779_165_900_000,
+            expiryMs: 1_779_165_900_000,
+            expiryTimeLabel: "May 18, 21:45 PDT",
+            timeRemainingLabel: "15m left",
+            strike: 73_000,
+            strikeRaw: 73_000_000_000,
+            strikeLabel: "$73,000",
+            moneynessLabel: "At spot",
+            activityLabel: "6 strikes",
+            uniqueWalletCount: 4,
+            tradeCount: 12,
+            distinctStrikeCount: 6,
+            volumeUsd: 120,
+            volumeLabel: "$120",
+            strikeOptions: [70_000, 71_000, 72_000, 73_000, 74_000, 75_000].map(
+              (strike) => ({
+                strike,
+                strikeRaw: strike * 1_000_000,
+                strikeLabel: `$${strike.toLocaleString("en-US")}`,
+              }),
+            ),
+            up: {
+              walletCount: 2,
+              tradeCount: 6,
+              volumeUsd: 60,
+              volumeLabel: "$60",
+            },
+            down: {
+              walletCount: 2,
+              tradeCount: 6,
+              volumeUsd: 60,
+              volumeLabel: "$60",
+            },
+          },
+        ]}
+        copyAmount={25}
+        selectedMarketId="btc-15m-73000"
+        selectedSide="UP"
+        customStrike={{
+          marketId: "btc-15m-73000",
+          strike: 73_000,
+          strikeRaw: 73_000_000_000,
+          strikeLabel: "$73,000",
+        }}
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Oracle price $76,000");
+    expect(html.indexOf('aria-label="Trade DOWN $74,000"')).toBeLessThan(
+      html.indexOf("Oracle price $76,000"),
+    );
+  });
+
   test("keeps the selected strike option visible when live strike options refresh", () => {
     const html = renderToStaticMarkup(
       <TradeTicket

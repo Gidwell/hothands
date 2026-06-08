@@ -1535,6 +1535,12 @@ export function TradeTicket({
     spotPrice === null
       ? -1
       : ladderRows.findIndex((row) => row.selection.strike >= spotPrice);
+  const normalizedSpotLineIndex =
+    spotPrice === null || ladderRows.length === 0
+      ? -1
+      : spotLineIndex === -1
+        ? ladderRows.length
+        : spotLineIndex;
   const hasPredictManagerObjectId = predictManagerObjectId.trim().length > 0;
   const canSubmitTrade =
     walletConnected &&
@@ -1619,7 +1625,7 @@ export function TradeTicket({
 
               return (
                 <div className="trade-ladder-row" key={key}>
-                  {index === spotLineIndex ? (
+                  {index === normalizedSpotLineIndex ? (
                     <div className="trade-spot-line">Oracle price {marketPriceLabel}</div>
                   ) : null}
                   <button
@@ -1666,6 +1672,11 @@ export function TradeTicket({
           ) : (
             <div className="trade-ladder-empty">No active markets</div>
           )}
+          {normalizedSpotLineIndex === ladderRows.length ? (
+            <div className="trade-spot-line trade-spot-line-standalone">
+              Oracle price {marketPriceLabel}
+            </div>
+          ) : null}
         </div>
 
         {selectedMarket ? (
