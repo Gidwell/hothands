@@ -3705,10 +3705,16 @@ button:disabled {
 
 .portfolio-side-up,
 .portfolio-side-down {
+  display: inline-grid;
+  place-items: center;
   min-width: 30px;
   min-height: 26px;
+  padding: 0 7px;
   border-radius: 6px;
   font-size: 0.62rem;
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
 }
 
 .portfolio-table-cell {
