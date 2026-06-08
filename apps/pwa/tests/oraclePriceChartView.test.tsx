@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   getInitialOraclePriceChartView,
   getOraclePriceChartMinBarSpacing,
+  OraclePriceChartCard,
   OraclePriceChartModal,
   shouldAutoFitOraclePriceChart,
 } from "../src/OraclePriceChart";
@@ -29,6 +30,20 @@ const readyChart: OraclePriceChart = {
 };
 
 describe("OraclePriceChartModal", () => {
+  test("renders a compact twenty-four hour change beside the mini chart", () => {
+    const html = renderToStaticMarkup(
+      <OraclePriceChartCard
+        chart={readyChart}
+        fallbackPriceLabel="$60,910"
+        onOpen={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="oracle-mini-chart-change"');
+    expect(html).toContain("+0.03%");
+    expect(html).toContain("24h");
+  });
+
   test("places trading controls below the expanded chart", () => {
     const html = renderToStaticMarkup(
       <OraclePriceChartModal chart={readyChart} onClose={() => undefined}>

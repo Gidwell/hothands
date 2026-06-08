@@ -10,6 +10,7 @@ import {
   type PredictNormalizedTradeEvent,
   type PredictOraclePricePoint,
   type PredictOracleState,
+  type PredictOracleSviPoint,
   type TraderHeatProjection
 } from "@hot-hands/indexer";
 
@@ -44,6 +45,18 @@ export interface MarketHeatTradeMarket {
   strikeCandidatePrice: number | null;
   latestPrice: number | null;
   latestPriceLabel: string | null;
+  pricingModel?: MarketHeatPricingModel;
+}
+
+export interface MarketHeatPricingModel {
+  forward: number;
+  forwardPrice: number;
+  a: number;
+  b: number;
+  rho: number;
+  m: number;
+  sigma: number;
+  timestampMs: number;
 }
 
 export interface MarketHeatRow {
@@ -124,6 +137,10 @@ async function getIndexedTestnetMarketHeat(
     reader,
     activeOracles
   );
+  const latestSviByOracleId = await loadLatestIndexedSviByOracleId(
+    reader,
+    activeOracles
+  );
   const events = dedupeEvents(tradeEvents);
   const heat = buildTraderHeatProjection(events, positionSummaries, {
     limit: HEAT_ACCOUNT_ROW_LIMIT
@@ -154,7 +171,11 @@ async function getIndexedTestnetMarketHeat(
       source: "indexed_testnet"
     },
     markets: activeOracles.map((oracle) =>
-      mapIndexedBtcMarket(oracle, latestPricesByOracleId.get(oracle.oracle_id) ?? null)
+      mapIndexedBtcMarket(
+        oracle,
+        latestPricesByOracleId.get(oracle.oracle_id) ?? null,
+        latestSviByOracleId.get(oracle.oracle_id) ?? null
+      )
     ),
     rows
   };
@@ -294,6 +315,33 @@ async function loadLatestIndexedPricesByOracleId(
   return new Map(
     entries.filter(
       (entry): entry is readonly [string, PredictOraclePricePoint] => entry !== null
+    )
+  );
+}
+
+async function loadLatestIndexedSviByOracleId(
+  reader: PredictIndexerReader,
+  oracles: PredictOracleState[]
+): Promise<Map<string, PredictOracleSviPoint>> {
+  if (!reader.getLatestOracleSvi) {
+    return new Map();
+  }
+
+  const entries = await Promise.all(
+    oracles.map(async (oracle) => {
+      try {
+        const latestSvi = await reader.getLatestOracleSvi?.(oracle.oracle_id);
+
+        return latestSvi ? ([oracle.oracle_id, latestSvi] as const) : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return new Map(
+    entries.filter(
+      (entry): entry is readonly [string, PredictOracleSviPoint] => entry !== null
     )
   );
 }
@@ -502,7 +550,8 @@ function mapAvailableBtcMarket(market: PredictAvailableBtcMarket): MarketHeatTra
 
 function mapIndexedBtcMarket(
   oracle: PredictOracleState,
-  latestPrice: PredictOraclePricePoint | null
+  latestPrice: PredictOraclePricePoint | null,
+  latestSvi: PredictOracleSviPoint | null = null
 ): MarketHeatTradeMarket {
   const latestPriceValue = latestPrice ? normalizeStrike(latestPrice.spot) : null;
   const strikeCandidate = latestPrice
@@ -523,8 +572,35 @@ function mapIndexedBtcMarket(
     strikeCandidate,
     strikeCandidatePrice,
     latestPrice: latestPriceValue,
-    latestPriceLabel: formatPriceLabel(latestPriceValue)
+    latestPriceLabel: formatPriceLabel(latestPriceValue),
+    ...(latestPrice?.forward === undefined || latestSvi === null
+      ? {}
+      : { pricingModel: mapIndexedPricingModel(latestPrice, latestSvi) })
   };
+}
+
+function mapIndexedPricingModel(
+  latestPrice: PredictOraclePricePoint,
+  latestSvi: PredictOracleSviPoint
+): MarketHeatPricingModel {
+  return {
+    forward: latestPrice.forward ?? latestPrice.spot,
+    forwardPrice: normalizeStrike(latestPrice.forward ?? latestPrice.spot),
+    a: latestSvi.a,
+    b: latestSvi.b,
+    rho: signedSviParam(latestSvi.rho, latestSvi.rhoNegative),
+    m: signedSviParam(latestSvi.m, latestSvi.mNegative),
+    sigma: latestSvi.sigma,
+    timestampMs: Math.max(latestPrice.timestampMs, latestSvi.timestampMs)
+  };
+}
+
+function signedSviParam(positiveMagnitude: number, negativeMagnitude: number): number {
+  if (negativeMagnitude <= 0) {
+    return positiveMagnitude;
+  }
+
+  return positiveMagnitude > 0 ? -positiveMagnitude : -negativeMagnitude;
 }
 
 function snapIndexedStrikeToTick(price: number, oracle: PredictOracleState): number {

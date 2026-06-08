@@ -16,6 +16,7 @@ describe("DeepBook Predict live indexer", () => {
         env: {
           DATABASE_URL: "postgres://example",
           HOT_HANDS_INDEXER_PRICE_POLL_MS: "1000",
+          HOT_HANDS_INDEXER_SVI_POLL_MS: "1000",
           HOT_HANDS_INDEXER_POSITIONS_POLL_MS: "1500",
           HOT_HANDS_INDEXER_ORACLES_POLL_MS: "30000",
           HOT_HANDS_INDEXER_TRADES_POLL_MS: "2000",
@@ -29,6 +30,7 @@ describe("DeepBook Predict live indexer", () => {
       intervals: {
         oracles: 30_000,
         prices: 1_000,
+        svi: 1_000,
         positions: 1_500,
         oracleTrades: 2_000,
       },
@@ -73,6 +75,25 @@ describe("DeepBook Predict live indexer", () => {
           });
         }
 
+        if (url.endsWith("/oracles/btc-fast/svi?limit=20")) {
+          return jsonResponse([
+            {
+              event_digest: "0xsvi",
+              event_index: 2,
+              oracle_id: "btc-fast",
+              a: "43176",
+              b: "2305586",
+              rho: "812089434",
+              rho_negative: true,
+              m: "4328013",
+              m_negative: true,
+              sigma: "5248731",
+              checkpoint: "49",
+              checkpoint_timestamp_ms: "1779070800500",
+            },
+          ]);
+        }
+
         if (url.includes("/positions/minted")) {
           return jsonResponse([mintedRow()]);
         }
@@ -113,6 +134,7 @@ describe("DeepBook Predict live indexer", () => {
       intervals: {
         oracles: 30_000,
         prices: 1_000,
+        svi: 1_000,
         positions: 1_000,
         oracleTrades: 1_000,
       },
@@ -123,6 +145,7 @@ describe("DeepBook Predict live indexer", () => {
     expect(summary.jobs.map((job) => job.jobName)).toEqual([
       "predict.oracles",
       "predict.prices",
+      "predict.svi",
       "predict.positions.minted",
       "predict.positions.redeemed",
       "predict.trades.active_oracles",
@@ -142,7 +165,11 @@ describe("DeepBook Predict live indexer", () => {
     expect(requests).toContain(
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/trades/btc-fast?limit=7`,
     );
+    expect(requests).toContain(
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-fast/svi?limit=20`,
+    );
     expect(store.snapshot().oracles).toHaveLength(1);
+    expect(store.snapshot().oracleSvi).toHaveLength(1);
     expect(store.snapshot().tradeEvents).toHaveLength(3);
     expect(refreshCount).toBe(3);
   });

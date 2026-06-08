@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type SyntheticEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
 import {
   useCurrentClient,
   useCurrentAccount,
@@ -7,6 +15,7 @@ import {
   useDAppKit,
   useWalletConnection,
   useWallets,
+  type UiWallet,
 } from "@mysten/dapp-kit-react";
 import {
   buildCreatePredictManagerTransaction,
@@ -35,11 +44,12 @@ import {
 } from "./replayModel";
 import {
   buildMarketHeatIntentPanel,
-  buildMarketHeatPreview,
   buildMarketDurationOptions,
+  buildMarketHeatPreview,
   buildTradeMarketForMarketHeatRow,
   buildTradeMarketLadder,
   closeMarketHeatIntent,
+  computeOracleIndicativeUpPrice,
   loadTradeQuote,
   loadMarketHeatPreview,
   selectMarketHeatIntent,
@@ -51,6 +61,7 @@ import {
   type MarketDurationOption,
   type TradeQuote,
   type TradeMarketLadderRow,
+  type TradeMarketSideSummary,
   type TradeStrikeOption,
 } from "./marketHeatModel";
 import {
@@ -69,8 +80,8 @@ import {
   type WalletLeaderboardBoardKey,
   type WalletLeaderboardEntry,
   type WalletLeaderboardPanelBoardKey,
+  type WalletLeaderboardRangeMode,
   type WalletLeaderboardSortDirection,
-  type WalletLeaderboardStreakMode,
   type WalletLeaderboardTone,
   type WalletLeaderboardsSnapshot,
 } from "./walletLeaderboards";
@@ -107,14 +118,46 @@ const MARKET_HEAT_PAGE_SIZE = 8;
 const WALLET_LEADERBOARDS_REFRESH_MS = 15_000;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
 const PORTFOLIO_TIME_REFRESH_MS = 15_000;
+const TRADE_LADDER_VISIBLE_STRIKE_COUNT = 4;
+const TRADE_LADDER_BELOW_TARGET_COUNT = 2;
 const DEPOSIT_AMOUNT_DEFAULT = 25;
 const DEPOSIT_AMOUNT_MIN = 0.01;
 const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
+const THEME_STORAGE_KEY = "hot-hands-theme-mode";
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "leaderboards" | "portfolio";
+type ThemeMode = "light" | "dark";
+type MarketHeatDensity = "compact" | "expanded";
+export type MarketHeatSwipeAction = "none" | "select" | "submit";
+type MarketHeatSwipePreview = {
+  action: MarketHeatSwipeAction;
+  deltaX: number;
+  rowId: string;
+};
 export function shouldShowAccountSummary(view: AppView): boolean {
   return view === "trade" || view === "portfolio";
+}
+
+function getInitialThemeMode(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (storedTheme === "light" || storedTheme === "dark") {
+    return storedTheme;
+  }
+
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function writeThemeMode(themeMode: ThemeMode): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
 }
 
 export type TradeSide = "UP" | "DOWN";
@@ -272,6 +315,228 @@ function marketDurationTestId(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
+const MARKET_HEAT_SWIPE_CONFIRM_THRESHOLD = 86;
+const MARKET_HEAT_SWIPE_VERTICAL_TOLERANCE = 38;
+const MARKET_HEAT_SWIPE_MAX_OFFSET = 118;
+
+export function resolveMarketHeatSwipeAction(
+  deltaX: number,
+  deltaY: number,
+  rowStatus: MarketHeatPreviewRow["status"],
+): MarketHeatSwipeAction {
+  if (
+    deltaX < MARKET_HEAT_SWIPE_CONFIRM_THRESHOLD ||
+    Math.abs(deltaY) > MARKET_HEAT_SWIPE_VERTICAL_TOLERANCE
+  ) {
+    return "none";
+  }
+
+  return rowStatus === "copy_ready" ? "submit" : "select";
+}
+
+const TRADE_EXPIRY_DAY_MS = 24 * 60 * 60_000;
+const tradeExpiryDateFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  month: "short",
+});
+const tradeExpiryWeekdayFormatter = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+});
+
+type TradeExpiryOption = {
+  count: number;
+  expiryMs: number;
+  label: string;
+  sublabel: string;
+  value: string;
+};
+
+function tradeExpiryDateKey(expiryMs: number): string {
+  const date = new Date(expiryMs);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function tradeExpiryDayStartMs(expiryMs: number): number {
+  const date = new Date(expiryMs);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+function tradeIntervalSortMs(intervalLabel: string): number {
+  const match = /^(\d+)\s*([mhwd])$/i.exec(intervalLabel.trim());
+  if (!match) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  const value = Number(match[1]);
+  const unit = match[2].toLowerCase();
+
+  if (unit === "w") {
+    return value * 7 * TRADE_EXPIRY_DAY_MS;
+  }
+
+  if (unit === "d") {
+    return value * TRADE_EXPIRY_DAY_MS;
+  }
+
+  if (unit === "h") {
+    return value * 60 * 60_000;
+  }
+
+  return value * 60_000;
+}
+
+function marketDurationMatches(intervalLabel: string, duration: string): boolean {
+  return intervalLabel.trim().toLowerCase() === duration.toLowerCase();
+}
+
+function selectMarketHeatRowsForDuration(
+  rows: MarketHeatPreviewRow[],
+  duration: string,
+): MarketHeatPreviewRow[] {
+  if (duration === "all") {
+    return rows;
+  }
+
+  return rows.filter((row) => marketDurationMatches(row.intervalLabel, duration));
+}
+
+function selectTradeMarketsForDuration(
+  marketRows: TradeMarketLadderRow[],
+  duration: string,
+): TradeMarketLadderRow[] {
+  if (duration === "all") {
+    return marketRows;
+  }
+
+  return marketRows.filter((marketRow) =>
+    marketDurationMatches(marketRow.intervalLabel, duration),
+  );
+}
+
+function formatTradeExpiryHorizon(expiryMs: number, nowMs: number): string {
+  const dayDelta = Math.round(
+    (tradeExpiryDayStartMs(expiryMs) - tradeExpiryDayStartMs(nowMs)) / TRADE_EXPIRY_DAY_MS,
+  );
+
+  if (dayDelta === 0) {
+    return "Today";
+  }
+
+  if (dayDelta === 1) {
+    return "Tomorrow";
+  }
+
+  if (dayDelta > 1 && dayDelta < 7) {
+    return tradeExpiryWeekdayFormatter.format(expiryMs);
+  }
+
+  if (dayDelta > 0 && dayDelta % 7 === 0 && dayDelta <= 28) {
+    const weeks = dayDelta / 7;
+    return weeks === 1 ? "1 week" : `${weeks} weeks`;
+  }
+
+  return "";
+}
+
+function formatTradeExpiryLabel(expiryMs: number, nowMs: number): string {
+  const horizon = formatTradeExpiryHorizon(expiryMs, nowMs);
+  return horizon === "Today" || horizon === "Tomorrow"
+    ? horizon
+    : tradeExpiryDateFormatter.format(expiryMs);
+}
+
+function formatTradeExpirySublabel(
+  expiryMs: number,
+  intervalLabels: string[],
+  count: number,
+  nowMs: number,
+): string {
+  const horizon = formatTradeExpiryHorizon(expiryMs, nowMs);
+  const uniqueIntervals = [...new Set(intervalLabels)].sort(
+    (left, right) =>
+      tradeIntervalSortMs(left) - tradeIntervalSortMs(right) || left.localeCompare(right),
+  );
+  const intervalSummary =
+    uniqueIntervals.length <= 2 ? uniqueIntervals.join(", ") : `${uniqueIntervals.length} expiries`;
+  const countSummary = count === 1 ? "1 market" : `${count} markets`;
+
+  if (horizon === "Today" || horizon === "Tomorrow") {
+    return intervalSummary || countSummary;
+  }
+
+  if (horizon) {
+    return `${horizon} · ${intervalSummary || countSummary}`;
+  }
+
+  return intervalSummary ? `${countSummary} · ${intervalSummary}` : countSummary;
+}
+
+function buildTradeExpiryOptions(
+  marketRows: TradeMarketLadderRow[],
+  nowMs: number,
+): TradeExpiryOption[] {
+  const expiriesByDate = new Map<
+    string,
+    {
+      count: number;
+      earliestExpiryMs: number;
+      intervalLabels: string[];
+    }
+  >();
+
+  for (const marketRow of marketRows) {
+    if (marketRow.expiryMs <= nowMs) {
+      continue;
+    }
+
+    const value = tradeExpiryDateKey(marketRow.expiryMs);
+    const existing = expiriesByDate.get(value);
+
+    if (existing) {
+      existing.count += 1;
+      existing.earliestExpiryMs = Math.min(existing.earliestExpiryMs, marketRow.expiryMs);
+      existing.intervalLabels.push(marketRow.intervalLabel);
+      continue;
+    }
+
+    expiriesByDate.set(value, {
+      count: 1,
+      earliestExpiryMs: marketRow.expiryMs,
+      intervalLabels: [marketRow.intervalLabel],
+    });
+  }
+
+  return [...expiriesByDate.entries()]
+    .map(([value, expiry]) => ({
+      count: expiry.count,
+      expiryMs: expiry.earliestExpiryMs,
+      label: formatTradeExpiryLabel(expiry.earliestExpiryMs, nowMs),
+      sublabel: formatTradeExpirySublabel(
+        expiry.earliestExpiryMs,
+        expiry.intervalLabels,
+        expiry.count,
+        nowMs,
+      ),
+      value,
+    }))
+    .sort((left, right) => left.expiryMs - right.expiryMs);
+}
+
+function selectTradeMarketsForExpiry(
+  marketRows: TradeMarketLadderRow[],
+  expiryDate: string | null,
+): TradeMarketLadderRow[] {
+  if (!expiryDate) {
+    return marketRows;
+  }
+
+  return marketRows.filter((marketRow) => tradeExpiryDateKey(marketRow.expiryMs) === expiryDate);
+}
+
 function formatUsdValue(amount: number): string {
   return `$${amount.toLocaleString("en-US", {
     maximumFractionDigits: 2,
@@ -383,6 +648,168 @@ export function buildTradeQuoteKey(
   ].join(":");
 }
 
+type TradeLadderDisplayRow = {
+  key: string;
+  market: TradeMarketLadderRow;
+  selection: TradeMarketSelection;
+};
+
+function buildTradeLadderDisplayRows({
+  customStrike,
+  marketPriceLabel,
+  marketRows,
+  selectedMarketId,
+}: {
+  customStrike?: TradeMarketSelection | null;
+  marketPriceLabel?: string | null;
+  marketRows: TradeMarketLadderRow[];
+  selectedMarketId: string;
+}): {
+  baseSelectedMarket: TradeMarketLadderRow | null;
+  ladderRows: TradeLadderDisplayRow[];
+  selectedCustomStrike: TradeMarketSelection | null;
+  selectedLadderKey: string | null;
+  selectedMarket: TradeMarketLadderRow | null;
+} {
+  const baseSelectedMarket =
+    marketRows.find((market) => market.id === selectedMarketId) ??
+    marketRows[0] ??
+    null;
+  const selectedMarket = baseSelectedMarket
+    ? applyCustomStrikeToTradeMarket(baseSelectedMarket, customStrike, marketPriceLabel ?? "") ??
+      baseSelectedMarket
+    : null;
+  const selectedCustomStrike =
+    selectedMarket && customStrike?.marketId === selectedMarket.id
+      ? customStrike
+      : selectedMarket
+        ? buildTradeMarketSelectionFromRow(selectedMarket)
+        : null;
+  const targetStrike =
+    parseTradeStrikeInputValue(marketPriceLabel ?? "") ??
+    selectedCustomStrike?.strike ??
+    selectedMarket?.strike ??
+    null;
+  const selectedLadderKey =
+    selectedMarket && selectedCustomStrike
+      ? `${selectedMarket.pairLabel}:${selectedMarket.intervalLabel}:${selectedMarket.timeRemainingLabel}:${selectedCustomStrike.strikeLabel}`
+      : null;
+  const allLadderRows = marketRows.reduce<TradeLadderDisplayRow[]>((rows, baseMarket) => {
+    const strikeOptions = getTradeStrikeOptionsForSelection(
+      baseMarket,
+      baseMarket.id === baseSelectedMarket?.id ? selectedCustomStrike : null,
+    );
+
+    for (const option of strikeOptions) {
+      const selection = buildTradeMarketSelection(baseMarket.id, option);
+      const market =
+        applyCustomStrikeToTradeMarket(baseMarket, selection, marketPriceLabel ?? "") ??
+        baseMarket;
+      const key = `${market.pairLabel}:${market.intervalLabel}:${market.timeRemainingLabel}:${selection.strikeLabel}`;
+      const candidate = { key, market, selection };
+      const existingIndex = rows.findIndex((row) => row.key === key);
+
+      if (existingIndex === -1) {
+        rows.push(candidate);
+      } else if (key === selectedLadderKey && baseMarket.id === baseSelectedMarket?.id) {
+        rows[existingIndex] = candidate;
+      }
+    }
+
+    return rows;
+  }, []);
+  const ladderRows = selectVisibleTradeLadderRows(
+    allLadderRows,
+    targetStrike,
+    selectedLadderKey,
+  );
+
+  return {
+    baseSelectedMarket,
+    ladderRows,
+    selectedCustomStrike,
+    selectedLadderKey,
+    selectedMarket,
+  };
+}
+
+function selectVisibleTradeLadderRows(
+  rows: TradeLadderDisplayRow[],
+  targetStrike: number | null,
+  selectedLadderKey: string | null,
+): TradeLadderDisplayRow[] {
+  if (rows.length <= TRADE_LADDER_VISIBLE_STRIKE_COUNT) {
+    return rows;
+  }
+
+  const sortedRows = [...rows].sort(compareTradeLadderDisplayRows);
+  const fallbackTarget = sortedRows[Math.floor(sortedRows.length / 2)]?.selection.strike ?? null;
+  const target =
+    targetStrike !== null && Number.isFinite(targetStrike) ? targetStrike : fallbackTarget;
+  const belowTarget = sortedRows.filter((row) => row.selection.strike < (target ?? 0));
+  const atOrAboveTarget = sortedRows.filter((row) => row.selection.strike >= (target ?? 0));
+  const selectedRows: TradeLadderDisplayRow[] = [
+    ...belowTarget.slice(-TRADE_LADDER_BELOW_TARGET_COUNT),
+    ...atOrAboveTarget.slice(
+      0,
+      TRADE_LADDER_VISIBLE_STRIKE_COUNT - TRADE_LADDER_BELOW_TARGET_COUNT,
+    ),
+  ];
+  const selectedKeys = new Set(selectedRows.map((row) => row.key));
+  const backfillRows = [
+    ...belowTarget.slice(0, -TRADE_LADDER_BELOW_TARGET_COUNT).reverse(),
+    ...atOrAboveTarget.slice(
+      TRADE_LADDER_VISIBLE_STRIKE_COUNT - TRADE_LADDER_BELOW_TARGET_COUNT,
+    ),
+  ];
+
+  for (const row of backfillRows) {
+    if (selectedRows.length >= TRADE_LADDER_VISIBLE_STRIKE_COUNT) {
+      break;
+    }
+
+    if (selectedKeys.has(row.key)) {
+      continue;
+    }
+
+    selectedKeys.add(row.key);
+    selectedRows.push(row);
+  }
+
+  const selectedRow = selectedLadderKey
+    ? sortedRows.find((row) => row.key === selectedLadderKey)
+    : undefined;
+  if (selectedRow && !selectedKeys.has(selectedRow.key)) {
+    const replaceIndex = selectedRows.reduce(
+      (furthestIndex, row, index) => {
+        const currentDistance = Math.abs(row.selection.strike - (target ?? row.selection.strike));
+        const furthestDistance = Math.abs(
+          selectedRows[furthestIndex].selection.strike -
+            (target ?? selectedRows[furthestIndex].selection.strike),
+        );
+
+        return currentDistance >= furthestDistance ? index : furthestIndex;
+      },
+      0,
+    );
+
+    selectedRows[replaceIndex] = selectedRow;
+  }
+
+  return selectedRows.sort(compareTradeLadderDisplayRows);
+}
+
+function compareTradeLadderDisplayRows(
+  left: TradeLadderDisplayRow,
+  right: TradeLadderDisplayRow,
+): number {
+  return (
+    left.selection.strike - right.selection.strike ||
+    left.selection.strikeRaw - right.selection.strikeRaw ||
+    left.key.localeCompare(right.key)
+  );
+}
+
 function applyCustomStrikeToTradeMarket(
   market: TradeMarketLadderRow,
   customStrike: TradeMarketSelection | null | undefined,
@@ -393,17 +820,55 @@ function applyCustomStrikeToTradeMarket(
   }
 
   const spot = parseTradeStrikeInputValue(spotPriceLabel);
+  const isBaseStrike = customStrike.strikeRaw === market.strikeRaw;
 
   return {
     ...market,
     strike: customStrike.strike,
     strikeLabel: customStrike.strikeLabel,
     strikeRaw: customStrike.strikeRaw,
+    ...selectTradeMarketStrikePrices(market, customStrike.strikeRaw, isBaseStrike),
     moneynessLabel:
       spot === null
         ? market.moneynessLabel
         : formatTradeMoneyness(customStrike.strike - spot),
   };
+}
+
+function selectTradeMarketStrikePrices(
+  market: TradeMarketLadderRow,
+  strikeRaw: number,
+  isBaseStrike: boolean,
+): Pick<TradeMarketLadderRow, "up" | "down"> {
+  const indicativeUp = computeOracleIndicativeUpPrice(market.pricingModel, strikeRaw);
+
+  if (indicativeUp !== undefined) {
+    return {
+      up: withEstimatedPrice(market.up, indicativeUp),
+      down: withEstimatedPrice(market.down, Math.max(0, Math.min(1, 1 - indicativeUp))),
+    };
+  }
+
+  return {
+    up: isBaseStrike ? market.up : withoutEstimatedPrice(market.up),
+    down: isBaseStrike ? market.down : withoutEstimatedPrice(market.down),
+  };
+}
+
+function withEstimatedPrice(
+  summary: TradeMarketSideSummary,
+  estimatedPrice: number,
+): TradeMarketSideSummary {
+  return {
+    ...summary,
+    estimatedPrice,
+  };
+}
+
+function withoutEstimatedPrice(summary: TradeMarketSideSummary): TradeMarketSideSummary {
+  const { estimatedPrice, ...summaryWithoutEstimate } = summary;
+  void estimatedPrice;
+  return summaryWithoutEstimate;
 }
 
 function formatTradeMoneyness(delta: number): string {
@@ -413,6 +878,25 @@ function formatTradeMoneyness(delta: number): string {
 
   const prefix = delta > 0 ? "+" : "-";
   return `${prefix}${formatUsdValue(Math.abs(delta))} vs spot`;
+}
+
+function formatTradeSidePrice(sideSummary: TradeMarketLadderRow["up"] | null | undefined): string {
+  if (
+    sideSummary?.estimatedPrice === undefined ||
+    !Number.isFinite(sideSummary.estimatedPrice)
+  ) {
+    return "Quote";
+  }
+
+  return `$${sideSummary.estimatedPrice.toFixed(2)}`;
+}
+
+function formatTradeQuotePrice(quote: TradeQuote): string {
+  return `$${quote.effectivePrice.toFixed(2)}`;
+}
+
+function formatTradeOutcome(side: TradeSide, strikeLabel: string): string {
+  return `Wins if BTC settles ${side === "UP" ? "above" : "below"} ${strikeLabel}`;
 }
 
 function CopyAmountControls({
@@ -623,10 +1107,15 @@ type WalletHeaderControlProps = {
   accountAddress: string | null;
   connectionStatus: string;
   readOnly?: boolean;
+  walletChoices?: WalletChoice[];
+  walletChooserOpen?: boolean;
   walletCount: number;
   onConnect: () => void;
   onDisconnect: () => void;
+  onWalletSelect?: (walletIndex: number) => void;
 };
+
+type WalletChoice = Pick<UiWallet, "name"> & Partial<Pick<UiWallet, "icon">>;
 
 type WalletStatusBarProps = WalletHeaderControlProps & {
   networkLabel: string;
@@ -641,17 +1130,23 @@ export function WalletHeaderControl({
   accountAddress,
   connectionStatus,
   readOnly = false,
+  walletChoices = [],
+  walletChooserOpen = false,
   walletCount,
   onConnect,
   onDisconnect,
+  onWalletSelect = () => undefined,
 }: WalletHeaderControlProps) {
   const isConnected = Boolean(accountAddress);
+  const canChooseWallet = walletChoices.length > 1;
   const connectLabel =
     walletCount === 0
       ? "Install wallet"
       : connectionStatus === "connecting" || connectionStatus === "reconnecting"
         ? "Connecting"
-        : "Connect wallet";
+        : canChooseWallet
+          ? "Choose wallet"
+          : "Connect wallet";
 
   if (isConnected) {
     return (
@@ -670,15 +1165,41 @@ export function WalletHeaderControl({
   }
 
   return (
-    <button
-      type="button"
-      className="wallet-header-button"
-      data-testid="wallet-connect"
-      disabled={walletCount === 0 || connectionStatus === "connecting"}
-      onClick={onConnect}
-    >
-      {connectLabel}
-    </button>
+    <div className="wallet-connect-control">
+      <button
+        type="button"
+        className="wallet-header-button"
+        data-testid="wallet-connect"
+        disabled={walletCount === 0 || connectionStatus === "connecting"}
+        onClick={onConnect}
+      >
+        {connectLabel}
+      </button>
+      {walletChooserOpen && canChooseWallet ? (
+        <div
+          className="wallet-picker"
+          aria-label="Choose wallet"
+          data-testid="wallet-picker"
+        >
+          {walletChoices.map((wallet, index) => (
+            <button
+              type="button"
+              className="wallet-picker-option"
+              data-testid={`wallet-choice-${index}`}
+              key={`${wallet.name}-${index}`}
+              onClick={() => onWalletSelect(index)}
+            >
+              {wallet.icon ? (
+                <img src={wallet.icon} alt="" aria-hidden="true" />
+              ) : (
+                <span aria-hidden="true">{wallet.name.slice(0, 2).toUpperCase()}</span>
+              )}
+              <strong>Connect {wallet.name}</strong>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -772,37 +1293,103 @@ export function BottomNav({
   activeView: AppView;
   onViewChange: (view: AppView) => void;
 }) {
+  const items: Array<{ label: string; view: AppView }> = [
+    { label: "Feed", view: "feed" },
+    { label: "Leaders", view: "leaderboards" },
+    { label: "Trade", view: "trade" },
+    { label: "Portfolio", view: "portfolio" },
+  ];
+
   return (
     <nav className="bottom-nav" aria-label="Primary" data-testid="bottom-nav">
-      <button
-        type="button"
-        aria-pressed={activeView === "feed"}
-        onClick={() => onViewChange("feed")}
-      >
-        🔥 Feed
-      </button>
-      <button
-        type="button"
-        aria-pressed={activeView === "leaderboards"}
-        onClick={() => onViewChange("leaderboards")}
-      >
-        🏆 Leaders
-      </button>
-      <button
-        type="button"
-        aria-pressed={activeView === "trade"}
-        onClick={() => onViewChange("trade")}
-      >
-        ↔ Trade
-      </button>
-      <button
-        type="button"
-        aria-pressed={activeView === "portfolio"}
-        onClick={() => onViewChange("portfolio")}
-      >
-        💵 Portfolio
-      </button>
+      {items.map((item) => (
+        <button
+          type="button"
+          aria-pressed={activeView === item.view}
+          key={item.view}
+          onClick={() => onViewChange(item.view)}
+        >
+          <NavIcon view={item.view} />
+          <span>{item.label}</span>
+        </button>
+      ))}
     </nav>
+  );
+}
+
+function NavIcon({ view }: { view: AppView }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="bottom-nav-icon"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      {view === "feed" ? (
+        <>
+          <path d="M13.2 2.6c.6 2.9-.8 4.6-2.1 6.1-1.2 1.3-2.3 2.6-1.8 4.7" />
+          <path d="M17.8 8.1c2 2.1 2.8 5.3 1.3 8.2-1.4 2.8-4.1 4.5-7.1 4.5s-5.4-1.5-6.8-4.1c-1.4-2.7-.7-5.8 1.8-8.4" />
+          <path d="M12.1 20.8c2.1-1 2.8-2.7 2.3-4.6-.4-1.5-1.5-2.4-2.8-3.3-.4 1.7-2.2 2.3-2.5 4.1-.3 1.7.8 3.1 3 3.8Z" />
+        </>
+      ) : view === "leaderboards" ? (
+        <>
+          <path d="M7 4h10v3.5a5 5 0 0 1-10 0V4Z" />
+          <path d="M7 6H4.5a2.5 2.5 0 0 0 2.8 3.6" />
+          <path d="M17 6h2.5a2.5 2.5 0 0 1-2.8 3.6" />
+          <path d="M12 12.5V17" />
+          <path d="M8.5 20h7" />
+          <path d="M10 17h4" />
+        </>
+      ) : view === "trade" ? (
+        <>
+          <path d="M7 7h11" />
+          <path d="m15 4 3 3-3 3" />
+          <path d="M17 17H6" />
+          <path d="m9 14-3 3 3 3" />
+        </>
+      ) : (
+        <>
+          <path d="M4.5 8.5h15a1.5 1.5 0 0 1 1.5 1.5v7.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h12" />
+          <path d="M16.5 13.5H21" />
+          <path d="M17.8 13.5h.1" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function ThemeModeIcon({ mode }: { mode: ThemeMode }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="theme-mode-icon"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      {mode === "light" ? (
+        <>
+          <path d="M12 3v2" />
+          <path d="M12 19v2" />
+          <path d="M4.22 4.22l1.42 1.42" />
+          <path d="M18.36 18.36l1.42 1.42" />
+          <path d="M3 12h2" />
+          <path d="M19 12h2" />
+          <path d="M4.22 19.78l1.42-1.42" />
+          <path d="M18.36 5.64l1.42-1.42" />
+          <circle cx="12" cy="12" r="4" />
+        </>
+      ) : (
+        <path d="M20.5 14.2A7.8 7.8 0 0 1 9.8 3.5 8.7 8.7 0 1 0 20.5 14.2Z" />
+      )}
+    </svg>
   );
 }
 
@@ -846,10 +1433,45 @@ function MarketDurationToggle({
   );
 }
 
+function TradeExpiryRail({
+  onExpiryChange,
+  options,
+  selectedExpiryDate,
+}: {
+  onExpiryChange: (expiryDate: string) => void;
+  options: TradeExpiryOption[];
+  selectedExpiryDate: string | null;
+}) {
+  if (!options.length) {
+    return null;
+  }
+
+  return (
+    <div className="trade-expiry-rail" aria-label="Trade expiration dates">
+      {options.map((option) => (
+        <button
+          type="button"
+          className="trade-expiry-option"
+          aria-pressed={selectedExpiryDate === option.value}
+          data-testid={`trade-expiry-${marketDurationTestId(option.value)}`}
+          key={option.value}
+          onClick={() => onExpiryChange(option.value)}
+        >
+          <strong>{option.label}</strong>
+          <small>{option.sublabel}</small>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function TradeTicket({
   customStrike = null,
   copyAmount,
+  expiryOptions = [],
+  marketPriceLabel = null,
   marketRows,
+  selectedExpiryDate = null,
   selectedMarketId,
   selectedSide,
   selectedDuration = "all",
@@ -862,14 +1484,17 @@ export function TradeTicket({
   walletConnected = false,
   onAmountSet,
   onDurationChange = () => undefined,
+  onExpiryChange = () => undefined,
   onMarketChange,
   onSideChange,
-  onStrikeChange = () => undefined,
   onWalletSubmit,
 }: {
   customStrike?: TradeMarketSelection | null;
   copyAmount: number;
+  expiryOptions?: TradeExpiryOption[];
+  marketPriceLabel?: string | null;
   marketRows: TradeMarketLadderRow[];
+  selectedExpiryDate?: string | null;
   selectedMarketId: string;
   selectedSide: TradeSide;
   selectedDuration?: string;
@@ -882,19 +1507,21 @@ export function TradeTicket({
   walletConnected?: boolean;
   onAmountSet: (amount: number) => void;
   onDurationChange?: (duration: string) => void;
+  onExpiryChange?: (expiryDate: string) => void;
   onMarketChange: (selection: TradeMarketSelection) => void;
   onSideChange: (side: TradeSide) => void;
-  onStrikeChange?: (selection: TradeMarketSelection) => void;
   onWalletSubmit: () => void;
 }) {
-  const baseSelectedMarket =
-    marketRows.find((market) => market.id === selectedMarketId) ??
-    marketRows[0] ??
-    null;
-  const selectedMarket = baseSelectedMarket
-    ? applyCustomStrikeToTradeMarket(baseSelectedMarket, customStrike, "") ??
-      baseSelectedMarket
-    : null;
+  const {
+    ladderRows,
+    selectedLadderKey,
+    selectedMarket,
+  } = buildTradeLadderDisplayRows({
+    customStrike,
+    marketPriceLabel,
+    marketRows,
+    selectedMarketId,
+  });
   const selectedSideSummary = selectedMarket
     ? selectedSide === "UP"
       ? selectedMarket.up
@@ -903,12 +1530,17 @@ export function TradeTicket({
   const returnPreview = quote
     ? buildReturnPreviewFromQuote(quote)
     : buildReturnPreview(copyAmount, selectedSideSummary?.estimatedPrice);
-  const selectedCustomStrike =
-    selectedMarket && customStrike?.marketId === selectedMarket.id
-      ? customStrike
-      : selectedMarket
-        ? buildTradeMarketSelectionFromRow(selectedMarket)
-        : null;
+  const spotPrice = marketPriceLabel ? parseTradeStrikeInputValue(marketPriceLabel) : null;
+  const spotLineIndex =
+    spotPrice === null
+      ? -1
+      : ladderRows.findIndex((row) => row.selection.strike >= spotPrice);
+  const normalizedSpotLineIndex =
+    spotPrice === null || ladderRows.length === 0
+      ? -1
+      : spotLineIndex === -1
+        ? ladderRows.length
+        : spotLineIndex;
   const hasPredictManagerObjectId = predictManagerObjectId.trim().length > 0;
   const canSubmitTrade =
     walletConnected &&
@@ -916,15 +1548,21 @@ export function TradeTicket({
     quoteStatus === "ready" &&
     Boolean(quote) &&
     !walletActionPending;
-  const tradeWalletButtonLabel = !walletConnected
-    ? "Connect wallet first"
-    : !hasPredictManagerObjectId
-      ? "Create Predict account first"
-      : quoteStatus === "loading"
-        ? "Wait for quote"
-        : walletActionPending
-          ? "Sending..."
-          : "Send to wallet";
+  const tradeWalletButtonLabel = !selectedMarket
+    ? "No active market"
+    : !walletConnected
+      ? "Connect wallet first"
+      : !hasPredictManagerObjectId
+        ? "Create Predict account first"
+        : quoteStatus === "loading"
+          ? "Wait for quote"
+          : quoteStatus === "error"
+            ? "Quote unavailable"
+            : quoteStatus !== "ready"
+              ? "Select a price"
+              : walletActionPending
+                ? "Sending..."
+                : "Confirm transaction";
 
   return (
     <section className="trade-ticket" aria-label="Trade" data-testid={testId}>
@@ -942,184 +1580,193 @@ export function TradeTicket({
           onDurationChange={onDurationChange}
         />
       ) : null}
+      <TradeExpiryRail
+        options={expiryOptions}
+        selectedExpiryDate={selectedExpiryDate}
+        onExpiryChange={onExpiryChange}
+      />
       <div className="trade-ticket-panel">
-        <div className="trade-ticket-title">
-          <p>Make a BTC prediction</p>
-          <strong>
-            {selectedMarket
-              ? `${selectedSide} / ${selectedMarket.timeRemainingLabel}`
-              : `${selectedSide} / No active market`}
-          </strong>
-        </div>
-        <div className="trade-market-ladder" aria-label="Pick a market">
-          <div className="trade-ladder-heading">
-            <span>Pick a market</span>
-            <small>Live Predict</small>
+        <div className="trade-ticket-title-row">
+          <div className="trade-ticket-title">
+            <p>Up/Down</p>
+            <strong>BTC strike ladder</strong>
           </div>
-          {marketRows.length ? marketRows.map((baseMarket) => {
-            const market =
-              applyCustomStrikeToTradeMarket(baseMarket, customStrike, "") ??
-              baseMarket;
-            const strikeOptions = getTradeStrikeOptionsForSelection(
-              market,
-              selectedMarket?.id === market.id ? selectedCustomStrike : null,
-            );
+          <span className="trade-duration-pill">
+            {selectedMarket?.intervalLabel ?? "No markets"}
+          </span>
+        </div>
 
-            return (
-              <div className="trade-market-item" key={baseMarket.id}>
-                <button
-                  type="button"
-                  className="trade-market-row"
-                  aria-pressed={selectedMarket?.id === market.id}
-                  onClick={() => onMarketChange(buildTradeMarketSelectionFromRow(market))}
-                >
-                  <span className="trade-market-main">
-                    <strong>{market.timeRemainingLabel}</strong>
-                    <small>{market.roundLabel}</small>
-                  </span>
-                  <span className="trade-market-strike">
-                    <strong>{market.strikeLabel}</strong>
-                    <small>{market.moneynessLabel}</small>
-                  </span>
-                  <span className="trade-market-flow">
-                    <strong>{market.activityLabel}</strong>
+        <div className="trade-ticket-stats">
+          <span>
+            <small>{selectedMarket?.pairLabel ?? "BTC/USD"}</small>
+            {marketPriceLabel ?? "Live market"}
+          </span>
+          <span>
+            <small>Expiry</small>
+            {selectedMarket?.expiryTimeLabel ?? "No active market"}
+          </span>
+        </div>
+
+        <div className="trade-market-ladder" aria-label="Up Down strike ladder">
+          <div className="trade-ladder-heading">
+            <span>UP</span>
+            <span>Strike</span>
+            <span>DOWN</span>
+          </div>
+          {ladderRows.length ? (
+            ladderRows.map(({ key, market, selection }, index) => {
+              const isSelectedStrike = key === selectedLadderKey;
+              const isSelectedUp = isSelectedStrike && selectedSide === "UP";
+              const isSelectedDown = isSelectedStrike && selectedSide === "DOWN";
+              const upQuote =
+                isSelectedUp && quoteStatus === "ready" && quote?.side === "UP" ? quote : null;
+              const downQuote =
+                isSelectedDown && quoteStatus === "ready" && quote?.side === "DOWN" ? quote : null;
+
+              return (
+                <div className="trade-ladder-row" key={key}>
+                  {index === normalizedSpotLineIndex ? (
+                    <div className="trade-spot-line">Oracle price {marketPriceLabel}</div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={`trade-ladder-side trade-ladder-side-up ${
+                      isSelectedUp ? "selected" : ""
+                    }`}
+                    aria-label={`Trade UP ${selection.strikeLabel}`}
+                    aria-pressed={isSelectedUp}
+                    onClick={() => {
+                      onMarketChange(selection);
+                      onSideChange("UP");
+                    }}
+                  >
+                    <strong>
+                      {upQuote ? formatTradeQuotePrice(upQuote) : formatTradeSidePrice(market.up)}
+                    </strong>
+                  </button>
+                  <span className="trade-ladder-strike">
+                    <strong>{selection.strikeLabel}</strong>
                     <small>
-                      UP {market.up.walletCount}{" "}
-                      {market.up.walletCount === 1 ? "wallet" : "wallets"} · DOWN{" "}
-                      {market.down.walletCount}{" "}
-                      {market.down.walletCount === 1 ? "wallet" : "wallets"}
+                      {market.timeRemainingLabel} · {market.moneynessLabel}
                     </small>
                   </span>
-                </button>
-                {selectedMarket?.id === market.id ? (
-                  <div className="trade-row-ticket" data-testid="trade-row-ticket">
-                    <div className="trade-row-ticket-heading">
-                      <strong>Trade this market</strong>
-                      <small>{selectedSide} · {market.expiryTimeLabel}</small>
-                    </div>
-                    <div className="trade-side-toggle" aria-label="Direction">
-                      <button
-                        type="button"
-                        className={selectedSide === "UP" ? "trade-side-up selected" : "trade-side-up"}
-                        aria-pressed={selectedSide === "UP"}
-                        onClick={() => onSideChange("UP")}
-                      >
-                        UP
-                      </button>
-                      <button
-                        type="button"
-                        className={selectedSide === "DOWN" ? "trade-side-down selected" : "trade-side-down"}
-                        aria-pressed={selectedSide === "DOWN"}
-                        onClick={() => onSideChange("DOWN")}
-                      >
-                        DOWN
-                      </button>
-                    </div>
-                    <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
-                      <span>
-                        <small>Spend</small>
-                        {formatCopyAmount(copyAmount)}
-                      </span>
-                      {quoteStatus === "loading" ? (
-                        <>
-                          <span className="metric-muted">
-                            <small>Est. payout</small>
-                            Quoting...
-                          </span>
-                          <span className="metric-muted">
-                            <small>Max profit</small>
-                            Quoting...
-                          </span>
-                        </>
-                      ) : quoteStatus === "error" ? (
-                        <>
-                          <span className="metric-muted">
-                            <small>Est. payout</small>
-                            Quote unavailable
-                          </span>
-                          <span className="metric-muted">
-                            <small>Max profit</small>
-                            Quote unavailable
-                          </span>
-                        </>
-                      ) : returnPreview ? (
-                        <>
-                          <span>
-                            <small>Est. payout</small>
-                            {returnPreview.payoutLabel}
-                          </span>
-                          <span>
-                            <small>Max profit</small>
-                            {returnPreview.profitLabel}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="metric-muted">
-                            <small>Est. payout</small>
-                            Quote needed
-                          </span>
-                          <span className="metric-muted">
-                            <small>Max profit</small>
-                            Quote needed
-                          </span>
-                        </>
-                      )}
-                      <span>
-                        <small>Strike</small>
-                        {market.strikeLabel}
-                      </span>
-                      <span>
-                        <small>Expiry</small>
-                        {market.expiryTimeLabel}
-                      </span>
-                    </div>
-                    <label className="trade-strike-select">
-                      <span>Strike</span>
-                      <select
-                        aria-label="Strike"
-                        data-testid="trade-strike-select"
-                        value={String(selectedCustomStrike?.strikeRaw ?? market.strikeRaw)}
-                        onChange={(event) => {
-                          const selectedOption = strikeOptions.find(
-                            (option) => String(option.strikeRaw) === event.currentTarget.value,
-                          );
-                          if (selectedOption) {
-                            onStrikeChange(buildTradeMarketSelection(market.id, selectedOption));
-                          }
-                        }}
-                      >
-                        {strikeOptions.map((option) => (
-                          <option key={option.strikeRaw} value={option.strikeRaw}>
-                            {option.strikeLabel}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <CopyAmountControls
-                      ariaLabel="Trade spend amounts"
-                      copyAmount={copyAmount}
-                      onAmountSet={onAmountSet}
-                    />
-                    <button
-                      type="button"
-                      className="trade-wallet-button"
-                      data-testid="trade-wallet-submit"
-                      disabled={!canSubmitTrade}
-                      onClick={onWalletSubmit}
-                    >
-                      {tradeWalletButtonLabel}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            );
-          }) : (
-            <button type="button" className="trade-market-row" aria-pressed="false" disabled>
-              No active markets
-            </button>
+                  <button
+                    type="button"
+                    className={`trade-ladder-side trade-ladder-side-down ${
+                      isSelectedDown ? "selected" : ""
+                    }`}
+                    aria-label={`Trade DOWN ${selection.strikeLabel}`}
+                    aria-pressed={isSelectedDown}
+                    onClick={() => {
+                      onMarketChange(selection);
+                      onSideChange("DOWN");
+                    }}
+                  >
+                    <strong>
+                      {downQuote ? formatTradeQuotePrice(downQuote) : formatTradeSidePrice(market.down)}
+                    </strong>
+                  </button>
+                </div>
+              );
+            })
+          ) : (
+            <div className="trade-ladder-empty">No active markets</div>
           )}
+          {normalizedSpotLineIndex === ladderRows.length ? (
+            <div className="trade-spot-line trade-spot-line-standalone">
+              Oracle price {marketPriceLabel}
+            </div>
+          ) : null}
         </div>
+
+        {selectedMarket ? (
+          <section className="trade-order-panel" aria-label="Selected position">
+            <div className="trade-row-ticket-heading">
+              <div>
+                <span>Selected</span>
+                <strong>
+                  {selectedSide} {selectedMarket.strikeLabel}
+                </strong>
+                <small>{formatTradeOutcome(selectedSide, selectedMarket.strikeLabel)}</small>
+              </div>
+              <small>{selectedMarket.expiryTimeLabel}</small>
+            </div>
+            <CopyAmountControls
+              ariaLabel="Trade spend amounts"
+              copyAmount={copyAmount}
+              onAmountSet={onAmountSet}
+            />
+            <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
+              <span>
+                <small>Spend</small>
+                {formatCopyAmount(copyAmount)}
+              </span>
+              {quoteStatus === "loading" ? (
+                <>
+                  <span className="metric-muted">
+                    <small>Est. payout</small>
+                    Quoting...
+                  </span>
+                  <span className="metric-muted">
+                    <small>Max profit</small>
+                    Quoting...
+                  </span>
+                </>
+              ) : quoteStatus === "error" ? (
+                <>
+                  <span className="metric-muted">
+                    <small>Est. payout</small>
+                    Quote unavailable
+                  </span>
+                  <span className="metric-muted">
+                    <small>Max profit</small>
+                    Quote unavailable
+                  </span>
+                </>
+              ) : returnPreview ? (
+                <>
+                  <span>
+                    <small>Est. payout</small>
+                    {returnPreview.payoutLabel}
+                  </span>
+                  <span>
+                    <small>Max profit</small>
+                    {returnPreview.profitLabel}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="metric-muted">
+                    <small>Est. payout</small>
+                    Quote needed
+                  </span>
+                  <span className="metric-muted">
+                    <small>Max profit</small>
+                    Quote needed
+                  </span>
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              className="trade-wallet-button"
+              data-testid="trade-wallet-submit"
+              disabled={!canSubmitTrade}
+              onClick={onWalletSubmit}
+            >
+              {tradeWalletButtonLabel}
+            </button>
+          </section>
+        ) : (
+          <button
+            type="button"
+            className="trade-wallet-button"
+            data-testid="trade-wallet-submit"
+            disabled
+          >
+            {tradeWalletButtonLabel}
+          </button>
+        )}
       </div>
     </section>
   );
@@ -1371,6 +2018,14 @@ export function PortfolioPanel({
       </div>
       {activeTab === "positions" && positions.length ? (
         <div className="portfolio-list">
+          <div className="portfolio-table-head" aria-hidden="true">
+            <span>Market / side</span>
+            <span>Exp</span>
+            <span>Cost</span>
+            <span>Est. close</span>
+            <span>Max payout</span>
+            <span />
+          </div>
           {positions.map((position) => {
             const isExpired =
               typeof nowMs === "number" ? position.expiryMs <= nowMs : position.isExpired;
@@ -1406,100 +2061,88 @@ export function PortfolioPanel({
 
             return (
               <article className="portfolio-row" key={position.id}>
-                <div className="portfolio-row-main">
+                <div className="portfolio-market-cell">
                   <span className={position.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
                     {position.direction}
                   </span>
                   <div>
-                    <strong>BTC/USD {position.strikeLabel}</strong>
-                    <small>{statusSummary}</small>
+                    <strong>BTC/USD</strong>
+                    <small>Strike {position.strikeLabel}</small>
                   </div>
                 </div>
-                <div className="portfolio-row-metrics">
-                  <span>
-                    <small>{isExpired ? "Claim value" : "Est. close"}</small>
-                    {isExpired
-                      ? position.claimValueLabel ?? (status === "loading" ? "Checking" : "Pending")
-                      : position.closeValueLabel ?? (status === "loading" ? "Checking" : "Unavailable")}
-                  </span>
-                  <span>
-                    <small>Cost</small>
-                    {position.costBasisLabel}
-                  </span>
-                  <span>
-                    <small>{isExpired ? "Settled BTC" : "Max payout"}</small>
-                    {isExpired
-                      ? position.settlementPriceLabel ?? "Pending"
-                      : position.maxPayoutLabel}
-                  </span>
+                <div className="portfolio-expiry-cell">
+                  <strong>{position.expiryTimeLabel}</strong>
+                  <small>{statusSummary}</small>
                 </div>
-                <button
-                  type="button"
-                  className="portfolio-action-button"
-                  disabled={!isDismissible && walletActionPending}
-                  onClick={() => {
-                    if (isDismissible) {
-                      onDismissPosition?.(position.id);
-                      return;
-                    }
+                <span className="portfolio-table-cell">{position.costBasisLabel}</span>
+                <span className="portfolio-table-cell">
+                  {isExpired
+                    ? position.claimValueLabel ?? (status === "loading" ? "Checking" : "Pending")
+                    : position.closeValueLabel ?? (status === "loading" ? "Checking" : "Unavailable")}
+                </span>
+                <span className="portfolio-table-cell">
+                  {isExpired ? position.settlementPriceLabel ?? "Pending" : position.maxPayoutLabel}
+                </span>
+                <div className="portfolio-action-cell">
+                  <button
+                    type="button"
+                    className="portfolio-action-button portfolio-row-action"
+                    disabled={!isDismissible && walletActionPending}
+                    onClick={() => {
+                      if (isDismissible) {
+                        onDismissPosition?.(position.id);
+                        return;
+                      }
 
-                    onPositionAction(actionPosition);
-                  }}
-                >
-                  {!isDismissible && walletActionPending && walletSubmittedPositionId === position.id
-                    ? "Sending..."
-                    : actionLabel}
-                </button>
+                      onPositionAction(actionPosition);
+                    }}
+                  >
+                    {!isDismissible && walletActionPending && walletSubmittedPositionId === position.id
+                      ? "Sending..."
+                      : actionLabel}
+                  </button>
+                </div>
               </article>
             );
           })}
         </div>
       ) : activeTab === "positions" ? (
-        <div className="portfolio-empty">{emptyLabel}</div>
+        <div className="portfolio-empty">
+          <strong>{emptyLabel}</strong>
+        </div>
       ) : historyItems.length ? (
         <div className="portfolio-history" data-testid="portfolio-history">
           <p className="portfolio-history-title">Trade history</p>
+          <div className="portfolio-table-head portfolio-history-table-head" aria-hidden="true">
+            <span>Market / side</span>
+            <span>Closed</span>
+            <span>Cost</span>
+            <span>Payout</span>
+            <span>PNL</span>
+          </div>
           {historyItems.map((item) => (
             <article
               className={`portfolio-history-row portfolio-history-row-${item.pnlTone}`}
               key={item.id}
             >
-              <div className="portfolio-row-main">
+              <div className="portfolio-market-cell">
                 <span className={item.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
                   {item.direction}
                 </span>
                 <div>
-                  <strong>BTC/USD {item.strikeLabel}</strong>
-                  <small>
-                    {item.statusLabel} · Exp {item.expiryTimeLabel}
-                  </small>
+                  <strong>BTC/USD</strong>
+                  <small>{item.strikeLabel}</small>
                 </div>
               </div>
-              <div className="portfolio-row-metrics portfolio-history-metrics">
-                <span>
-                  <small>Cost</small>
-                  {item.costLabel}
-                </span>
-                <span>
-                  <small>Payout</small>
-                  {item.payoutLabel}
-                </span>
-                <span>
-                  <small>PNL</small>
-                  {item.pnlLabel}
-                </span>
-                <span>
-                  <small>Opened</small>
-                  {item.openedAtLabel}
-                </span>
-                <span>
-                  <small>Updated</small>
-                  {item.updatedAtLabel}
-                </span>
-                <span>
-                  <small>Remaining</small>
-                  {item.remainingLabel}
-                </span>
+              <div className="portfolio-expiry-cell">
+                <strong>{item.expiryTimeLabel}</strong>
+                <small>{item.statusLabel}</small>
+              </div>
+              <span className="portfolio-table-cell">{item.costLabel}</span>
+              <span className="portfolio-table-cell">{item.payoutLabel}</span>
+              <div className={`portfolio-history-pnl portfolio-history-pnl-${item.pnlTone}`}>
+                <small>PNL</small>
+                <strong>{item.pnlLabel}</strong>
               </div>
             </article>
           ))}
@@ -1532,13 +2175,13 @@ function walletLeaderboardMetricValue(
 function walletLeaderboardEffectiveBoard(
   board: WalletLeaderboardPanelBoardKey,
   sortDirection: WalletLeaderboardSortDirection,
-  streakMode: WalletLeaderboardStreakMode,
+  rangeMode: WalletLeaderboardRangeMode,
 ): WalletLeaderboardBoardKey {
   if (board === "pnl") {
     return sortDirection === "best" ? "highestPnl" : "worstPnl";
   }
 
-  if (streakMode === "current") {
+  if (rangeMode === "current") {
     return sortDirection === "best"
       ? "currentWinningStreak"
       : "currentLosingStreak";
@@ -1582,55 +2225,62 @@ function walletLeaderboardMetricTone(
   }
 }
 
+function compactWalletLeaderboardLastLabel(label: string): string {
+  const withoutZone = label.replace(/\s(?:UTC|GMT|PDT|PST|EDT|EST|CDT|CST|MDT|MST).*/, "");
+  const [datePart] = withoutZone.split(",");
+  return datePart.trim() || label;
+}
+
 function walletLeaderboardListLabel(
   board: WalletLeaderboardPanelBoardKey,
   sortDirection: WalletLeaderboardSortDirection,
-  streakMode: WalletLeaderboardStreakMode,
+  rangeMode: WalletLeaderboardRangeMode,
 ): string {
   if (board === "pnl") {
     return sortDirection === "best" ? "Top PnL" : "Worst PnL";
   }
 
   const streakType = sortDirection === "best" ? "Win" : "Lose";
-  return streakMode === "current"
+  return rangeMode === "current"
     ? `Current ${streakType} Streaks`
     : `${streakType} Streaks`;
 }
 
 export function WalletLeaderboardsPanel({
   activeBoard,
+  rangeMode = "allTime",
   sortDirection = "best",
-  streakMode = "allTime",
   snapshot,
   status = "ready",
   onBoardChange,
+  onRangeModeChange,
   onSortDirectionChange,
-  onStreakModeChange,
 }: {
   activeBoard: WalletLeaderboardPanelBoardKey;
+  rangeMode?: WalletLeaderboardRangeMode;
   sortDirection?: WalletLeaderboardSortDirection;
-  streakMode?: WalletLeaderboardStreakMode;
   snapshot: WalletLeaderboardsSnapshot;
   status?: WalletLeaderboardsStatus;
   onBoardChange: (board: WalletLeaderboardPanelBoardKey) => void;
+  onRangeModeChange?: (mode: WalletLeaderboardRangeMode) => void;
   onSortDirectionChange?: (direction: WalletLeaderboardSortDirection) => void;
-  onStreakModeChange?: (mode: WalletLeaderboardStreakMode) => void;
 }) {
   const activeBoardDefinition =
     WALLET_LEADERBOARD_BOARDS.find((board) => board.key === activeBoard) ??
     WALLET_LEADERBOARD_BOARDS[0];
+  const hasCurrentRange = activeBoardDefinition.key === "streaks";
+  const effectiveRangeMode = hasCurrentRange ? rangeMode : "allTime";
   const effectiveBoard = walletLeaderboardEffectiveBoard(
     activeBoardDefinition.key,
     sortDirection,
-    streakMode,
+    effectiveRangeMode,
   );
   const coreMetricLabel = walletLeaderboardMetricLabel(effectiveBoard);
   const entries = selectWalletLeaderboardEntries(snapshot, effectiveBoard);
-  const isStreakBoard = activeBoardDefinition.key === "streaks";
   const listLabel = walletLeaderboardListLabel(
     activeBoardDefinition.key,
     sortDirection,
-    streakMode,
+    effectiveRangeMode,
   );
   const emptyLabel =
     status === "loading"
@@ -1638,9 +2288,6 @@ export function WalletLeaderboardsPanel({
       : status === "error"
         ? "Could not load wallet leaderboards"
         : "No settled wallet results yet";
-  const sourceLabel =
-    status === "loading" && entries.length === 0 ? "Loading" : snapshot.sourceLabel;
-
   return (
     <section
       className="wallet-leaderboards-panel"
@@ -1649,7 +2296,6 @@ export function WalletLeaderboardsPanel({
     >
       <div className="section-heading">
         <p>Wallet Leaders</p>
-        <span>{sourceLabel}</span>
       </div>
       <div className="wallet-leaderboard-toolbar">
         <div className="wallet-leaderboard-tabs" aria-label="Wallet leaderboard boards">
@@ -1681,35 +2327,53 @@ export function WalletLeaderboardsPanel({
           <span aria-hidden="true">{sortDirection === "best" ? "↑" : "↓"}</span>
         </button>
       </div>
-      {isStreakBoard ? (
-        <div className="wallet-leaderboard-streak-modes" aria-label="Streak range">
-          <button
-            type="button"
-            aria-pressed={streakMode === "allTime"}
-            data-testid="wallet-leaderboard-streak-mode-allTime"
-            onClick={() => onStreakModeChange?.("allTime")}
-          >
-            All Time
-          </button>
-          <button
-            type="button"
-            aria-pressed={streakMode === "current"}
-            data-testid="wallet-leaderboard-streak-mode-current"
-            onClick={() => onStreakModeChange?.("current")}
-          >
-            Current
-          </button>
-        </div>
-      ) : null}
+      <div className="wallet-leaderboard-range-modes" aria-label="Leaderboard range">
+        <button
+          type="button"
+          aria-pressed={effectiveRangeMode === "allTime"}
+          data-testid="wallet-leaderboard-range-mode-allTime"
+          onClick={() => onRangeModeChange?.("allTime")}
+        >
+          All Time
+        </button>
+        <button
+          type="button"
+          aria-pressed={effectiveRangeMode === "current"}
+          data-testid="wallet-leaderboard-range-mode-current"
+          disabled={!hasCurrentRange}
+          title={
+            hasCurrentRange
+              ? undefined
+              : "Current PnL needs open-position PnL from the indexer"
+          }
+          onClick={() => onRangeModeChange?.("current")}
+        >
+          Current
+        </button>
+      </div>
       {entries.length ? (
         <div className="wallet-leaderboard-list">
+          <div
+            className={`wallet-leaderboard-table-head wallet-leaderboard-table-head-${activeBoardDefinition.key}`}
+            aria-hidden="true"
+          >
+            <span>Rank</span>
+            <span>Wallet</span>
+            <span>{coreMetricLabel}</span>
+            {activeBoardDefinition.key === "streaks" ? <span>PNL</span> : null}
+            <span>Wins</span>
+            <span>Losses</span>
+            <span>Open</span>
+            <span>{activeBoardDefinition.key === "streaks" ? "Current" : "Streak"}</span>
+            <span>Last</span>
+          </div>
           {entries.map((entry) => {
             const coreMetricValue = walletLeaderboardMetricValue(entry, effectiveBoard);
             const coreMetricTone = walletLeaderboardMetricTone(entry, effectiveBoard);
 
             return (
               <article
-                className={`wallet-leaderboard-row wallet-leaderboard-row-${entry.totalPnlTone}`}
+                className={`wallet-leaderboard-row wallet-leaderboard-row-${activeBoardDefinition.key} wallet-leaderboard-row-${entry.totalPnlTone}`}
                 data-testid="wallet-leaderboard-row"
                 key={`${effectiveBoard}-${entry.wallet}-${entry.rank}`}
               >
@@ -1728,10 +2392,12 @@ export function WalletLeaderboardsPanel({
                   </div>
                 </div>
                 <div className="wallet-leaderboard-metrics">
-                  <span>
-                    <small>PNL</small>
-                    {entry.totalPnlLabel}
-                  </span>
+                  {activeBoardDefinition.key === "pnl" ? null : (
+                    <span>
+                      <small>PNL</small>
+                      {entry.totalPnlLabel}
+                    </span>
+                  )}
                   <span>
                     <small>Wins</small>
                     {entry.winCount}
@@ -1750,7 +2416,9 @@ export function WalletLeaderboardsPanel({
                   </span>
                   <span>
                     <small>Last</small>
-                    {entry.lastSettledLabel}
+                    <span title={entry.lastSettledLabel}>
+                      {compactWalletLeaderboardLastLabel(entry.lastSettledLabel)}
+                    </span>
                   </span>
                 </div>
               </article>
@@ -1770,6 +2438,7 @@ export function MarketHeatPreview({
   rows,
   sourceLabel,
   sortMode,
+  density = "expanded",
   selectedDuration = "all",
   showExpired,
   canShowMore,
@@ -1780,6 +2449,7 @@ export function MarketHeatPreview({
   testId = "market-heat-preview",
   onAmountSet,
   onDurationChange = () => undefined,
+  onDensityChange = () => undefined,
   onShowExpiredChange,
   onShowMore,
   onSortModeChange,
@@ -1790,6 +2460,7 @@ export function MarketHeatPreview({
   rows: MarketHeatPreviewRow[];
   sourceLabel: string;
   sortMode: MarketHeatSortMode;
+  density?: MarketHeatDensity;
   selectedDuration?: string;
   showExpired: boolean;
   canShowMore: boolean;
@@ -1800,6 +2471,7 @@ export function MarketHeatPreview({
   testId?: string;
   onAmountSet: (amount: number) => void;
   onDurationChange?: (duration: string) => void;
+  onDensityChange?: (density: MarketHeatDensity) => void;
   onShowExpiredChange: (showExpired: boolean) => void;
   onShowMore: () => void;
   onSortModeChange: (sortMode: MarketHeatSortMode) => void;
@@ -1807,12 +2479,94 @@ export function MarketHeatPreview({
   onSelectRow: (rowId: string) => void;
   onCloseIntent: () => void;
 }) {
+  const swipeStartRef = useRef<{ rowId: string; x: number; y: number } | null>(null);
+  const swipedRowRef = useRef<string | null>(null);
+  const [swipePreview, setSwipePreview] = useState<MarketHeatSwipePreview | null>(null);
+  const isCompact = density === "compact";
+  const startMarketHeatSwipe = (
+    rowId: string,
+    event: PointerEvent<HTMLElement>,
+  ) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    swipeStartRef.current = {
+      rowId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    setSwipePreview(null);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const updateMarketHeatSwipe = (
+    row: MarketHeatPreviewRow,
+    event: PointerEvent<HTMLElement>,
+  ) => {
+    const swipeStart = swipeStartRef.current;
+
+    if (!swipeStart || swipeStart.rowId !== row.id) {
+      return;
+    }
+
+    const deltaX = event.clientX - swipeStart.x;
+    const deltaY = event.clientY - swipeStart.y;
+
+    if (deltaX <= 8 || Math.abs(deltaY) > MARKET_HEAT_SWIPE_VERTICAL_TOLERANCE) {
+      setSwipePreview((current) => (current?.rowId === row.id ? null : current));
+      return;
+    }
+
+    setSwipePreview({
+      action: resolveMarketHeatSwipeAction(deltaX, deltaY, row.status),
+      deltaX: Math.min(deltaX, MARKET_HEAT_SWIPE_MAX_OFFSET),
+      rowId: row.id,
+    });
+  };
+  const finishMarketHeatSwipe = (
+    row: MarketHeatPreviewRow,
+    event: PointerEvent<HTMLElement>,
+  ) => {
+    const swipeStart = swipeStartRef.current;
+    swipeStartRef.current = null;
+    setSwipePreview(null);
+
+    if (!swipeStart || swipeStart.rowId !== row.id) {
+      return;
+    }
+
+    const deltaX = event.clientX - swipeStart.x;
+    const deltaY = event.clientY - swipeStart.y;
+    const action = resolveMarketHeatSwipeAction(deltaX, deltaY, row.status);
+
+    if (action === "none") {
+      return;
+    }
+
+    swipedRowRef.current = row.id;
+
+    if (action === "submit") {
+      onWalletSubmit(row.id);
+      return;
+    }
+
+    onSelectRow(row.id);
+  };
+
   return (
-    <section className="market-heat-list" aria-label="Alpha Feed" data-testid={testId}>
+    <section
+      className={`market-heat-list market-heat-list-${density}`}
+      aria-label="Alpha Feed"
+      data-testid={testId}
+    >
       <div className="section-heading market-heat-heading">
         <div className="market-heat-heading-title">
-          <p>Alpha Feed</p>
-          <span>{sourceLabel} BTC markets</span>
+          <p
+            aria-label={`Alpha Feed, ${sourceLabel} BTC markets`}
+            title={`${sourceLabel} BTC markets`}
+          >
+            Alpha Feed
+          </p>
         </div>
         <div className="market-heat-controls">
           {durationOptions.length ? (
@@ -1847,23 +2601,43 @@ export function MarketHeatPreview({
             />
             <span>Show expired</span>
           </label>
-          <div className="market-heat-sort" aria-label="Market heat sort">
-            <button
-              type="button"
-              aria-pressed={sortMode === "latest"}
-              data-testid="market-heat-sort-latest"
-              onClick={() => onSortModeChange("latest")}
-            >
-              Latest
-            </button>
-            <button
-              type="button"
-              aria-pressed={sortMode === "heat"}
-              data-testid="market-heat-sort-heat"
-              onClick={() => onSortModeChange("heat")}
-            >
-              Heat
-            </button>
+          <div className="market-heat-secondary-controls">
+            <div className="market-heat-sort" aria-label="Market heat sort">
+              <button
+                type="button"
+                aria-pressed={sortMode === "latest"}
+                data-testid="market-heat-sort-latest"
+                onClick={() => onSortModeChange("latest")}
+              >
+                Latest
+              </button>
+              <button
+                type="button"
+                aria-pressed={sortMode === "heat"}
+                data-testid="market-heat-sort-heat"
+                onClick={() => onSortModeChange("heat")}
+              >
+                Heat
+              </button>
+            </div>
+            <div className="market-heat-density-toggle" aria-label="Feed row density">
+              <button
+                type="button"
+                aria-pressed={density === "compact"}
+                data-testid="market-heat-density-compact"
+                onClick={() => onDensityChange("compact")}
+              >
+                Compact
+              </button>
+              <button
+                type="button"
+                aria-pressed={density === "expanded"}
+                data-testid="market-heat-density-expanded"
+                onClick={() => onDensityChange("expanded")}
+              >
+                Expanded
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1882,142 +2656,216 @@ export function MarketHeatPreview({
           ) : null}
         </div>
       ) : null}
+      {rows.length > 0 && isCompact ? (
+        <div className="market-heat-table-head" aria-hidden="true">
+          <span>Wallet</span>
+          <span>Direction</span>
+          <span>Strike</span>
+          <span>Duration</span>
+          <span>Heat</span>
+          <span />
+        </div>
+      ) : null}
       {rows.map((row) => {
         const isSelected = row.id === selectedRowId;
         const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
         const sideClass = row.side.toLowerCase();
         const isWalletSubmitReady = row.status === "copy_ready";
+        const swipePreviewForRow = swipePreview?.rowId === row.id ? swipePreview : null;
+        const isSwipeConfirming = swipePreviewForRow?.action === "submit";
         const returnPreview = buildReturnPreview(copyAmount, estimatePriceFromRow(row));
+        const intentPanelElement = intentPanel ? (
+          <div
+            className={`inline-watch-panel inline-watch-panel-${row.status}`}
+            data-testid="market-heat-intent-panel"
+          >
+            <div className="market-heat-intent-targets" aria-label={`${row.displayName} intent`}>
+              <span>
+                <small>Target</small>
+                <strong>
+                  {row.side === "UP" ? "Above" : "Below"}{" "}
+                  {row.strikeLabel.replace(/^Strike\s+/, "")}
+                </strong>
+                <em>at expiry</em>
+              </span>
+              <span>
+                <small>Expiry</small>
+                <strong>{row.expiryTimeLabel}</strong>
+              </span>
+              <span>
+                <small>Potential payout</small>
+                <strong>{returnPreview?.profitLabel ?? intentPanel.detailLabel}</strong>
+              </span>
+            </div>
+            <div className="market-heat-stake-label">Stake amount</div>
+            <CopyAmountControls
+              ariaLabel="Quick spend amounts"
+              copyAmount={copyAmount}
+              onAmountSet={onAmountSet}
+              stopPropagation={true}
+            />
+            <div className="market-heat-intent-footer">
+              <span>
+                <small>Est. payout</small>
+                <strong>{returnPreview?.payoutLabel ?? "Quote needed"}</strong>
+              </span>
+              <span>
+                <small>Max profit</small>
+                <strong>{returnPreview?.profitLabel ?? "Quote needed"}</strong>
+              </span>
+              <span>
+                <small>Cost</small>
+                <strong>{formatCopyAmount(copyAmount)}</strong>
+              </span>
+              <span>
+                <small>Heat</small>
+                <strong>{row.heatScore}</strong>
+              </span>
+              {isWalletSubmitReady ? (
+                <button
+                  type="button"
+                  className="wallet-submit-button"
+                  data-testid="market-heat-wallet-submit"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onWalletSubmit(row.id);
+                  }}
+                >
+                  Confirm transaction
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null;
 
         return (
           <article
             aria-current={isSelected ? "true" : undefined}
-            className={`market-heat-row market-heat-row-${row.status} market-heat-row-${sideClass} ${
+            className={`market-heat-row market-heat-row-${density} market-heat-row-${row.status} market-heat-row-${sideClass} ${
               isSelected ? "market-heat-row-selected" : ""
+            } ${swipePreviewForRow ? "market-heat-row-swiping" : ""} ${
+              isSwipeConfirming ? "market-heat-row-swipe-confirming" : ""
             }`}
             data-testid="market-heat-row"
             key={row.id}
-            onClick={() => onSelectRow(row.id)}
+            onClick={() => {
+              if (swipedRowRef.current === row.id) {
+                swipedRowRef.current = null;
+                return;
+              }
+
+              onSelectRow(row.id);
+            }}
+            onPointerCancel={() => {
+              swipeStartRef.current = null;
+            }}
+            onPointerDown={
+              isCompact ? (event) => startMarketHeatSwipe(row.id, event) : undefined
+            }
+            onPointerMove={
+              isCompact ? (event) => updateMarketHeatSwipe(row, event) : undefined
+            }
+            onPointerUp={
+              isCompact ? (event) => finishMarketHeatSwipe(row, event) : undefined
+            }
           >
-            <div className="market-heat-main">
-              <div className="wallet-avatar" aria-hidden="true">
-                {walletAvatarLabel(row.displayName)}
-              </div>
-              <div className="market-heat-identity">
-                <div className="trader-title-row">
-                  <h2>{row.displayName}</h2>
-                  <span>{row.statusLabel}</span>
+            {isCompact ? (
+              <>
+                {swipePreviewForRow ? (
+                  <div className="market-heat-swipe-action" aria-hidden="true">
+                    {isSwipeConfirming ? "Confirm" : "Open"}
+                  </div>
+                ) : null}
+                <div
+                  className="market-heat-compact-row"
+                  style={
+                    swipePreviewForRow
+                      ? { transform: `translateX(${swipePreviewForRow.deltaX}px)` }
+                      : undefined
+                  }
+                >
+                  <div className="market-heat-compact-wallet">
+                    <div className="wallet-avatar wallet-avatar-compact" aria-hidden="true">
+                      {walletAvatarLabel(row.displayName)}
+                    </div>
+                    <div className="market-heat-compact-identity">
+                      <strong>{row.displayName}</strong>
+                      <span>{row.statusLabel}</span>
+                    </div>
+                  </div>
+                  <strong className={`direction-pill direction-pill-${sideClass}`}>
+                    {row.side}
+                  </strong>
+                  <div className="market-heat-compact-strike">
+                    <strong>{row.strikeLabel.replace(/^Strike\s+/, "")}</strong>
+                  </div>
+                  <div className="market-heat-compact-duration">
+                    <strong>{row.intervalLabel}</strong>
+                  </div>
+                  <div className="market-heat-compact-heat">
+                    <strong>{row.heatScore}</strong>
+                  </div>
+                  <ChevronIcon
+                    className={`market-heat-compact-chevron ${
+                      isSelected ? "market-heat-compact-chevron-open" : ""
+                    }`}
+                  />
                 </div>
-              </div>
-              <button
-                type="button"
-                data-testid="market-heat-row-action"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onSelectRow(row.id);
-                }}
-              >
-                {row.actionLabel}
-              </button>
-            </div>
-            <div className="alpha-call-line">
-              <div>
-                <span>{row.strikeLabel}</span>
-                <strong className={`direction-pill direction-pill-${sideClass}`}>{row.side}</strong>
-              </div>
-              <span>{row.intervalLabel} market</span>
-            </div>
-            <div className="trader-row-metrics" aria-label={`${row.displayName} market stats`}>
-              <span>
-                <small>Cost</small>
-                {formatObservedBuyAmount(row)}
-              </span>
-              <span>
-                <small>Expiry</small>
-                {row.expiryTimeLabel}
-              </span>
-              <span>
-                <small>Heat</small>
-                {row.heatScore}
-              </span>
-            </div>
-            {intentPanel ? (
-              <div
-                className={`inline-watch-panel inline-watch-panel-${row.status}`}
-                data-testid="market-heat-intent-panel"
-              >
-                <div className="inline-copy-header">
-                  <div className="inline-copy-summary">
-                    <p>{intentPanel.title}</p>
-                    <strong>{intentPanel.actionLabel}</strong>
-                    <span>{intentPanel.signatureLabel}</span>
+                {intentPanelElement}
+              </>
+            ) : (
+              <>
+                <div className="market-heat-main">
+                  <div className="wallet-avatar" aria-hidden="true">
+                    {walletAvatarLabel(row.displayName)}
+                  </div>
+                  <div className="market-heat-identity">
+                    <div className="trader-title-row">
+                      <h2>{row.displayName}</h2>
+                      <span>{row.statusLabel}</span>
+                    </div>
                   </div>
                   <button
                     type="button"
-                    aria-label={`Cancel ${row.displayName} watch`}
-                    className="close-copy-button"
-                    data-testid="close-market-heat-intent"
+                    data-testid="market-heat-row-action"
                     onClick={(event) => {
                       event.stopPropagation();
-                      onCloseIntent();
+                      onSelectRow(row.id);
                     }}
                   >
-                    {intentPanel.closeLabel}
+                    {row.actionLabel}
                   </button>
                 </div>
-                <div className="market-heat-intent-meta" aria-label={`${row.displayName} intent`}>
+                <div className="alpha-call-line">
+                  <div>
+                    <span>{row.strikeLabel}</span>
+                    <strong className={`direction-pill direction-pill-${sideClass}`}>
+                      {row.side}
+                    </strong>
+                  </div>
+                  <span>{row.intervalLabel} market</span>
+                </div>
+                <div className="trader-row-metrics" aria-label={`${row.displayName} market stats`}>
                   <span>
-                    <small>Spend</small>
-                    {formatCopyAmount(copyAmount)}
-                  </span>
-                  {returnPreview ? (
-                    <>
-                      <span>
-                        <small>Est. payout</small>
-                        {returnPreview.payoutLabel}
-                      </span>
-                      <span>
-                        <small>Max profit</small>
-                        {returnPreview.profitLabel}
-                      </span>
-                    </>
-                  ) : null}
-                  <span>
-                    <small>Signal</small>
-                    {intentPanel.detailLabel}
+                    <small>Cost</small>
+                    {formatObservedBuyAmount(row)}
                   </span>
                   <span>
                     <small>Expiry</small>
                     {row.expiryTimeLabel}
                   </span>
+                  <span>
+                    <small>Heat</small>
+                    {row.heatScore}
+                  </span>
                 </div>
-                <CopyAmountControls
-                  ariaLabel="Quick spend amounts"
-                  copyAmount={copyAmount}
-                  onAmountSet={onAmountSet}
-                  stopPropagation={true}
-                />
-                {isWalletSubmitReady ? (
-                  <div className="wallet-submit-row">
-                    <button
-                      type="button"
-                      className="wallet-submit-button"
-                      data-testid="market-heat-wallet-submit"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onWalletSubmit(row.id);
-                      }}
-                    >
-                      Send to wallet
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
+                {intentPanelElement}
+              </>
+            )}
           </article>
         );
       })}
-      {canShowMore ? (
+      {canShowMore && !isCompact ? (
         <button
           type="button"
           className="market-heat-show-more"
@@ -2031,9 +2879,28 @@ export function MarketHeatPreview({
   );
 }
 
+function ChevronIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
 export function MarketHeader({
+  themeControl = null,
   walletControl,
 }: {
+  themeControl?: ReactNode;
   walletControl: ReactNode;
 }) {
   return (
@@ -2044,6 +2911,11 @@ export function MarketHeader({
           <h1>Hot Hands</h1>
         </div>
       </div>
+      {themeControl ? (
+        <div className="market-header-actions" data-testid="market-header-actions">
+          {themeControl}
+        </div>
+      ) : null}
       <div className="market-header-wallet" data-testid="market-header-wallet">
         {walletControl}
       </div>
@@ -2212,6 +3084,8 @@ export function App() {
   const [activeView, setActiveView] = useState<AppView>(() =>
     readOnlyWalletAddress ? "portfolio" : "feed",
   );
+  const appScrollRef = useRef<HTMLDivElement | null>(null);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialThemeMode());
   const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
   const [selectedTradeMarketId, setSelectedTradeMarketId] = useState<string | null>(null);
   const [customTradeStrikes, setCustomTradeStrikes] = useState<
@@ -2222,6 +3096,7 @@ export function App() {
   const [walletTxState, setWalletTxState] = useState<WalletTransactionState>(
     idleWalletTransactionState,
   );
+  const [isWalletChooserOpen, setIsWalletChooserOpen] = useState(false);
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const toastCounterRef = useRef(0);
   const toastTimeoutsRef = useRef<number[]>([]);
@@ -2268,8 +3143,8 @@ export function App() {
     useState<WalletLeaderboardPanelBoardKey>("pnl");
   const [walletLeaderboardSortDirection, setWalletLeaderboardSortDirection] =
     useState<WalletLeaderboardSortDirection>("best");
-  const [walletLeaderboardStreakMode, setWalletLeaderboardStreakMode] =
-    useState<WalletLeaderboardStreakMode>("allTime");
+  const [walletLeaderboardRangeMode, setWalletLeaderboardRangeMode] =
+    useState<WalletLeaderboardRangeMode>("allTime");
   const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
   const [dismissedPortfolioPositionIds, setDismissedPortfolioPositionIds] = useState<Set<string>>(
     () => new Set(),
@@ -2284,6 +3159,7 @@ export function App() {
     status: "idle",
     quote: null,
   });
+  const [tradeQuoteRequested, setTradeQuoteRequested] = useState(false);
   const previewMode = getInitialPreviewMode(realtimeApiBaseUrl);
   const [marketHeatPreview, setMarketHeatPreview] = useState<MarketHeatPreviewModel>(() =>
     buildMarketHeatPreview(),
@@ -2293,8 +3169,12 @@ export function App() {
   const [isOracleChartOpen, setIsOracleChartOpen] = useState(false);
   const [marketHeatSortMode, setMarketHeatSortMode] =
     useState<MarketHeatSortMode>("latest");
+  const [marketHeatDensity, setMarketHeatDensity] =
+    useState<MarketHeatDensity>("compact");
   const [marketHeatShowExpired, setMarketHeatShowExpired] = useState(false);
   const [selectedMarketDuration, setSelectedMarketDuration] = useState("all");
+  const [selectedTradeDuration, setSelectedTradeDuration] = useState("all");
+  const [selectedTradeExpiryDate, setSelectedTradeExpiryDate] = useState<string | null>(null);
   const [marketHeatVisibleLimit, setMarketHeatVisibleLimit] =
     useState(MARKET_HEAT_PAGE_SIZE);
   const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
@@ -2353,19 +3233,41 @@ export function App() {
     marketDurationOptions.some((option) => option.value === selectedMarketDuration)
       ? selectedMarketDuration
       : "all";
-  const activeMarketIntervalLabel =
-    activeMarketDuration === "all" ? null : activeMarketDuration;
-  const sortedMarketHeatRows = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
-    intervalLabel: activeMarketIntervalLabel,
-    limit: marketHeatVisibleLimit,
+  const allVisibleMarketHeatRows = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
+    intervalLabel: null,
+    limit: Number.MAX_SAFE_INTEGER,
     nowMs: marketHeatNowMs,
     showExpired: marketHeatShowExpired,
     sortMode: marketHeatSortMode,
   });
-  const tradeMarketRows = buildTradeMarketLadder(marketHeatPreview, {
-    intervalLabel: activeMarketIntervalLabel,
+  const durationFilteredMarketHeatRows = selectMarketHeatRowsForDuration(
+    allVisibleMarketHeatRows,
+    activeMarketDuration,
+  );
+  const sortedMarketHeatRows = durationFilteredMarketHeatRows.slice(0, marketHeatVisibleLimit);
+  const allTradeMarketRows = buildTradeMarketLadder(marketHeatPreview, {
+    intervalLabel: null,
     nowMs: marketHeatNowMs,
   });
+  const activeTradeDuration =
+    selectedTradeDuration !== "all" &&
+    marketDurationOptions.some((option) => option.value === selectedTradeDuration)
+      ? selectedTradeDuration
+      : "all";
+  const tradeDurationMarketRows = selectTradeMarketsForDuration(
+    allTradeMarketRows,
+    activeTradeDuration,
+  );
+  const tradeExpiryOptions = buildTradeExpiryOptions(tradeDurationMarketRows, marketHeatNowMs);
+  const activeTradeExpiryDate =
+    selectedTradeExpiryDate &&
+    tradeExpiryOptions.some((option) => option.value === selectedTradeExpiryDate)
+      ? selectedTradeExpiryDate
+      : tradeExpiryOptions[0]?.value ?? null;
+  const tradeMarketRows = selectTradeMarketsForExpiry(
+    tradeDurationMarketRows,
+    activeTradeExpiryDate,
+  );
   const baseSelectedTradeMarket =
     tradeMarketRows.find((marketRow) => marketRow.id === selectedTradeMarketId) ??
     tradeMarketRows[0] ??
@@ -2400,7 +3302,11 @@ export function App() {
   const activeTradeQuote =
     tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.quote : null;
   const activeTradeQuoteStatus =
-    tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.status : "idle";
+    activeTradeQuote
+      ? "ready"
+      : tradeQuoteState.key === tradeQuoteKey
+        ? tradeQuoteState.status
+        : "idle";
 
   useEffect(() => {
     if (activeView !== "trade" || !baseSelectedTradeMarket) {
@@ -2420,13 +3326,7 @@ export function App() {
     });
   }, [activeView, baseSelectedTradeMarket?.id]);
 
-  const marketHeatVisibleTotal = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
-    intervalLabel: activeMarketIntervalLabel,
-    limit: Number.MAX_SAFE_INTEGER,
-    nowMs: marketHeatNowMs,
-    showExpired: marketHeatShowExpired,
-    sortMode: marketHeatSortMode,
-  }).length;
+  const marketHeatVisibleTotal = durationFilteredMarketHeatRows.length;
   const marketHeatRemainingCount = Math.max(
     0,
     marketHeatVisibleTotal - sortedMarketHeatRows.length,
@@ -2447,6 +3347,13 @@ export function App() {
   const isWalletActionPending = walletTxState.status === "pending";
   const isReadOnlyWalletView = !currentAccount && Boolean(readOnlyWalletAddress);
   const connectedAccountAddress = currentAccount?.address ?? readOnlyWalletAddress;
+
+  useEffect(() => {
+    if (connectedAccountAddress || wallets.length <= 1) {
+      setIsWalletChooserOpen(false);
+    }
+  }, [connectedAccountAddress, wallets.length]);
+
   const liveDusdcBalanceLabel =
     connectedAccountAddress &&
     dusdcBalanceState.accountAddress === connectedAccountAddress &&
@@ -2544,6 +3451,16 @@ export function App() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    writeThemeMode(themeMode);
+  }, [themeMode]);
+
+  useEffect(() => {
+    if (appScrollRef.current) {
+      appScrollRef.current.scrollTop = 0;
+    }
+  }, [activeView]);
 
   useEffect(() => {
     const toast = buildWalletToast(walletTxState);
@@ -2963,6 +3880,7 @@ export function App() {
       activeView !== "trade" ||
       previewMode !== "market" ||
       !realtimeApiBaseUrl ||
+      !tradeQuoteRequested ||
       !selectedTradeMarket ||
       !tradeQuoteKey
     ) {
@@ -3023,6 +3941,7 @@ export function App() {
     selectedTradeMarket?.oracleId,
     selectedTradeMarket?.strikeRaw,
     tradeQuoteKey,
+    tradeQuoteRequested,
     tradeSide,
   ]);
 
@@ -3079,6 +3998,10 @@ export function App() {
   };
 
   const handleAmountSet = (amount: number) => {
+    if (activeView === "trade") {
+      setTradeQuoteRequested(true);
+    }
+
     setReplayState((state) => updateReplayCopy(state, (copy) => setCopyAmount(copy, amount)));
   };
 
@@ -3244,6 +4167,22 @@ export function App() {
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
   };
+  const handleTradeDurationChange = (duration: string) => {
+    setTradeQuoteRequested(false);
+    setSelectedTradeDuration(duration);
+    setSelectedTradeExpiryDate(null);
+  };
+  const handleTradeExpiryChange = (expiryDate: string) => {
+    setTradeQuoteRequested(false);
+    setSelectedTradeExpiryDate(expiryDate);
+    const nextMarket = tradeDurationMarketRows.find(
+      (marketRow) => tradeExpiryDateKey(marketRow.expiryMs) === expiryDate,
+    );
+
+    if (nextMarket) {
+      setSelectedTradeMarketId(nextMarket.id);
+    }
+  };
   const handleMarketHeatShowExpiredChange = (showExpired: boolean) => {
     setMarketHeatShowExpired(showExpired);
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
@@ -3255,30 +4194,19 @@ export function App() {
     setDepositAmount(clampDepositAmount(amount));
   };
   const handleTradeSideChange = (side: TradeSide) => {
+    setTradeQuoteRequested(true);
     setTradeSide(side);
   };
   const handleTradeMarketChange = (selection: TradeMarketSelection) => {
-    setSelectedTradeMarketId(selection.marketId);
-    setCustomTradeStrikes((state) => {
-      if (state[selection.marketId]) {
-        return state;
-      }
-
-      return {
-        ...state,
-        [selection.marketId]: selection,
-      };
-    });
-  };
-  const handleTradeStrikeChange = (selection: TradeMarketSelection) => {
+    setTradeQuoteRequested(true);
     setSelectedTradeMarketId(selection.marketId);
     setCustomTradeStrikes((state) => ({
       ...state,
       [selection.marketId]: selection,
     }));
   };
-  const handleWalletConnect = async () => {
-    const wallet = wallets[0];
+
+  const connectToWallet = async (wallet: UiWallet | undefined) => {
     if (!wallet) {
       setWalletTxState({
         status: "error",
@@ -3310,6 +4238,26 @@ export function App() {
       });
     }
   };
+
+  const handleWalletConnect = () => {
+    if (wallets.length === 0) {
+      void connectToWallet(undefined);
+      return;
+    }
+
+    if (wallets.length === 1) {
+      void connectToWallet(wallets[0]);
+      return;
+    }
+
+    setIsWalletChooserOpen((isOpen) => !isOpen);
+  };
+
+  const handleWalletSelect = (walletIndex: number) => {
+    setIsWalletChooserOpen(false);
+    void connectToWallet(wallets[walletIndex]);
+  };
+
   const handleWalletDisconnect = async () => {
     try {
       await dAppKit.disconnectWallet();
@@ -3599,6 +4547,7 @@ export function App() {
       rows={sortedMarketHeatRows}
       sourceLabel={marketHeatPreview.sourceLabel}
       sortMode={marketHeatSortMode}
+      density={marketHeatDensity}
       selectedDuration={activeMarketDuration}
       durationOptions={marketDurationOptions}
       showExpired={marketHeatShowExpired}
@@ -3608,6 +4557,7 @@ export function App() {
       showMoreLabel={marketHeatShowMoreLabel}
       testId={testId}
       onAmountSet={handleAmountSet}
+      onDensityChange={setMarketHeatDensity}
       onDurationChange={handleMarketDurationChange}
       onShowExpiredChange={handleMarketHeatShowExpiredChange}
       onShowMore={handleMarketHeatShowMore}
@@ -3622,11 +4572,14 @@ export function App() {
     <TradeTicket
       customStrike={selectedTradeCustomStrike}
       copyAmount={copyState.copyAmount}
-      durationOptions={marketDurationOptions}
+      expiryOptions={tradeExpiryOptions}
+      marketPriceLabel={marketHeatPreview.marketPrice.priceLabel}
       marketRows={displayedTradeMarketRows}
+      selectedExpiryDate={activeTradeExpiryDate}
       selectedMarketId={baseSelectedTradeMarket?.id ?? ""}
-      selectedDuration={activeMarketDuration}
+      selectedDuration={activeTradeDuration}
       selectedSide={tradeSide}
+      durationOptions={marketDurationOptions}
       quote={activeTradeQuote}
       quoteStatus={activeTradeQuoteStatus}
       predictManagerObjectId={activePredictManagerObjectId}
@@ -3634,27 +4587,52 @@ export function App() {
       walletActionPending={isWalletActionPending}
       walletConnected={Boolean(currentAccount)}
       onAmountSet={handleAmountSet}
-      onDurationChange={handleMarketDurationChange}
+      onDurationChange={handleTradeDurationChange}
+      onExpiryChange={handleTradeExpiryChange}
       onMarketChange={handleTradeMarketChange}
       onSideChange={handleTradeSideChange}
-      onStrikeChange={handleTradeStrikeChange}
       onWalletSubmit={handleTradeWalletSubmit}
     />
   );
 
   return (
-    <main className="app-shell" data-testid="app-shell">
-      <section className="phone-frame" aria-label="Hot Hands market shell">
-        <div className="app-scroll" data-testid="app-scroll">
+    <main className="app-shell" data-theme={themeMode} data-testid="app-shell">
+      <section
+        className={`phone-frame phone-frame-${activeView}`}
+        data-theme={themeMode}
+        aria-label="Hot Hands market shell"
+      >
+        <div className="app-scroll" data-testid="app-scroll" ref={appScrollRef}>
           <MarketHeader
+            themeControl={
+              <button
+                type="button"
+                className="theme-toggle"
+                data-testid="theme-toggle"
+                aria-label={`Switch to ${themeMode === "light" ? "dark" : "light"} mode`}
+                title={`Switch to ${themeMode === "light" ? "dark" : "light"} mode`}
+                onClick={() =>
+                  setThemeMode((currentTheme) =>
+                    currentTheme === "light" ? "dark" : "light",
+                  )
+                }
+              >
+                <span aria-hidden="true">
+                  <ThemeModeIcon mode={themeMode === "light" ? "dark" : "light"} />
+                </span>
+              </button>
+            }
             walletControl={
               <WalletHeaderControl
                 accountAddress={connectedAccountAddress}
                 connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
                 readOnly={isReadOnlyWalletView}
+                walletChoices={wallets}
+                walletChooserOpen={isWalletChooserOpen}
                 walletCount={wallets.length}
                 onConnect={handleWalletConnect}
                 onDisconnect={handleWalletDisconnect}
+                onWalletSelect={handleWalletSelect}
               />
             }
           />
@@ -3676,6 +4654,7 @@ export function App() {
             onConnect={handleWalletConnect}
             onCreatePredictManager={handleCreatePredictManager}
             onDisconnect={handleWalletDisconnect}
+            onWalletSelect={handleWalletSelect}
           />
           {shouldShowAccountSummary(activeView) ? (
             <AccountSummary
@@ -3696,13 +4675,13 @@ export function App() {
           ) : activeView === "leaderboards" ? (
             <WalletLeaderboardsPanel
               activeBoard={activeWalletLeaderboard}
+              rangeMode={walletLeaderboardRangeMode}
               sortDirection={walletLeaderboardSortDirection}
-              streakMode={walletLeaderboardStreakMode}
               snapshot={walletLeaderboardsState.snapshot}
               status={walletLeaderboardsState.status}
               onBoardChange={setActiveWalletLeaderboard}
+              onRangeModeChange={setWalletLeaderboardRangeMode}
               onSortDirectionChange={setWalletLeaderboardSortDirection}
-              onStreakModeChange={setWalletLeaderboardStreakMode}
             />
           ) : (
             <PortfolioPanel

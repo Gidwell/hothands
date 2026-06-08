@@ -135,10 +135,20 @@ describe("testnet market heat endpoint", () => {
         intervalLabel: "10m",
         active: true,
         status: "active",
-        strikeCandidate: 71_500_000_000,
-        strikeCandidatePrice: 71500,
+        strikeCandidate: 71_520_000_000,
+        strikeCandidatePrice: 71520,
         latestPrice: 71500,
-        latestPriceLabel: "$71,500"
+        latestPriceLabel: "$71,500",
+        pricingModel: {
+          forward: 71_520_000_000,
+          forwardPrice: 71520,
+          a: 10_000_000,
+          b: 100_000_000,
+          rho: -250_000_000,
+          m: 0,
+          sigma: 150_000_000,
+          timestampMs: 1_779_071_000_000
+        }
       },
       {
         oracleId: "btc-indexed-long",
@@ -148,10 +158,20 @@ describe("testnet market heat endpoint", () => {
         intervalLabel: "15m",
         active: true,
         status: "active",
-        strikeCandidate: 72_125_000_000,
-        strikeCandidatePrice: 72125,
+        strikeCandidate: 72_140_000_000,
+        strikeCandidatePrice: 72140,
         latestPrice: 72125,
-        latestPriceLabel: "$72,125"
+        latestPriceLabel: "$72,125",
+        pricingModel: {
+          forward: 72_140_000_000,
+          forwardPrice: 72140,
+          a: 10_000_000,
+          b: 100_000_000,
+          rho: -250_000_000,
+          m: 0,
+          sigma: 150_000_000,
+          timestampMs: 1_779_071_200_000
+        }
       }
     ]);
     expect(projection.rows.slice(0, 3).map((row) => row.wallet)).toEqual([
@@ -885,6 +905,7 @@ function createIndexedMarketHeatReader(): PredictIndexerReader {
         eventId: "price:btc-indexed-short:1",
         oracleId: "btc-indexed-short",
         spot: 71_500_000_000,
+        forward: 71_520_000_000,
         checkpoint: 101,
         timestampMs: 1_779_071_000_000,
         source: "oracles/prices" as const
@@ -896,6 +917,7 @@ function createIndexedMarketHeatReader(): PredictIndexerReader {
         eventId: "price:btc-indexed-long:1",
         oracleId: "btc-indexed-long",
         spot: 72_125_000_000,
+        forward: 72_140_000_000,
         checkpoint: 102,
         timestampMs: 1_779_071_200_000,
         source: "oracles/prices" as const
@@ -982,6 +1004,23 @@ function createIndexedMarketHeatReader(): PredictIndexerReader {
       return price ? [price] : [];
     },
     getLatestOraclePrice: async (oracleId) => latestPrices.get(oracleId) ?? null,
+    getLatestOracleSvi: async (oracleId) =>
+      latestPrices.has(oracleId)
+        ? {
+            eventId: `svi:${oracleId}:1`,
+            oracleId,
+            a: 10_000_000,
+            b: 100_000_000,
+            rho: 250_000_000,
+            rhoNegative: 1,
+            m: 0,
+            mNegative: 0,
+            sigma: 150_000_000,
+            checkpoint: 100,
+            timestampMs: latestPrices.get(oracleId)?.timestampMs ?? 0,
+            source: "oracles/svi" as const
+          }
+        : null,
     getOraclePriceStats: async () => null
   };
 }

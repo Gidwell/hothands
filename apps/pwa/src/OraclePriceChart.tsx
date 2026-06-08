@@ -12,6 +12,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { OraclePriceChart, OraclePriceChartPoint } from "./oraclePriceChartModel";
+import { formatUtcTimeZoneText } from "./timeZoneLabels";
 
 const COMPACT_CHART_MIN_BAR_SPACING = 0.02;
 const EXPANDED_CHART_MIN_BAR_SPACING = 0.02;
@@ -39,6 +40,7 @@ export function OraclePriceChartCard({
 }) {
   const hasChart = chart?.status === "ready" && chart.points.length >= 2;
   const priceLabel = chart?.latestPriceLabel ?? fallbackPriceLabel;
+  const changeSummary = hasChart ? buildOracleChangeSummary(chart.points) : null;
 
   return (
     <button
@@ -53,17 +55,53 @@ export function OraclePriceChartCard({
         <em>DeepBook oracle price</em>
       </span>
       {hasChart ? (
-        <LightweightOraclePriceChart
-          points={chart.points}
-          compact
-          fitResetKey={chart.oracleId}
-          height={52}
-        />
+        <div className="oracle-mini-chart-visual">
+          <LightweightOraclePriceChart
+            points={chart.points}
+            compact
+            fitResetKey={chart.oracleId}
+            height={52}
+          />
+          {changeSummary ? (
+            <span
+              className={`oracle-mini-chart-change oracle-mini-chart-change-${changeSummary.tone}`}
+              data-testid="oracle-mini-chart-change"
+            >
+              <strong>{changeSummary.label}</strong>
+              <small>24h</small>
+            </span>
+          ) : null}
+        </div>
       ) : (
         <span className="oracle-chart-empty">Waiting for price history</span>
       )}
     </button>
   );
+}
+
+function buildOracleChangeSummary(points: OraclePriceChartPoint[]): {
+  label: string;
+  tone: "positive" | "negative" | "flat";
+} | null {
+  const latestPoint = points.at(-1);
+  if (!latestPoint || latestPoint.price <= 0) {
+    return null;
+  }
+
+  const dayAgoMs = latestPoint.timestampMs - 24 * 60 * 60 * 1000;
+  const comparisonPoint = points.find((point) => point.timestampMs >= dayAgoMs) ?? points[0];
+  if (!comparisonPoint || comparisonPoint.price <= 0) {
+    return null;
+  }
+
+  const change = (latestPoint.price - comparisonPoint.price) / comparisonPoint.price;
+  const percent = change * 100;
+  const tone = percent > 0.005 ? "positive" : percent < -0.005 ? "negative" : "flat";
+
+  return {
+    label: `${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`,
+    tone,
+  };
 }
 
 export function OraclePriceChartModal({
@@ -322,14 +360,14 @@ function formatCrosshairLocalTime(time: Time): string {
     return "";
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return formatUtcTimeZoneText(new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
     timeZoneName: "short",
-  }).format(date);
+  }).format(date));
 }
 
 function formatTickMarkLocalTime(time: Time, tickMarkType: TickMarkType): string | null {

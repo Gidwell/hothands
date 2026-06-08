@@ -4,6 +4,7 @@ import {
   type WalletDisplayNameSource,
   type WalletDisplayNamesByAddress,
 } from "./suinsDisplayNames";
+import { formatUtcTimeZoneLabel } from "./timeZoneLabels";
 
 export type MarketHeatStatus = "copy_ready" | "watching";
 export type MarketHeatSortMode = "latest" | "heat";
@@ -56,7 +57,19 @@ export type MarketHeatAvailableMarketInput = {
   strikeCandidate?: unknown;
   strikeCandidatePrice?: unknown;
   latestPrice?: unknown;
+  pricingModel?: unknown;
   status?: unknown;
+};
+
+export type MarketHeatPricingModel = {
+  forward: number;
+  forwardPrice: number;
+  a: number;
+  b: number;
+  rho: number;
+  m: number;
+  sigma: number;
+  timestampMs: number;
 };
 
 export type MarketHeatAvailableMarket = {
@@ -71,6 +84,7 @@ export type MarketHeatAvailableMarket = {
   strikeRaw: number;
   strikeLabel: string;
   status: string;
+  pricingModel?: MarketHeatPricingModel;
 };
 
 export type MarketHeatPreviewRow = {
@@ -93,7 +107,7 @@ export type MarketHeatPreviewRow = {
   expiryTimeLabel: string;
   observedAtMs: number;
   heatScore: number;
-  actionLabel: "Copy now" | "Watch next";
+  actionLabel: "Copy now";
   status: MarketHeatStatus;
   statusLabel: string;
 };
@@ -103,7 +117,7 @@ export type MarketHeatIntentState = {
 };
 
 export type MarketHeatIntentPanel = {
-  actionLabel: "Copy now" | "Watch next";
+  actionLabel: "Copy now";
   closeLabel: "Cancel";
   detailLabel: "Next observed mint" | "Recent mint";
   signatureLabel:
@@ -189,6 +203,7 @@ export type TradeMarketLadderRow = {
   volumeLabel: string;
   up: TradeMarketSideSummary;
   down: TradeMarketSideSummary;
+  pricingModel?: MarketHeatPricingModel;
 };
 
 export type TradeQuoteSide = "UP" | "DOWN";
@@ -223,9 +238,11 @@ export type LoadTradeQuoteOptions = {
   market: TradeMarketLadderRow;
   side: TradeQuoteSide;
   spendUsd: number;
+  timeoutMs?: number;
 };
 
 const MARKET_HEAT_CANDIDATE_LIMIT = 96;
+const TRADE_QUOTE_TIMEOUT_MS = 6_000;
 const CAPTURED_ROW_BASE_AGE_MS = 5 * 60_000;
 const CAPTURED_ROW_AGE_STEP_MS = 15 * 60_000;
 const CAPTURED_MARKET_PRICE: MarketHeatPriceInput = {
@@ -326,7 +343,7 @@ export function buildMarketHeatPreview(
           expiryTimeLabel: formatExpiryTime(row.expiryMs, timeZone),
           observedAtMs: row.observedAtMs,
           heatScore: row.heatScore,
-          actionLabel: isActionableCopy ? "Copy now" : "Watch next",
+          actionLabel: "Copy now",
           status: isActionableCopy ? "copy_ready" : "watching",
           statusLabel: formatTradeTime(row.observedAtMs, nowMs),
         };
@@ -394,8 +411,15 @@ export function buildTradeMarketLadder(
   return selectTradeMarkets(preview, { intervalLabel, nowMs })
     .map((market) => {
       const activityRows = preview.rows.filter((row) => isActivityForMarket(row, market));
-      const up = summarizeTradeMarketSide(activityRows, "UP");
-      const down = summarizeTradeMarketSide(activityRows, "DOWN");
+      const pricing = computeOracleIndicativePrices(market, market.strikeRaw);
+      const up = withEstimatedPrice(
+        summarizeTradeMarketSide(activityRows, "UP"),
+        pricing?.up,
+      );
+      const down = withEstimatedPrice(
+        summarizeTradeMarketSide(activityRows, "DOWN"),
+        pricing?.down,
+      );
       const wallets = new Set(activityRows.map((row) => row.wallet));
       const strikes = new Set(activityRows.map((row) => row.strike));
       const volumeUsd = roundUsd(up.volumeUsd + down.volumeUsd);
@@ -428,6 +452,7 @@ export function buildTradeMarketLadder(
         volumeLabel,
         up,
         down,
+        ...(market.pricingModel === undefined ? {} : { pricingModel: market.pricingModel }),
       };
     })
     .sort(
@@ -475,6 +500,7 @@ export function buildTradeMarketForMarketHeatRow(
       strikeLabel: formatStrike(row.strike),
     };
   const spot = parseFormattedUsd(preview.marketPrice.priceLabel);
+  const rowEstimatedPrice = estimateMarketHeatRowPrice(row);
 
   return {
     row,
@@ -484,7 +510,33 @@ export function buildTradeMarketForMarketHeatRow(
       strikeRaw: strikeOption.strikeRaw,
       strikeLabel: strikeOption.strikeLabel,
       moneynessLabel: formatMoneyness(strikeOption.strike - spot),
+      ...(row.side === "UP"
+        ? { up: withEstimatedPrice(market.up, rowEstimatedPrice) }
+        : { down: withEstimatedPrice(market.down, rowEstimatedPrice) }),
     },
+  };
+}
+
+function withEstimatedPrice(
+  summary: TradeMarketSideSummary,
+  estimatedPrice: number | undefined,
+): TradeMarketSideSummary {
+  return estimatedPrice === undefined ? summary : { ...summary, estimatedPrice };
+}
+
+function computeOracleIndicativePrices(
+  market: Pick<MarketHeatAvailableMarket, "pricingModel">,
+  strikeRaw: number,
+): { up: number; down: number } | null {
+  const up = computeOracleIndicativeUpPrice(market.pricingModel, strikeRaw);
+
+  if (up === undefined) {
+    return null;
+  }
+
+  return {
+    up,
+    down: roundPrice(Math.max(0, Math.min(1, 1 - up))),
   };
 }
 
@@ -613,7 +665,7 @@ export function buildMarketHeatIntentPanel(
       ? "Ready for your wallet signature"
       : "We'll watch this wallet and prepare the next mint for your signature",
     statusLabel: row.statusLabel,
-    title: `${isCopyReady ? "Copy" : "Watch"} ${row.displayName}`,
+    title: `Copy ${row.displayName}`,
   };
 }
 
@@ -678,6 +730,7 @@ export async function loadTradeQuote({
   market,
   side,
   spendUsd,
+  timeoutMs = TRADE_QUOTE_TIMEOUT_MS,
 }: LoadTradeQuoteOptions): Promise<TradeQuote | null> {
   const normalizedBaseUrl = apiBaseUrl?.trim();
 
@@ -685,14 +738,33 @@ export async function loadTradeQuote({
     return null;
   }
 
-  const response = await fetcher(
+  const response = await fetchWithTimeout(
+    fetcher,
     buildTradeQuoteUrl(normalizedBaseUrl, market, side, spendUsd),
+    timeoutMs,
   );
-  if (!response.ok) {
+  if (!response?.ok) {
     return null;
   }
 
   return parseTradeQuote(await response.json());
+}
+
+async function fetchWithTimeout(
+  fetcher: typeof fetch,
+  url: string,
+  timeoutMs: number,
+): Promise<Response | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetcher(url, { signal: controller.signal });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function buildMarketHeatUrl(apiBaseUrl: string): string {
@@ -784,6 +856,15 @@ function normalizeQuantityUsd(row: MarketHeatPreviewRow): number {
   return row.quantity / 1_000_000;
 }
 
+function estimateMarketHeatRowPrice(row: MarketHeatPreviewRow): number | undefined {
+  const costUsd = row.costUsd ?? (isNonNegativeNumber(row.cost) ? row.cost / 1_000_000 : undefined);
+  const quantityUsd = normalizeQuantityUsd(row);
+
+  return costUsd !== undefined && costUsd > 0 && quantityUsd > 0
+    ? roundPrice(costUsd / quantityUsd)
+    : undefined;
+}
+
 function normalizeCostUsd(row: MarketHeatPreviewRowInput): number | undefined {
   if (isNonNegativeNumber(row.costUsd)) {
     return roundUsd(row.costUsd);
@@ -802,6 +883,62 @@ function roundUsd(value: number): number {
 
 function roundPrice(value: number): number {
   return Math.round(value * 10_000) / 10_000;
+}
+
+const FLOAT_SCALING = 1_000_000_000;
+
+export function computeOracleIndicativeUpPrice(
+  pricingModel: MarketHeatPricingModel | undefined,
+  strikeRaw: number,
+): number | undefined {
+  if (
+    !pricingModel ||
+    !Number.isFinite(strikeRaw) ||
+    strikeRaw <= 0 ||
+    !Number.isFinite(pricingModel.forward) ||
+    pricingModel.forward <= 0
+  ) {
+    return undefined;
+  }
+
+  const a = pricingModel.a / FLOAT_SCALING;
+  const b = pricingModel.b / FLOAT_SCALING;
+  const rho = pricingModel.rho / FLOAT_SCALING;
+  const m = pricingModel.m / FLOAT_SCALING;
+  const sigma = pricingModel.sigma / FLOAT_SCALING;
+  const k = Math.log(strikeRaw / pricingModel.forward);
+  const kMinusM = k - m;
+  const inner = rho * kMinusM + Math.sqrt(kMinusM * kMinusM + sigma * sigma);
+  const totalVariance = a + b * inner;
+
+  if (!Number.isFinite(totalVariance) || totalVariance <= 0) {
+    return undefined;
+  }
+
+  const sqrtVariance = Math.sqrt(totalVariance);
+  const d2 = -((k + totalVariance / 2) / sqrtVariance);
+
+  return roundPrice(normalCdf(d2));
+}
+
+function normalCdf(value: number): number {
+  return 0.5 * (1 + erf(value / Math.SQRT2));
+}
+
+function erf(value: number): number {
+  const sign = value < 0 ? -1 : 1;
+  const x = Math.abs(value);
+  const t = 1 / (1 + 0.3275911 * x);
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const approximation =
+    1 -
+    (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-x * x));
+
+  return sign * approximation;
 }
 
 function formatTradeMarketActivity(
@@ -982,7 +1119,7 @@ function formatExpiryWithIntl(expiry: Date, timeZone?: string): string | null {
       return null;
     }
 
-    return `${month} ${day}, ${hour}:${minute} ${timeZoneName}`;
+    return `${month} ${day}, ${hour}:${minute} ${formatUtcTimeZoneLabel(timeZoneName)}`;
   } catch {
     return null;
   }
@@ -1017,7 +1154,12 @@ function parseMarketHeatRows(payload: unknown): MarketHeatPreviewRowInput[] | nu
     return null;
   }
 
-  const rows = payload.rows.filter(isMarketHeatRowInput);
+  const rows = payload.rows
+    .filter(isMarketHeatRowInput)
+    .map((row) => ({
+      ...row,
+      intervalLabel: normalizeMarketDurationLabel(row.intervalLabel),
+    }));
 
   return rows.length > 0 ? rows : null;
 }
@@ -1100,7 +1242,9 @@ function parseAvailableMarket(
 
   const oracleId = isNonEmptyString(value.oracleId) ? value.oracleId : null;
   const market = isNonEmptyString(value.market) ? value.market : marketPrice.market;
-  const intervalLabel = isNonEmptyString(value.intervalLabel) ? value.intervalLabel : null;
+  const intervalLabel = isNonEmptyString(value.intervalLabel)
+    ? normalizeMarketDurationLabel(value.intervalLabel)
+    : null;
   const expiry = firstNonNegativeNumber([value.expiry, value.expiryMs]);
   const expiryMs = expiry === null ? null : normalizeEpochMs(expiry);
   const status = isNonEmptyString(value.status) ? value.status : "active";
@@ -1115,6 +1259,7 @@ function parseAvailableMarket(
     value.strike,
     strike,
   ]);
+  const pricingModel = parsePricingModel(value.pricingModel);
 
   if (!oracleId || !intervalLabel || expiry === null || expiryMs === null || strike === null || strikeRaw === null) {
     return null;
@@ -1132,7 +1277,78 @@ function parseAvailableMarket(
     strikeRaw,
     strikeLabel: formatStrike(strike),
     status,
+    ...(pricingModel === undefined ? {} : { pricingModel }),
   };
+}
+
+function parsePricingModel(value: unknown): MarketHeatPricingModel | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const forward = firstNonNegativeNumber([value.forward]);
+  const forwardPrice = firstNonNegativeNumber([value.forwardPrice]);
+  const a = firstNonNegativeNumber([value.a]);
+  const b = firstNonNegativeNumber([value.b]);
+  const rho = optionalNumber(value.rho);
+  const m = optionalNumber(value.m);
+  const sigma = firstNonNegativeNumber([value.sigma]);
+  const timestampMs = firstNonNegativeNumber([value.timestampMs, value.timestamp_ms]);
+
+  if (
+    forward === null ||
+    forwardPrice === null ||
+    a === null ||
+    b === null ||
+    rho === undefined ||
+    m === undefined ||
+    sigma === null ||
+    timestampMs === null
+  ) {
+    return undefined;
+  }
+
+  return { forward, forwardPrice, a, b, rho, m, sigma, timestampMs };
+}
+
+function normalizeMarketDurationLabel(intervalLabel: string): string {
+  const trimmedLabel = intervalLabel.trim();
+  const durationMs = parseDurationMsFromIntervalLabel(intervalLabel);
+
+  if (durationMs === null) {
+    return trimmedLabel || "1d";
+  }
+
+  if (durationMs <= 30 * 60_000) {
+    return "15m";
+  }
+
+  if (durationMs <= 2 * 60 * 60_000) {
+    return "1h";
+  }
+
+  return trimmedLabel || "1d";
+}
+
+function parseDurationMsFromIntervalLabel(intervalLabel: string): number | null {
+  const match = /^(\d+)\s*([mhd])$/i.exec(intervalLabel.trim());
+
+  if (!match) {
+    return null;
+  }
+
+  const value = Number(match[1]);
+  const unit = match[2].toLowerCase();
+
+  if (unit === "d") {
+    return value * 24 * 60 * 60_000;
+  }
+
+  if (unit === "h") {
+    return value * 60 * 60_000;
+  }
+
+  return value * 60_000;
 }
 
 function parseTradeQuote(payload: unknown): TradeQuote | null {
@@ -1268,6 +1484,10 @@ function isNonNegativeNumber(value: unknown): value is number {
 
 function optionalNonNegativeNumber(value: unknown): number | undefined {
   return isNonNegativeNumber(value) ? value : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function firstNonNegativeNumber(values: unknown[]): number | null {
