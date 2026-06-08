@@ -478,6 +478,7 @@ export function buildTradeMarketForMarketHeatRow(
       strikeLabel: formatStrike(row.strike),
     };
   const spot = parseFormattedUsd(preview.marketPrice.priceLabel);
+  const rowEstimatedPrice = estimateMarketHeatRowPrice(row);
 
   return {
     row,
@@ -487,8 +488,18 @@ export function buildTradeMarketForMarketHeatRow(
       strikeRaw: strikeOption.strikeRaw,
       strikeLabel: strikeOption.strikeLabel,
       moneynessLabel: formatMoneyness(strikeOption.strike - spot),
+      ...(row.side === "UP"
+        ? { up: withEstimatedPrice(market.up, rowEstimatedPrice) }
+        : { down: withEstimatedPrice(market.down, rowEstimatedPrice) }),
     },
   };
+}
+
+function withEstimatedPrice(
+  summary: TradeMarketSideSummary,
+  estimatedPrice: number | undefined,
+): TradeMarketSideSummary {
+  return estimatedPrice === undefined ? summary : { ...summary, estimatedPrice };
 }
 
 function buildTradeStrikeOptions(
@@ -805,6 +816,15 @@ function normalizeQuantityUsd(row: MarketHeatPreviewRow): number {
   }
 
   return row.quantity / 1_000_000;
+}
+
+function estimateMarketHeatRowPrice(row: MarketHeatPreviewRow): number | undefined {
+  const costUsd = row.costUsd ?? (isNonNegativeNumber(row.cost) ? row.cost / 1_000_000 : undefined);
+  const quantityUsd = normalizeQuantityUsd(row);
+
+  return costUsd !== undefined && costUsd > 0 && quantityUsd > 0
+    ? roundPrice(costUsd / quantityUsd)
+    : undefined;
 }
 
 function normalizeCostUsd(row: MarketHeatPreviewRowInput): number | undefined {

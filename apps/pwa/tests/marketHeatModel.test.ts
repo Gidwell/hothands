@@ -659,7 +659,7 @@ describe("market heat preview model", () => {
     ]);
   });
 
-  test("resolves a copy-ready feed row to a trade market using the observed strike", () => {
+  test("resolves a copy-ready feed row to a trade market using the observed strike", async () => {
     const nowMs = 1_779_165_000_000;
     const expiryMs = nowMs + 15 * 60_000;
     const preview = {
@@ -681,6 +681,23 @@ describe("market heat preview model", () => {
             status: "copy_ready" as const,
             quantity: 30_000_000,
             costUsd: 14.25,
+          },
+          {
+            id: "mint-b",
+            oracleId: "0xoracle15",
+            wallet: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            manager: "manager-b",
+            market: "BTC-USD",
+            side: "UP" as const,
+            strike: 71_120,
+            strikeRaw: 71_120_000_000,
+            expiryMs,
+            intervalLabel: "15m",
+            observedAtMs: nowMs - 90_000,
+            heatScore: 88,
+            status: "copy_ready" as const,
+            quantity: 10_000_000,
+            costUsd: 7.5,
           },
         ],
         8,
@@ -710,7 +727,8 @@ describe("market heat preview model", () => {
       ],
     };
 
-    expect(buildTradeMarketForMarketHeatRow(preview, "mint-a", { nowMs })).toEqual({
+    const copyTrade = buildTradeMarketForMarketHeatRow(preview, "mint-a", { nowMs });
+    expect(copyTrade).toEqual({
       row: expect.objectContaining({
         id: "mint-a",
         side: "UP",
@@ -722,8 +740,45 @@ describe("market heat preview model", () => {
         strikeRaw: 71_000_123_456,
         strikeLabel: "$71,000",
         moneynessLabel: "-$50 vs spot",
+        up: expect.objectContaining({
+          estimatedPrice: 0.475,
+        }),
       }),
     });
+
+    const calls: string[] = [];
+    await loadTradeQuote({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      market: copyTrade!.market,
+      side: copyTrade!.row.side,
+      spendUsd: 25,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        return Response.json({
+          source: "live_testnet",
+          market: "BTC-USD",
+          oracleId: "0xoracle15",
+          expiry: String(expiryMs),
+          strike: "71000123456",
+          side: "UP",
+          requestedSpendUsd: 25,
+          cost: "24980000",
+          costUsd: 24.98,
+          quantity: "49960000",
+          payoutUsd: 49.96,
+          maxProfitUsd: 24.98,
+          redeemPayout: "24100000",
+          redeemPayoutUsd: 24.1,
+          effectivePrice: 0.5,
+          quoteStatus: "ready",
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      `https://api.hot-hands.test/testnet/quote?oracleId=0xoracle15&expiry=${expiryMs}&strike=71000123456&side=UP&spendUsd=25&estimatedPrice=0.475`,
+    ]);
   });
 
   test("keeps the full compact market heat feed available for scrolling", () => {
