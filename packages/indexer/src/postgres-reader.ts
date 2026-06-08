@@ -46,6 +46,8 @@ export type ListRecentTradeEventsOptions = {
 export type ListPositionSummariesOptions = {
   owner?: string;
   limit?: number;
+  status?: PredictPositionSummary["status"];
+  hideExpiredAtMs?: number;
 };
 
 export type OraclePriceStats = {
@@ -135,13 +137,28 @@ export function createPostgresPredictIndexerReader({
 
       return result.rows.map(mapTradeEventRow);
     },
-    listPositionSummaries: async ({ owner, limit = DEFAULT_MARKET_LIMIT } = {}) => {
+    listPositionSummaries: async ({
+      owner,
+      limit = DEFAULT_MARKET_LIMIT,
+      status,
+      hideExpiredAtMs,
+    } = {}) => {
       const params: SqlValue[] = [];
       const filters: string[] = [];
 
       if (owner) {
         params.push(owner);
         filters.push(`owner = $${params.length}`);
+      }
+
+      if (status) {
+        params.push(status);
+        filters.push(`status = $${params.length}`);
+      }
+
+      if (hideExpiredAtMs !== undefined) {
+        params.push(hideExpiredAtMs);
+        filters.push(`expiry_ms > $${params.length}`);
       }
 
       params.push(normalizeLimit(limit));

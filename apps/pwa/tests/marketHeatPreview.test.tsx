@@ -180,7 +180,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain('data-testid="market-heat-show-expired"');
   });
 
-  test("keeps show-more out of compact rows while retaining it for expanded rows", () => {
+  test("renders show-more in both compact and expanded feed density", () => {
     const rows = buildMarketHeatPreview(
       Array.from({ length: 10 }, (_, index) => ({
         ...watchingOnlyRows[0],
@@ -210,8 +210,8 @@ describe("MarketHeatPreview component", () => {
       />,
     );
 
-    expect(html).not.toContain('data-testid="market-heat-show-more"');
-    expect(html).not.toContain("Show 2 more");
+    expect(html).toContain('data-testid="market-heat-show-more"');
+    expect(html).toContain("Show 2 more");
 
     const expandedHtml = renderToStaticMarkup(
       <MarketHeatPreview
@@ -305,10 +305,11 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain('data-testid="market-heat-density-compact"');
     expect(html).toContain("Wallet");
     expect(html).toContain("Direction");
-    expect(html).toContain("Duration");
+    expect(html).toContain("Expiration");
     expect(html).toContain("0xbbbb...0000");
     expect(html).toContain("UP");
     expect(html).toContain("$7,100");
+    expect(html).toContain("3h left");
     expect(html).toContain("Heat");
     expect(html).toContain("94");
     expect(html).not.toContain("Cost</small>");

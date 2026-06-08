@@ -2664,7 +2664,7 @@ export function MarketHeatPreview({
           <span>Wallet</span>
           <span>Direction</span>
           <span>Strike</span>
-          <span>Duration</span>
+          <span>Expiration</span>
           <span>Heat</span>
           <span />
         </div>
@@ -2803,7 +2803,7 @@ export function MarketHeatPreview({
                     <strong>{row.strikeLabel.replace(/^Strike\s+/, "")}</strong>
                   </div>
                   <div className="market-heat-compact-duration">
-                    <strong>{row.intervalLabel}</strong>
+                    <strong>{row.timeRemainingLabel ?? row.expiryTimeLabel}</strong>
                   </div>
                   <div className="market-heat-compact-heat">
                     <strong>{row.heatScore}</strong>
@@ -2868,7 +2868,7 @@ export function MarketHeatPreview({
           </article>
         );
       })}
-      {canShowMore && !isCompact ? (
+      {canShowMore ? (
         <button
           type="button"
           className="market-heat-show-more"

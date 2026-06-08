@@ -46,6 +46,7 @@ describe("market heat preview model", () => {
           intervalLabel: "15m",
           expiryMs: 1_779_158_400_000,
           expiryTimeLabel: "May 18, 19:40 PDT",
+          timeRemainingLabel: "Expired",
           observedAtMs: 1_779_158_400_000,
           heatScore: 92,
           actionLabel: "Copy now",
@@ -64,6 +65,7 @@ describe("market heat preview model", () => {
           intervalLabel: "1h",
           expiryMs: 1_779_158_400_000,
           expiryTimeLabel: "May 18, 19:40 PDT",
+          timeRemainingLabel: "Expired",
           observedAtMs: 1_779_151_200_000,
           heatScore: 87,
           actionLabel: "Copy now",
@@ -82,6 +84,7 @@ describe("market heat preview model", () => {
           intervalLabel: "1d",
           expiryMs: 1_779_158_400_000,
           expiryTimeLabel: "May 18, 19:40 PDT",
+          timeRemainingLabel: "Expired",
           observedAtMs: 1_779_079_200_000,
           heatScore: 81,
           actionLabel: "Copy now",
@@ -980,6 +983,50 @@ describe("market heat preview model", () => {
     });
 
     expect(preview.rows).toHaveLength(60);
+  });
+
+  test("keeps older active open rows when newer expired rows fill the feed candidate set", async () => {
+    const nowMs = 1_779_165_000_000;
+    const rows = [
+      ...Array.from({ length: 110 }, (_, index) => ({
+        id: `expired-candidate-${index}`,
+        wallet: `0x${String(index % 10).repeat(40)}`,
+        manager: `manager-expired-${index}`,
+        market: "BTC-USD",
+        side: index % 2 === 0 ? ("UP" as const) : ("DOWN" as const),
+        strike: 70_000 + index,
+        expiryMs: nowMs - 60_000,
+        intervalLabel: "15m",
+        observedAtMs: nowMs - index * 1_000,
+        heatScore: 80,
+        status: "copy_ready" as const,
+      })),
+      {
+        id: "active-open-older",
+        wallet: "0x905346ba566a0e930be3185d6b4dd3da82f580cb3a9cc0db915128e590d23a6b",
+        manager: "manager-open",
+        market: "BTC-USD",
+        side: "UP" as const,
+        strike: 62_500,
+        expiryMs: nowMs + 24 * 60 * 60 * 1000,
+        intervalLabel: "23d",
+        observedAtMs: nowMs - 10 * 24 * 60 * 60 * 1000,
+        heatScore: 25,
+        status: "copy_ready" as const,
+      },
+    ];
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs,
+      fetcher: async () =>
+        Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          rows,
+        }),
+    });
+
+    expect(preview.rows.some((row) => row.id === "active-open-older")).toBe(true);
   });
 
   test("orders market heat by latest observed trade by default", () => {

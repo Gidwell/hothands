@@ -32,7 +32,12 @@ export type PredictIndexerStore = PredictIndexerWriter & {
     hideExpiredAtMs?: number;
     managerId?: string;
   }): Promise<PredictNormalizedTradeEvent[]>;
-  listPositionSummaries(options?: { owner?: string; limit?: number }): Promise<PredictPositionSummary[]>;
+  listPositionSummaries(options?: {
+    owner?: string;
+    limit?: number;
+    status?: PredictPositionSummary["status"];
+    hideExpiredAtMs?: number;
+  }): Promise<PredictPositionSummary[]>;
   listOraclePrices(options: {
     oracleId: string;
     fromMs?: number;
@@ -211,9 +216,18 @@ class InMemoryPredictIndexerStore implements PredictIndexerStore {
   async listPositionSummaries({
     owner,
     limit = Number.POSITIVE_INFINITY,
-  }: { owner?: string; limit?: number } = {}): Promise<PredictPositionSummary[]> {
+    status,
+    hideExpiredAtMs,
+  }: {
+    owner?: string;
+    limit?: number;
+    status?: PredictPositionSummary["status"];
+    hideExpiredAtMs?: number;
+  } = {}): Promise<PredictPositionSummary[]> {
     return [...this.positionSummaries.values()]
       .filter((summary) => (owner ? summary.owner === owner : true))
+      .filter((summary) => (status ? summary.status === status : true))
+      .filter((summary) => (hideExpiredAtMs === undefined ? true : summary.expiryMs > hideExpiredAtMs))
       .sort((left, right) => right.lastEventMs - left.lastEventMs || left.id.localeCompare(right.id))
       .slice(0, limit);
   }

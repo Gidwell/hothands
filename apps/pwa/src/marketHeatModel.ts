@@ -105,6 +105,7 @@ export type MarketHeatPreviewRow = {
   intervalLabel: string;
   expiryMs: number;
   expiryTimeLabel: string;
+  timeRemainingLabel?: string;
   observedAtMs: number;
   heatScore: number;
   actionLabel: "Copy now";
@@ -243,7 +244,7 @@ export type LoadTradeQuoteOptions = {
   timeoutMs?: number;
 };
 
-const MARKET_HEAT_CANDIDATE_LIMIT = 96;
+const MARKET_HEAT_CANDIDATE_LIMIT = 768;
 const TRADE_QUOTE_TIMEOUT_MS = 6_000;
 const CAPTURED_ROW_BASE_AGE_MS = 5 * 60_000;
 const CAPTURED_ROW_AGE_STEP_MS = 15 * 60_000;
@@ -343,6 +344,7 @@ export function buildMarketHeatPreview(
           intervalLabel: row.intervalLabel,
           expiryMs: row.expiryMs,
           expiryTimeLabel: formatExpiryTime(row.expiryMs, timeZone),
+          timeRemainingLabel: formatTimeRemaining(row.expiryMs, nowMs),
           observedAtMs: row.observedAtMs,
           heatScore: row.heatScore,
           actionLabel: "Copy now",
