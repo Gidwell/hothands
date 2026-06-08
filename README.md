@@ -180,6 +180,10 @@ Keep the local shape simple and explicit:
 - keep the data path as: public DeepBook Predict server -> Postgres raw tables
   -> compact projections -> API worker endpoints -> PWA Feed, Trade,
   Portfolio, and chart views
+- keep 1-second UI ticks cheap: `/testnet/market-heat` is cached server-side
+  for a short read-through window, and the PWA uses the lightweight
+  `/testnet/price-snapshot` endpoint for price/market model refreshes after the
+  initial full feed load
 
 For `bun run dev:testnet`, the launcher requires `DATABASE_URL`, applies
 migrations, runs a bounded write backfill, and the local API uses indexed reads
@@ -188,11 +192,14 @@ price history. The launcher also starts a separate live indexer process.
 Disable automatic bootstrap with `HOT_HANDS_DEV_MIGRATE=false` or
 `HOT_HANDS_DEV_BACKFILL=false` when you intentionally want to skip either step.
 Prices,
-positions, and active-oracle trade activity poll every 1 second by default;
-oracle metadata polls every 30 seconds by default. Tune these with
+positions, active-oracle trade activity, and latest-only SVI poll every 1 second
+by default; oracle metadata polls every 30 seconds by default. Tune these with
 `HOT_HANDS_INDEXER_PRICE_POLL_MS`, `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`,
-`HOT_HANDS_INDEXER_TRADES_POLL_MS`, and
-`HOT_HANDS_INDEXER_ORACLES_POLL_MS`. The API exposes freshness at
+`HOT_HANDS_INDEXER_TRADES_POLL_MS`, `HOT_HANDS_INDEXER_SVI_POLL_MS`, and
+`HOT_HANDS_INDEXER_ORACLES_POLL_MS`. Live SVI fetches one latest point per
+active oracle by default; increase `HOT_HANDS_INDEXER_SVI_LIMIT` only for
+diagnostics because wide live SVI reads create avoidable DB/write pressure. The
+API exposes freshness at
 `/testnet/indexer-status`. The chart requests up to 10,000
 indexed/downsampled points and includes the full stored range metadata. Public
 Predict, captured rows, and direct Sui event reads are degraded diagnostics
@@ -206,6 +213,8 @@ What is live today:
   `Live Testnet`, `Captured`, or `indexer_unavailable` means the local indexed
   dev environment needs attention.
 - `Latest` shows the newest observed active trader rows first and refreshes every second while the app is open.
+- After the first full feed load, 1-second BTC price and ladder model updates
+  use `/testnet/price-snapshot` instead of reloading trader rows every tick.
 - Rows are grouped by trader/manager, so a repeat trade moves that row upward instead of creating a duplicate feed item.
 - On wallet connect, the PWA checks whether the user already has a
   `PredictManager`; if one is missing, the wallet bar is the place to create it.

@@ -146,6 +146,8 @@ export type LoadMarketHeatPreviewOptions = {
   useMainnetSuinsNames?: boolean;
 };
 
+export type LoadMarketHeatPriceSnapshotOptions = LoadMarketHeatPreviewOptions;
+
 export type BuildMarketHeatPreviewOptions = {
   marketPrice?: MarketHeatPriceInput;
   nowMs?: number;
@@ -724,6 +726,73 @@ export async function loadMarketHeatPreview({
   }
 }
 
+export async function loadMarketHeatPriceSnapshot(
+  currentPreview: MarketHeatPreview,
+  {
+    apiBaseUrl,
+    fetcher = fetch,
+    nowMs = Date.now(),
+    timeZone,
+    useMainnetSuinsNames = false,
+  }: LoadMarketHeatPriceSnapshotOptions = {},
+): Promise<MarketHeatPreview> {
+  const normalizedBaseUrl = apiBaseUrl?.trim();
+
+  if (!normalizedBaseUrl) {
+    return loadMarketHeatPreview({
+      apiBaseUrl,
+      fetcher,
+      nowMs,
+      timeZone,
+      useMainnetSuinsNames,
+    });
+  }
+
+  try {
+    const response = await fetcher(buildMarketHeatPriceSnapshotUrl(normalizedBaseUrl));
+
+    if (!response.ok) {
+      return loadMarketHeatPreview({
+        apiBaseUrl: normalizedBaseUrl,
+        fetcher,
+        nowMs,
+        timeZone,
+        useMainnetSuinsNames,
+      });
+    }
+
+    const payload: unknown = await response.json();
+    const marketPrice = parseMarketHeatPrice(payload);
+
+    if (!marketPrice) {
+      return loadMarketHeatPreview({
+        apiBaseUrl: normalizedBaseUrl,
+        fetcher,
+        nowMs,
+        timeZone,
+        useMainnetSuinsNames,
+      });
+    }
+
+    const availableMarkets =
+      parseAvailableMarkets(payload, marketPrice, timeZone) ?? currentPreview.availableMarkets;
+
+    return {
+      ...currentPreview,
+      marketPrice: buildMarketHeatPrice(marketPrice),
+      availableMarkets,
+    };
+  } catch {
+    return loadMarketHeatPreview({
+      apiBaseUrl: normalizedBaseUrl,
+      fetcher,
+      nowMs,
+      timeZone,
+      useMainnetSuinsNames,
+    });
+  }
+}
+
 export async function loadTradeQuote({
   apiBaseUrl,
   fetcher = fetch,
@@ -769,6 +838,10 @@ async function fetchWithTimeout(
 
 function buildMarketHeatUrl(apiBaseUrl: string): string {
   return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/market-heat`;
+}
+
+function buildMarketHeatPriceSnapshotUrl(apiBaseUrl: string): string {
+  return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/price-snapshot`;
 }
 
 function buildTradeQuoteUrl(

@@ -70,6 +70,7 @@ serves them behind a narrow local setup:
    The local API will prefer indexed reads for:
 
    - Market Heat and latest activity rows
+   - Lightweight BTC price/market snapshots for 1-second UI refreshes
    - Trade market ladder candidates
    - Portfolio mint/redeem events for a connected `PredictManager`
    - Oracle price history for the BTC chart
@@ -91,13 +92,16 @@ serves them behind a narrow local setup:
    - `predict.positions.redeemed`: poll global redeemed positions
    - `predict.trades.active_oracles`: poll per-active-oracle trade history
 
-   Prices, positions, and active-oracle trades poll every 1 second by default;
-   oracle metadata polls every 30 seconds. Tune with
+   Prices, positions, active-oracle trades, and latest-only SVI poll every 1
+   second by default; oracle metadata polls every 30 seconds. Tune with
    `HOT_HANDS_INDEXER_PRICE_POLL_MS`,
    `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`,
+   `HOT_HANDS_INDEXER_SVI_POLL_MS`,
    `HOT_HANDS_INDEXER_TRADES_POLL_MS`, and
-   `HOT_HANDS_INDEXER_ORACLES_POLL_MS`. Every job writes freshness status to
-   `predict_indexer_jobs`, and the local API exposes it at
+   `HOT_HANDS_INDEXER_ORACLES_POLL_MS`. Live SVI fetches one latest point per
+   active oracle by default; use `HOT_HANDS_INDEXER_SVI_LIMIT` when you
+   intentionally need a wider diagnostic live read. Every job writes freshness
+   status to `predict_indexer_jobs`, and the local API exposes it at
    `/testnet/indexer-status`.
 
    The chart endpoint requests downsampled full-range history from

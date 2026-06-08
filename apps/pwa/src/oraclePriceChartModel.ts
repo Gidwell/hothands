@@ -34,6 +34,10 @@ export type LoadOraclePriceChartOptions = {
   fetcher?: typeof fetch;
 };
 
+export type LoadOraclePriceChartTickOptions = LoadOraclePriceChartOptions & {
+  chart: OraclePriceChart | null;
+};
+
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8789";
 const ORACLE_CHART_MAX_POINTS = 10_000;
 
@@ -51,6 +55,33 @@ export async function loadOraclePriceChart({
     return buildOraclePriceChartFromPayload(await response.json(), oracleId);
   } catch {
     return buildUnavailableOraclePriceChart(oracleId);
+  }
+}
+
+export async function loadOraclePriceChartTick({
+  apiBaseUrl = DEFAULT_API_BASE_URL,
+  oracleId,
+  chart,
+  fetcher = fetch,
+}: LoadOraclePriceChartTickOptions): Promise<OraclePriceChart | null> {
+  if (!chart || chart.status !== "ready" || chart.oracleId !== oracleId) {
+    return chart;
+  }
+
+  try {
+    const response = await fetcher(buildPriceSnapshotUrl(apiBaseUrl));
+    if (!response.ok) {
+      return chart;
+    }
+
+    const tick = parseOraclePriceTickFromSnapshot(await response.json(), oracleId);
+    if (!tick) {
+      return chart;
+    }
+
+    return mergeOraclePriceChartTick(chart, tick);
+  } catch {
+    return chart;
   }
 }
 
@@ -141,6 +172,98 @@ function buildOraclePriceChartUrl(apiBaseUrl: string, oracleId: string): string 
   url.searchParams.set("maxPoints", String(ORACLE_CHART_MAX_POINTS));
 
   return url.toString();
+}
+
+function buildPriceSnapshotUrl(apiBaseUrl: string): string {
+  return new URL("/testnet/price-snapshot", normalizeBaseUrl(apiBaseUrl)).toString();
+}
+
+function parseOraclePriceTickFromSnapshot(
+  payload: unknown,
+  oracleId: string,
+): OraclePriceChartPoint | null {
+  const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const markets = Array.isArray(record.markets) ? record.markets : [];
+  const matchingMarket = markets.find((market) => {
+    if (!market || typeof market !== "object") {
+      return false;
+    }
+
+    return stringValue((market as Record<string, unknown>).oracleId) === oracleId;
+  });
+
+  if (!matchingMarket || typeof matchingMarket !== "object") {
+    return null;
+  }
+
+  const market = matchingMarket as Record<string, unknown>;
+  const pricingModel =
+    market.pricingModel && typeof market.pricingModel === "object"
+      ? (market.pricingModel as Record<string, unknown>)
+      : {};
+  const timestampMs =
+    numberValue(market.latestPriceTimestampMs) ?? numberValue(pricingModel.timestampMs);
+  const price = numberValue(market.latestPrice);
+  if (
+    timestampMs === undefined ||
+    price === undefined ||
+    timestampMs <= 0 ||
+    price <= 0
+  ) {
+    return null;
+  }
+
+  const forwardPrice = numberValue(pricingModel.forwardPrice);
+  const checkpoint = numberValue(market.latestPriceCheckpoint);
+
+  return {
+    timestampMs,
+    price,
+    ...(forwardPrice === undefined ? {} : { forwardPrice }),
+    ...(checkpoint === undefined ? {} : { checkpoint }),
+  };
+}
+
+function mergeOraclePriceChartTick(
+  chart: OraclePriceChart,
+  tick: OraclePriceChartPoint,
+): OraclePriceChart {
+  const tickSecond = Math.floor(tick.timestampMs / 1000);
+  const hadTick = chart.points.some(
+    (point) => Math.floor(point.timestampMs / 1000) === tickSecond,
+  );
+  const points = [
+    ...chart.points.filter(
+      (point) => Math.floor(point.timestampMs / 1000) !== tickSecond,
+    ),
+    tick,
+  ]
+    .sort((left, right) => left.timestampMs - right.timestampMs)
+    .slice(-ORACLE_CHART_MAX_POINTS);
+  const latestPoint = points.at(-1);
+  const historyRange =
+    chart.historyRange === undefined
+      ? undefined
+      : {
+          ...chart.historyRange,
+          startTimestampMs: points[0]?.timestampMs ?? chart.historyRange.startTimestampMs,
+          endTimestampMs: Math.max(
+            chart.historyRange.endTimestampMs,
+            latestPoint?.timestampMs ?? chart.historyRange.endTimestampMs,
+          ),
+          returnedPointCount: points.length,
+          totalPointCount: Math.max(
+            chart.historyRange.totalPointCount + (hadTick ? 0 : 1),
+            points.length,
+          ),
+        };
+
+  return {
+    ...chart,
+    latestPriceLabel: formatUsdPrice(latestPoint?.price),
+    ...(historyRange === undefined ? {} : { historyRange }),
+    points,
+  };
 }
 
 function normalizeBaseUrl(apiBaseUrl: string): string {

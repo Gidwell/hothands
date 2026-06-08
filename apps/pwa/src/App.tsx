@@ -52,6 +52,7 @@ import {
   computeOracleIndicativeUpPrice,
   loadTradeQuote,
   loadMarketHeatPreview,
+  loadMarketHeatPriceSnapshot,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
   type MarketHeatIntentState,
@@ -70,6 +71,7 @@ import {
 } from "./OraclePriceChart";
 import {
   loadOraclePriceChart,
+  loadOraclePriceChartTick,
   type OraclePriceChart,
 } from "./oraclePriceChartModel";
 import {
@@ -113,7 +115,8 @@ import {
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_REFRESH_MS = 1_000;
-const ORACLE_PRICE_CHART_REFRESH_MS = 1_000;
+const ORACLE_PRICE_CHART_TICK_REFRESH_MS = 1_000;
+const ORACLE_PRICE_CHART_HISTORY_REFRESH_MS = 60_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
 const WALLET_LEADERBOARDS_REFRESH_MS = 15_000;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
@@ -3164,8 +3167,10 @@ export function App() {
   const [marketHeatPreview, setMarketHeatPreview] = useState<MarketHeatPreviewModel>(() =>
     buildMarketHeatPreview(),
   );
+  const marketHeatPreviewRef = useRef(marketHeatPreview);
   const [oraclePriceChart, setOraclePriceChart] =
     useState<OraclePriceChart | null>(null);
+  const oraclePriceChartRef = useRef<OraclePriceChart | null>(null);
   const [isOracleChartOpen, setIsOracleChartOpen] = useState(false);
   const [marketHeatSortMode, setMarketHeatSortMode] =
     useState<MarketHeatSortMode>("latest");
@@ -3307,6 +3312,14 @@ export function App() {
       : tradeQuoteState.key === tradeQuoteKey
         ? tradeQuoteState.status
         : "idle";
+
+  useEffect(() => {
+    marketHeatPreviewRef.current = marketHeatPreview;
+  }, [marketHeatPreview]);
+
+  useEffect(() => {
+    oraclePriceChartRef.current = oraclePriceChart;
+  }, [oraclePriceChart]);
 
   useEffect(() => {
     if (activeView !== "trade" || !baseSelectedTradeMarket) {
@@ -3763,6 +3776,26 @@ export function App() {
       }
     };
 
+    const refreshMarketHeatPrice = async () => {
+      if (isRefreshing) {
+        return;
+      }
+
+      isRefreshing = true;
+      try {
+        const preview = await loadMarketHeatPriceSnapshot(marketHeatPreviewRef.current, {
+          apiBaseUrl: realtimeApiBaseUrl,
+          useMainnetSuinsNames: true,
+        });
+        if (isCurrent) {
+          marketHeatPreviewRef.current = preview;
+          setMarketHeatPreview(preview);
+        }
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
     void refreshMarketHeat();
 
     if (previewMode !== "market" || !realtimeApiBaseUrl) {
@@ -3771,7 +3804,7 @@ export function App() {
       };
     }
 
-    const refreshTimer = window.setInterval(refreshMarketHeat, MARKET_HEAT_REFRESH_MS);
+    const refreshTimer = window.setInterval(refreshMarketHeatPrice, MARKET_HEAT_REFRESH_MS);
 
     return () => {
       isCurrent = false;
@@ -3843,35 +3876,87 @@ export function App() {
 
   useEffect(() => {
     if (!realtimeApiBaseUrl || !activeChartOracleId) {
+      oraclePriceChartRef.current = null;
       setOraclePriceChart(null);
       return undefined;
     }
 
     let isCurrent = true;
-    setOraclePriceChart((chart) =>
-      chart?.oracleId === activeChartOracleId ? chart : null,
-    );
+    let isHistoryRefreshing = false;
+    let isTickRefreshing = false;
+    setOraclePriceChart((chart) => {
+      const nextChart = chart?.oracleId === activeChartOracleId ? chart : null;
+      oraclePriceChartRef.current = nextChart;
+      return nextChart;
+    });
 
-    const refreshOraclePriceChart = () => {
-      void loadOraclePriceChart({
-        apiBaseUrl: realtimeApiBaseUrl,
-        oracleId: activeChartOracleId,
-      }).then((chart) => {
-        if (isCurrent) {
-          setOraclePriceChart(chart);
-        }
-      });
+    const updateOraclePriceChart = (chart: OraclePriceChart | null) => {
+      oraclePriceChartRef.current = chart;
+      setOraclePriceChart(chart);
     };
 
-    refreshOraclePriceChart();
-    const refreshTimer = window.setInterval(
-      refreshOraclePriceChart,
-      ORACLE_PRICE_CHART_REFRESH_MS,
+    const refreshOraclePriceChartHistory = async () => {
+      if (isHistoryRefreshing) {
+        return;
+      }
+
+      isHistoryRefreshing = true;
+      try {
+        const chart = await loadOraclePriceChart({
+          apiBaseUrl: realtimeApiBaseUrl,
+          oracleId: activeChartOracleId,
+        });
+        if (isCurrent) {
+          updateOraclePriceChart(chart);
+        }
+      } finally {
+        isHistoryRefreshing = false;
+      }
+    };
+
+    const refreshOraclePriceChartTick = async () => {
+      if (isTickRefreshing) {
+        return;
+      }
+
+      const currentChart = oraclePriceChartRef.current;
+      if (
+        !currentChart ||
+        currentChart.status !== "ready" ||
+        currentChart.oracleId !== activeChartOracleId
+      ) {
+        return;
+      }
+
+      isTickRefreshing = true;
+      try {
+        const chart = await loadOraclePriceChartTick({
+          chart: currentChart,
+          apiBaseUrl: realtimeApiBaseUrl,
+          oracleId: activeChartOracleId,
+        });
+        if (isCurrent && chart !== currentChart) {
+          updateOraclePriceChart(chart);
+        }
+      } finally {
+        isTickRefreshing = false;
+      }
+    };
+
+    void refreshOraclePriceChartHistory();
+    const tickRefreshTimer = window.setInterval(
+      refreshOraclePriceChartTick,
+      ORACLE_PRICE_CHART_TICK_REFRESH_MS,
+    );
+    const historyRefreshTimer = window.setInterval(
+      refreshOraclePriceChartHistory,
+      ORACLE_PRICE_CHART_HISTORY_REFRESH_MS,
     );
 
     return () => {
       isCurrent = false;
-      window.clearInterval(refreshTimer);
+      window.clearInterval(tickRefreshTimer);
+      window.clearInterval(historyRefreshTimer);
     };
   }, [activeChartOracleId, realtimeApiBaseUrl]);
 

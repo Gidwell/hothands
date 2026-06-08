@@ -39,7 +39,8 @@ describe("testnet market heat endpoint", () => {
       strikeCandidate: 72_000_000_000,
       strikeCandidatePrice: 72000,
       latestPrice: 72000,
-      latestPriceLabel: "$72,000"
+      latestPriceLabel: "$72,000",
+      latestPriceCheckpoint: 101
     });
     expect(body.rows).toBeArray();
     expect(body.rows[0].id).toContain("live-");
@@ -91,7 +92,8 @@ describe("testnet market heat endpoint", () => {
         strikeCandidate: 71_500_000_000,
         strikeCandidatePrice: 71500,
         latestPrice: 71500,
-        latestPriceLabel: "$71,500"
+        latestPriceLabel: "$71,500",
+        latestPriceCheckpoint: 101
       },
       {
         oracleId: "btc-live",
@@ -104,7 +106,8 @@ describe("testnet market heat endpoint", () => {
         strikeCandidate: 72_000_000_000,
         strikeCandidatePrice: 72000,
         latestPrice: 72000,
-        latestPriceLabel: "$72,000"
+        latestPriceLabel: "$72,000",
+        latestPriceCheckpoint: 101
       }
     ]);
   });
@@ -139,6 +142,8 @@ describe("testnet market heat endpoint", () => {
         strikeCandidatePrice: 71520,
         latestPrice: 71500,
         latestPriceLabel: "$71,500",
+        latestPriceTimestampMs: 1_779_071_000_000,
+        latestPriceCheckpoint: 101,
         pricingModel: {
           forward: 71_520_000_000,
           forwardPrice: 71520,
@@ -162,6 +167,8 @@ describe("testnet market heat endpoint", () => {
         strikeCandidatePrice: 72140,
         latestPrice: 72125,
         latestPriceLabel: "$72,125",
+        latestPriceTimestampMs: 1_779_071_200_000,
+        latestPriceCheckpoint: 102,
         pricingModel: {
           forward: 72_140_000_000,
           forwardPrice: 72140,
@@ -200,6 +207,47 @@ describe("testnet market heat endpoint", () => {
     expect(
       projection.rows.find((row) => row.wallet === "0xtrader-hot")?.heatScore
     ).toBeGreaterThan(projection.rows[0].heatScore);
+  });
+
+  test("worker serves lightweight indexed price snapshots without loading feed rows", async () => {
+    const baseReader = createIndexedMarketHeatReader();
+    let tradeEventReads = 0;
+    let positionSummaryReads = 0;
+    const response = await worker.fetch(
+      new Request("https://api.hot-hands.test/testnet/price-snapshot"),
+      {
+        indexerReader: {
+          ...baseReader,
+          listRecentTradeEvents: async () => {
+            tradeEventReads += 1;
+            return [];
+          },
+          listPositionSummaries: async () => {
+            positionSummaryReads += 1;
+            return [];
+          }
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    const body = await response.json();
+    expect(body).toMatchObject({
+      source: "indexed_testnet",
+      marketPrice: {
+        market: "BTC-USD",
+        price: 72125,
+        source: "indexed_testnet"
+      }
+    });
+    expect(body.markets.map((market: { oracleId: string }) => market.oracleId)).toEqual([
+      "btc-indexed-long",
+      "btc-indexed-short"
+    ]);
+    expect(tradeEventReads).toBe(0);
+    expect(positionSummaryReads).toBe(0);
   });
 
   test("requests non-expired indexed activity for the default feed", async () => {

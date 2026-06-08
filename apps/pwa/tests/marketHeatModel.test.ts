@@ -6,6 +6,7 @@ import {
   buildMarketHeatPreview,
   closeMarketHeatIntent,
   loadMarketHeatPreview,
+  loadMarketHeatPriceSnapshot,
   loadTradeQuote,
   buildTradeMarketLadder,
   buildTradeMarketForMarketHeatRow,
@@ -262,6 +263,92 @@ describe("market heat preview model", () => {
       actionLabel: "Copy now",
       statusLabel: "just now",
     });
+  });
+
+  test("refreshes the market price from the lightweight testnet snapshot endpoint", async () => {
+    const calls: string[] = [];
+    const currentPreview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
+      nowMs: 1_779_165_000_000,
+    });
+
+    const preview = await loadMarketHeatPriceSnapshot(currentPreview, {
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_100_000,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        return Response.json({
+          source: "indexed_testnet",
+          capturedAt: "2026-05-18T04:45:00.000Z",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 72_345.67,
+            source: "indexed_testnet",
+          },
+        });
+      },
+    });
+
+    expect(calls).toEqual(["https://api.hot-hands.test/testnet/price-snapshot"]);
+    expect(preview.rows).toEqual(currentPreview.rows);
+    expect(preview.availableMarkets).toEqual(currentPreview.availableMarkets);
+    expect(preview.marketPrice).toEqual({
+      marketLabel: "BTC/USD",
+      priceLabel: "$72,346",
+      statusLabel: "Indexed Testnet",
+    });
+  });
+
+  test("falls back to the full market heat payload when the price snapshot is unavailable", async () => {
+    const calls: string[] = [];
+    const currentPreview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
+      nowMs: 1_779_165_000_000,
+    });
+
+    const preview = await loadMarketHeatPriceSnapshot(currentPreview, {
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_100_000,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        if (String(url).endsWith("/testnet/price-snapshot")) {
+          return new Response(null, { status: 404 });
+        }
+
+        return Response.json({
+          mode: "testnet",
+          source: "api",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71_234,
+            source: "live_testnet",
+          },
+          rows: [
+            {
+              id: "external-0x1111",
+              wallet: "0x1111222233334444555566667777888899990000",
+              manager: "manager 0xabcd...0001",
+              market: "BTC-USD",
+              side: "DOWN",
+              strike: 3400,
+              expiryMs: 1_779_158_400_000,
+              intervalLabel: "1h",
+              observedAtMs: 1_779_165_000_000,
+              heatScore: 74,
+              status: "watching",
+            },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/price-snapshot",
+      "https://api.hot-hands.test/testnet/market-heat",
+    ]);
+    expect(preview.marketPrice.priceLabel).toBe("$71,234");
+    expect(preview.rows).toHaveLength(1);
+    expect(preview.rows[0].id).toBe("external-0x1111");
   });
 
   test("uses oracle SVI pricing for trade ladder indicative prices", async () => {

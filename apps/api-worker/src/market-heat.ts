@@ -7,6 +7,7 @@ import {
   type MarketHeatTrader,
   type PredictAvailableBtcMarket,
   type PredictIndexerReader,
+  type PredictLatestPrice,
   type PredictNormalizedTradeEvent,
   type PredictOraclePricePoint,
   type PredictOracleState,
@@ -45,6 +46,8 @@ export interface MarketHeatTradeMarket {
   strikeCandidatePrice: number | null;
   latestPrice: number | null;
   latestPriceLabel: string | null;
+  latestPriceTimestampMs?: number;
+  latestPriceCheckpoint?: number;
   pricingModel?: MarketHeatPricingModel;
 }
 
@@ -544,7 +547,8 @@ function mapAvailableBtcMarket(market: PredictAvailableBtcMarket): MarketHeatTra
     strikeCandidate: market.strikeCandidate,
     strikeCandidatePrice,
     latestPrice,
-    latestPriceLabel: formatPriceLabel(latestPrice)
+    latestPriceLabel: formatPriceLabel(latestPrice),
+    ...latestPredictPriceMetadata(market.latestPrice)
   };
 }
 
@@ -573,9 +577,36 @@ function mapIndexedBtcMarket(
     strikeCandidatePrice,
     latestPrice: latestPriceValue,
     latestPriceLabel: formatPriceLabel(latestPriceValue),
+    ...latestPredictPriceMetadata(latestPrice),
     ...(latestPrice?.forward === undefined || latestSvi === null
       ? {}
       : { pricingModel: mapIndexedPricingModel(latestPrice, latestSvi) })
+  };
+}
+
+function latestPredictPriceMetadata(
+  latestPrice: PredictLatestPrice | PredictOraclePricePoint | null | undefined
+): Pick<MarketHeatTradeMarket, "latestPriceTimestampMs" | "latestPriceCheckpoint"> {
+  if (!latestPrice) {
+    return {};
+  }
+
+  const timestampMs =
+    "timestampMs" in latestPrice
+      ? latestPrice.timestampMs
+      : latestPrice.checkpoint_timestamp_ms ?? latestPrice.onchain_timestamp;
+  const normalizedTimestampMs =
+    typeof timestampMs === "number" && Number.isFinite(timestampMs) && timestampMs > 0
+      ? normalizeEpochMs(timestampMs)
+      : undefined;
+
+  return {
+    ...(normalizedTimestampMs === undefined
+      ? {}
+      : { latestPriceTimestampMs: normalizedTimestampMs }),
+    ...(typeof latestPrice.checkpoint === "number" && Number.isFinite(latestPrice.checkpoint)
+      ? { latestPriceCheckpoint: latestPrice.checkpoint }
+      : {})
   };
 }
 
