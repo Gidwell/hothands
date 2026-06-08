@@ -1186,10 +1186,11 @@ function parseAvailableMarket(
 }
 
 function normalizeMarketDurationLabel(intervalLabel: string): string {
+  const trimmedLabel = intervalLabel.trim();
   const durationMs = parseDurationMsFromIntervalLabel(intervalLabel);
 
   if (durationMs === null) {
-    return intervalLabel.trim() || "1d";
+    return trimmedLabel || "1d";
   }
 
   if (durationMs <= 30 * 60_000) {
@@ -1200,7 +1201,7 @@ function normalizeMarketDurationLabel(intervalLabel: string): string {
     return "1h";
   }
 
-  return "1d";
+  return trimmedLabel || "1d";
 }
 
 function parseDurationMsFromIntervalLabel(intervalLabel: string): number | null {

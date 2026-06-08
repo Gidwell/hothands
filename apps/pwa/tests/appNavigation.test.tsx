@@ -815,6 +815,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain("UP $71,050");
     expect(html).toContain("Wins if BTC settles above $71,050");
     expect(html).toContain("Pays $250");
+    expect(html).toContain("Tap to quote");
     expect(html).toContain("Est. payout</small>Quote needed");
     expect(html).not.toContain("Est. payout</small>$250");
     expect(html).not.toContain('data-testid="trade-strike-select"');
@@ -1086,6 +1087,8 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain("Spend</small>$25");
+    expect(html).toContain("$0.50");
+    expect(html).toContain("Pays $49.96");
     expect(html).toContain("Est. payout</small>$49.96");
     expect(html).toContain("Max profit</small>+$24.98");
   });

@@ -1061,7 +1061,7 @@ describe("market heat preview model", () => {
     });
   });
 
-  test("normalizes indexed market intervals into product duration filters", async () => {
+  test("preserves indexed multi-day market intervals in product duration filters", async () => {
     const preview = await loadMarketHeatPreview({
       apiBaseUrl: "https://api.hot-hands.test/",
       nowMs: 1_779_165_000_000,
@@ -1111,13 +1111,14 @@ describe("market heat preview model", () => {
     });
 
     expect(preview.sourceLabel).toBe("Indexed Testnet");
-    expect(preview.rows.map((row) => row.intervalLabel)).toEqual(["1d"]);
+    expect(preview.rows.map((row) => row.intervalLabel)).toEqual(["23d"]);
     expect(preview.availableMarkets?.map((market) => market.intervalLabel)).toEqual([
-      "1d",
-      "1d",
+      "4d",
+      "23d",
     ]);
     expect(buildMarketDurationOptions(preview, { nowMs: 1_779_165_000_000 })).toEqual([
-      { count: 1, label: "1d", value: "1d" },
+      { count: 1, label: "4d", value: "4d" },
+      { count: 1, label: "23d", value: "23d" },
     ]);
   });
 

@@ -44,6 +44,7 @@ import {
 } from "./replayModel";
 import {
   buildMarketHeatIntentPanel,
+  buildMarketDurationOptions,
   buildMarketHeatPreview,
   buildTradeMarketForMarketHeatRow,
   buildTradeMarketLadder,
@@ -331,11 +332,6 @@ export function resolveMarketHeatSwipeAction(
 }
 
 const TRADE_EXPIRY_DAY_MS = 24 * 60 * 60_000;
-const MARKET_DURATION_OPTIONS: MarketDurationOption[] = [
-  { count: 0, label: "15m", value: "15m" },
-  { count: 0, label: "1h", value: "1h" },
-  { count: 0, label: "1d", value: "1d" },
-];
 const tradeExpiryDateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
   month: "short",
@@ -706,7 +702,15 @@ function formatTradeSidePayout(
   sideSummary: TradeMarketLadderRow["up"] | null | undefined,
 ): string {
   const returnPreview = buildReturnPreview(copyAmount, sideSummary?.estimatedPrice);
-  return returnPreview ? `Pays ${returnPreview.payoutLabel}` : "Quote needed";
+  return returnPreview ? `Pays ${returnPreview.payoutLabel}` : "Tap to quote";
+}
+
+function formatTradeQuotePrice(quote: TradeQuote): string {
+  return `$${quote.effectivePrice.toFixed(2)}`;
+}
+
+function formatTradeQuotePayout(quote: TradeQuote): string {
+  return `Pays ${formatUsdValue(quote.payoutUsd)}`;
 }
 
 function formatTradeOutcome(side: TradeSide, strikeLabel: string): string {
@@ -1464,6 +1468,10 @@ export function TradeTicket({
               const isSelectedStrike = key === selectedLadderKey;
               const isSelectedUp = isSelectedStrike && selectedSide === "UP";
               const isSelectedDown = isSelectedStrike && selectedSide === "DOWN";
+              const upQuote =
+                isSelectedUp && quoteStatus === "ready" && quote?.side === "UP" ? quote : null;
+              const downQuote =
+                isSelectedDown && quoteStatus === "ready" && quote?.side === "DOWN" ? quote : null;
 
               return (
                 <div className="trade-ladder-row" key={key}>
@@ -1482,8 +1490,14 @@ export function TradeTicket({
                       onSideChange("UP");
                     }}
                   >
-                    <strong>{formatTradeSidePrice(market.up)}</strong>
-                    <small>{formatTradeSidePayout(copyAmount, market.up)}</small>
+                    <strong>
+                      {upQuote ? formatTradeQuotePrice(upQuote) : formatTradeSidePrice(market.up)}
+                    </strong>
+                    <small>
+                      {upQuote
+                        ? formatTradeQuotePayout(upQuote)
+                        : formatTradeSidePayout(copyAmount, market.up)}
+                    </small>
                   </button>
                   <span className="trade-ladder-strike">
                     <strong>{selection.strikeLabel}</strong>
@@ -1503,8 +1517,14 @@ export function TradeTicket({
                       onSideChange("DOWN");
                     }}
                   >
-                    <strong>{formatTradeSidePrice(market.down)}</strong>
-                    <small>{formatTradeSidePayout(copyAmount, market.down)}</small>
+                    <strong>
+                      {downQuote ? formatTradeQuotePrice(downQuote) : formatTradeSidePrice(market.down)}
+                    </strong>
+                    <small>
+                      {downQuote
+                        ? formatTradeQuotePayout(downQuote)
+                        : formatTradeSidePayout(copyAmount, market.down)}
+                    </small>
                   </button>
                 </div>
               );
@@ -3059,9 +3079,12 @@ export function App() {
     return [...frozenTraders, ...newTraders];
   }, [frozenTraderOrder, replayTraders]);
   const marketHeatNowMs = Date.now();
+  const marketDurationOptions = buildMarketDurationOptions(marketHeatPreview, {
+    nowMs: marketHeatNowMs,
+  });
   const activeMarketDuration =
     selectedMarketDuration !== "all" &&
-    MARKET_DURATION_OPTIONS.some((option) => option.value === selectedMarketDuration)
+    marketDurationOptions.some((option) => option.value === selectedMarketDuration)
       ? selectedMarketDuration
       : "all";
   const allVisibleMarketHeatRows = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
@@ -3082,7 +3105,7 @@ export function App() {
   });
   const activeTradeDuration =
     selectedTradeDuration !== "all" &&
-    MARKET_DURATION_OPTIONS.some((option) => option.value === selectedTradeDuration)
+    marketDurationOptions.some((option) => option.value === selectedTradeDuration)
       ? selectedTradeDuration
       : "all";
   const tradeDurationMarketRows = selectTradeMarketsForDuration(
@@ -4366,7 +4389,7 @@ export function App() {
       sortMode={marketHeatSortMode}
       density={marketHeatDensity}
       selectedDuration={activeMarketDuration}
-      durationOptions={MARKET_DURATION_OPTIONS}
+      durationOptions={marketDurationOptions}
       showExpired={marketHeatShowExpired}
       canShowMore={marketHeatRemainingCount > 0}
       selectedRowId={marketHeatIntent.selectedRowId}
@@ -4396,7 +4419,7 @@ export function App() {
       selectedMarketId={baseSelectedTradeMarket?.id ?? ""}
       selectedDuration={activeTradeDuration}
       selectedSide={tradeSide}
-      durationOptions={MARKET_DURATION_OPTIONS}
+      durationOptions={marketDurationOptions}
       quote={activeTradeQuote}
       quoteStatus={activeTradeQuoteStatus}
       predictManagerObjectId={activePredictManagerObjectId}
