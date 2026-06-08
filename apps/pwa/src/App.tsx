@@ -117,6 +117,10 @@ const MARKET_HEAT_PAGE_SIZE = 8;
 const WALLET_LEADERBOARDS_REFRESH_MS = 15_000;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
 const PORTFOLIO_TIME_REFRESH_MS = 15_000;
+const TRADE_LADDER_VISIBLE_STRIKE_COUNT = 4;
+const TRADE_LADDER_BELOW_TARGET_COUNT = 2;
+const TRADE_LADDER_QUOTE_STAGGER_MS = 350;
+const TRADE_LADDER_QUOTE_RETRY_MS = 15_000;
 const DEPOSIT_AMOUNT_DEFAULT = 25;
 const DEPOSIT_AMOUNT_MIN = 0.01;
 const TOAST_LIMIT = 3;
@@ -165,6 +169,7 @@ export type TradeMarketSelection = {
   strikeRaw: number;
 };
 type TradeQuoteStatus = "idle" | "loading" | "ready" | "error";
+type TradeQuoteByKey = Record<string, TradeQuote | undefined>;
 export type WalletTransactionStatus = "idle" | "pending" | "success" | "error";
 export type WalletTransactionState = {
   status: WalletTransactionStatus;
@@ -645,6 +650,227 @@ export function buildTradeQuoteKey(
   ].join(":");
 }
 
+type TradeLadderDisplayRow = {
+  key: string;
+  market: TradeMarketLadderRow;
+  selection: TradeMarketSelection;
+};
+
+export type TradeLadderQuoteTarget = {
+  key: string;
+  market: TradeMarketLadderRow;
+  side: TradeSide;
+};
+type TradeLadderQuoteSelectionOptions = {
+  activeQuoteKey?: string | null;
+  cachedQuotes?: Record<string, unknown>;
+  failedAtByKey?: Map<string, number>;
+  inFlightKeys?: Set<string>;
+  nowMs?: number;
+};
+
+function buildTradeLadderDisplayRows({
+  customStrike,
+  marketPriceLabel,
+  marketRows,
+  selectedMarketId,
+}: {
+  customStrike?: TradeMarketSelection | null;
+  marketPriceLabel?: string | null;
+  marketRows: TradeMarketLadderRow[];
+  selectedMarketId: string;
+}): {
+  baseSelectedMarket: TradeMarketLadderRow | null;
+  ladderRows: TradeLadderDisplayRow[];
+  selectedCustomStrike: TradeMarketSelection | null;
+  selectedLadderKey: string | null;
+  selectedMarket: TradeMarketLadderRow | null;
+} {
+  const baseSelectedMarket =
+    marketRows.find((market) => market.id === selectedMarketId) ??
+    marketRows[0] ??
+    null;
+  const selectedMarket = baseSelectedMarket
+    ? applyCustomStrikeToTradeMarket(baseSelectedMarket, customStrike, marketPriceLabel ?? "") ??
+      baseSelectedMarket
+    : null;
+  const selectedCustomStrike =
+    selectedMarket && customStrike?.marketId === selectedMarket.id
+      ? customStrike
+      : selectedMarket
+        ? buildTradeMarketSelectionFromRow(selectedMarket)
+        : null;
+  const targetStrike =
+    parseTradeStrikeInputValue(marketPriceLabel ?? "") ??
+    selectedCustomStrike?.strike ??
+    selectedMarket?.strike ??
+    null;
+  const selectedLadderKey =
+    selectedMarket && selectedCustomStrike
+      ? `${selectedMarket.pairLabel}:${selectedMarket.intervalLabel}:${selectedMarket.timeRemainingLabel}:${selectedCustomStrike.strikeLabel}`
+      : null;
+  const allLadderRows = marketRows.reduce<TradeLadderDisplayRow[]>((rows, baseMarket) => {
+    const strikeOptions = getTradeStrikeOptionsForSelection(
+      baseMarket,
+      baseMarket.id === baseSelectedMarket?.id ? selectedCustomStrike : null,
+    );
+
+    for (const option of strikeOptions) {
+      const selection = buildTradeMarketSelection(baseMarket.id, option);
+      const market =
+        applyCustomStrikeToTradeMarket(baseMarket, selection, marketPriceLabel ?? "") ??
+        baseMarket;
+      const key = `${market.pairLabel}:${market.intervalLabel}:${market.timeRemainingLabel}:${selection.strikeLabel}`;
+      const candidate = { key, market, selection };
+      const existingIndex = rows.findIndex((row) => row.key === key);
+
+      if (existingIndex === -1) {
+        rows.push(candidate);
+      } else if (key === selectedLadderKey && baseMarket.id === baseSelectedMarket?.id) {
+        rows[existingIndex] = candidate;
+      }
+    }
+
+    return rows;
+  }, []);
+  const ladderRows = selectVisibleTradeLadderRows(
+    allLadderRows,
+    targetStrike,
+    selectedLadderKey,
+  );
+
+  return {
+    baseSelectedMarket,
+    ladderRows,
+    selectedCustomStrike,
+    selectedLadderKey,
+    selectedMarket,
+  };
+}
+
+function selectVisibleTradeLadderRows(
+  rows: TradeLadderDisplayRow[],
+  targetStrike: number | null,
+  selectedLadderKey: string | null,
+): TradeLadderDisplayRow[] {
+  if (rows.length <= TRADE_LADDER_VISIBLE_STRIKE_COUNT) {
+    return rows;
+  }
+
+  const sortedRows = [...rows].sort(compareTradeLadderDisplayRows);
+  const fallbackTarget = sortedRows[Math.floor(sortedRows.length / 2)]?.selection.strike ?? null;
+  const target =
+    targetStrike !== null && Number.isFinite(targetStrike) ? targetStrike : fallbackTarget;
+  const belowTarget = sortedRows.filter((row) => row.selection.strike < (target ?? 0));
+  const atOrAboveTarget = sortedRows.filter((row) => row.selection.strike >= (target ?? 0));
+  const selectedRows: TradeLadderDisplayRow[] = [
+    ...belowTarget.slice(-TRADE_LADDER_BELOW_TARGET_COUNT),
+    ...atOrAboveTarget.slice(
+      0,
+      TRADE_LADDER_VISIBLE_STRIKE_COUNT - TRADE_LADDER_BELOW_TARGET_COUNT,
+    ),
+  ];
+  const selectedKeys = new Set(selectedRows.map((row) => row.key));
+  const backfillRows = [
+    ...belowTarget.slice(0, -TRADE_LADDER_BELOW_TARGET_COUNT).reverse(),
+    ...atOrAboveTarget.slice(
+      TRADE_LADDER_VISIBLE_STRIKE_COUNT - TRADE_LADDER_BELOW_TARGET_COUNT,
+    ),
+  ];
+
+  for (const row of backfillRows) {
+    if (selectedRows.length >= TRADE_LADDER_VISIBLE_STRIKE_COUNT) {
+      break;
+    }
+
+    if (selectedKeys.has(row.key)) {
+      continue;
+    }
+
+    selectedKeys.add(row.key);
+    selectedRows.push(row);
+  }
+
+  const selectedRow = selectedLadderKey
+    ? sortedRows.find((row) => row.key === selectedLadderKey)
+    : undefined;
+  if (selectedRow && !selectedKeys.has(selectedRow.key)) {
+    const replaceIndex = selectedRows.reduce(
+      (furthestIndex, row, index) => {
+        const currentDistance = Math.abs(row.selection.strike - (target ?? row.selection.strike));
+        const furthestDistance = Math.abs(
+          selectedRows[furthestIndex].selection.strike -
+            (target ?? selectedRows[furthestIndex].selection.strike),
+        );
+
+        return currentDistance >= furthestDistance ? index : furthestIndex;
+      },
+      0,
+    );
+
+    selectedRows[replaceIndex] = selectedRow;
+  }
+
+  return selectedRows.sort(compareTradeLadderDisplayRows);
+}
+
+function compareTradeLadderDisplayRows(
+  left: TradeLadderDisplayRow,
+  right: TradeLadderDisplayRow,
+): number {
+  return (
+    left.selection.strike - right.selection.strike ||
+    left.selection.strikeRaw - right.selection.strikeRaw ||
+    left.key.localeCompare(right.key)
+  );
+}
+
+function buildTradeLadderQuoteTargets(
+  ladderRows: TradeLadderDisplayRow[],
+  spendUsd: number,
+): TradeLadderQuoteTarget[] {
+  const seen = new Set<string>();
+  const targets: TradeLadderQuoteTarget[] = [];
+
+  for (const row of ladderRows) {
+    for (const side of ["UP", "DOWN"] as const) {
+      const key = buildTradeQuoteKey(row.market, side, spendUsd);
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      targets.push({ key, market: row.market, side });
+    }
+  }
+
+  return targets;
+}
+
+export function selectPendingTradeLadderQuoteTargets(
+  targets: TradeLadderQuoteTarget[],
+  {
+    activeQuoteKey = null,
+    cachedQuotes = {},
+    failedAtByKey = new Map(),
+    inFlightKeys = new Set(),
+    nowMs = Date.now(),
+  }: TradeLadderQuoteSelectionOptions = {},
+): TradeLadderQuoteTarget[] {
+  return targets.filter((target) => {
+    if (
+      target.key === activeQuoteKey ||
+      cachedQuotes[target.key] ||
+      inFlightKeys.has(target.key)
+    ) {
+      return false;
+    }
+
+    const failedAt = failedAtByKey.get(target.key);
+    return failedAt === undefined || nowMs - failedAt >= TRADE_LADDER_QUOTE_RETRY_MS;
+  });
+}
+
 function applyCustomStrikeToTradeMarket(
   market: TradeMarketLadderRow,
   customStrike: TradeMarketSelection | null | undefined,
@@ -697,20 +923,8 @@ function formatTradeSidePrice(sideSummary: TradeMarketLadderRow["up"] | null | u
   return `$${sideSummary.estimatedPrice.toFixed(2)}`;
 }
 
-function formatTradeSidePayout(
-  copyAmount: number,
-  sideSummary: TradeMarketLadderRow["up"] | null | undefined,
-): string {
-  const returnPreview = buildReturnPreview(copyAmount, sideSummary?.estimatedPrice);
-  return returnPreview ? `Pays ${returnPreview.payoutLabel}` : "Tap to quote";
-}
-
 function formatTradeQuotePrice(quote: TradeQuote): string {
   return `$${quote.effectivePrice.toFixed(2)}`;
-}
-
-function formatTradeQuotePayout(quote: TradeQuote): string {
-  return `Pays ${formatUsdValue(quote.payoutUsd)}`;
 }
 
 function formatTradeOutcome(side: TradeSide, strikeLabel: string): string {
@@ -1294,6 +1508,7 @@ export function TradeTicket({
   selectedSide,
   selectedDuration = "all",
   durationOptions = [],
+  ladderQuotes = {},
   quote = null,
   quoteStatus = "idle",
   predictManagerObjectId = "",
@@ -1317,6 +1532,7 @@ export function TradeTicket({
   selectedSide: TradeSide;
   selectedDuration?: string;
   durationOptions?: MarketDurationOption[];
+  ladderQuotes?: TradeQuoteByKey;
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
   predictManagerObjectId?: string;
@@ -1330,14 +1546,16 @@ export function TradeTicket({
   onSideChange: (side: TradeSide) => void;
   onWalletSubmit: () => void;
 }) {
-  const baseSelectedMarket =
-    marketRows.find((market) => market.id === selectedMarketId) ??
-    marketRows[0] ??
-    null;
-  const selectedMarket = baseSelectedMarket
-    ? applyCustomStrikeToTradeMarket(baseSelectedMarket, customStrike, marketPriceLabel ?? "") ??
-      baseSelectedMarket
-    : null;
+  const {
+    ladderRows,
+    selectedLadderKey,
+    selectedMarket,
+  } = buildTradeLadderDisplayRows({
+    customStrike,
+    marketPriceLabel,
+    marketRows,
+    selectedMarketId,
+  });
   const selectedSideSummary = selectedMarket
     ? selectedSide === "UP"
       ? selectedMarket.up
@@ -1346,50 +1564,6 @@ export function TradeTicket({
   const returnPreview = quote
     ? buildReturnPreviewFromQuote(quote)
     : buildReturnPreview(copyAmount, selectedSideSummary?.estimatedPrice);
-  const selectedCustomStrike =
-    selectedMarket && customStrike?.marketId === selectedMarket.id
-      ? customStrike
-      : selectedMarket
-        ? buildTradeMarketSelectionFromRow(selectedMarket)
-        : null;
-  const selectedLadderKey =
-    selectedMarket && selectedCustomStrike
-      ? `${selectedMarket.pairLabel}:${selectedMarket.intervalLabel}:${selectedMarket.timeRemainingLabel}:${selectedCustomStrike.strikeLabel}`
-      : null;
-  const ladderRows = marketRows.reduce<
-    Array<{
-      key: string;
-      market: TradeMarketLadderRow;
-      selection: TradeMarketSelection;
-    }>
-  >((rows, baseMarket) => {
-    const strikeOptions = getTradeStrikeOptionsForSelection(
-      baseMarket,
-      baseMarket.id === baseSelectedMarket?.id ? selectedCustomStrike : null,
-    );
-
-    for (const option of strikeOptions) {
-      const selection = buildTradeMarketSelection(baseMarket.id, option);
-      const market =
-        applyCustomStrikeToTradeMarket(baseMarket, selection, marketPriceLabel ?? "") ??
-        baseMarket;
-      const key = `${market.pairLabel}:${market.intervalLabel}:${market.timeRemainingLabel}:${selection.strikeLabel}`;
-      const candidate = {
-        key,
-        market,
-        selection,
-      };
-      const existingIndex = rows.findIndex((row) => row.key === key);
-
-      if (existingIndex === -1) {
-        rows.push(candidate);
-      } else if (key === selectedLadderKey && baseMarket.id === baseSelectedMarket?.id) {
-        rows[existingIndex] = candidate;
-      }
-    }
-
-    return rows;
-  }, []);
   const spotPrice = marketPriceLabel ? parseTradeStrikeInputValue(marketPriceLabel) : null;
   const spotLineIndex =
     spotPrice === null
@@ -1469,9 +1643,13 @@ export function TradeTicket({
               const isSelectedUp = isSelectedStrike && selectedSide === "UP";
               const isSelectedDown = isSelectedStrike && selectedSide === "DOWN";
               const upQuote =
-                isSelectedUp && quoteStatus === "ready" && quote?.side === "UP" ? quote : null;
+                ladderQuotes[buildTradeQuoteKey(market, "UP", copyAmount)] ??
+                (isSelectedUp && quoteStatus === "ready" && quote?.side === "UP" ? quote : null);
               const downQuote =
-                isSelectedDown && quoteStatus === "ready" && quote?.side === "DOWN" ? quote : null;
+                ladderQuotes[buildTradeQuoteKey(market, "DOWN", copyAmount)] ??
+                (isSelectedDown && quoteStatus === "ready" && quote?.side === "DOWN"
+                  ? quote
+                  : null);
 
               return (
                 <div className="trade-ladder-row" key={key}>
@@ -1493,11 +1671,6 @@ export function TradeTicket({
                     <strong>
                       {upQuote ? formatTradeQuotePrice(upQuote) : formatTradeSidePrice(market.up)}
                     </strong>
-                    <small>
-                      {upQuote
-                        ? formatTradeQuotePayout(upQuote)
-                        : formatTradeSidePayout(copyAmount, market.up)}
-                    </small>
                   </button>
                   <span className="trade-ladder-strike">
                     <strong>{selection.strikeLabel}</strong>
@@ -1520,11 +1693,6 @@ export function TradeTicket({
                     <strong>
                       {downQuote ? formatTradeQuotePrice(downQuote) : formatTradeSidePrice(market.down)}
                     </strong>
-                    <small>
-                      {downQuote
-                        ? formatTradeQuotePayout(downQuote)
-                        : formatTradeSidePayout(copyAmount, market.down)}
-                    </small>
                   </button>
                 </div>
               );
@@ -3014,6 +3182,12 @@ export function App() {
     status: "idle",
     quote: null,
   });
+  const [ladderQuoteState, setLadderQuoteState] = useState<TradeQuoteByKey>({});
+  const [ladderQuoteRetryTick, setLadderQuoteRetryTick] = useState(0);
+  const ladderQuoteStateRef = useRef<TradeQuoteByKey>({});
+  const ladderQuoteVisibleKeysRef = useRef<Set<string>>(new Set());
+  const ladderQuoteInFlightRef = useRef<Set<string>>(new Set());
+  const ladderQuoteFailedAtRef = useRef<Map<string, number>>(new Map());
   const previewMode = getInitialPreviewMode(realtimeApiBaseUrl);
   const [marketHeatPreview, setMarketHeatPreview] = useState<MarketHeatPreviewModel>(() =>
     buildMarketHeatPreview(),
@@ -3150,13 +3324,46 @@ export function App() {
 
     return selectedTradeMarket ?? marketRow;
   });
+  const tradeLadderQuoteTargets = buildTradeLadderQuoteTargets(
+    buildTradeLadderDisplayRows({
+      customStrike: selectedTradeCustomStrike,
+      marketPriceLabel: marketHeatPreview.marketPrice.priceLabel,
+      marketRows: displayedTradeMarketRows,
+      selectedMarketId: baseSelectedTradeMarket?.id ?? "",
+    }).ladderRows,
+    copyState.copyAmount,
+  );
+  const tradeLadderQuoteTargetKey = tradeLadderQuoteTargets
+    .map((target) => target.key)
+    .join("|");
   const tradeQuoteKey = selectedTradeMarket
     ? buildTradeQuoteKey(selectedTradeMarket, tradeSide, copyState.copyAmount)
     : null;
+  const activeLadderQuote = tradeQuoteKey ? ladderQuoteState[tradeQuoteKey] ?? null : null;
   const activeTradeQuote =
-    tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.quote : null;
+    activeLadderQuote ?? (tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.quote : null);
   const activeTradeQuoteStatus =
-    tradeQuoteState.key === tradeQuoteKey ? tradeQuoteState.status : "idle";
+    activeTradeQuote
+      ? "ready"
+      : tradeQuoteState.key === tradeQuoteKey
+        ? tradeQuoteState.status
+        : "idle";
+
+  useEffect(() => {
+    ladderQuoteStateRef.current = ladderQuoteState;
+  }, [ladderQuoteState]);
+
+  useEffect(() => {
+    if (activeView !== "trade" || previewMode !== "market" || !realtimeApiBaseUrl) {
+      return undefined;
+    }
+
+    const retryTimer = window.setInterval(() => {
+      setLadderQuoteRetryTick((tick) => tick + 1);
+    }, TRADE_LADDER_QUOTE_RETRY_MS);
+
+    return () => window.clearInterval(retryTimer);
+  }, [activeView, previewMode, realtimeApiBaseUrl]);
 
   useEffect(() => {
     if (activeView !== "trade" || !baseSelectedTradeMarket) {
@@ -3794,6 +4001,134 @@ export function App() {
   ]);
 
   useEffect(() => {
+    if (
+      activeView !== "trade" ||
+      previewMode !== "market" ||
+      !realtimeApiBaseUrl ||
+      tradeLadderQuoteTargets.length === 0
+    ) {
+      setLadderQuoteState({});
+      ladderQuoteVisibleKeysRef.current = new Set();
+      return undefined;
+    }
+
+    const visibleQuoteKeys = new Set(tradeLadderQuoteTargets.map((target) => target.key));
+    ladderQuoteVisibleKeysRef.current = visibleQuoteKeys;
+    for (const key of Array.from(ladderQuoteFailedAtRef.current.keys())) {
+      if (!visibleQuoteKeys.has(key)) {
+        ladderQuoteFailedAtRef.current.delete(key);
+      }
+    }
+
+    setLadderQuoteState((state) => {
+      let changed = false;
+      const nextState: TradeQuoteByKey = {};
+
+      for (const [key, quote] of Object.entries(state)) {
+        if (!visibleQuoteKeys.has(key)) {
+          changed = true;
+          continue;
+        }
+
+        nextState[key] = quote;
+      }
+
+      return changed ? nextState : state;
+    });
+
+    const missingTargets = selectPendingTradeLadderQuoteTargets(tradeLadderQuoteTargets, {
+      activeQuoteKey: tradeQuoteKey,
+      cachedQuotes: ladderQuoteStateRef.current,
+      failedAtByKey: ladderQuoteFailedAtRef.current,
+      inFlightKeys: ladderQuoteInFlightRef.current,
+      nowMs: Date.now(),
+    });
+    if (missingTargets.length === 0) {
+      return undefined;
+    }
+
+    let isCurrent = true;
+    let activeRequestKey: string | null = null;
+    const queuedKeys = new Set(missingTargets.map((target) => target.key));
+    for (const key of queuedKeys) {
+      ladderQuoteInFlightRef.current.add(key);
+    }
+
+    const waitForNextQuoteSlot = () =>
+      new Promise<void>((resolve) => {
+        window.setTimeout(() => {
+          resolve();
+        }, TRADE_LADDER_QUOTE_STAGGER_MS);
+      });
+
+    const loadQueuedQuotes = async () => {
+      for (const target of missingTargets) {
+        if (!isCurrent) {
+          break;
+        }
+
+        activeRequestKey = target.key;
+        const quote = await loadTradeQuote({
+          apiBaseUrl: realtimeApiBaseUrl,
+          market: target.market,
+          side: target.side,
+          spendUsd: copyState.copyAmount,
+        });
+        activeRequestKey = null;
+        ladderQuoteInFlightRef.current.delete(target.key);
+
+        const isVisible = ladderQuoteVisibleKeysRef.current.has(target.key);
+        if (!isVisible) {
+          if (!isCurrent) {
+            break;
+          }
+          continue;
+        }
+
+        if (!quote) {
+          ladderQuoteFailedAtRef.current.set(target.key, Date.now());
+          await waitForNextQuoteSlot();
+          continue;
+        }
+
+        ladderQuoteFailedAtRef.current.delete(target.key);
+        setLadderQuoteState((state) => {
+          if (state[target.key]) {
+            return state;
+          }
+
+          return { ...state, [target.key]: quote };
+        });
+        if (!isCurrent) {
+          break;
+        }
+        await waitForNextQuoteSlot();
+      }
+    };
+
+    void loadQueuedQuotes();
+
+    return () => {
+      isCurrent = false;
+      for (const key of queuedKeys) {
+        if (key === activeRequestKey) {
+          continue;
+        }
+
+        ladderQuoteInFlightRef.current.delete(key);
+      }
+    };
+  }, [
+    activeView,
+    copyState.copyAmount,
+    ladderQuoteRetryTick,
+    previewMode,
+    realtimeApiBaseUrl,
+    tradeQuoteKey,
+    tradeLadderQuoteTargetKey,
+  ]);
+
+  useEffect(() => {
     if (!replayState.isPlaying) {
       return undefined;
     }
@@ -4420,6 +4755,7 @@ export function App() {
       selectedDuration={activeTradeDuration}
       selectedSide={tradeSide}
       durationOptions={marketDurationOptions}
+      ladderQuotes={ladderQuoteState}
       quote={activeTradeQuote}
       quoteStatus={activeTradeQuoteStatus}
       predictManagerObjectId={activePredictManagerObjectId}

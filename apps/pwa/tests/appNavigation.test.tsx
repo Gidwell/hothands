@@ -10,7 +10,9 @@ import {
   WalletHeaderControl,
   WalletStatusBar,
   buildTradeQuoteKey,
+  selectPendingTradeLadderQuoteTargets,
   shouldShowAccountSummary,
+  type TradeLadderQuoteTarget,
 } from "../src/App";
 
 function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
@@ -196,6 +198,37 @@ describe("mobile app navigation", () => {
         25,
       ),
     );
+  });
+
+  test("selects only ladder quote targets that are safe to request", () => {
+    const makeTarget = (key: string): TradeLadderQuoteTarget => ({
+      key,
+      market: {} as TradeLadderQuoteTarget["market"],
+      side: "UP",
+    });
+
+    const pendingTargets = selectPendingTradeLadderQuoteTargets(
+      [
+        makeTarget("active"),
+        makeTarget("cached"),
+        makeTarget("in-flight"),
+        makeTarget("backing-off"),
+        makeTarget("retryable"),
+        makeTarget("fresh"),
+      ],
+      {
+        activeQuoteKey: "active",
+        cachedQuotes: { cached: true },
+        failedAtByKey: new Map([
+          ["backing-off", 10_000],
+          ["retryable", 0],
+        ]),
+        inFlightKeys: new Set(["in-flight"]),
+        nowMs: 20_000,
+      },
+    );
+
+    expect(pendingTargets.map((target) => target.key)).toEqual(["retryable", "fresh"]);
   });
 
   test("renders available wallet balance separately from Predict bankroll with a deposit action", () => {
@@ -814,12 +847,81 @@ describe("mobile app navigation", () => {
     expect(html).toContain('aria-label="Trade DOWN $71,050"');
     expect(html).toContain("UP $71,050");
     expect(html).toContain("Wins if BTC settles above $71,050");
-    expect(html).toContain("Pays $250");
-    expect(html).toContain("Tap to quote");
+    expect(html).toContain("$0.40");
+    expect(html).not.toContain("Pays $250");
     expect(html).toContain("Est. payout</small>Quote needed");
     expect(html).not.toContain("Est. payout</small>$250");
     expect(html).not.toContain('data-testid="trade-strike-select"');
     expect(html).not.toContain('data-testid="trade-custom-strike"');
+  });
+
+  test("limits the trade ladder to four prices around the active strike", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[
+          {
+            id: "btc-15m-73000",
+            oracleId: "0xoracle15",
+            pairLabel: "BTC/USD",
+            intervalLabel: "15m",
+            roundLabel: "15m round",
+            expiry: 1_779_165_900_000,
+            expiryMs: 1_779_165_900_000,
+            expiryTimeLabel: "May 18, 21:45 PDT",
+            timeRemainingLabel: "15m left",
+            strike: 73_000,
+            strikeRaw: 73_000_000_000,
+            strikeLabel: "$73,000",
+            moneynessLabel: "At spot",
+            activityLabel: "6 strikes",
+            uniqueWalletCount: 4,
+            tradeCount: 12,
+            distinctStrikeCount: 6,
+            volumeUsd: 120,
+            volumeLabel: "$120",
+            strikeOptions: [70_000, 71_000, 72_000, 73_000, 74_000, 75_000].map(
+              (strike) => ({
+                strike,
+                strikeRaw: strike * 1_000_000,
+                strikeLabel: `$${strike.toLocaleString("en-US")}`,
+              }),
+            ),
+            up: {
+              walletCount: 2,
+              tradeCount: 6,
+              volumeUsd: 60,
+              volumeLabel: "$60",
+            },
+            down: {
+              walletCount: 2,
+              tradeCount: 6,
+              volumeUsd: 60,
+              volumeLabel: "$60",
+            },
+          },
+        ]}
+        copyAmount={25}
+        selectedMarketId="btc-15m-73000"
+        selectedSide="UP"
+        customStrike={{
+          marketId: "btc-15m-73000",
+          strike: 73_000,
+          strikeRaw: 73_000_000_000,
+          strikeLabel: "$73,000",
+        }}
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).not.toContain('aria-label="Trade UP $70,000"');
+    expect(html).toContain('aria-label="Trade UP $71,000"');
+    expect(html).toContain('aria-label="Trade UP $72,000"');
+    expect(html).toContain('aria-label="Trade UP $73,000"');
+    expect(html).toContain('aria-label="Trade UP $74,000"');
+    expect(html).not.toContain('aria-label="Trade UP $75,000"');
   });
 
   test("keeps the selected strike option visible when live strike options refresh", () => {
@@ -1088,7 +1190,7 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain("Spend</small>$25");
     expect(html).toContain("$0.50");
-    expect(html).toContain("Pays $49.96");
+    expect(html).not.toContain("Pays $49.96");
     expect(html).toContain("Est. payout</small>$49.96");
     expect(html).toContain("Max profit</small>+$24.98");
   });
