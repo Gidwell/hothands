@@ -82,15 +82,20 @@ export default {
         return json({ error: "method_not_allowed" }, 405);
       }
 
+      const includeExpired = parseIncludeExpiredRequest(url);
       return json(
         (
           await readThroughResponseCache({
             cache: responseCache,
-            key: testnetCacheKey("market-heat", env),
+            key: testnetCacheKey(
+              includeExpired ? "market-heat:expired" : "market-heat:live",
+              env
+            ),
             ttlMs: TESTNET_SNAPSHOT_CACHE_TTL_MS,
             load: () =>
               getTestnetMarketHeat({
                 fetchImpl: env.fetch ?? fetch,
+                includeExpired,
                 reader: env.indexerReader
               })
           })
@@ -301,6 +306,10 @@ function testnetCacheKey(name: string, env: Env): string {
     env.fetch ? `fetch:${cacheNamespaceId(env.fetch)}` : "fetch:global",
     env.indexerReader ? `reader:${cacheNamespaceId(env.indexerReader)}` : "reader:none"
   ].join(":");
+}
+
+function parseIncludeExpiredRequest(url: URL): boolean {
+  return url.searchParams.get("includeExpired") === "true";
 }
 
 function cacheNamespaceId(value: object): number {

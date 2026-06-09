@@ -3999,6 +3999,7 @@ export function App() {
       try {
         const preview = await loadMarketHeatPreview({
           apiBaseUrl: realtimeApiBaseUrl,
+          includeExpired: marketHeatShowExpired,
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
@@ -4018,6 +4019,7 @@ export function App() {
       try {
         const preview = await loadMarketHeatPriceSnapshot(marketHeatPreviewRef.current, {
           apiBaseUrl: realtimeApiBaseUrl,
+          includeExpired: marketHeatShowExpired,
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
@@ -4053,7 +4055,7 @@ export function App() {
         window.clearInterval(rowsRefreshTimer);
       }
     };
-  }, [activeView, previewMode, realtimeApiBaseUrl]);
+  }, [activeView, marketHeatShowExpired, previewMode, realtimeApiBaseUrl]);
 
   useEffect(() => {
     if (activeView !== "leaderboards") {

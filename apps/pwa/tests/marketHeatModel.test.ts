@@ -275,6 +275,29 @@ describe("market heat preview model", () => {
     });
   });
 
+  test("requests expired market heat rows when the feed includes expired positions", async () => {
+    const calls: string[] = [];
+
+    await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      includeExpired: true,
+      nowMs: 1_779_165_000_000,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        return Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          rows: [],
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/market-heat?includeExpired=true",
+    ]);
+  });
+
   test("refreshes the market price from the lightweight testnet snapshot endpoint", async () => {
     const calls: string[] = [];
     const currentPreview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {

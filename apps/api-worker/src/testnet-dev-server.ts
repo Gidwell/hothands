@@ -112,14 +112,20 @@ export function createTestnetDevServerFetch({
         return json({ error: "method_not_allowed" }, 405);
       }
 
+      const includeExpired = parseIncludeExpiredRequest(url);
       return json(
         (
           await readThroughResponseCache({
             cache: responseCache,
-            key: "testnet:market-heat",
+            key: includeExpired ? "testnet:market-heat:expired" : "testnet:market-heat:live",
             ttlMs: TESTNET_SNAPSHOT_CACHE_TTL_MS,
             nowMs,
-            load: () => getTestnetMarketHeat({ fetchImpl, reader: indexerReader })
+            load: () =>
+              getTestnetMarketHeat({
+                fetchImpl,
+                includeExpired,
+                reader: indexerReader
+              })
           })
         ).value
       );
@@ -399,6 +405,10 @@ function parsePredictRedeemQuoteRequest(url: URL) {
     side: requireSearchParam(url, "side"),
     quantity: requireSearchParam(url, "quantity")
   };
+}
+
+function parseIncludeExpiredRequest(url: URL): boolean {
+  return url.searchParams.get("includeExpired") === "true";
 }
 
 async function getIndexedPortfolioEvents({

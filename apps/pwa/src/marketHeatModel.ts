@@ -153,6 +153,7 @@ export type MarketHeatPreview = {
 export type LoadMarketHeatPreviewOptions = {
   apiBaseUrl?: string;
   fetcher?: typeof fetch;
+  includeExpired?: boolean;
   nowMs?: number;
   timeZone?: string;
   useMainnetSuinsNames?: boolean;
@@ -693,6 +694,7 @@ export function buildMarketHeatIntentPanel(
 export async function loadMarketHeatPreview({
   apiBaseUrl,
   fetcher = fetch,
+  includeExpired = false,
   nowMs = Date.now(),
   timeZone,
   useMainnetSuinsNames = false,
@@ -704,7 +706,7 @@ export async function loadMarketHeatPreview({
   }
 
   try {
-    const response = await fetcher(buildMarketHeatUrl(normalizedBaseUrl));
+    const response = await fetcher(buildMarketHeatUrl(normalizedBaseUrl, includeExpired));
 
     if (!response.ok) {
       return buildCapturedMarketHeatPreview(nowMs, timeZone);
@@ -750,6 +752,7 @@ export async function loadMarketHeatPriceSnapshot(
   {
     apiBaseUrl,
     fetcher = fetch,
+    includeExpired = false,
     nowMs = Date.now(),
     timeZone,
     useMainnetSuinsNames = false,
@@ -758,13 +761,14 @@ export async function loadMarketHeatPriceSnapshot(
   const normalizedBaseUrl = apiBaseUrl?.trim();
 
   if (!normalizedBaseUrl) {
-    return loadMarketHeatPreview({
-      apiBaseUrl,
-      fetcher,
-      nowMs,
-      timeZone,
-      useMainnetSuinsNames,
-    });
+      return loadMarketHeatPreview({
+        apiBaseUrl,
+        fetcher,
+        includeExpired,
+        nowMs,
+        timeZone,
+        useMainnetSuinsNames,
+      });
   }
 
   try {
@@ -774,6 +778,7 @@ export async function loadMarketHeatPriceSnapshot(
       return loadMarketHeatPreview({
         apiBaseUrl: normalizedBaseUrl,
         fetcher,
+        includeExpired,
         nowMs,
         timeZone,
         useMainnetSuinsNames,
@@ -787,6 +792,7 @@ export async function loadMarketHeatPriceSnapshot(
       return loadMarketHeatPreview({
         apiBaseUrl: normalizedBaseUrl,
         fetcher,
+        includeExpired,
         nowMs,
         timeZone,
         useMainnetSuinsNames,
@@ -805,6 +811,7 @@ export async function loadMarketHeatPriceSnapshot(
     return loadMarketHeatPreview({
       apiBaseUrl: normalizedBaseUrl,
       fetcher,
+      includeExpired,
       nowMs,
       timeZone,
       useMainnetSuinsNames,
@@ -855,8 +862,13 @@ async function fetchWithTimeout(
   }
 }
 
-function buildMarketHeatUrl(apiBaseUrl: string): string {
-  return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/market-heat`;
+function buildMarketHeatUrl(apiBaseUrl: string, includeExpired: boolean): string {
+  const url = new URL(`${apiBaseUrl.replace(/\/+$/, "")}/testnet/market-heat`);
+  if (includeExpired) {
+    url.searchParams.set("includeExpired", "true");
+  }
+
+  return url.toString();
 }
 
 function buildMarketHeatPriceSnapshotUrl(apiBaseUrl: string): string {

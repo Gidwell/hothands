@@ -275,6 +275,58 @@ describe("testnet market heat endpoint", () => {
     ]);
   });
 
+  test("requests expired indexed activity when the feed asks for expired rows", async () => {
+    const requests: unknown[] = [];
+    const reader = createIndexedMarketHeatReader();
+    const projection = await getTestnetMarketHeat({
+      includeExpired: true,
+      reader: {
+        ...reader,
+        listRecentTradeEvents: async (options) => {
+          requests.push(options);
+          return reader.listRecentTradeEvents(options);
+        }
+      },
+      fetchImpl: async () => {
+        throw new Error("public Predict should not be read when indexed market heat exists");
+      }
+    });
+
+    expect(projection.source).toBe("indexed_testnet");
+    expect(requests).toEqual([
+      {
+        limit: expect.any(Number)
+      }
+    ]);
+  });
+
+  test("worker passes includeExpired market heat requests to the indexer", async () => {
+    const requests: unknown[] = [];
+    const reader = createIndexedMarketHeatReader();
+    const response = await worker.fetch(
+      new Request("https://api.hot-hands.test/testnet/market-heat?includeExpired=true"),
+      {
+        indexerReader: {
+          ...reader,
+          listRecentTradeEvents: async (options) => {
+            requests.push(options);
+            return reader.listRecentTradeEvents(options);
+          }
+        },
+        fetch: async () => {
+          throw new Error("public Predict should not be read when indexed market heat exists");
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(requests).toEqual([
+      {
+        limit: expect.any(Number)
+      }
+    ]);
+  });
+
   test("requests the same deep wallet stats window used by leaderboards", async () => {
     const oracleRequests: unknown[] = [];
     const positionRequests: unknown[] = [];

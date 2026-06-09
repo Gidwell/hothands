@@ -190,6 +190,33 @@ describe("testnet API dev server harness", () => {
     });
   });
 
+  test("passes includeExpired market heat requests to the local indexer reader", async () => {
+    const tradeEventRequests: unknown[] = [];
+    const baseReader = createTestIndexerReader();
+    const fetchHandler = createTestnetDevServerFetch({
+      fetchImpl: async () => {
+        throw new Error("public Predict should not be used when indexer has rows");
+      },
+      indexerReader: createTestIndexerReader({
+        listRecentTradeEvents: async (options) => {
+          tradeEventRequests.push(options);
+          return baseReader.listRecentTradeEvents(options);
+        }
+      })
+    });
+
+    const response = await fetchHandler(
+      new Request("http://127.0.0.1:8789/testnet/market-heat?includeExpired=true")
+    );
+
+    expect(response.status).toBe(200);
+    expect(tradeEventRequests).toEqual([
+      {
+        limit: expect.any(Number)
+      }
+    ]);
+  });
+
   test("caches indexed market heat for a short read-through window", async () => {
     let now = 1_779_070_802_000;
     const oracleRequests: unknown[] = [];

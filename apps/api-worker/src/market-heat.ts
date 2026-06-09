@@ -95,6 +95,7 @@ export interface MarketHeatRow {
 
 export interface TestnetMarketHeatOptions {
   fetchImpl?: typeof fetch;
+  includeExpired?: boolean;
   mode?: "live" | "captured";
   reader?: PredictIndexerReader;
   nowMs?: number;
@@ -111,6 +112,7 @@ export function getCapturedTestnetMarketHeat(): MarketHeatProjection {
 
 export async function getTestnetMarketHeat({
   fetchImpl = fetch,
+  includeExpired = false,
   mode = "live",
   reader,
   nowMs = Date.now()
@@ -121,7 +123,9 @@ export async function getTestnetMarketHeat({
 
   if (reader) {
     try {
-      const indexed = await getIndexedTestnetMarketHeat(reader, nowMs);
+      const indexed = await getIndexedTestnetMarketHeat(reader, nowMs, {
+        includeExpired
+      });
       if (indexed.rows.length > 0) {
         return indexed;
       }
@@ -140,7 +144,8 @@ export async function getTestnetMarketHeat({
 
 async function getIndexedTestnetMarketHeat(
   reader: PredictIndexerReader,
-  nowMs: number
+  nowMs: number,
+  { includeExpired }: { includeExpired: boolean }
 ): Promise<MarketHeatProjection> {
   const [
     oracles,
@@ -152,16 +157,27 @@ async function getIndexedTestnetMarketHeat(
   ] = await Promise.all([
     reader.listBtcOracles({ includeSettled: false }),
     reader.listBtcOracles({ includeSettled: true }),
-    reader.listRecentTradeEvents({
-      hideExpiredAtMs: nowMs,
-      limit: LATEST_ACTIVITY_ROW_LIMIT
-    }),
+    reader.listRecentTradeEvents(
+      includeExpired
+        ? { limit: LATEST_ACTIVITY_ROW_LIMIT }
+        : {
+            hideExpiredAtMs: nowMs,
+            limit: LATEST_ACTIVITY_ROW_LIMIT
+          }
+    ),
     reader.listPositionSummaries({ limit: HEAT_ACCOUNT_ROW_LIMIT }),
-    reader.listPositionSummaries({
-      hideExpiredAtMs: nowMs,
-      limit: OPEN_POSITION_FEED_ROW_LIMIT,
-      status: "open"
-    }),
+    reader.listPositionSummaries(
+      includeExpired
+        ? {
+            limit: OPEN_POSITION_FEED_ROW_LIMIT,
+            status: "open"
+          }
+        : {
+            hideExpiredAtMs: nowMs,
+            limit: OPEN_POSITION_FEED_ROW_LIMIT,
+            status: "open"
+          }
+    ),
     reader.listPositionSummaries({ limit: WALLET_STATS_POSITION_LIMIT })
   ]);
   const activeOracles = selectIndexedActiveBtcOracles(oracles);
