@@ -13,6 +13,7 @@ import {
   buildTradeQuoteKey,
   shouldShowAccountSummary,
 } from "../src/App";
+import { buildMarketHeatPreview, type MarketHeatPreviewRowInput } from "../src/marketHeatModel";
 
 function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
   if (Array.isArray(node)) {
@@ -354,6 +355,60 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="profile-follow-wallet-submit"');
     expect(html).toContain("0x195b...756c");
     expect(html).toContain("Unfollow");
+  });
+
+  test("renders selected wallet positions on the profile page", () => {
+    const profileWallet = "0xaaaa222233334444555566667777888899990000111122223333444455556666";
+    const profileRows: MarketHeatPreviewRowInput[] = [
+      {
+        id: "profile-copy-row",
+        wallet: profileWallet,
+        manager: "0xmanager",
+        market: "BTC-USD",
+        side: "UP",
+        quantity: 1_000_000,
+        cost: 500_000,
+        costUsd: 0.5,
+        strike: 62_500,
+        expiryMs: 1_779_165_600_000,
+        intervalLabel: "2h",
+        observedAtMs: 1_779_158_000_000,
+        heatScore: 37,
+        status: "copy_ready",
+      },
+    ];
+    const rows = buildMarketHeatPreview(profileRows, 8, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const html = renderToStaticMarkup(
+      <ProfilePanel
+        currentWalletAddress={null}
+        followedWallets={[]}
+        profileWallet={{
+          displayName: "0xaaaa...6666",
+          wallet: profileWallet,
+        }}
+        profilePositionRows={rows}
+        selectedProfilePositionRowId="profile-copy-row"
+        copyAmount={25}
+        onFollowWallet={() => undefined}
+        onProfilePositionSelect={() => undefined}
+        onProfilePositionWalletSubmit={() => undefined}
+        onSelectWallet={() => undefined}
+        onUnfollowWallet={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="profile-positions"');
+    expect(html).toContain("Positions");
+    expect(html).toContain('data-testid="market-heat-row"');
+    expect(html).toContain("0xaaaa...6666");
+    expect(html).toContain("UP");
+    expect(html).toContain("$62,500");
+    expect(html).toContain('data-testid="market-heat-intent-panel"');
+    expect(html).toContain("Confirm transaction");
+    expect(html).not.toContain('data-testid="market-heat-sort-latest"');
+    expect(html).not.toContain('data-testid="market-heat-show-expired"');
   });
 
   test("renders portfolio positions with redeem and claim actions", () => {

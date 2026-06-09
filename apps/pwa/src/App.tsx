@@ -2231,16 +2231,34 @@ export function PortfolioPanel({
 
 export function ProfilePanel({
   currentWalletAddress = null,
+  copyAmount = COPY_AMOUNT_DEFAULT,
   followedWallets,
   profileWallet,
+  profilePositionRows = [],
+  profilePositionsCanShowMore = false,
+  profilePositionsShowMoreLabel = "Show more",
+  selectedProfilePositionRowId = null,
+  onAmountSet = () => undefined,
   onFollowWallet,
+  onProfilePositionSelect = () => undefined,
+  onProfilePositionsShowMore = () => undefined,
+  onProfilePositionWalletSubmit = () => undefined,
   onSelectWallet,
   onUnfollowWallet,
 }: {
   currentWalletAddress?: string | null;
+  copyAmount?: number;
   followedWallets: FollowedWallet[];
   profileWallet: FollowedWallet | null;
+  profilePositionRows?: MarketHeatPreviewRow[];
+  profilePositionsCanShowMore?: boolean;
+  profilePositionsShowMoreLabel?: string;
+  selectedProfilePositionRowId?: string | null;
+  onAmountSet?: (amount: number) => void;
   onFollowWallet: (wallet: FollowedWallet) => void;
+  onProfilePositionSelect?: (rowId: string) => void;
+  onProfilePositionsShowMore?: () => void;
+  onProfilePositionWalletSubmit?: (rowId: string) => void;
   onSelectWallet: (wallet: FollowedWallet) => void;
   onUnfollowWallet: (wallet: string) => void;
 }) {
@@ -2290,6 +2308,31 @@ export function ProfilePanel({
           </>
         )}
       </div>
+      {activeWallet ? (
+        <MarketHeatPreview
+          ariaLabel={`${activeWallet.displayName} positions`}
+          canShowMore={profilePositionsCanShowMore}
+          copyAmount={copyAmount}
+          emptyDetail="This wallet has no active positions to copy right now."
+          emptyTitle="No open positions"
+          rows={profilePositionRows}
+          selectedRowId={selectedProfilePositionRowId}
+          showControls={false}
+          showEmptyAction={false}
+          showExpired={false}
+          showMoreLabel={profilePositionsShowMoreLabel}
+          sortMode="latest"
+          sourceLabel=""
+          testId="profile-positions"
+          title="Positions"
+          onAmountSet={onAmountSet}
+          onSelectRow={onProfilePositionSelect}
+          onShowExpiredChange={() => undefined}
+          onShowMore={onProfilePositionsShowMore}
+          onSortModeChange={() => undefined}
+          onWalletSubmit={onProfilePositionWalletSubmit}
+        />
+      ) : null}
       <form
         className="profile-follow-form"
         onSubmit={(event) => {
@@ -2647,8 +2690,14 @@ export function MarketHeatPreview({
   rows,
   sourceLabel,
   sortMode,
+  title = "Alpha Feed",
+  ariaLabel = title,
   selectedDuration = "all",
+  showControls = true,
   showExpired,
+  showEmptyAction = true,
+  emptyTitle,
+  emptyDetail,
   canShowMore,
   selectedRowId,
   copyAmount,
@@ -2666,8 +2715,14 @@ export function MarketHeatPreview({
   rows: MarketHeatPreviewRow[];
   sourceLabel: string;
   sortMode: MarketHeatSortMode;
+  title?: string;
+  ariaLabel?: string;
   selectedDuration?: string;
+  showControls?: boolean;
   showExpired: boolean;
+  showEmptyAction?: boolean;
+  emptyTitle?: string;
+  emptyDetail?: string;
   canShowMore: boolean;
   selectedRowId: string | null;
   copyAmount: number;
@@ -2755,85 +2810,91 @@ export function MarketHeatPreview({
     onSelectRow(row.id);
   };
 
+  const resolvedEmptyTitle =
+    emptyTitle ?? (showExpired ? "No positions for this filter" : "No live positions right now");
+  const resolvedEmptyDetail =
+    emptyDetail ??
+    (showExpired ? "Try another duration." : "Show expired to review recent testnet activity.");
+  const headingAriaLabel = sourceLabel ? `${title}, ${sourceLabel} BTC markets` : title;
+  const headingTitle = sourceLabel ? `${sourceLabel} BTC markets` : title;
+
   return (
     <section
       className="market-heat-list market-heat-list-compact"
-      aria-label="Alpha Feed"
+      aria-label={ariaLabel}
       data-testid={testId}
     >
       <div className="section-heading market-heat-heading">
         <div className="market-heat-heading-title">
           <p
-            aria-label={`Alpha Feed, ${sourceLabel} BTC markets`}
-            title={`${sourceLabel} BTC markets`}
+            aria-label={headingAriaLabel}
+            title={headingTitle}
           >
-            Alpha Feed
+            {title}
           </p>
         </div>
-        <div className="market-heat-controls">
-          {durationOptions.length ? (
-            <div className="market-duration-toggle" aria-label="Market duration">
-              <button
-                type="button"
-                aria-pressed={selectedDuration === "all"}
-                data-testid="market-duration-all"
-                onClick={() => onDurationChange("all")}
-              >
-                All
-              </button>
-              {durationOptions.map((option) => (
+        {showControls ? (
+          <div className="market-heat-controls">
+            {durationOptions.length ? (
+              <div className="market-duration-toggle" aria-label="Market duration">
                 <button
                   type="button"
-                  aria-pressed={selectedDuration === option.value}
-                  data-testid={`market-duration-${marketDurationTestId(option.value)}`}
-                  key={option.value}
-                  onClick={() => onDurationChange(option.value)}
+                  aria-pressed={selectedDuration === "all"}
+                  data-testid="market-duration-all"
+                  onClick={() => onDurationChange("all")}
                 >
-                  {option.label}
+                  All
                 </button>
-              ))}
-            </div>
-          ) : null}
-          <label className="market-heat-expired-toggle">
-            <input
-              type="checkbox"
-              checked={showExpired}
-              data-testid="market-heat-show-expired"
-              onChange={(event) => onShowExpiredChange(event.currentTarget.checked)}
-            />
-            <span>Show expired</span>
-          </label>
-          <div className="market-heat-secondary-controls">
-            <div className="market-heat-sort" aria-label="Market heat sort">
-              <button
-                type="button"
-                aria-pressed={sortMode === "latest"}
-                data-testid="market-heat-sort-latest"
-                onClick={() => onSortModeChange("latest")}
-              >
-                Latest
-              </button>
-              <button
-                type="button"
-                aria-pressed={sortMode === "heat"}
-                data-testid="market-heat-sort-heat"
-                onClick={() => onSortModeChange("heat")}
-              >
-                Heat
-              </button>
+                {durationOptions.map((option) => (
+                  <button
+                    type="button"
+                    aria-pressed={selectedDuration === option.value}
+                    data-testid={`market-duration-${marketDurationTestId(option.value)}`}
+                    key={option.value}
+                    onClick={() => onDurationChange(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <label className="market-heat-expired-toggle">
+              <input
+                type="checkbox"
+                checked={showExpired}
+                data-testid="market-heat-show-expired"
+                onChange={(event) => onShowExpiredChange(event.currentTarget.checked)}
+              />
+              <span>Show expired</span>
+            </label>
+            <div className="market-heat-secondary-controls">
+              <div className="market-heat-sort" aria-label="Market heat sort">
+                <button
+                  type="button"
+                  aria-pressed={sortMode === "latest"}
+                  data-testid="market-heat-sort-latest"
+                  onClick={() => onSortModeChange("latest")}
+                >
+                  Latest
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={sortMode === "heat"}
+                  data-testid="market-heat-sort-heat"
+                  onClick={() => onSortModeChange("heat")}
+                >
+                  Heat
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
       </div>
       {rows.length === 0 ? (
         <div className="market-heat-empty" data-testid="market-heat-empty">
-          <strong>{showExpired ? "No positions for this filter" : "No live positions right now"}</strong>
-          <span>
-            {showExpired
-              ? "Try another duration."
-              : "Show expired to review recent testnet activity."}
-          </span>
-          {!showExpired ? (
+          <strong>{resolvedEmptyTitle}</strong>
+          <span>{resolvedEmptyDetail}</span>
+          {!showExpired && showEmptyAction ? (
             <button type="button" onClick={() => onShowExpiredChange(true)}>
               Show expired
             </button>
@@ -3352,6 +3413,8 @@ export function App() {
   const [selectedTradeExpiryDate, setSelectedTradeExpiryDate] = useState<string | null>(null);
   const [marketHeatVisibleLimit, setMarketHeatVisibleLimit] =
     useState(MARKET_HEAT_PAGE_SIZE);
+  const [profilePositionVisibleLimit, setProfilePositionVisibleLimit] =
+    useState(MARKET_HEAT_PAGE_SIZE);
   const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
     selectedRowId: null,
   });
@@ -3522,12 +3585,44 @@ export function App() {
   const isWalletActionPending = walletTxState.status === "pending";
   const isReadOnlyWalletView = !currentAccount && Boolean(readOnlyWalletAddress);
   const connectedAccountAddress = currentAccount?.address ?? readOnlyWalletAddress;
+  const activeProfileWalletAddress =
+    selectedProfileWallet?.wallet ?? connectedAccountAddress ?? null;
+  const allProfilePositionRows = activeProfileWalletAddress
+    ? selectVisibleMarketHeatRows(marketHeatPreview.rows, {
+        intervalLabel: null,
+        limit: Number.MAX_SAFE_INTEGER,
+        nowMs: marketHeatNowMs,
+        showExpired: false,
+        sortMode: "latest",
+      }).filter(
+        (row) =>
+          row.wallet.toLowerCase() === activeProfileWalletAddress.toLowerCase(),
+      )
+    : [];
+  const profilePositionRows = allProfilePositionRows.slice(0, profilePositionVisibleLimit);
+  const profilePositionRemainingCount = Math.max(
+    0,
+    allProfilePositionRows.length - profilePositionRows.length,
+  );
+  const profilePositionShowMoreCount = Math.min(
+    MARKET_HEAT_PAGE_SIZE,
+    profilePositionRemainingCount,
+  );
+  const profilePositionShowMoreLabel =
+    profilePositionShowMoreCount === 1
+      ? "Show 1 more"
+      : `Show ${profilePositionShowMoreCount} more`;
 
   useEffect(() => {
     if (connectedAccountAddress || wallets.length <= 1) {
       setIsWalletChooserOpen(false);
     }
   }, [connectedAccountAddress, wallets.length]);
+
+  useEffect(() => {
+    setProfilePositionVisibleLimit(MARKET_HEAT_PAGE_SIZE);
+    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
+  }, [activeProfileWalletAddress]);
 
   const liveDusdcBalanceLabel =
     connectedAccountAddress &&
@@ -4431,6 +4526,9 @@ export function App() {
   const handleMarketHeatShowMore = () => {
     setMarketHeatVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
   };
+  const handleProfilePositionsShowMore = () => {
+    setProfilePositionVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
+  };
   const handleProfileWalletOpen = (wallet: FollowedWallet) => {
     const normalizedWallet = normalizeProfileWalletAddress(wallet.wallet);
     if (!normalizedWallet) {
@@ -4441,6 +4539,8 @@ export function App() {
       displayName: wallet.displayName || formatWalletAddress(normalizedWallet),
       wallet: normalizedWallet,
     });
+    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
+    setProfilePositionVisibleLimit(MARKET_HEAT_PAGE_SIZE);
     setActiveView("profile");
   };
   const handleFollowWallet = (wallet: FollowedWallet) => {
@@ -4977,10 +5077,19 @@ export function App() {
           ) : (
             <ProfilePanel
               currentWalletAddress={connectedAccountAddress}
+              copyAmount={copyState.copyAmount}
               followedWallets={followedWallets}
               profileWallet={selectedProfileWallet}
+              profilePositionRows={profilePositionRows}
+              profilePositionsCanShowMore={profilePositionRemainingCount > 0}
+              profilePositionsShowMoreLabel={profilePositionShowMoreLabel}
+              selectedProfilePositionRowId={marketHeatIntent.selectedRowId}
+              onAmountSet={handleAmountSet}
               onFollowWallet={handleFollowWallet}
-              onSelectWallet={setSelectedProfileWallet}
+              onProfilePositionSelect={handleMarketHeatSelect}
+              onProfilePositionsShowMore={handleProfilePositionsShowMore}
+              onProfilePositionWalletSubmit={handleMarketHeatWalletSubmit}
+              onSelectWallet={handleProfileWalletOpen}
               onUnfollowWallet={handleUnfollowWallet}
             />
           )}
