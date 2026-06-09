@@ -10,6 +10,7 @@ import {
   TradeTicket,
   WalletHeaderControl,
   WalletStatusBar,
+  buildTradeExpiryOptions,
   buildTradeQuoteKey,
   getAccountSummaryVariant,
   getMarketHeatRowsRefreshMs,
@@ -18,7 +19,11 @@ import {
   shouldAutoRefreshMarketHeatRows,
   shouldShowAccountSummary,
 } from "../src/App";
-import { buildMarketHeatPreview, type MarketHeatPreviewRowInput } from "../src/marketHeatModel";
+import {
+  buildMarketHeatPreview,
+  type MarketHeatPreviewRowInput,
+  type TradeMarketLadderRow,
+} from "../src/marketHeatModel";
 
 function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
   if (Array.isArray(node)) {
@@ -41,6 +46,51 @@ function findElementByTestId(node: ReactNode, testId: string): ReactElement | nu
   }
 
   return findElementByTestId(props.children, testId);
+}
+
+function tradeMarketRowFixture(
+  overrides: Partial<TradeMarketLadderRow> = {},
+): TradeMarketLadderRow {
+  const expiryMs = overrides.expiryMs ?? new Date(2026, 5, 12, 1).getTime();
+  const strike = overrides.strike ?? 62_000;
+  const strikeRaw = overrides.strikeRaw ?? strike * 1_000_000;
+
+  return {
+    id: overrides.id ?? `market-${expiryMs}-${strikeRaw}`,
+    oracleId: overrides.oracleId ?? `0xoracle${expiryMs}`,
+    pairLabel: overrides.pairLabel ?? "BTC/USD",
+    intervalLabel: overrides.intervalLabel ?? "23d",
+    roundLabel: overrides.roundLabel ?? "23d round",
+    expiry: overrides.expiry ?? expiryMs,
+    expiryMs,
+    expiryTimeLabel: overrides.expiryTimeLabel ?? "Jun 12, 2026, 1:00 AM",
+    timeRemainingLabel: overrides.timeRemainingLabel ?? "3d left",
+    strike,
+    strikeRaw,
+    strikeLabel: overrides.strikeLabel ?? "$62,000",
+    moneynessLabel: overrides.moneynessLabel ?? "+$200 vs spot",
+    activityLabel: overrides.activityLabel ?? "1 wallet · 1 trade · $1",
+    uniqueWalletCount: overrides.uniqueWalletCount ?? 1,
+    tradeCount: overrides.tradeCount ?? 1,
+    distinctStrikeCount: overrides.distinctStrikeCount ?? 1,
+    volumeUsd: overrides.volumeUsd ?? 1,
+    volumeLabel: overrides.volumeLabel ?? "$1",
+    ...(overrides.strikeOptions === undefined ? {} : { strikeOptions: overrides.strikeOptions }),
+    ...(overrides.pricingModel === undefined ? {} : { pricingModel: overrides.pricingModel }),
+    up: overrides.up ?? {
+      walletCount: 1,
+      tradeCount: 1,
+      volumeUsd: 1,
+      volumeLabel: "$1",
+      estimatedPrice: 0.5,
+    },
+    down: overrides.down ?? {
+      walletCount: 0,
+      tradeCount: 0,
+      volumeUsd: 0,
+      volumeLabel: "$0",
+    },
+  };
 }
 
 describe("mobile app navigation", () => {
@@ -171,6 +221,48 @@ describe("mobile app navigation", () => {
     expect(getMarketHeatRowsRefreshMs("feed")).toBe(3000);
     expect(getMarketHeatRowsRefreshMs("profile")).toBe(3000);
     expect(getMarketHeatRowsRefreshMs("trade")).toBeNull();
+  });
+
+  test("groups trade expirations by date with consistent market counts", () => {
+    const nowMs = new Date(2026, 5, 9, 12).getTime();
+    const jun12EarlyMs = new Date(2026, 5, 12, 1).getTime();
+    const jun12LaterMs = new Date(2026, 5, 12, 5).getTime();
+    const jun19Ms = new Date(2026, 5, 19, 1).getTime();
+
+    expect(
+      buildTradeExpiryOptions(
+        [
+          tradeMarketRowFixture({
+            expiryMs: jun12EarlyMs,
+            intervalLabel: "23d",
+          }),
+          tradeMarketRowFixture({
+            expiryMs: jun12LaterMs,
+            intervalLabel: "28d",
+          }),
+          tradeMarketRowFixture({
+            expiryMs: jun19Ms,
+            intervalLabel: "27d",
+          }),
+        ],
+        nowMs,
+      ),
+    ).toEqual([
+      {
+        count: 2,
+        expiryMs: jun12EarlyMs,
+        label: "Jun 12",
+        sublabel: "Fri · 2 markets · 23d, 28d",
+        value: "2026-06-12",
+      },
+      {
+        count: 1,
+        expiryMs: jun19Ms,
+        label: "Jun 19",
+        sublabel: "1 market · 27d",
+        value: "2026-06-19",
+      },
+    ]);
   });
 
   test("parses the persisted stake amount safely", () => {

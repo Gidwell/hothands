@@ -514,19 +514,22 @@ function formatTradeExpirySublabel(
   const intervalSummary =
     uniqueIntervals.length <= 2 ? uniqueIntervals.join(", ") : `${uniqueIntervals.length} expiries`;
   const countSummary = count === 1 ? "1 market" : `${count} markets`;
+  const parts: string[] = [];
 
-  if (horizon === "Today" || horizon === "Tomorrow") {
-    return intervalSummary || countSummary;
+  if (horizon && horizon !== "Today" && horizon !== "Tomorrow") {
+    parts.push(horizon);
   }
 
-  if (horizon) {
-    return `${horizon} · ${intervalSummary || countSummary}`;
+  parts.push(countSummary);
+
+  if (intervalSummary) {
+    parts.push(intervalSummary);
   }
 
-  return intervalSummary ? `${countSummary} · ${intervalSummary}` : countSummary;
+  return parts.join(" · ");
 }
 
-function buildTradeExpiryOptions(
+export function buildTradeExpiryOptions(
   marketRows: TradeMarketLadderRow[],
   nowMs: number,
 ): TradeExpiryOption[] {
