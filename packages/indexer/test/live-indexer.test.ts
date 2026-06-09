@@ -75,7 +75,7 @@ describe("DeepBook Predict live indexer", () => {
           });
         }
 
-        if (url.endsWith("/oracles/btc-fast/svi?limit=20")) {
+        if (url.endsWith("/oracles/btc-fast/svi?limit=1")) {
           return jsonResponse([
             {
               event_digest: "0xsvi",
@@ -166,7 +166,7 @@ describe("DeepBook Predict live indexer", () => {
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/trades/btc-fast?limit=7`,
     );
     expect(requests).toContain(
-      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-fast/svi?limit=20`,
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-fast/svi?limit=1`,
     );
     expect(store.snapshot().oracles).toHaveLength(1);
     expect(store.snapshot().oracleSvi).toHaveLength(1);

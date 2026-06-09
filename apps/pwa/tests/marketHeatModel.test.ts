@@ -6,6 +6,7 @@ import {
   buildMarketHeatPreview,
   closeMarketHeatIntent,
   loadMarketHeatPreview,
+  loadMarketHeatPriceSnapshot,
   loadTradeQuote,
   buildTradeMarketLadder,
   buildTradeMarketForMarketHeatRow,
@@ -45,6 +46,7 @@ describe("market heat preview model", () => {
           intervalLabel: "15m",
           expiryMs: 1_779_158_400_000,
           expiryTimeLabel: "May 18, 19:40 PDT",
+          timeRemainingLabel: "Expired",
           observedAtMs: 1_779_158_400_000,
           heatScore: 92,
           actionLabel: "Copy now",
@@ -63,6 +65,7 @@ describe("market heat preview model", () => {
           intervalLabel: "1h",
           expiryMs: 1_779_158_400_000,
           expiryTimeLabel: "May 18, 19:40 PDT",
+          timeRemainingLabel: "Expired",
           observedAtMs: 1_779_151_200_000,
           heatScore: 87,
           actionLabel: "Copy now",
@@ -81,6 +84,7 @@ describe("market heat preview model", () => {
           intervalLabel: "1d",
           expiryMs: 1_779_158_400_000,
           expiryTimeLabel: "May 18, 19:40 PDT",
+          timeRemainingLabel: "Expired",
           observedAtMs: 1_779_079_200_000,
           heatScore: 81,
           actionLabel: "Copy now",
@@ -208,6 +212,12 @@ describe("market heat preview model", () => {
               observedAtMs: 1_779_165_000_000,
               heatScore: 74,
               status: "watching",
+              walletStats: {
+                totalPnl: 22_230_000,
+                currentStreakType: "win",
+                currentStreakLength: 12,
+                lastSeenMs: 1_779_164_940_000,
+              },
             },
           ],
         });
@@ -261,7 +271,94 @@ describe("market heat preview model", () => {
       expiryTimeLabel: "May 18, 19:40 PDT",
       actionLabel: "Copy now",
       statusLabel: "just now",
+      walletStatsLabel: "+$22.23 · 12 wins · 1m ago",
     });
+  });
+
+  test("refreshes the market price from the lightweight testnet snapshot endpoint", async () => {
+    const calls: string[] = [];
+    const currentPreview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
+      nowMs: 1_779_165_000_000,
+    });
+
+    const preview = await loadMarketHeatPriceSnapshot(currentPreview, {
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_100_000,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        return Response.json({
+          source: "indexed_testnet",
+          capturedAt: "2026-05-18T04:45:00.000Z",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 72_345.67,
+            source: "indexed_testnet",
+          },
+        });
+      },
+    });
+
+    expect(calls).toEqual(["https://api.hot-hands.test/testnet/price-snapshot"]);
+    expect(preview.rows).toEqual(currentPreview.rows);
+    expect(preview.availableMarkets).toEqual(currentPreview.availableMarkets);
+    expect(preview.marketPrice).toEqual({
+      marketLabel: "BTC/USD",
+      priceLabel: "$72,346",
+      statusLabel: "Indexed Testnet",
+    });
+  });
+
+  test("falls back to the full market heat payload when the price snapshot is unavailable", async () => {
+    const calls: string[] = [];
+    const currentPreview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
+      nowMs: 1_779_165_000_000,
+    });
+
+    const preview = await loadMarketHeatPriceSnapshot(currentPreview, {
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_100_000,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        if (String(url).endsWith("/testnet/price-snapshot")) {
+          return new Response(null, { status: 404 });
+        }
+
+        return Response.json({
+          mode: "testnet",
+          source: "api",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71_234,
+            source: "live_testnet",
+          },
+          rows: [
+            {
+              id: "external-0x1111",
+              wallet: "0x1111222233334444555566667777888899990000",
+              manager: "manager 0xabcd...0001",
+              market: "BTC-USD",
+              side: "DOWN",
+              strike: 3400,
+              expiryMs: 1_779_158_400_000,
+              intervalLabel: "1h",
+              observedAtMs: 1_779_165_000_000,
+              heatScore: 74,
+              status: "watching",
+            },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/price-snapshot",
+      "https://api.hot-hands.test/testnet/market-heat",
+    ]);
+    expect(preview.marketPrice.priceLabel).toBe("$71,234");
+    expect(preview.rows).toHaveLength(1);
+    expect(preview.rows[0].id).toBe("external-0x1111");
   });
 
   test("uses oracle SVI pricing for trade ladder indicative prices", async () => {
@@ -893,6 +990,50 @@ describe("market heat preview model", () => {
     });
 
     expect(preview.rows).toHaveLength(60);
+  });
+
+  test("keeps older active open rows when newer expired rows fill the feed candidate set", async () => {
+    const nowMs = 1_779_165_000_000;
+    const rows = [
+      ...Array.from({ length: 110 }, (_, index) => ({
+        id: `expired-candidate-${index}`,
+        wallet: `0x${String(index % 10).repeat(40)}`,
+        manager: `manager-expired-${index}`,
+        market: "BTC-USD",
+        side: index % 2 === 0 ? ("UP" as const) : ("DOWN" as const),
+        strike: 70_000 + index,
+        expiryMs: nowMs - 60_000,
+        intervalLabel: "15m",
+        observedAtMs: nowMs - index * 1_000,
+        heatScore: 80,
+        status: "copy_ready" as const,
+      })),
+      {
+        id: "active-open-older",
+        wallet: "0x905346ba566a0e930be3185d6b4dd3da82f580cb3a9cc0db915128e590d23a6b",
+        manager: "manager-open",
+        market: "BTC-USD",
+        side: "UP" as const,
+        strike: 62_500,
+        expiryMs: nowMs + 24 * 60 * 60 * 1000,
+        intervalLabel: "23d",
+        observedAtMs: nowMs - 10 * 24 * 60 * 60 * 1000,
+        heatScore: 25,
+        status: "copy_ready" as const,
+      },
+    ];
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs,
+      fetcher: async () =>
+        Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          rows,
+        }),
+    });
+
+    expect(preview.rows.some((row) => row.id === "active-open-older")).toBe(true);
   });
 
   test("orders market heat by latest observed trade by default", () => {

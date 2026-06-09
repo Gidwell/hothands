@@ -21,7 +21,9 @@ import { createTableActivityBroadcast } from "./table-activity";
 import { getTestnetMarketHeat } from "./market-heat";
 import { getTestnetOraclePrices } from "./oracle-prices";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
+import { getTestnetPriceSnapshot } from "./price-snapshot";
 import { getMainnetSuinsNames } from "./suins-names";
+import { readThroughResponseCache, type ResponseCache } from "./response-cache";
 import type { PredictIndexerReader } from "@hot-hands/indexer";
 import {
   getTestnetPredictRedeemQuote,
@@ -55,6 +57,11 @@ const CORS_HEADERS = {
   "access-control-allow-headers": JSON_HEADERS["access-control-allow-headers"]
 };
 
+const TESTNET_SNAPSHOT_CACHE_TTL_MS = 1_000;
+const responseCache: ResponseCache = new Map();
+const cacheNamespaceIds = new WeakMap<object, number>();
+let nextCacheNamespaceId = 1;
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -75,7 +82,41 @@ export default {
         return json({ error: "method_not_allowed" }, 405);
       }
 
-      return json(await getTestnetMarketHeat({ fetchImpl: env.fetch ?? fetch }));
+      return json(
+        (
+          await readThroughResponseCache({
+            cache: responseCache,
+            key: testnetCacheKey("market-heat", env),
+            ttlMs: TESTNET_SNAPSHOT_CACHE_TTL_MS,
+            load: () =>
+              getTestnetMarketHeat({
+                fetchImpl: env.fetch ?? fetch,
+                reader: env.indexerReader
+              })
+          })
+        ).value
+      );
+    }
+
+    if (url.pathname === "/testnet/price-snapshot") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      return json(
+        (
+          await readThroughResponseCache({
+            cache: responseCache,
+            key: testnetCacheKey("price-snapshot", env),
+            ttlMs: TESTNET_SNAPSHOT_CACHE_TTL_MS,
+            load: () =>
+              getTestnetPriceSnapshot({
+                fetchImpl: env.fetch ?? fetch,
+                reader: env.indexerReader
+              })
+          })
+        ).value
+      );
     }
 
     if (url.pathname === "/testnet/wallet-leaderboards") {
@@ -213,6 +254,7 @@ export default {
           routes: [
             "/health",
             "/testnet/market-heat",
+            "/testnet/price-snapshot",
             "/testnet/oracle-settlement",
             "/testnet/oracle-prices",
             "/testnet/wallet-leaderboards",
@@ -251,6 +293,27 @@ export default {
     return json({ error: "method_not_allowed" }, 405);
   }
 };
+
+function testnetCacheKey(name: string, env: Env): string {
+  return [
+    "testnet",
+    name,
+    env.fetch ? `fetch:${cacheNamespaceId(env.fetch)}` : "fetch:global",
+    env.indexerReader ? `reader:${cacheNamespaceId(env.indexerReader)}` : "reader:none"
+  ].join(":");
+}
+
+function cacheNamespaceId(value: object): number {
+  const existing = cacheNamespaceIds.get(value);
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const next = nextCacheNamespaceId;
+  nextCacheNamespaceId += 1;
+  cacheNamespaceIds.set(value, next);
+  return next;
+}
 
 export class TableRoom implements DurableObject {
   private readonly tableId: string;

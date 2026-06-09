@@ -8,10 +8,18 @@ import { formatUtcTimeZoneLabel } from "./timeZoneLabels";
 
 export type MarketHeatStatus = "copy_ready" | "watching";
 export type MarketHeatSortMode = "latest" | "heat";
+export type MarketHeatWalletStreakType = "win" | "loss" | "none";
 export type MarketDurationOption = {
   count: number;
   label: string;
   value: string;
+};
+
+export type MarketHeatWalletStats = {
+  totalPnl: number;
+  currentStreakType: MarketHeatWalletStreakType;
+  currentStreakLength: number;
+  lastSeenMs: number;
 };
 
 export type MarketHeatPreviewRowInput = {
@@ -31,6 +39,7 @@ export type MarketHeatPreviewRowInput = {
   observedAtMs: number;
   heatScore: number;
   status: MarketHeatStatus;
+  walletStats?: MarketHeatWalletStats;
 };
 
 export type MarketHeatPriceInput = {
@@ -105,8 +114,11 @@ export type MarketHeatPreviewRow = {
   intervalLabel: string;
   expiryMs: number;
   expiryTimeLabel: string;
+  timeRemainingLabel?: string;
   observedAtMs: number;
   heatScore: number;
+  walletStats?: MarketHeatWalletStats;
+  walletStatsLabel?: string;
   actionLabel: "Copy now";
   status: MarketHeatStatus;
   statusLabel: string;
@@ -145,6 +157,8 @@ export type LoadMarketHeatPreviewOptions = {
   timeZone?: string;
   useMainnetSuinsNames?: boolean;
 };
+
+export type LoadMarketHeatPriceSnapshotOptions = LoadMarketHeatPreviewOptions;
 
 export type BuildMarketHeatPreviewOptions = {
   marketPrice?: MarketHeatPriceInput;
@@ -241,7 +255,7 @@ export type LoadTradeQuoteOptions = {
   timeoutMs?: number;
 };
 
-const MARKET_HEAT_CANDIDATE_LIMIT = 96;
+const MARKET_HEAT_CANDIDATE_LIMIT = 768;
 const TRADE_QUOTE_TIMEOUT_MS = 6_000;
 const CAPTURED_ROW_BASE_AGE_MS = 5 * 60_000;
 const CAPTURED_ROW_AGE_STEP_MS = 15 * 60_000;
@@ -341,8 +355,15 @@ export function buildMarketHeatPreview(
           intervalLabel: row.intervalLabel,
           expiryMs: row.expiryMs,
           expiryTimeLabel: formatExpiryTime(row.expiryMs, timeZone),
+          timeRemainingLabel: formatTimeRemaining(row.expiryMs, nowMs),
           observedAtMs: row.observedAtMs,
           heatScore: row.heatScore,
+          ...(row.walletStats === undefined
+            ? {}
+            : {
+                walletStats: row.walletStats,
+                walletStatsLabel: formatWalletStatsLabel(row.walletStats, nowMs),
+              }),
           actionLabel: "Copy now",
           status: isActionableCopy ? "copy_ready" : "watching",
           statusLabel: formatTradeTime(row.observedAtMs, nowMs),
@@ -724,6 +745,73 @@ export async function loadMarketHeatPreview({
   }
 }
 
+export async function loadMarketHeatPriceSnapshot(
+  currentPreview: MarketHeatPreview,
+  {
+    apiBaseUrl,
+    fetcher = fetch,
+    nowMs = Date.now(),
+    timeZone,
+    useMainnetSuinsNames = false,
+  }: LoadMarketHeatPriceSnapshotOptions = {},
+): Promise<MarketHeatPreview> {
+  const normalizedBaseUrl = apiBaseUrl?.trim();
+
+  if (!normalizedBaseUrl) {
+    return loadMarketHeatPreview({
+      apiBaseUrl,
+      fetcher,
+      nowMs,
+      timeZone,
+      useMainnetSuinsNames,
+    });
+  }
+
+  try {
+    const response = await fetcher(buildMarketHeatPriceSnapshotUrl(normalizedBaseUrl));
+
+    if (!response.ok) {
+      return loadMarketHeatPreview({
+        apiBaseUrl: normalizedBaseUrl,
+        fetcher,
+        nowMs,
+        timeZone,
+        useMainnetSuinsNames,
+      });
+    }
+
+    const payload: unknown = await response.json();
+    const marketPrice = parseMarketHeatPrice(payload);
+
+    if (!marketPrice) {
+      return loadMarketHeatPreview({
+        apiBaseUrl: normalizedBaseUrl,
+        fetcher,
+        nowMs,
+        timeZone,
+        useMainnetSuinsNames,
+      });
+    }
+
+    const availableMarkets =
+      parseAvailableMarkets(payload, marketPrice, timeZone) ?? currentPreview.availableMarkets;
+
+    return {
+      ...currentPreview,
+      marketPrice: buildMarketHeatPrice(marketPrice),
+      availableMarkets,
+    };
+  } catch {
+    return loadMarketHeatPreview({
+      apiBaseUrl: normalizedBaseUrl,
+      fetcher,
+      nowMs,
+      timeZone,
+      useMainnetSuinsNames,
+    });
+  }
+}
+
 export async function loadTradeQuote({
   apiBaseUrl,
   fetcher = fetch,
@@ -769,6 +857,10 @@ async function fetchWithTimeout(
 
 function buildMarketHeatUrl(apiBaseUrl: string): string {
   return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/market-heat`;
+}
+
+function buildMarketHeatPriceSnapshotUrl(apiBaseUrl: string): string {
+  return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/price-snapshot`;
 }
 
 function buildTradeQuoteUrl(
@@ -975,6 +1067,40 @@ function formatTimeRemaining(expiryMs: number, nowMs: number): string {
   return `${Math.ceil(minutes / (24 * 60))}d left`;
 }
 
+function formatWalletStatsLabel(stats: MarketHeatWalletStats, nowMs: number): string {
+  return [
+    formatSignedDusdc(stats.totalPnl),
+    formatCurrentWalletStreak(stats.currentStreakType, stats.currentStreakLength),
+    formatTradeTime(stats.lastSeenMs, nowMs),
+  ].join(" · ");
+}
+
+function formatSignedDusdc(value: number): string {
+  if (!Number.isFinite(value) || value === 0) {
+    return "$0";
+  }
+
+  const prefix = value > 0 ? "+" : "-";
+  return `${prefix}${formatUsdAmount(Math.abs(value) / 1_000_000)}`;
+}
+
+function formatCurrentWalletStreak(
+  type: MarketHeatWalletStreakType,
+  length: number,
+): string {
+  const count = Math.max(0, Math.floor(length));
+
+  if (type === "win" && count > 0) {
+    return `${count} ${pluralize(count, "win")}`;
+  }
+
+  if (type === "loss" && count > 0) {
+    return `${count} ${count === 1 ? "loss" : "losses"}`;
+  }
+
+  return "No streak";
+}
+
 function formatMoneyness(diff: number): string {
   if (!Number.isFinite(diff) || diff === 0) {
     return "At spot";
@@ -1156,10 +1282,15 @@ function parseMarketHeatRows(payload: unknown): MarketHeatPreviewRowInput[] | nu
 
   const rows = payload.rows
     .filter(isMarketHeatRowInput)
-    .map((row) => ({
-      ...row,
-      intervalLabel: normalizeMarketDurationLabel(row.intervalLabel),
-    }));
+    .map((row) => {
+      const walletStats = parseMarketHeatWalletStats(row.walletStats);
+
+      return {
+        ...row,
+        ...(walletStats === null ? { walletStats: undefined } : { walletStats }),
+        intervalLabel: normalizeMarketDurationLabel(row.intervalLabel),
+      };
+    });
 
   return rows.length > 0 ? rows : null;
 }
@@ -1227,8 +1358,40 @@ function isMarketHeatRowInput(value: unknown): value is MarketHeatPreviewRowInpu
     isNonEmptyString(value.intervalLabel) &&
     isNonNegativeNumber(value.observedAtMs) &&
     isNonNegativeNumber(value.heatScore) &&
+    (value.walletStats === undefined || parseMarketHeatWalletStats(value.walletStats) !== null) &&
     (value.status === "copy_ready" || value.status === "watching")
   );
+}
+
+function parseMarketHeatWalletStats(value: unknown): MarketHeatWalletStats | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const totalPnl = optionalNumber(value.totalPnl);
+  const currentStreakType = parseMarketHeatWalletStreakType(value.currentStreakType);
+  const currentStreakLength = optionalNonNegativeNumber(value.currentStreakLength);
+  const lastSeenMs = optionalNonNegativeNumber(value.lastSeenMs);
+
+  if (
+    totalPnl === undefined ||
+    currentStreakType === null ||
+    currentStreakLength === undefined ||
+    lastSeenMs === undefined
+  ) {
+    return null;
+  }
+
+  return {
+    totalPnl,
+    currentStreakType,
+    currentStreakLength,
+    lastSeenMs,
+  };
+}
+
+function parseMarketHeatWalletStreakType(value: unknown): MarketHeatWalletStreakType | null {
+  return value === "win" || value === "loss" || value === "none" ? value : null;
 }
 
 function parseAvailableMarket(

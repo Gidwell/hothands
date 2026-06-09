@@ -34,6 +34,12 @@ const copyReadyRows: MarketHeatPreviewRowInput[] = [
     observedAtMs: 1_779_158_000_000,
     heatScore: 94,
     status: "copy_ready",
+    walletStats: {
+      totalPnl: 22_230_000,
+      currentStreakType: "win",
+      currentStreakLength: 12,
+      lastSeenMs: 1_779_158_000_000,
+    },
   },
 ];
 
@@ -273,10 +279,12 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Expanded");
     expect(html).toContain("Wallet");
     expect(html).toContain("Direction");
-    expect(html).toContain("Duration");
+    expect(html).toContain("Expiration");
     expect(html).toContain("0xbbbb...0000");
+    expect(html).toContain("+$22.23 · 12 wins · just now");
     expect(html).toContain("UP");
     expect(html).toContain("$7,100");
+    expect(html).toContain("3h left");
     expect(html).toContain("Heat");
     expect(html).toContain("94");
     expect(html).not.toContain("Cost</small>");

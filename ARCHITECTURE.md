@@ -184,6 +184,8 @@ Responsibilities:
   trades, prices, and SVI.
 - Store raw Predict rows before deriving compact projections.
 - Normalize public Predict mints, redeems, prices, SVI, and per-oracle trades.
+- Serve heavy feed projections through a short API cache and keep 1-second
+  price/market model refreshes on a lightweight snapshot endpoint.
 - Compute external wallet market heat before Hot Hands-native reputation exists.
 - Resolve signals when oracles settle.
 - Compute trader, table, and squad score snapshots.
@@ -231,6 +233,8 @@ Data-source guidance:
   checks until a cursor or checkpoint source exists.
 - Use Sui events/checkpoints for low-latency oracle updates when the indexer needs fresher settlement signals.
 - Use direct onchain reads around wallet flows, manager state, deposits, and transaction confirmation.
+- Keep live SVI polling latest-only by default; broad SVI history belongs in
+  bounded backfill/replay jobs, not every 1-second live tick.
 
 Testnet trade read mode:
 

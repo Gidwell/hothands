@@ -9,7 +9,9 @@ import type {
   PredictNormalizedTradeEvent
 } from "@hot-hands/indexer";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
+import { getTestnetPriceSnapshot } from "./price-snapshot";
 import { getMainnetSuinsNames } from "./suins-names";
+import { readThroughResponseCache, type ResponseCache } from "./response-cache";
 import {
   getTestnetPredictRedeemQuote,
   getTestnetPredictQuote,
@@ -43,6 +45,7 @@ export interface TestnetDevServerFetchOptions {
   indexerReader?: PredictIndexerReader;
   indexedOraclePriceHistoryLoader?: IndexedOraclePriceHistoryLoader;
   inspectPredictQuoteQuantity?: InspectPredictQuoteQuantity;
+  nowMs?: () => number;
 }
 
 export interface TestnetDevServerOptions extends TestnetDevServerFetchOptions {
@@ -56,6 +59,7 @@ const TESTNET_DEV_SERVER_ROUTES = [
   "/health",
   "/testnet/indexer-status",
   "/testnet/market-heat",
+  "/testnet/price-snapshot",
   "/testnet/oracle-settlement",
   "/testnet/oracle-prices",
   "/testnet/mainnet-suins-names",
@@ -78,12 +82,17 @@ const CORS_HEADERS = {
   "access-control-allow-headers": JSON_HEADERS["access-control-allow-headers"]
 };
 
+const TESTNET_SNAPSHOT_CACHE_TTL_MS = 1_000;
+
 export function createTestnetDevServerFetch({
   fetchImpl = fetch,
   indexerReader,
   indexedOraclePriceHistoryLoader,
-  inspectPredictQuoteQuantity
+  inspectPredictQuoteQuantity,
+  nowMs = Date.now
 }: TestnetDevServerFetchOptions = {}): (request: Request) => Promise<Response> {
+  const responseCache: ResponseCache = new Map();
+
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
@@ -103,7 +112,35 @@ export function createTestnetDevServerFetch({
         return json({ error: "method_not_allowed" }, 405);
       }
 
-      return json(await getTestnetMarketHeat({ fetchImpl, reader: indexerReader }));
+      return json(
+        (
+          await readThroughResponseCache({
+            cache: responseCache,
+            key: "testnet:market-heat",
+            ttlMs: TESTNET_SNAPSHOT_CACHE_TTL_MS,
+            nowMs,
+            load: () => getTestnetMarketHeat({ fetchImpl, reader: indexerReader })
+          })
+        ).value
+      );
+    }
+
+    if (url.pathname === "/testnet/price-snapshot") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      return json(
+        (
+          await readThroughResponseCache({
+            cache: responseCache,
+            key: "testnet:price-snapshot",
+            ttlMs: TESTNET_SNAPSHOT_CACHE_TTL_MS,
+            nowMs,
+            load: () => getTestnetPriceSnapshot({ fetchImpl, reader: indexerReader })
+          })
+        ).value
+      );
     }
 
     if (url.pathname === "/testnet/indexer-status") {
@@ -327,7 +364,8 @@ export function createTestnetDevServer({
   fetchImpl = fetch,
   indexerReader,
   indexedOraclePriceHistoryLoader,
-  inspectPredictQuoteQuantity
+  inspectPredictQuoteQuantity,
+  nowMs
 }: TestnetDevServerOptions = {}): BunServer {
   return Bun.serve({
     hostname,
@@ -336,7 +374,8 @@ export function createTestnetDevServer({
       fetchImpl,
       indexerReader,
       indexedOraclePriceHistoryLoader,
-      inspectPredictQuoteQuantity
+      inspectPredictQuoteQuantity,
+      nowMs
     })
   });
 }

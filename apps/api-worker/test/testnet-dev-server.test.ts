@@ -190,6 +190,90 @@ describe("testnet API dev server harness", () => {
     });
   });
 
+  test("caches indexed market heat for a short read-through window", async () => {
+    let now = 1_779_070_802_000;
+    let oracleReads = 0;
+    const reader = createTestIndexerReader({
+      listBtcOracles: async () => {
+        oracleReads += 1;
+        return [
+          {
+            predict_id: "predict",
+            oracle_id: "btc-indexed",
+            underlying_asset: "BTC",
+            expiry: 1_779_158_400_000,
+            activated_at: 1_779_157_500_000,
+            min_strike: 50_000_000_000,
+            tick_size: 1_000_000,
+            status: "active",
+          },
+        ];
+      }
+    });
+    const fetchHandler = createTestnetDevServerFetch({
+      indexerReader: reader,
+      nowMs: () => now
+    });
+
+    const first = await fetchHandler(
+      new Request("http://127.0.0.1:8789/testnet/market-heat")
+    );
+    const second = await fetchHandler(
+      new Request("http://127.0.0.1:8789/testnet/market-heat")
+    );
+    now += 1_001;
+    const third = await fetchHandler(
+      new Request("http://127.0.0.1:8789/testnet/market-heat")
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(third.status).toBe(200);
+    expect(oracleReads).toBe(2);
+  });
+
+  test("serves a lightweight indexed price snapshot without loading feed rows", async () => {
+    let tradeEventReads = 0;
+    let positionSummaryReads = 0;
+    const fetchHandler = createTestnetDevServerFetch({
+      indexerReader: createTestIndexerReader({
+        listRecentTradeEvents: async () => {
+          tradeEventReads += 1;
+          return [];
+        },
+        listPositionSummaries: async () => {
+          positionSummaryReads += 1;
+          return [];
+        }
+      })
+    });
+
+    const response = await fetchHandler(
+      new Request("http://127.0.0.1:8789/testnet/price-snapshot")
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      source: "indexed_testnet",
+      marketPrice: {
+        market: "BTC-USD",
+        price: 72000,
+        source: "indexed_testnet"
+      },
+      markets: [
+        {
+          oracleId: "btc-indexed",
+          latestPrice: 72000,
+          latestPriceLabel: "$72,000",
+          latestPriceTimestampMs: 1_779_070_800_000,
+          latestPriceCheckpoint: 101
+        }
+      ]
+    });
+    expect(tradeEventReads).toBe(0);
+    expect(positionSummaryReads).toBe(0);
+  });
+
   test("serves testnet quotes through the local PWA harness", async () => {
     const fetchHandler = createTestnetDevServerFetch({
       inspectPredictQuoteQuantity: async ({ quantity }) => ({
@@ -506,7 +590,9 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function createTestIndexerReader(): PredictIndexerReader {
+function createTestIndexerReader(
+  overrides: Partial<PredictIndexerReader> = {}
+): PredictIndexerReader {
   return {
     listBtcOracles: async () => [
       {
@@ -659,5 +745,6 @@ function createTestIndexerReader(): PredictIndexerReader {
         updatedAtMs: 1_779_070_801_200,
       },
     ],
+    ...overrides,
   };
 }

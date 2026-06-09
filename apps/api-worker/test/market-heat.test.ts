@@ -39,7 +39,8 @@ describe("testnet market heat endpoint", () => {
       strikeCandidate: 72_000_000_000,
       strikeCandidatePrice: 72000,
       latestPrice: 72000,
-      latestPriceLabel: "$72,000"
+      latestPriceLabel: "$72,000",
+      latestPriceCheckpoint: 101
     });
     expect(body.rows).toBeArray();
     expect(body.rows[0].id).toContain("live-");
@@ -91,7 +92,8 @@ describe("testnet market heat endpoint", () => {
         strikeCandidate: 71_500_000_000,
         strikeCandidatePrice: 71500,
         latestPrice: 71500,
-        latestPriceLabel: "$71,500"
+        latestPriceLabel: "$71,500",
+        latestPriceCheckpoint: 101
       },
       {
         oracleId: "btc-live",
@@ -104,7 +106,8 @@ describe("testnet market heat endpoint", () => {
         strikeCandidate: 72_000_000_000,
         strikeCandidatePrice: 72000,
         latestPrice: 72000,
-        latestPriceLabel: "$72,000"
+        latestPriceLabel: "$72,000",
+        latestPriceCheckpoint: 101
       }
     ]);
   });
@@ -139,6 +142,8 @@ describe("testnet market heat endpoint", () => {
         strikeCandidatePrice: 71520,
         latestPrice: 71500,
         latestPriceLabel: "$71,500",
+        latestPriceTimestampMs: 1_779_071_000_000,
+        latestPriceCheckpoint: 101,
         pricingModel: {
           forward: 71_520_000_000,
           forwardPrice: 71520,
@@ -162,6 +167,8 @@ describe("testnet market heat endpoint", () => {
         strikeCandidatePrice: 72140,
         latestPrice: 72125,
         latestPriceLabel: "$72,125",
+        latestPriceTimestampMs: 1_779_071_200_000,
+        latestPriceCheckpoint: 102,
         pricingModel: {
           forward: 72_140_000_000,
           forwardPrice: 72140,
@@ -202,6 +209,47 @@ describe("testnet market heat endpoint", () => {
     ).toBeGreaterThan(projection.rows[0].heatScore);
   });
 
+  test("worker serves lightweight indexed price snapshots without loading feed rows", async () => {
+    const baseReader = createIndexedMarketHeatReader();
+    let tradeEventReads = 0;
+    let positionSummaryReads = 0;
+    const response = await worker.fetch(
+      new Request("https://api.hot-hands.test/testnet/price-snapshot"),
+      {
+        indexerReader: {
+          ...baseReader,
+          listRecentTradeEvents: async () => {
+            tradeEventReads += 1;
+            return [];
+          },
+          listPositionSummaries: async () => {
+            positionSummaryReads += 1;
+            return [];
+          }
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    const body = await response.json();
+    expect(body).toMatchObject({
+      source: "indexed_testnet",
+      marketPrice: {
+        market: "BTC-USD",
+        price: 72125,
+        source: "indexed_testnet"
+      }
+    });
+    expect(body.markets.map((market: { oracleId: string }) => market.oracleId)).toEqual([
+      "btc-indexed-long",
+      "btc-indexed-short"
+    ]);
+    expect(tradeEventReads).toBe(0);
+    expect(positionSummaryReads).toBe(0);
+  });
+
   test("requests non-expired indexed activity for the default feed", async () => {
     const requests: unknown[] = [];
     const reader = createIndexedMarketHeatReader();
@@ -224,6 +272,99 @@ describe("testnet market heat endpoint", () => {
         hideExpiredAtMs: expect.any(Number),
         limit: expect.any(Number)
       }
+    ]);
+  });
+
+  test("includes active open indexed positions even when their mint is outside latest activity", async () => {
+    const nowMs = 1_779_071_500_000;
+    const projection = await getTestnetMarketHeat({
+      reader: {
+        ...createIndexedMarketHeatReader(),
+        listRecentTradeEvents: async () => [],
+        listPositionSummaries: async (options) => {
+          if (options?.status === "open") {
+            return [
+              {
+                id: "manager-open:btc-indexed-long:1779158400000:72125000000:DOWN",
+                owner: "0xopenfeed",
+                managerId: "manager-open",
+                oracleId: "btc-indexed-long",
+                expiryMs: 1_779_158_400_000,
+                strike: 72_125_000_000,
+                isUp: false,
+                mintedQuantity: 4,
+                redeemedQuantity: 0,
+                openQuantity: 4,
+                cost: 2_500_000,
+                payout: 0,
+                realizedPnl: 0,
+                lastEventMs: 1_779_070_700_000,
+                status: "open"
+              },
+              {
+                id: "manager-expired:btc-indexed-short:1779071000000:71500000000:UP",
+                owner: "0xexpiredopen",
+                managerId: "manager-expired",
+                oracleId: "btc-indexed-short",
+                expiryMs: 1_779_071_000_000,
+                strike: 71_500_000_000,
+                isUp: true,
+                mintedQuantity: 1,
+                redeemedQuantity: 0,
+                openQuantity: 1,
+                cost: 100_000,
+                payout: 0,
+                realizedPnl: -100_000,
+                lastEventMs: 1_779_070_600_000,
+                status: "open"
+              }
+            ];
+          }
+
+          return [
+            {
+              id: "manager-open:btc-indexed-settled:1779070000000:71000000000:UP",
+              owner: "0xopenfeed",
+              managerId: "manager-open",
+              oracleId: "btc-indexed-settled",
+              expiryMs: 1_779_070_000_000,
+              strike: 71_000_000_000,
+              isUp: true,
+              mintedQuantity: 1,
+              redeemedQuantity: 1,
+              openQuantity: 0,
+              cost: 1_000_000,
+              payout: 2_500_000,
+              realizedPnl: 1_500_000,
+              lastEventMs: 1_779_070_500_000,
+              status: "closed"
+            }
+          ];
+        }
+      },
+      nowMs
+    });
+
+    expect(projection.source).toBe("indexed_testnet");
+    expect(projection.rows).toEqual([
+      expect.objectContaining({
+        wallet: "0xopenfeed",
+        manager: "manager-open",
+        oracleId: "btc-indexed-long",
+        side: "DOWN",
+        quantity: 4,
+        cost: 2_500_000,
+        costUsd: 2.5,
+        strike: 72125,
+        strikeRaw: 72_125_000_000,
+        walletStats: expect.objectContaining({
+          totalPnl: 1_500_000,
+          currentStreakType: "win",
+          currentStreakLength: 1,
+          lastSeenMs: 1_779_070_700_000
+        }),
+        status: "copy_ready"
+      })
     ]);
   });
 
