@@ -6,6 +6,7 @@ import {
   BottomNav,
   MarketHeader,
   PortfolioPanel,
+  ProfilePanel,
   TradeTicket,
   WalletHeaderControl,
   WalletStatusBar,
@@ -144,6 +145,7 @@ describe("mobile app navigation", () => {
   test("shows account summary only on trade and portfolio views", () => {
     expect(shouldShowAccountSummary("feed")).toBe(false);
     expect(shouldShowAccountSummary("leaderboards")).toBe(false);
+    expect(shouldShowAccountSummary("profile")).toBe(false);
     expect(shouldShowAccountSummary("trade")).toBe(true);
     expect(shouldShowAccountSummary("portfolio")).toBe(true);
   });
@@ -270,6 +272,40 @@ describe("mobile app navigation", () => {
     expect(changedAmount).toBe(12.34);
   });
 
+  test("renders portfolio stake budget and deposit action in the account strip", () => {
+    let stakeAmount = 0;
+    const tree = AccountSummary({
+      availableLabel: "$42",
+      bankrollLabel: "$12.50",
+      stakeAmount: 25,
+      summary: {
+        accountValue: "$100",
+        available: "$80",
+        copyValue: "$25",
+        detail: "Ready to copy.",
+        pnl: "+$0",
+        pnlTone: "flat",
+        status: "Flat",
+        title: "My Session",
+      },
+      variant: "portfolio",
+      onDeposit: () => undefined,
+      onStakeAmountChange: (amount) => {
+        stakeAmount = amount;
+      },
+    });
+    const html = renderToStaticMarkup(tree);
+    const input = findElementByTestId(tree, "default-stake-amount");
+
+    expect(html).toContain("Stake");
+    expect(html).toContain('data-testid="portfolio-deposit-bankroll"');
+    expect(html).not.toContain("Position");
+    expect(input).not.toBeNull();
+    (input?.props as { onChange?: (event: { currentTarget: { value: string } }) => void })
+      .onChange?.({ currentTarget: { value: "50" } });
+    expect(stakeAmount).toBe(50);
+  });
+
   test("renders bottom navigation tabs in primary product order", () => {
     const html = renderToStaticMarkup(
       <BottomNav activeView="feed" onViewChange={() => undefined} />,
@@ -281,10 +317,43 @@ describe("mobile app navigation", () => {
     expect(html).toContain("<span>Trade</span>");
     expect(html).toContain("<span>Leaders</span>");
     expect(html).toContain("<span>Portfolio</span>");
+    expect(html).toContain("<span>Profile</span>");
     expect(html.indexOf("<span>Feed</span>")).toBeLessThan(html.indexOf("<span>Leaders</span>"));
     expect(html.indexOf("<span>Leaders</span>")).toBeLessThan(html.indexOf("<span>Trade</span>"));
     expect(html.indexOf("<span>Trade</span>")).toBeLessThan(html.indexOf("<span>Portfolio</span>"));
+    expect(html.indexOf("<span>Portfolio</span>")).toBeLessThan(html.indexOf("<span>Profile</span>"));
     expect(html).toContain('aria-pressed="true"');
+  });
+
+  test("renders profile wallet following controls", () => {
+    const html = renderToStaticMarkup(
+      <ProfilePanel
+        currentWalletAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        followedWallets={[
+          {
+            displayName: "0x195b...756c",
+            wallet: "0x195b00000000000000000000000000000000000000000000000000000000756c",
+          },
+        ]}
+        profileWallet={{
+          displayName: "0x195b...756c",
+          wallet: "0x195b00000000000000000000000000000000000000000000000000000000756c",
+        }}
+        onFollowWallet={() => undefined}
+        onSelectWallet={() => undefined}
+        onUnfollowWallet={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="profile-view"');
+    expect(html).toContain("Profile");
+    expect(html).toContain("1 following");
+    expect(html).toContain('data-testid="profile-follow-toggle"');
+    expect(html).toContain("Following");
+    expect(html).toContain('data-testid="profile-follow-wallet-input"');
+    expect(html).toContain('data-testid="profile-follow-wallet-submit"');
+    expect(html).toContain("0x195b...756c");
+    expect(html).toContain("Unfollow");
   });
 
   test("renders portfolio positions with redeem and claim actions", () => {
@@ -666,11 +735,6 @@ describe("mobile app navigation", () => {
           },
         ]}
         copyAmount={100}
-        durationOptions={[
-          { count: 1, label: "15m", value: "15m" },
-          { count: 1, label: "1h", value: "1h" },
-          { count: 1, label: "1d", value: "1d" },
-        ]}
         expiryOptions={[
           {
             count: 2,
@@ -688,11 +752,9 @@ describe("mobile app navigation", () => {
           },
         ]}
         selectedMarketId="btc-2h-72000"
-        selectedDuration="1h"
         selectedExpiryDate="2026-05-18"
         selectedSide="UP"
         onAmountSet={() => undefined}
-        onDurationChange={() => undefined}
         onExpiryChange={() => undefined}
         onMarketChange={() => undefined}
         onSideChange={() => undefined}
@@ -701,20 +763,13 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain('data-testid="trade-view"');
-    expect(html).toContain('aria-label="Trade market duration"');
-    expect(html).toContain('data-testid="trade-duration-all"');
-    expect(html).toContain('data-testid="trade-duration-15m"');
-    expect(html).toContain('data-testid="trade-duration-1h"');
-    expect(html).toContain('data-testid="trade-duration-1d"');
-    expect(html).not.toContain('data-testid="trade-duration-4d"');
+    expect(html).not.toContain('aria-label="Trade market duration"');
+    expect(html).not.toContain('data-testid="trade-duration-all"');
     expect(html).toContain('aria-label="Trade expiration dates"');
     expect(html).toContain('data-testid="trade-expiry-2026-05-18"');
     expect(html).toContain('data-testid="trade-expiry-2026-05-19"');
     expect(html).toContain("May 18");
     expect(html).toContain("May 19");
-    expect(html.indexOf('aria-label="Trade market duration"')).toBeLessThan(
-      html.indexOf('aria-label="Trade expiration dates"'),
-    );
     expect(html).toContain("Up/Down");
     expect(html).not.toContain("Range");
     expect(html).not.toContain('aria-label="Trade product type"');
@@ -725,7 +780,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain("15m left");
     expect(html).toContain('aria-label="Trade UP $72,000"');
     expect(html).toContain('aria-label="Trade DOWN $72,000"');
-    expect(html).toContain("1d");
+    expect(html).toContain("2h");
     expect(html).toContain("Selected");
     expect(html).toContain("UP $72,000");
     expect(html).toContain("Wins if BTC settles above $72,000");

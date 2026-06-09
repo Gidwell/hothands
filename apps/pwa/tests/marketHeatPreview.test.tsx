@@ -63,7 +63,6 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
@@ -108,7 +107,6 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
@@ -145,7 +143,6 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
@@ -170,7 +167,6 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
@@ -180,7 +176,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain('data-testid="market-heat-show-expired"');
   });
 
-  test("keeps show-more out of compact rows while retaining it for expanded rows", () => {
+  test("keeps show-more available in the compact feed", () => {
     const rows = buildMarketHeatPreview(
       Array.from({ length: 10 }, (_, index) => ({
         ...watchingOnlyRows[0],
@@ -194,7 +190,6 @@ describe("MarketHeatPreview component", () => {
         rows={rows.slice(0, 8)}
         sourceLabel="Live Testnet"
         sortMode="latest"
-        density="compact"
         selectedRowId={null}
         showExpired={false}
         canShowMore={true}
@@ -206,36 +201,11 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
-    expect(html).not.toContain('data-testid="market-heat-show-more"');
-    expect(html).not.toContain("Show 2 more");
-
-    const expandedHtml = renderToStaticMarkup(
-      <MarketHeatPreview
-        rows={rows.slice(0, 8)}
-        sourceLabel="Live Testnet"
-        sortMode="latest"
-        density="expanded"
-        selectedRowId={null}
-        showExpired={false}
-        canShowMore={true}
-        copyAmount={25}
-        showMoreLabel="Show 2 more"
-        onAmountSet={() => undefined}
-        onShowExpiredChange={() => undefined}
-        onShowMore={() => undefined}
-        onSortModeChange={() => undefined}
-        onWalletSubmit={() => undefined}
-        onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
-      />,
-    );
-
-    expect(expandedHtml).toContain('data-testid="market-heat-show-more"');
-    expect(expandedHtml).toContain("Show 2 more");
+    expect(html).toContain('data-testid="market-heat-show-more"');
+    expect(html).toContain("Show 2 more");
   });
 
   test("renders market duration toggle buttons", () => {
@@ -262,7 +232,6 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
@@ -284,7 +253,6 @@ describe("MarketHeatPreview component", () => {
         rows={[row]}
         sourceLabel="Live Testnet"
         sortMode="latest"
-        density="compact"
         selectedRowId={null}
         showExpired={false}
         canShowMore={false}
@@ -296,13 +264,13 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
     expect(html).toContain("market-heat-list-compact");
     expect(html).toContain("market-heat-row-compact");
-    expect(html).toContain('data-testid="market-heat-density-compact"');
+    expect(html).not.toContain("market-heat-density-toggle");
+    expect(html).not.toContain("Expanded");
     expect(html).toContain("Wallet");
     expect(html).toContain("Direction");
     expect(html).toContain("Duration");

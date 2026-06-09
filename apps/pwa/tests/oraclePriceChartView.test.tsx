@@ -40,8 +40,11 @@ describe("OraclePriceChartModal", () => {
     );
 
     expect(html).toContain('data-testid="oracle-mini-chart-change"');
+    expect(html).toContain("BTC/USD");
+    expect(html).toContain("$66,978");
     expect(html).toContain("+0.03%");
     expect(html).toContain("24h");
+    expect(html).not.toContain("DeepBook oracle price");
   });
 
   test("places trading controls below the expanded chart", () => {
