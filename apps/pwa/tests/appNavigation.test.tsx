@@ -11,6 +11,8 @@ import {
   WalletHeaderControl,
   WalletStatusBar,
   buildTradeQuoteKey,
+  getAccountSummaryVariant,
+  parseStoredStakeAmount,
   resolveSelectedProfileWalletForNav,
   shouldShowAccountSummary,
 } from "../src/App";
@@ -150,6 +152,20 @@ describe("mobile app navigation", () => {
     expect(shouldShowAccountSummary("profile")).toBe(false);
     expect(shouldShowAccountSummary("trade")).toBe(true);
     expect(shouldShowAccountSummary("portfolio")).toBe(true);
+  });
+
+  test("uses the portfolio account strip on trade and portfolio views", () => {
+    expect(getAccountSummaryVariant("trade")).toBe("portfolio");
+    expect(getAccountSummaryVariant("portfolio")).toBe("portfolio");
+    expect(getAccountSummaryVariant("feed")).toBe("default");
+  });
+
+  test("parses the persisted stake amount safely", () => {
+    expect(parseStoredStakeAmount("12.34")).toBe(12.34);
+    expect(parseStoredStakeAmount("0")).toBe(0.01);
+    expect(parseStoredStakeAmount("5000")).toBe(1000);
+    expect(parseStoredStakeAmount(null)).toBe(25);
+    expect(parseStoredStakeAmount("not-money")).toBe(25);
   });
 
   test("resets external wallet selection when opening the profile tab directly", () => {
@@ -384,6 +400,9 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain("Your wallet");
     expect(html).toContain("0x00000000000000000000000000000000000000000000000000000000000000aa");
+    expect(html).toContain("Add wallet");
+    expect(html).not.toContain('data-testid="profile-follow-toggle"');
+    expect(html).not.toContain("Follow wallet");
   });
 
   test("renders selected wallet positions on the profile page", () => {

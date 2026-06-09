@@ -525,45 +525,6 @@ button:disabled {
   line-height: 1.05;
 }
 
-.phone-frame-trade .account-summary {
-  gap: 5px;
-  padding: 8px;
-}
-
-.phone-frame-trade .account-summary-main {
-  align-items: end;
-}
-
-.phone-frame-trade .account-pnl strong {
-  font-size: 1.18rem;
-}
-
-.phone-frame-trade .account-value strong {
-  font-size: 0.92rem;
-}
-
-.phone-frame-trade .account-deposit-control {
-  grid-template-columns: minmax(64px, 1fr) auto;
-}
-
-.phone-frame-trade .account-deposit-amount,
-.phone-frame-trade .account-deposit-button {
-  min-height: 26px;
-}
-
-.phone-frame-trade .account-summary-stats {
-  gap: 6px;
-}
-
-.phone-frame-trade .account-summary-stats div {
-  min-height: 30px;
-  padding: 5px 6px;
-}
-
-.phone-frame-trade .account-summary-stats strong {
-  font-size: 0.78rem;
-}
-
 .bottom-nav button,
 .portfolio-tabs button,
 .wallet-leaderboard-tabs button,

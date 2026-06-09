@@ -22,6 +22,7 @@ import {
   buildDepositQuoteTransaction,
 } from "@hot-hands/contracts";
 import {
+  clampCopyAmount,
   COPY_AMOUNT_DEFAULT,
   COPY_AMOUNT_MAX,
   COPY_AMOUNT_MIN,
@@ -128,9 +129,11 @@ const DEPOSIT_AMOUNT_DEFAULT = 25;
 const DEPOSIT_AMOUNT_MIN = 0.01;
 const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
+const STAKE_AMOUNT_STORAGE_KEY = "hot-hands-default-stake-amount";
 const THEME_STORAGE_KEY = "hot-hands-theme-mode";
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "leaderboards" | "portfolio" | "profile";
+export type AccountSummaryVariant = "default" | "portfolio";
 type ThemeMode = "light" | "dark";
 export type MarketHeatSwipeAction = "none" | "select" | "submit";
 type MarketHeatSwipePreview = {
@@ -140,6 +143,10 @@ type MarketHeatSwipePreview = {
 };
 export function shouldShowAccountSummary(view: AppView): boolean {
   return view === "trade" || view === "portfolio";
+}
+
+export function getAccountSummaryVariant(view: AppView): AccountSummaryVariant {
+  return view === "trade" || view === "portfolio" ? "portfolio" : "default";
 }
 
 function getInitialThemeMode(): ThemeMode {
@@ -161,6 +168,35 @@ function writeThemeMode(themeMode: ThemeMode): void {
   }
 
   window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+}
+
+export function parseStoredStakeAmount(storedAmount: string | null): number {
+  if (!storedAmount) {
+    return COPY_AMOUNT_DEFAULT;
+  }
+
+  const parsedAmount = Number(storedAmount);
+  if (!Number.isFinite(parsedAmount)) {
+    return COPY_AMOUNT_DEFAULT;
+  }
+
+  return clampCopyAmount(parsedAmount);
+}
+
+function readStoredStakeAmount(): number {
+  if (typeof window === "undefined") {
+    return COPY_AMOUNT_DEFAULT;
+  }
+
+  return parseStoredStakeAmount(window.localStorage.getItem(STAKE_AMOUNT_STORAGE_KEY));
+}
+
+function writeStoredStakeAmount(amount: number): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(STAKE_AMOUNT_STORAGE_KEY, String(clampCopyAmount(amount)));
 }
 
 export type TradeSide = "UP" | "DOWN";
@@ -2275,6 +2311,9 @@ export function ProfilePanel({
     (currentWalletAddress
       ? { displayName: "Your wallet", wallet: currentWalletAddress }
       : null);
+  const isOwnActiveWallet =
+    Boolean(activeWallet && currentWalletAddress) &&
+    activeWallet?.wallet.toLowerCase() === currentWalletAddress?.toLowerCase();
   const isFollowingActiveWallet = activeWallet
     ? followedWallets.some(
         (followedWallet) =>
@@ -2295,18 +2334,20 @@ export function ProfilePanel({
           <>
             <strong>{activeWallet.displayName}</strong>
             <small>{activeWallet.wallet}</small>
-            <button
-              type="button"
-              className="profile-follow-button"
-              data-testid="profile-follow-toggle"
-              onClick={() =>
-                isFollowingActiveWallet
-                  ? onUnfollowWallet(activeWallet.wallet)
-                  : onFollowWallet(activeWallet)
-              }
-            >
-              {isFollowingActiveWallet ? "Following" : "Follow wallet"}
-            </button>
+            {!isOwnActiveWallet ? (
+              <button
+                type="button"
+                className="profile-follow-button"
+                data-testid="profile-follow-toggle"
+                onClick={() =>
+                  isFollowingActiveWallet
+                    ? onUnfollowWallet(activeWallet.wallet)
+                    : onFollowWallet(activeWallet)
+                }
+              >
+                {isFollowingActiveWallet ? "Following" : "Follow wallet"}
+              </button>
+            ) : null}
           </>
         ) : (
           <>
@@ -2358,7 +2399,7 @@ export function ProfilePanel({
         }}
       >
         <label>
-          <span>Follow wallet</span>
+          <span>Add wallet</span>
           <input
             aria-label="Wallet address to follow"
             data-testid="profile-follow-wallet-input"
@@ -2372,7 +2413,7 @@ export function ProfilePanel({
           disabled={!normalizedInputWallet}
           data-testid="profile-follow-wallet-submit"
         >
-          Follow
+          Add
         </button>
       </form>
       <div className="profile-following-list">
@@ -3142,7 +3183,7 @@ export function AccountSummary({
   pnlTone?: "positive" | "negative" | "flat";
   stakeAmount?: number;
   summary: ReturnType<typeof getReplayAccountSummary>;
-  variant?: "default" | "portfolio";
+  variant?: AccountSummaryVariant;
 }) {
   const visiblePnlLabel = pnlLabel ?? summary.pnl;
   const visiblePnlTone = pnlTone ?? summary.pnlTone;
@@ -3318,7 +3359,11 @@ export function App() {
   const wallets = useWallets();
   const readOnlyWalletAddress = useMemo(() => getReadOnlyWalletAddress(), []);
   const [scenario, setScenario] = useState(() => createReplayScenario("opening-night"));
-  const [replayState, setReplayState] = useState(() => createInitialReplayState(scenario));
+  const [replayState, setReplayState] = useState(() =>
+    updateReplayCopy(createInitialReplayState(scenario), (copy) =>
+      setCopyAmount(copy, readStoredStakeAmount()),
+    ),
+  );
   const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
   const [activeView, setActiveView] = useState<AppView>(() =>
     readOnlyWalletAddress ? "portfolio" : "feed",
@@ -3451,6 +3496,9 @@ export function App() {
     }
   };
   const copyState = replayState.copy;
+  useEffect(() => {
+    writeStoredStakeAmount(copyState.copyAmount);
+  }, [copyState.copyAmount]);
   const replayTraders = useMemo(
     () => getReplayTraders(replayState, scenario),
     [replayState, scenario],
@@ -5048,7 +5096,7 @@ export function App() {
               pnlTone={visiblePortfolioPnl.pnlTone}
               stakeAmount={copyState.copyAmount}
               summary={accountSummary}
-              variant={activeView === "portfolio" ? "portfolio" : "default"}
+              variant={getAccountSummaryVariant(activeView)}
             />
           ) : null}
           {activeView === "feed" ? (
