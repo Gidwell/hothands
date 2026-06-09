@@ -12,8 +12,10 @@ import {
   WalletStatusBar,
   buildTradeQuoteKey,
   getAccountSummaryVariant,
+  getMarketHeatRowsRefreshMs,
   parseStoredStakeAmount,
   resolveSelectedProfileWalletForNav,
+  shouldAutoRefreshMarketHeatRows,
   shouldShowAccountSummary,
 } from "../src/App";
 import { buildMarketHeatPreview, type MarketHeatPreviewRowInput } from "../src/marketHeatModel";
@@ -158,6 +160,17 @@ describe("mobile app navigation", () => {
     expect(getAccountSummaryVariant("trade")).toBe("portfolio");
     expect(getAccountSummaryVariant("portfolio")).toBe("portfolio");
     expect(getAccountSummaryVariant("feed")).toBe("default");
+  });
+
+  test("auto-refreshes market heat rows on feed and profile views", () => {
+    expect(shouldAutoRefreshMarketHeatRows("feed")).toBe(true);
+    expect(shouldAutoRefreshMarketHeatRows("profile")).toBe(true);
+    expect(shouldAutoRefreshMarketHeatRows("trade")).toBe(false);
+    expect(shouldAutoRefreshMarketHeatRows("portfolio")).toBe(false);
+    expect(shouldAutoRefreshMarketHeatRows("leaderboards")).toBe(false);
+    expect(getMarketHeatRowsRefreshMs("feed")).toBe(3000);
+    expect(getMarketHeatRowsRefreshMs("profile")).toBe(3000);
+    expect(getMarketHeatRowsRefreshMs("trade")).toBeNull();
   });
 
   test("parses the persisted stake amount safely", () => {

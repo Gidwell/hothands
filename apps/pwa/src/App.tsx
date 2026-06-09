@@ -116,7 +116,8 @@ import {
 } from "./walletRefresh";
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
-const MARKET_HEAT_REFRESH_MS = 1_000;
+const MARKET_HEAT_PRICE_REFRESH_MS = 1_000;
+const MARKET_HEAT_ROWS_REFRESH_MS = 3_000;
 const ORACLE_PRICE_CHART_TICK_REFRESH_MS = 1_000;
 const ORACLE_PRICE_CHART_HISTORY_REFRESH_MS = 60_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
@@ -147,6 +148,14 @@ export function shouldShowAccountSummary(view: AppView): boolean {
 
 export function getAccountSummaryVariant(view: AppView): AccountSummaryVariant {
   return view === "trade" || view === "portfolio" ? "portfolio" : "default";
+}
+
+export function shouldAutoRefreshMarketHeatRows(view: AppView): boolean {
+  return view === "feed" || view === "profile";
+}
+
+export function getMarketHeatRowsRefreshMs(view: AppView): number | null {
+  return shouldAutoRefreshMarketHeatRows(view) ? MARKET_HEAT_ROWS_REFRESH_MS : null;
 }
 
 function getInitialThemeMode(): ThemeMode {
@@ -4116,13 +4125,23 @@ export function App() {
       };
     }
 
-    const refreshTimer = window.setInterval(refreshMarketHeatPrice, MARKET_HEAT_REFRESH_MS);
+    const priceRefreshTimer = window.setInterval(
+      refreshMarketHeatPrice,
+      MARKET_HEAT_PRICE_REFRESH_MS,
+    );
+    const rowsRefreshMs = getMarketHeatRowsRefreshMs(activeView);
+    const rowsRefreshTimer = rowsRefreshMs === null
+      ? null
+      : window.setInterval(refreshMarketHeat, rowsRefreshMs);
 
     return () => {
       isCurrent = false;
-      window.clearInterval(refreshTimer);
+      window.clearInterval(priceRefreshTimer);
+      if (rowsRefreshTimer !== null) {
+        window.clearInterval(rowsRefreshTimer);
+      }
     };
-  }, [previewMode, realtimeApiBaseUrl]);
+  }, [activeView, previewMode, realtimeApiBaseUrl]);
 
   useEffect(() => {
     if (activeView !== "leaderboards") {

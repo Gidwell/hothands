@@ -103,7 +103,7 @@ export interface TestnetMarketHeatOptions {
 const LATEST_ACTIVITY_ROW_LIMIT = 48;
 const HEAT_ACCOUNT_ROW_LIMIT = 48;
 const OPEN_POSITION_FEED_ROW_LIMIT = 512;
-const WALLET_STATS_POSITION_LIMIT = 2_048;
+const WALLET_STATS_POSITION_LIMIT = 10_000;
 
 export function getCapturedTestnetMarketHeat(): MarketHeatProjection {
   return CAPTURED_TESTNET_MARKET_HEAT;
@@ -144,12 +144,14 @@ async function getIndexedTestnetMarketHeat(
 ): Promise<MarketHeatProjection> {
   const [
     oracles,
+    walletStatsOracles,
     tradeEvents,
     positionSummaries,
     openPositionSummaries,
     walletStatsPositionSummaries
   ] = await Promise.all([
     reader.listBtcOracles({ includeSettled: false }),
+    reader.listBtcOracles({ includeSettled: true }),
     reader.listRecentTradeEvents({
       hideExpiredAtMs: nowMs,
       limit: LATEST_ACTIVITY_ROW_LIMIT
@@ -179,7 +181,7 @@ async function getIndexedTestnetMarketHeat(
   ]);
   const walletStatsByWallet = buildWalletStatsByWallet(
     mergePositionSummaries([...walletStatsPositionSummaries, ...openPositionSummaries]),
-    oracles,
+    walletStatsOracles,
     nowMs
   );
   const heat = buildTraderHeatProjection(events, heatPositionSummaries, {
