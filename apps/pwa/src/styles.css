@@ -1642,6 +1642,10 @@ button:disabled {
   min-width: 0;
 }
 
+.market-heat-controls > .trade-expiry-rail {
+  grid-column: 1 / -1;
+}
+
 .market-duration-toggle {
   display: flex;
   gap: 4px;
@@ -1682,9 +1686,9 @@ button:disabled {
 .market-heat-expired-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
   min-height: 30px;
-  padding: 0 9px;
+  padding: 0 11px;
   border: 1px solid #dbe4ef;
   border-radius: 8px;
   color: #667085;
@@ -1694,10 +1698,11 @@ button:disabled {
   white-space: nowrap;
 }
 
-.market-heat-expired-toggle input {
-  width: 13px;
-  height: 13px;
-  accent-color: #6246ea;
+.market-heat-expired-toggle[aria-pressed="true"] {
+  color: #111827;
+  border-color: color-mix(in srgb, #6246ea 42%, #dbe4ef);
+  background: color-mix(in srgb, #ffffff 90%, #6246ea);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #6246ea 25%, transparent);
 }
 
 .market-heat-secondary-controls {
@@ -2623,6 +2628,13 @@ button:disabled {
   border-color: var(--hh-line);
   color: var(--hh-muted);
   background: var(--hh-surface);
+}
+
+.market-heat-expired-toggle[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--hh-accent) 58%, var(--hh-line));
+  color: var(--hh-accent);
+  background: color-mix(in srgb, var(--hh-surface) 94%, var(--hh-accent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 42%, transparent);
 }
 
 .market-heat-list,

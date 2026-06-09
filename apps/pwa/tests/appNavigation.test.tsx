@@ -252,14 +252,14 @@ describe("mobile app navigation", () => {
         count: 2,
         expiryMs: jun12EarlyMs,
         label: "Jun 12",
-        sublabel: "Fri · 2 markets · 23d, 28d",
+        sublabel: "Fri · 2 markets",
         value: "2026-06-12",
       },
       {
         count: 1,
         expiryMs: jun19Ms,
         label: "Jun 19",
-        sublabel: "1 market · 27d",
+        sublabel: "1 market",
         value: "2026-06-19",
       },
     ]);

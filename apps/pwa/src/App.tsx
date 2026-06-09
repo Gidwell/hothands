@@ -46,7 +46,6 @@ import {
 } from "./replayModel";
 import {
   buildMarketHeatIntentPanel,
-  buildMarketDurationOptions,
   buildMarketHeatPreview,
   buildTradeMarketForMarketHeatRow,
   buildTradeMarketLadder,
@@ -61,7 +60,6 @@ import {
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
   type MarketHeatSortMode,
-  type MarketDurationOption,
   type TradeQuote,
   type TradeMarketLadderRow,
   type TradeMarketSideSummary,
@@ -416,58 +414,6 @@ function tradeExpiryDayStartMs(expiryMs: number): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-function tradeIntervalSortMs(intervalLabel: string): number {
-  const match = /^(\d+)\s*([mhwd])$/i.exec(intervalLabel.trim());
-  if (!match) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  const value = Number(match[1]);
-  const unit = match[2].toLowerCase();
-
-  if (unit === "w") {
-    return value * 7 * TRADE_EXPIRY_DAY_MS;
-  }
-
-  if (unit === "d") {
-    return value * TRADE_EXPIRY_DAY_MS;
-  }
-
-  if (unit === "h") {
-    return value * 60 * 60_000;
-  }
-
-  return value * 60_000;
-}
-
-function marketDurationMatches(intervalLabel: string, duration: string): boolean {
-  return intervalLabel.trim().toLowerCase() === duration.toLowerCase();
-}
-
-function selectMarketHeatRowsForDuration(
-  rows: MarketHeatPreviewRow[],
-  duration: string,
-): MarketHeatPreviewRow[] {
-  if (duration === "all") {
-    return rows;
-  }
-
-  return rows.filter((row) => marketDurationMatches(row.intervalLabel, duration));
-}
-
-function selectTradeMarketsForDuration(
-  marketRows: TradeMarketLadderRow[],
-  duration: string,
-): TradeMarketLadderRow[] {
-  if (duration === "all") {
-    return marketRows;
-  }
-
-  return marketRows.filter((marketRow) =>
-    marketDurationMatches(marketRow.intervalLabel, duration),
-  );
-}
-
 function formatTradeExpiryHorizon(expiryMs: number, nowMs: number): string {
   const dayDelta = Math.round(
     (tradeExpiryDayStartMs(expiryMs) - tradeExpiryDayStartMs(nowMs)) / TRADE_EXPIRY_DAY_MS,
@@ -502,17 +448,10 @@ function formatTradeExpiryLabel(expiryMs: number, nowMs: number): string {
 
 function formatTradeExpirySublabel(
   expiryMs: number,
-  intervalLabels: string[],
   count: number,
   nowMs: number,
 ): string {
   const horizon = formatTradeExpiryHorizon(expiryMs, nowMs);
-  const uniqueIntervals = [...new Set(intervalLabels)].sort(
-    (left, right) =>
-      tradeIntervalSortMs(left) - tradeIntervalSortMs(right) || left.localeCompare(right),
-  );
-  const intervalSummary =
-    uniqueIntervals.length <= 2 ? uniqueIntervals.join(", ") : `${uniqueIntervals.length} expiries`;
   const countSummary = count === 1 ? "1 market" : `${count} markets`;
   const parts: string[] = [];
 
@@ -521,10 +460,6 @@ function formatTradeExpirySublabel(
   }
 
   parts.push(countSummary);
-
-  if (intervalSummary) {
-    parts.push(intervalSummary);
-  }
 
   return parts.join(" · ");
 }
@@ -538,7 +473,6 @@ export function buildTradeExpiryOptions(
     {
       count: number;
       earliestExpiryMs: number;
-      intervalLabels: string[];
     }
   >();
 
@@ -553,14 +487,12 @@ export function buildTradeExpiryOptions(
     if (existing) {
       existing.count += 1;
       existing.earliestExpiryMs = Math.min(existing.earliestExpiryMs, marketRow.expiryMs);
-      existing.intervalLabels.push(marketRow.intervalLabel);
       continue;
     }
 
     expiriesByDate.set(value, {
       count: 1,
       earliestExpiryMs: marketRow.expiryMs,
-      intervalLabels: [marketRow.intervalLabel],
     });
   }
 
@@ -569,12 +501,7 @@ export function buildTradeExpiryOptions(
       count: expiry.count,
       expiryMs: expiry.earliestExpiryMs,
       label: formatTradeExpiryLabel(expiry.earliestExpiryMs, nowMs),
-      sublabel: formatTradeExpirySublabel(
-        expiry.earliestExpiryMs,
-        expiry.intervalLabels,
-        expiry.count,
-        nowMs,
-      ),
+      sublabel: formatTradeExpirySublabel(expiry.earliestExpiryMs, expiry.count, nowMs),
       value,
     }))
     .sort((left, right) => left.expiryMs - right.expiryMs);
@@ -589,6 +516,17 @@ function selectTradeMarketsForExpiry(
   }
 
   return marketRows.filter((marketRow) => tradeExpiryDateKey(marketRow.expiryMs) === expiryDate);
+}
+
+function selectMarketHeatRowsForExpiry(
+  rows: MarketHeatPreviewRow[],
+  expiryDate: string | null,
+): MarketHeatPreviewRow[] {
+  if (!expiryDate) {
+    return rows;
+  }
+
+  return rows.filter((row) => tradeExpiryDateKey(row.expiryMs) === expiryDate);
 }
 
 function formatUsdValue(amount: number): string {
@@ -1542,67 +1480,49 @@ function ThemeModeIcon({ mode }: { mode: ThemeMode }) {
   );
 }
 
-function MarketDurationToggle({
-  ariaLabel,
-  className = "",
-  onDurationChange,
-  options,
-  selectedDuration,
-  testIdPrefix,
-}: {
-  ariaLabel: string;
-  className?: string;
-  onDurationChange: (duration: string) => void;
-  options: MarketDurationOption[];
-  selectedDuration: string;
-  testIdPrefix: string;
-}) {
-  return (
-    <div className={`market-duration-toggle ${className}`} aria-label={ariaLabel}>
-      <button
-        type="button"
-        aria-pressed={selectedDuration === "all"}
-        data-testid={`${testIdPrefix}-all`}
-        onClick={() => onDurationChange("all")}
-      >
-        All
-      </button>
-      {options.map((option) => (
-        <button
-          type="button"
-          aria-pressed={selectedDuration === option.value}
-          data-testid={`${testIdPrefix}-${marketDurationTestId(option.value)}`}
-          key={option.value}
-          onClick={() => onDurationChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function TradeExpiryRail({
+  allSelected = false,
+  ariaLabel = "Trade expiration dates",
+  includeAllOption = false,
+  onAllSelect = () => undefined,
   onExpiryChange,
   options,
   selectedExpiryDate,
+  testIdPrefix = "trade-expiry",
 }: {
+  allSelected?: boolean;
+  ariaLabel?: string;
+  includeAllOption?: boolean;
+  onAllSelect?: () => void;
   onExpiryChange: (expiryDate: string) => void;
   options: TradeExpiryOption[];
   selectedExpiryDate: string | null;
+  testIdPrefix?: string;
 }) {
-  if (!options.length) {
+  if (!includeAllOption && !options.length) {
     return null;
   }
 
   return (
-    <div className="trade-expiry-rail" aria-label="Trade expiration dates">
+    <div className="trade-expiry-rail" aria-label={ariaLabel}>
+      {includeAllOption ? (
+        <button
+          type="button"
+          className="trade-expiry-option"
+          aria-pressed={allSelected}
+          data-testid={`${testIdPrefix}-all`}
+          onClick={onAllSelect}
+        >
+          <strong>All</strong>
+          <small>{options.length ? `${options.length} dates` : "No dates"}</small>
+        </button>
+      ) : null}
       {options.map((option) => (
         <button
           type="button"
           className="trade-expiry-option"
           aria-pressed={selectedExpiryDate === option.value}
-          data-testid={`trade-expiry-${marketDurationTestId(option.value)}`}
+          data-testid={`${testIdPrefix}-${marketDurationTestId(option.value)}`}
           key={option.value}
           onClick={() => onExpiryChange(option.value)}
         >
@@ -2755,7 +2675,7 @@ export function MarketHeatPreview({
   sortMode,
   title = "Alpha Feed",
   ariaLabel = title,
-  selectedDuration = "all",
+  selectedExpiryDate = null,
   showControls = true,
   showExpired,
   showEmptyAction = true,
@@ -2764,11 +2684,12 @@ export function MarketHeatPreview({
   canShowMore,
   selectedRowId,
   copyAmount,
-  durationOptions = [],
+  expiryOptions = [],
   showMoreLabel,
   testId = "market-heat-preview",
   onAmountSet,
-  onDurationChange = () => undefined,
+  onAllExpiriesSelect = () => undefined,
+  onExpiryChange = () => undefined,
   onShowExpiredChange,
   onShowMore,
   onSortModeChange,
@@ -2780,7 +2701,7 @@ export function MarketHeatPreview({
   sortMode: MarketHeatSortMode;
   title?: string;
   ariaLabel?: string;
-  selectedDuration?: string;
+  selectedExpiryDate?: string | null;
   showControls?: boolean;
   showExpired: boolean;
   showEmptyAction?: boolean;
@@ -2789,11 +2710,12 @@ export function MarketHeatPreview({
   canShowMore: boolean;
   selectedRowId: string | null;
   copyAmount: number;
-  durationOptions?: MarketDurationOption[];
+  expiryOptions?: TradeExpiryOption[];
   showMoreLabel: string;
   testId?: string;
   onAmountSet: (amount: number) => void;
-  onDurationChange?: (duration: string) => void;
+  onAllExpiriesSelect?: () => void;
+  onExpiryChange?: (expiryDate: string) => void;
   onShowExpiredChange: (showExpired: boolean) => void;
   onShowMore: () => void;
   onSortModeChange: (sortMode: MarketHeatSortMode) => void;
@@ -2877,7 +2799,7 @@ export function MarketHeatPreview({
     emptyTitle ?? (showExpired ? "No positions for this filter" : "No live positions right now");
   const resolvedEmptyDetail =
     emptyDetail ??
-    (showExpired ? "Try another duration." : "Show expired to review recent testnet activity.");
+    (showExpired ? "Try another expiration." : "Show expired to review recent testnet activity.");
   const headingAriaLabel = sourceLabel ? `${title}, ${sourceLabel} BTC markets` : title;
   const headingTitle = sourceLabel ? `${sourceLabel} BTC markets` : title;
 
@@ -2898,38 +2820,16 @@ export function MarketHeatPreview({
         </div>
         {showControls ? (
           <div className="market-heat-controls">
-            {durationOptions.length ? (
-              <div className="market-duration-toggle" aria-label="Market duration">
-                <button
-                  type="button"
-                  aria-pressed={selectedDuration === "all"}
-                  data-testid="market-duration-all"
-                  onClick={() => onDurationChange("all")}
-                >
-                  All
-                </button>
-                {durationOptions.map((option) => (
-                  <button
-                    type="button"
-                    aria-pressed={selectedDuration === option.value}
-                    data-testid={`market-duration-${marketDurationTestId(option.value)}`}
-                    key={option.value}
-                    onClick={() => onDurationChange(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <label className="market-heat-expired-toggle">
-              <input
-                type="checkbox"
-                checked={showExpired}
-                data-testid="market-heat-show-expired"
-                onChange={(event) => onShowExpiredChange(event.currentTarget.checked)}
-              />
-              <span>Show expired</span>
-            </label>
+            <TradeExpiryRail
+              allSelected={!selectedExpiryDate}
+              ariaLabel="Feed expiration dates"
+              includeAllOption
+              onAllSelect={onAllExpiriesSelect}
+              options={expiryOptions}
+              selectedExpiryDate={selectedExpiryDate}
+              testIdPrefix="feed-expiry"
+              onExpiryChange={onExpiryChange}
+            />
             <div className="market-heat-secondary-controls">
               <div className="market-heat-sort" aria-label="Market heat sort">
                 <button
@@ -2949,6 +2849,16 @@ export function MarketHeatPreview({
                   Heat
                 </button>
               </div>
+              <button
+                type="button"
+                className="market-heat-expired-toggle"
+                aria-label={showExpired ? "Hide expired positions" : "Show expired positions"}
+                aria-pressed={showExpired}
+                data-testid="market-heat-show-expired"
+                onClick={() => onShowExpiredChange(!showExpired)}
+              >
+                Expired
+              </button>
             </div>
           </div>
         ) : null}
@@ -3476,7 +3386,7 @@ export function App() {
   const [marketHeatSortMode, setMarketHeatSortMode] =
     useState<MarketHeatSortMode>("latest");
   const [marketHeatShowExpired, setMarketHeatShowExpired] = useState(false);
-  const [selectedMarketDuration, setSelectedMarketDuration] = useState("all");
+  const [selectedFeedExpiryDate, setSelectedFeedExpiryDate] = useState<string | null>(null);
   const [selectedTradeExpiryDate, setSelectedTradeExpiryDate] = useState<string | null>(null);
   const [marketHeatVisibleLimit, setMarketHeatVisibleLimit] =
     useState(MARKET_HEAT_PAGE_SIZE);
@@ -3533,14 +3443,6 @@ export function App() {
     return [...frozenTraders, ...newTraders];
   }, [frozenTraderOrder, replayTraders]);
   const marketHeatNowMs = Date.now();
-  const marketDurationOptions = buildMarketDurationOptions(marketHeatPreview, {
-    nowMs: marketHeatNowMs,
-  });
-  const activeMarketDuration =
-    selectedMarketDuration !== "all" &&
-    marketDurationOptions.some((option) => option.value === selectedMarketDuration)
-      ? selectedMarketDuration
-      : "all";
   const allVisibleMarketHeatRows = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
     intervalLabel: null,
     limit: Number.MAX_SAFE_INTEGER,
@@ -3548,24 +3450,28 @@ export function App() {
     showExpired: marketHeatShowExpired,
     sortMode: marketHeatSortMode,
   });
-  const durationFilteredMarketHeatRows = selectMarketHeatRowsForDuration(
-    allVisibleMarketHeatRows,
-    activeMarketDuration,
-  );
-  const sortedMarketHeatRows = durationFilteredMarketHeatRows.slice(0, marketHeatVisibleLimit);
   const allTradeMarketRows = buildTradeMarketLadder(marketHeatPreview, {
     intervalLabel: null,
     nowMs: marketHeatNowMs,
   });
-  const tradeDurationMarketRows = allTradeMarketRows;
-  const tradeExpiryOptions = buildTradeExpiryOptions(tradeDurationMarketRows, marketHeatNowMs);
+  const tradeExpiryOptions = buildTradeExpiryOptions(allTradeMarketRows, marketHeatNowMs);
+  const activeFeedExpiryDate =
+    selectedFeedExpiryDate &&
+    tradeExpiryOptions.some((option) => option.value === selectedFeedExpiryDate)
+      ? selectedFeedExpiryDate
+      : null;
+  const expiryFilteredMarketHeatRows = selectMarketHeatRowsForExpiry(
+    allVisibleMarketHeatRows,
+    activeFeedExpiryDate,
+  );
+  const sortedMarketHeatRows = expiryFilteredMarketHeatRows.slice(0, marketHeatVisibleLimit);
   const activeTradeExpiryDate =
     selectedTradeExpiryDate &&
     tradeExpiryOptions.some((option) => option.value === selectedTradeExpiryDate)
       ? selectedTradeExpiryDate
       : tradeExpiryOptions[0]?.value ?? null;
   const tradeMarketRows = selectTradeMarketsForExpiry(
-    tradeDurationMarketRows,
+    allTradeMarketRows,
     activeTradeExpiryDate,
   );
   const baseSelectedTradeMarket =
@@ -3634,7 +3540,7 @@ export function App() {
     });
   }, [activeView, baseSelectedTradeMarket?.id]);
 
-  const marketHeatVisibleTotal = durationFilteredMarketHeatRows.length;
+  const marketHeatVisibleTotal = expiryFilteredMarketHeatRows.length;
   const marketHeatRemainingCount = Math.max(
     0,
     marketHeatVisibleTotal - sortedMarketHeatRows.length,
@@ -4583,15 +4489,20 @@ export function App() {
     setMarketHeatSortMode(sortMode);
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
   };
-  const handleMarketDurationChange = (duration: string) => {
-    setSelectedMarketDuration(duration);
+  const handleFeedAllExpiriesSelect = () => {
+    setSelectedFeedExpiryDate(null);
+    setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
+    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
+  };
+  const handleFeedExpiryChange = (expiryDate: string) => {
+    setSelectedFeedExpiryDate(expiryDate);
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
   };
   const handleTradeExpiryChange = (expiryDate: string) => {
     setTradeQuoteRequested(false);
     setSelectedTradeExpiryDate(expiryDate);
-    const nextMarket = tradeDurationMarketRows.find(
+    const nextMarket = allTradeMarketRows.find(
       (marketRow) => tradeExpiryDateKey(marketRow.expiryMs) === expiryDate,
     );
 
@@ -5006,8 +4917,8 @@ export function App() {
       rows={sortedMarketHeatRows}
       sourceLabel={marketHeatPreview.sourceLabel}
       sortMode={marketHeatSortMode}
-      selectedDuration={activeMarketDuration}
-      durationOptions={marketDurationOptions}
+      selectedExpiryDate={activeFeedExpiryDate}
+      expiryOptions={tradeExpiryOptions}
       showExpired={marketHeatShowExpired}
       canShowMore={marketHeatRemainingCount > 0}
       selectedRowId={marketHeatIntent.selectedRowId}
@@ -5015,7 +4926,8 @@ export function App() {
       showMoreLabel={marketHeatShowMoreLabel}
       testId={testId}
       onAmountSet={handleAmountSet}
-      onDurationChange={handleMarketDurationChange}
+      onAllExpiriesSelect={handleFeedAllExpiriesSelect}
+      onExpiryChange={handleFeedExpiryChange}
       onShowExpiredChange={handleMarketHeatShowExpiredChange}
       onShowMore={handleMarketHeatShowMore}
       onSortModeChange={handleMarketHeatSortModeChange}

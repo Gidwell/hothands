@@ -88,7 +88,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Hot Hands prepares the transaction");
     expect(html).toContain('data-testid="market-heat-sort-latest"');
     expect(html).toContain('data-testid="market-heat-show-expired"');
-    expect(html).toContain("Show expired");
+    expect(html).toContain("Expired");
     expect(html).toContain('aria-pressed="true"');
     expect(html).not.toContain("Ready for your wallet signature");
   });
@@ -262,17 +262,29 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Show 2 more");
   });
 
-  test("renders market duration toggle buttons", () => {
+  test("renders feed expiration date buttons", () => {
     const rows = buildMarketHeatPreview(watchingOnlyRows, 1).rows;
     const html = renderToStaticMarkup(
       <MarketHeatPreview
         rows={rows}
         sourceLabel="Live Testnet"
         sortMode="latest"
-        selectedDuration="1h"
-        durationOptions={[
-          { count: rows.length, label: "1h", value: "1h" },
-          { count: 2, label: "1d", value: "1d" },
+        selectedExpiryDate={null}
+        expiryOptions={[
+          {
+            count: rows.length,
+            expiryMs: 1_781_227_200_000,
+            label: "Jun 12",
+            sublabel: "Fri · 1 market",
+            value: "2026-06-12",
+          },
+          {
+            count: 2,
+            expiryMs: 1_781_832_000_000,
+            label: "Jun 19",
+            sublabel: "2 markets",
+            value: "2026-06-19",
+          },
         ]}
         showExpired={false}
         canShowMore={false}
@@ -280,7 +292,8 @@ describe("MarketHeatPreview component", () => {
         showMoreLabel="Show more"
         selectedRowId={null}
         onAmountSet={() => undefined}
-        onDurationChange={() => undefined}
+        onAllExpiriesSelect={() => undefined}
+        onExpiryChange={() => undefined}
         onShowExpiredChange={() => undefined}
         onShowMore={() => undefined}
         onSortModeChange={() => undefined}
@@ -289,12 +302,17 @@ describe("MarketHeatPreview component", () => {
       />,
     );
 
-    expect(html).toContain('data-testid="market-duration-all"');
-    expect(html).toContain('data-testid="market-duration-1h"');
-    expect(html).toContain('data-testid="market-duration-1d"');
+    expect(html).toContain('aria-label="Feed expiration dates"');
+    expect(html).toContain('data-testid="feed-expiry-all"');
+    expect(html).toContain('data-testid="feed-expiry-2026-06-12"');
+    expect(html).toContain('data-testid="feed-expiry-2026-06-19"');
     expect(html).toContain("All");
-    expect(html).toContain("1h");
-    expect(html).toContain("1d");
+    expect(html).toContain("2 dates");
+    expect(html).toContain("Jun 12");
+    expect(html).toContain("Fri · 1 market");
+    expect(html).toContain("Jun 19");
+    expect(html).toContain("2 markets");
+    expect(html).not.toContain('data-testid="market-duration-all"');
     expect(html).toContain('aria-pressed="true"');
   });
 
