@@ -363,7 +363,11 @@ export function buildMarketHeatPreview(
             ? {}
             : {
                 walletStats: row.walletStats,
-                walletStatsLabel: formatWalletStatsLabel(row.walletStats, nowMs),
+                walletStatsLabel: formatWalletStatsLabel(
+                  row.walletStats,
+                  row.observedAtMs,
+                  nowMs,
+                ),
               }),
           actionLabel: "Copy now",
           status: isActionableCopy ? "copy_ready" : "watching",
@@ -1095,11 +1099,15 @@ function formatTimeRemaining(expiryMs: number, nowMs: number): string {
   return `${Math.ceil(minutes / (24 * 60))}d left`;
 }
 
-function formatWalletStatsLabel(stats: MarketHeatWalletStats, nowMs: number): string {
+function formatWalletStatsLabel(
+  stats: MarketHeatWalletStats,
+  observedAtMs: number,
+  nowMs: number,
+): string {
   return [
     formatSignedDusdc(stats.totalPnl),
     formatCurrentWalletStreak(stats.currentStreakType, stats.currentStreakLength),
-    formatTradeTime(stats.lastSeenMs, nowMs),
+    formatTradeTime(observedAtMs, nowMs),
   ].join(" · ");
 }
 

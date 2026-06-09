@@ -271,7 +271,7 @@ describe("market heat preview model", () => {
       expiryTimeLabel: "May 18, 19:40 PDT",
       actionLabel: "Copy now",
       statusLabel: "just now",
-      walletStatsLabel: "+$22.23 · 12 wins · 1m ago",
+      walletStatsLabel: "+$22.23 · 12 wins · just now",
     });
   });
 
