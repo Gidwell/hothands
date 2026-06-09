@@ -6,12 +6,24 @@ import {
   BottomNav,
   MarketHeader,
   PortfolioPanel,
+  ProfilePanel,
   TradeTicket,
   WalletHeaderControl,
   WalletStatusBar,
+  buildTradeExpiryOptions,
   buildTradeQuoteKey,
+  getAccountSummaryVariant,
+  getMarketHeatRowsRefreshMs,
+  parseStoredStakeAmount,
+  resolveSelectedProfileWalletForNav,
+  shouldAutoRefreshMarketHeatRows,
   shouldShowAccountSummary,
 } from "../src/App";
+import {
+  buildMarketHeatPreview,
+  type MarketHeatPreviewRowInput,
+  type TradeMarketLadderRow,
+} from "../src/marketHeatModel";
 
 function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
   if (Array.isArray(node)) {
@@ -34,6 +46,51 @@ function findElementByTestId(node: ReactNode, testId: string): ReactElement | nu
   }
 
   return findElementByTestId(props.children, testId);
+}
+
+function tradeMarketRowFixture(
+  overrides: Partial<TradeMarketLadderRow> = {},
+): TradeMarketLadderRow {
+  const expiryMs = overrides.expiryMs ?? new Date(2026, 5, 12, 1).getTime();
+  const strike = overrides.strike ?? 62_000;
+  const strikeRaw = overrides.strikeRaw ?? strike * 1_000_000;
+
+  return {
+    id: overrides.id ?? `market-${expiryMs}-${strikeRaw}`,
+    oracleId: overrides.oracleId ?? `0xoracle${expiryMs}`,
+    pairLabel: overrides.pairLabel ?? "BTC/USD",
+    intervalLabel: overrides.intervalLabel ?? "23d",
+    roundLabel: overrides.roundLabel ?? "23d round",
+    expiry: overrides.expiry ?? expiryMs,
+    expiryMs,
+    expiryTimeLabel: overrides.expiryTimeLabel ?? "Jun 12, 2026, 1:00 AM",
+    timeRemainingLabel: overrides.timeRemainingLabel ?? "3d left",
+    strike,
+    strikeRaw,
+    strikeLabel: overrides.strikeLabel ?? "$62,000",
+    moneynessLabel: overrides.moneynessLabel ?? "+$200 vs spot",
+    activityLabel: overrides.activityLabel ?? "1 wallet · 1 trade · $1",
+    uniqueWalletCount: overrides.uniqueWalletCount ?? 1,
+    tradeCount: overrides.tradeCount ?? 1,
+    distinctStrikeCount: overrides.distinctStrikeCount ?? 1,
+    volumeUsd: overrides.volumeUsd ?? 1,
+    volumeLabel: overrides.volumeLabel ?? "$1",
+    ...(overrides.strikeOptions === undefined ? {} : { strikeOptions: overrides.strikeOptions }),
+    ...(overrides.pricingModel === undefined ? {} : { pricingModel: overrides.pricingModel }),
+    up: overrides.up ?? {
+      walletCount: 1,
+      tradeCount: 1,
+      volumeUsd: 1,
+      volumeLabel: "$1",
+      estimatedPrice: 0.5,
+    },
+    down: overrides.down ?? {
+      walletCount: 0,
+      tradeCount: 0,
+      volumeUsd: 0,
+      volumeLabel: "$0",
+    },
+  };
 }
 
 describe("mobile app navigation", () => {
@@ -144,8 +201,88 @@ describe("mobile app navigation", () => {
   test("shows account summary only on trade and portfolio views", () => {
     expect(shouldShowAccountSummary("feed")).toBe(false);
     expect(shouldShowAccountSummary("leaderboards")).toBe(false);
+    expect(shouldShowAccountSummary("profile")).toBe(false);
     expect(shouldShowAccountSummary("trade")).toBe(true);
     expect(shouldShowAccountSummary("portfolio")).toBe(true);
+  });
+
+  test("uses the portfolio account strip on trade and portfolio views", () => {
+    expect(getAccountSummaryVariant("trade")).toBe("portfolio");
+    expect(getAccountSummaryVariant("portfolio")).toBe("portfolio");
+    expect(getAccountSummaryVariant("feed")).toBe("default");
+  });
+
+  test("auto-refreshes market heat rows on feed and profile views", () => {
+    expect(shouldAutoRefreshMarketHeatRows("feed")).toBe(true);
+    expect(shouldAutoRefreshMarketHeatRows("profile")).toBe(true);
+    expect(shouldAutoRefreshMarketHeatRows("trade")).toBe(false);
+    expect(shouldAutoRefreshMarketHeatRows("portfolio")).toBe(false);
+    expect(shouldAutoRefreshMarketHeatRows("leaderboards")).toBe(false);
+    expect(getMarketHeatRowsRefreshMs("feed")).toBe(3000);
+    expect(getMarketHeatRowsRefreshMs("profile")).toBe(3000);
+    expect(getMarketHeatRowsRefreshMs("trade")).toBeNull();
+  });
+
+  test("groups trade expirations by date with consistent market counts", () => {
+    const nowMs = new Date(2026, 5, 9, 12).getTime();
+    const jun12EarlyMs = new Date(2026, 5, 12, 1).getTime();
+    const jun12LaterMs = new Date(2026, 5, 12, 5).getTime();
+    const jun19Ms = new Date(2026, 5, 19, 1).getTime();
+
+    expect(
+      buildTradeExpiryOptions(
+        [
+          tradeMarketRowFixture({
+            expiryMs: jun12EarlyMs,
+            intervalLabel: "23d",
+          }),
+          tradeMarketRowFixture({
+            expiryMs: jun12LaterMs,
+            intervalLabel: "28d",
+          }),
+          tradeMarketRowFixture({
+            expiryMs: jun19Ms,
+            intervalLabel: "27d",
+          }),
+        ],
+        nowMs,
+      ),
+    ).toEqual([
+      {
+        count: 2,
+        expiryMs: jun12EarlyMs,
+        label: "Jun 12",
+        sublabel: "Fri · 2 markets",
+        value: "2026-06-12",
+      },
+      {
+        count: 1,
+        expiryMs: jun19Ms,
+        label: "Jun 19",
+        sublabel: "1 market",
+        value: "2026-06-19",
+      },
+    ]);
+  });
+
+  test("parses the persisted stake amount safely", () => {
+    expect(parseStoredStakeAmount("12.34")).toBe(12.34);
+    expect(parseStoredStakeAmount("0")).toBe(0.01);
+    expect(parseStoredStakeAmount("5000")).toBe(1000);
+    expect(parseStoredStakeAmount(null)).toBe(25);
+    expect(parseStoredStakeAmount("not-money")).toBe(25);
+  });
+
+  test("resets external wallet selection when opening the profile tab directly", () => {
+    const selectedWallet = {
+      displayName: "0x195b...756c",
+      wallet: "0x195b00000000000000000000000000000000000000000000000000000000756c",
+    };
+
+    expect(resolveSelectedProfileWalletForNav("profile", selectedWallet)).toBeNull();
+    expect(resolveSelectedProfileWalletForNav("leaderboards", selectedWallet)).toBe(
+      selectedWallet,
+    );
   });
 
   test("keeps the trade quote key stable across live estimated price refreshes", () => {
@@ -270,6 +407,40 @@ describe("mobile app navigation", () => {
     expect(changedAmount).toBe(12.34);
   });
 
+  test("renders portfolio stake budget and deposit action in the account strip", () => {
+    let stakeAmount = 0;
+    const tree = AccountSummary({
+      availableLabel: "$42",
+      bankrollLabel: "$12.50",
+      stakeAmount: 25,
+      summary: {
+        accountValue: "$100",
+        available: "$80",
+        copyValue: "$25",
+        detail: "Ready to copy.",
+        pnl: "+$0",
+        pnlTone: "flat",
+        status: "Flat",
+        title: "My Session",
+      },
+      variant: "portfolio",
+      onDeposit: () => undefined,
+      onStakeAmountChange: (amount) => {
+        stakeAmount = amount;
+      },
+    });
+    const html = renderToStaticMarkup(tree);
+    const input = findElementByTestId(tree, "default-stake-amount");
+
+    expect(html).toContain("Stake");
+    expect(html).toContain('data-testid="portfolio-deposit-bankroll"');
+    expect(html).not.toContain("Position");
+    expect(input).not.toBeNull();
+    (input?.props as { onChange?: (event: { currentTarget: { value: string } }) => void })
+      .onChange?.({ currentTarget: { value: "50" } });
+    expect(stakeAmount).toBe(50);
+  });
+
   test("renders bottom navigation tabs in primary product order", () => {
     const html = renderToStaticMarkup(
       <BottomNav activeView="feed" onViewChange={() => undefined} />,
@@ -281,10 +452,116 @@ describe("mobile app navigation", () => {
     expect(html).toContain("<span>Trade</span>");
     expect(html).toContain("<span>Leaders</span>");
     expect(html).toContain("<span>Portfolio</span>");
+    expect(html).toContain("<span>Profile</span>");
     expect(html.indexOf("<span>Feed</span>")).toBeLessThan(html.indexOf("<span>Leaders</span>"));
     expect(html.indexOf("<span>Leaders</span>")).toBeLessThan(html.indexOf("<span>Trade</span>"));
     expect(html.indexOf("<span>Trade</span>")).toBeLessThan(html.indexOf("<span>Portfolio</span>"));
+    expect(html.indexOf("<span>Portfolio</span>")).toBeLessThan(html.indexOf("<span>Profile</span>"));
     expect(html).toContain('aria-pressed="true"');
+  });
+
+  test("renders profile wallet following controls", () => {
+    const html = renderToStaticMarkup(
+      <ProfilePanel
+        currentWalletAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        followedWallets={[
+          {
+            displayName: "0x195b...756c",
+            wallet: "0x195b00000000000000000000000000000000000000000000000000000000756c",
+          },
+        ]}
+        profileWallet={{
+          displayName: "0x195b...756c",
+          wallet: "0x195b00000000000000000000000000000000000000000000000000000000756c",
+        }}
+        onFollowWallet={() => undefined}
+        onSelectWallet={() => undefined}
+        onUnfollowWallet={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="profile-view"');
+    expect(html).toContain("Profile");
+    expect(html).toContain("1 following");
+    expect(html).toContain('data-testid="profile-follow-toggle"');
+    expect(html).toContain("Following");
+    expect(html).toContain('data-testid="profile-follow-wallet-input"');
+    expect(html).toContain('data-testid="profile-follow-wallet-submit"');
+    expect(html).toContain("0x195b...756c");
+    expect(html).toContain("Unfollow");
+  });
+
+  test("renders the current wallet as the profile when no external wallet is selected", () => {
+    const html = renderToStaticMarkup(
+      <ProfilePanel
+        currentWalletAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        followedWallets={[]}
+        profileWallet={null}
+        onFollowWallet={() => undefined}
+        onSelectWallet={() => undefined}
+        onUnfollowWallet={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Your wallet");
+    expect(html).toContain("0x00000000000000000000000000000000000000000000000000000000000000aa");
+    expect(html).toContain("Add wallet");
+    expect(html).not.toContain('data-testid="profile-follow-toggle"');
+    expect(html).not.toContain("Follow wallet");
+  });
+
+  test("renders selected wallet positions on the profile page", () => {
+    const profileWallet = "0xaaaa222233334444555566667777888899990000111122223333444455556666";
+    const profileRows: MarketHeatPreviewRowInput[] = [
+      {
+        id: "profile-copy-row",
+        wallet: profileWallet,
+        manager: "0xmanager",
+        market: "BTC-USD",
+        side: "UP",
+        quantity: 1_000_000,
+        cost: 500_000,
+        costUsd: 0.5,
+        strike: 62_500,
+        expiryMs: 1_779_165_600_000,
+        intervalLabel: "2h",
+        observedAtMs: 1_779_158_000_000,
+        heatScore: 37,
+        status: "copy_ready",
+      },
+    ];
+    const rows = buildMarketHeatPreview(profileRows, 8, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const html = renderToStaticMarkup(
+      <ProfilePanel
+        currentWalletAddress={null}
+        followedWallets={[]}
+        profileWallet={{
+          displayName: "0xaaaa...6666",
+          wallet: profileWallet,
+        }}
+        profilePositionRows={rows}
+        selectedProfilePositionRowId="profile-copy-row"
+        copyAmount={25}
+        onFollowWallet={() => undefined}
+        onProfilePositionSelect={() => undefined}
+        onProfilePositionWalletSubmit={() => undefined}
+        onSelectWallet={() => undefined}
+        onUnfollowWallet={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="profile-positions"');
+    expect(html).toContain("Positions");
+    expect(html).toContain('data-testid="market-heat-row"');
+    expect(html).toContain("0xaaaa...6666");
+    expect(html).toContain("UP");
+    expect(html).toContain("$62,500");
+    expect(html).toContain('data-testid="market-heat-intent-panel"');
+    expect(html).toContain("Confirm transaction");
+    expect(html).not.toContain('data-testid="market-heat-sort-latest"');
+    expect(html).not.toContain('data-testid="market-heat-show-expired"');
   });
 
   test("renders portfolio positions with redeem and claim actions", () => {
@@ -666,11 +943,6 @@ describe("mobile app navigation", () => {
           },
         ]}
         copyAmount={100}
-        durationOptions={[
-          { count: 1, label: "15m", value: "15m" },
-          { count: 1, label: "1h", value: "1h" },
-          { count: 1, label: "1d", value: "1d" },
-        ]}
         expiryOptions={[
           {
             count: 2,
@@ -688,11 +960,9 @@ describe("mobile app navigation", () => {
           },
         ]}
         selectedMarketId="btc-2h-72000"
-        selectedDuration="1h"
         selectedExpiryDate="2026-05-18"
         selectedSide="UP"
         onAmountSet={() => undefined}
-        onDurationChange={() => undefined}
         onExpiryChange={() => undefined}
         onMarketChange={() => undefined}
         onSideChange={() => undefined}
@@ -701,20 +971,13 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain('data-testid="trade-view"');
-    expect(html).toContain('aria-label="Trade market duration"');
-    expect(html).toContain('data-testid="trade-duration-all"');
-    expect(html).toContain('data-testid="trade-duration-15m"');
-    expect(html).toContain('data-testid="trade-duration-1h"');
-    expect(html).toContain('data-testid="trade-duration-1d"');
-    expect(html).not.toContain('data-testid="trade-duration-4d"');
+    expect(html).not.toContain('aria-label="Trade market duration"');
+    expect(html).not.toContain('data-testid="trade-duration-all"');
     expect(html).toContain('aria-label="Trade expiration dates"');
     expect(html).toContain('data-testid="trade-expiry-2026-05-18"');
     expect(html).toContain('data-testid="trade-expiry-2026-05-19"');
     expect(html).toContain("May 18");
     expect(html).toContain("May 19");
-    expect(html.indexOf('aria-label="Trade market duration"')).toBeLessThan(
-      html.indexOf('aria-label="Trade expiration dates"'),
-    );
     expect(html).toContain("Up/Down");
     expect(html).not.toContain("Range");
     expect(html).not.toContain('aria-label="Trade product type"');
@@ -725,7 +988,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain("15m left");
     expect(html).toContain('aria-label="Trade UP $72,000"');
     expect(html).toContain('aria-label="Trade DOWN $72,000"');
-    expect(html).toContain("1d");
+    expect(html).toContain("2h");
     expect(html).toContain("Selected");
     expect(html).toContain("UP $72,000");
     expect(html).toContain("Wins if BTC settles above $72,000");

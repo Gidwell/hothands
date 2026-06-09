@@ -153,6 +153,7 @@ export type MarketHeatPreview = {
 export type LoadMarketHeatPreviewOptions = {
   apiBaseUrl?: string;
   fetcher?: typeof fetch;
+  includeExpired?: boolean;
   nowMs?: number;
   timeZone?: string;
   useMainnetSuinsNames?: boolean;
@@ -362,7 +363,11 @@ export function buildMarketHeatPreview(
             ? {}
             : {
                 walletStats: row.walletStats,
-                walletStatsLabel: formatWalletStatsLabel(row.walletStats, nowMs),
+                walletStatsLabel: formatWalletStatsLabel(
+                  row.walletStats,
+                  row.observedAtMs,
+                  nowMs,
+                ),
               }),
           actionLabel: "Copy now",
           status: isActionableCopy ? "copy_ready" : "watching",
@@ -693,6 +698,7 @@ export function buildMarketHeatIntentPanel(
 export async function loadMarketHeatPreview({
   apiBaseUrl,
   fetcher = fetch,
+  includeExpired = false,
   nowMs = Date.now(),
   timeZone,
   useMainnetSuinsNames = false,
@@ -704,7 +710,7 @@ export async function loadMarketHeatPreview({
   }
 
   try {
-    const response = await fetcher(buildMarketHeatUrl(normalizedBaseUrl));
+    const response = await fetcher(buildMarketHeatUrl(normalizedBaseUrl, includeExpired));
 
     if (!response.ok) {
       return buildCapturedMarketHeatPreview(nowMs, timeZone);
@@ -750,6 +756,7 @@ export async function loadMarketHeatPriceSnapshot(
   {
     apiBaseUrl,
     fetcher = fetch,
+    includeExpired = false,
     nowMs = Date.now(),
     timeZone,
     useMainnetSuinsNames = false,
@@ -758,13 +765,14 @@ export async function loadMarketHeatPriceSnapshot(
   const normalizedBaseUrl = apiBaseUrl?.trim();
 
   if (!normalizedBaseUrl) {
-    return loadMarketHeatPreview({
-      apiBaseUrl,
-      fetcher,
-      nowMs,
-      timeZone,
-      useMainnetSuinsNames,
-    });
+      return loadMarketHeatPreview({
+        apiBaseUrl,
+        fetcher,
+        includeExpired,
+        nowMs,
+        timeZone,
+        useMainnetSuinsNames,
+      });
   }
 
   try {
@@ -774,6 +782,7 @@ export async function loadMarketHeatPriceSnapshot(
       return loadMarketHeatPreview({
         apiBaseUrl: normalizedBaseUrl,
         fetcher,
+        includeExpired,
         nowMs,
         timeZone,
         useMainnetSuinsNames,
@@ -787,6 +796,7 @@ export async function loadMarketHeatPriceSnapshot(
       return loadMarketHeatPreview({
         apiBaseUrl: normalizedBaseUrl,
         fetcher,
+        includeExpired,
         nowMs,
         timeZone,
         useMainnetSuinsNames,
@@ -805,6 +815,7 @@ export async function loadMarketHeatPriceSnapshot(
     return loadMarketHeatPreview({
       apiBaseUrl: normalizedBaseUrl,
       fetcher,
+      includeExpired,
       nowMs,
       timeZone,
       useMainnetSuinsNames,
@@ -855,8 +866,13 @@ async function fetchWithTimeout(
   }
 }
 
-function buildMarketHeatUrl(apiBaseUrl: string): string {
-  return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/market-heat`;
+function buildMarketHeatUrl(apiBaseUrl: string, includeExpired: boolean): string {
+  const url = new URL(`${apiBaseUrl.replace(/\/+$/, "")}/testnet/market-heat`);
+  if (includeExpired) {
+    url.searchParams.set("includeExpired", "true");
+  }
+
+  return url.toString();
 }
 
 function buildMarketHeatPriceSnapshotUrl(apiBaseUrl: string): string {
@@ -924,12 +940,16 @@ function summarizeTradeMarketSide(
   side: "UP" | "DOWN",
 ): TradeMarketSideSummary {
   const sideRows = rows.filter((row) => row.side === side);
-  const volumeUsd = roundUsd(
-    sideRows.reduce((total, row) => total + (row.costUsd ?? 0), 0),
+  const preciseVolumeUsd = sideRows.reduce(
+    (total, row) => total + (preciseRowCostUsd(row) ?? 0),
+    0,
   );
+  const volumeUsd = roundUsd(preciseVolumeUsd);
   const payoutUsd = sideRows.reduce((total, row) => total + normalizeQuantityUsd(row), 0);
   const estimatedPrice =
-    volumeUsd > 0 && payoutUsd > 0 ? roundPrice(volumeUsd / payoutUsd) : undefined;
+    preciseVolumeUsd > 0 && payoutUsd > 0
+      ? roundPrice(preciseVolumeUsd / payoutUsd)
+      : undefined;
 
   return {
     walletCount: new Set(sideRows.map((row) => row.wallet)).size,
@@ -949,12 +969,24 @@ function normalizeQuantityUsd(row: MarketHeatPreviewRow): number {
 }
 
 function estimateMarketHeatRowPrice(row: MarketHeatPreviewRow): number | undefined {
-  const costUsd = row.costUsd ?? (isNonNegativeNumber(row.cost) ? row.cost / 1_000_000 : undefined);
+  const costUsd = preciseRowCostUsd(row);
   const quantityUsd = normalizeQuantityUsd(row);
 
   return costUsd !== undefined && costUsd > 0 && quantityUsd > 0
     ? roundPrice(costUsd / quantityUsd)
     : undefined;
+}
+
+function preciseRowCostUsd(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd">): number | undefined {
+  if (isNonNegativeNumber(row.costUsd) && row.costUsd > 0) {
+    return row.costUsd;
+  }
+
+  if (isNonNegativeNumber(row.cost)) {
+    return row.cost / 1_000_000;
+  }
+
+  return undefined;
 }
 
 function normalizeCostUsd(row: MarketHeatPreviewRowInput): number | undefined {
@@ -1067,11 +1099,15 @@ function formatTimeRemaining(expiryMs: number, nowMs: number): string {
   return `${Math.ceil(minutes / (24 * 60))}d left`;
 }
 
-function formatWalletStatsLabel(stats: MarketHeatWalletStats, nowMs: number): string {
+function formatWalletStatsLabel(
+  stats: MarketHeatWalletStats,
+  observedAtMs: number,
+  nowMs: number,
+): string {
   return [
     formatSignedDusdc(stats.totalPnl),
     formatCurrentWalletStreak(stats.currentStreakType, stats.currentStreakLength),
-    formatTradeTime(stats.lastSeenMs, nowMs),
+    formatTradeTime(observedAtMs, nowMs),
   ].join(" · ");
 }
 

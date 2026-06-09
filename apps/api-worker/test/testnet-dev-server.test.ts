@@ -190,12 +190,39 @@ describe("testnet API dev server harness", () => {
     });
   });
 
+  test("passes includeExpired market heat requests to the local indexer reader", async () => {
+    const tradeEventRequests: unknown[] = [];
+    const baseReader = createTestIndexerReader();
+    const fetchHandler = createTestnetDevServerFetch({
+      fetchImpl: async () => {
+        throw new Error("public Predict should not be used when indexer has rows");
+      },
+      indexerReader: createTestIndexerReader({
+        listRecentTradeEvents: async (options) => {
+          tradeEventRequests.push(options);
+          return baseReader.listRecentTradeEvents(options);
+        }
+      })
+    });
+
+    const response = await fetchHandler(
+      new Request("http://127.0.0.1:8789/testnet/market-heat?includeExpired=true")
+    );
+
+    expect(response.status).toBe(200);
+    expect(tradeEventRequests).toEqual([
+      {
+        limit: expect.any(Number)
+      }
+    ]);
+  });
+
   test("caches indexed market heat for a short read-through window", async () => {
     let now = 1_779_070_802_000;
-    let oracleReads = 0;
+    const oracleRequests: unknown[] = [];
     const reader = createTestIndexerReader({
-      listBtcOracles: async () => {
-        oracleReads += 1;
+      listBtcOracles: async (options) => {
+        oracleRequests.push(options);
         return [
           {
             predict_id: "predict",
@@ -229,7 +256,12 @@ describe("testnet API dev server harness", () => {
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
     expect(third.status).toBe(200);
-    expect(oracleReads).toBe(2);
+    expect(oracleRequests).toEqual([
+      { includeSettled: false },
+      { includeSettled: true },
+      { includeSettled: false },
+      { includeSettled: true }
+    ]);
   });
 
   test("serves a lightweight indexed price snapshot without loading feed rows", async () => {

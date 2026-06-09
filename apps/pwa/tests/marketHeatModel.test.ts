@@ -271,8 +271,31 @@ describe("market heat preview model", () => {
       expiryTimeLabel: "May 18, 19:40 PDT",
       actionLabel: "Copy now",
       statusLabel: "just now",
-      walletStatsLabel: "+$22.23 · 12 wins · 1m ago",
+      walletStatsLabel: "+$22.23 · 12 wins · just now",
     });
+  });
+
+  test("requests expired market heat rows when the feed includes expired positions", async () => {
+    const calls: string[] = [];
+
+    await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      includeExpired: true,
+      nowMs: 1_779_165_000_000,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        return Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          rows: [],
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/market-heat?includeExpired=true",
+    ]);
   });
 
   test("refreshes the market price from the lightweight testnet snapshot endpoint", async () => {
@@ -943,6 +966,97 @@ describe("market heat preview model", () => {
 
     expect(calls).toEqual([
       `https://api.hot-hands.test/testnet/quote?oracleId=0xoracle15&expiry=${expiryMs}&strike=71000123456&side=UP&spendUsd=25&estimatedPrice=0.475`,
+    ]);
+  });
+
+  test("uses raw atomic cost for dust copy rows whose display cost rounds to zero", async () => {
+    const nowMs = 1_779_165_000_000;
+    const expiryMs = nowMs + 24 * 60 * 60_000;
+    const preview = {
+      ...buildMarketHeatPreview(
+        [
+          {
+            id: "mint-dust",
+            oracleId: "0xoracle-dust",
+            wallet: "0xa9f24640b32f33fcfa8582791e84a542251398acfc3b696f382a08a768b6ddbf",
+            manager: "manager-dust",
+            market: "BTC-USD",
+            side: "UP" as const,
+            strike: 61_882,
+            strikeRaw: 61_882_000_000,
+            expiryMs,
+            intervalLabel: "23d",
+            observedAtMs: nowMs - 60_000,
+            heatScore: 16,
+            status: "copy_ready" as const,
+            quantity: 2,
+            cost: 1,
+            costUsd: 0.000001,
+          },
+        ],
+        8,
+        {
+          marketPrice: {
+            market: "BTC-USD",
+            price: 61_800,
+            source: "indexed_testnet",
+          },
+          nowMs,
+        },
+      ),
+      availableMarkets: [
+        {
+          id: "0xoracle-dust-1779258000000",
+          oracleId: "0xoracle-dust",
+          pairLabel: "BTC/USD",
+          intervalLabel: "23d",
+          expiry: expiryMs,
+          expiryMs,
+          expiryTimeLabel: "May 19, 21:15 PDT",
+          strike: 61_882,
+          strikeRaw: 61_882_000_000,
+          strikeLabel: "$61,882",
+          status: "active",
+        },
+      ],
+    };
+
+    const copyTrade = buildTradeMarketForMarketHeatRow(preview, "mint-dust", { nowMs });
+
+    expect(copyTrade?.market.up.estimatedPrice).toBe(0.5);
+
+    const calls: string[] = [];
+    await loadTradeQuote({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      market: copyTrade!.market,
+      side: copyTrade!.row.side,
+      spendUsd: 25,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        return Response.json({
+          source: "live_testnet",
+          market: "BTC-USD",
+          oracleId: "0xoracle-dust",
+          expiry: String(expiryMs),
+          strike: "61882000000",
+          side: "UP",
+          requestedSpendUsd: 25,
+          cost: "25000000",
+          costUsd: 25,
+          quantity: "50000000",
+          payoutUsd: 50,
+          maxProfitUsd: 25,
+          redeemPayout: "24500000",
+          redeemPayoutUsd: 24.5,
+          effectivePrice: 0.5,
+          quoteStatus: "ready",
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      `https://api.hot-hands.test/testnet/quote?oracleId=0xoracle-dust&expiry=${expiryMs}&strike=61882000000&side=UP&spendUsd=25&estimatedPrice=0.5`,
     ]);
   });
 

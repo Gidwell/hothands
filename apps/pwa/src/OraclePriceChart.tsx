@@ -52,7 +52,6 @@ export function OraclePriceChartCard({
       <span className="oracle-mini-chart-copy">
         <span>BTC/USD</span>
         <strong>{priceLabel}</strong>
-        <em>DeepBook oracle price</em>
       </span>
       {hasChart ? (
         <div className="oracle-mini-chart-visual">

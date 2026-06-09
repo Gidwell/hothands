@@ -69,7 +69,6 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
@@ -89,7 +88,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Hot Hands prepares the transaction");
     expect(html).toContain('data-testid="market-heat-sort-latest"');
     expect(html).toContain('data-testid="market-heat-show-expired"');
-    expect(html).toContain("Show expired");
+    expect(html).toContain("Expired");
     expect(html).toContain('aria-pressed="true"');
     expect(html).not.toContain("Ready for your wallet signature");
   });
@@ -114,7 +113,6 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
@@ -129,6 +127,54 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Confirm transaction");
     expect(html).not.toContain("Manager 0xbbbb...0000");
     expect(html).not.toContain("No wallet request until you tap Confirm transaction");
+  });
+
+  test("estimates copy payout for dust rows whose display cost rounds to zero", () => {
+    const nowMs = 1_779_158_000_000;
+    const [row] = buildMarketHeatPreview(
+      [
+        {
+          id: "external-dust-copy",
+          wallet: "0xa9f24640b32f33fcfa8582791e84a542251398acfc3b696f382a08a768b6ddbf",
+          manager: "manager-dust",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 61_882,
+          expiryMs: nowMs + 24 * 60 * 60_000,
+          intervalLabel: "23d",
+          quantity: 2,
+          cost: 1,
+          costUsd: 0.000001,
+          observedAtMs: nowMs - 60_000,
+          heatScore: 16,
+          status: "copy_ready",
+        },
+      ],
+      1,
+      { nowMs },
+    ).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Indexed Testnet"
+        sortMode="latest"
+        selectedRowId={row.id}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Est. payout</small><strong>$50");
+    expect(html).toContain("Max profit</small><strong>+$25");
+    expect(html).not.toContain("Quote needed");
   });
 
   test("keeps feed wallet notifications in the toast layer", () => {
@@ -151,7 +197,6 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
@@ -176,7 +221,6 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
@@ -186,7 +230,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain('data-testid="market-heat-show-expired"');
   });
 
-  test("renders show-more in both compact and expanded feed density", () => {
+  test("keeps show-more available in the compact feed", () => {
     const rows = buildMarketHeatPreview(
       Array.from({ length: 10 }, (_, index) => ({
         ...watchingOnlyRows[0],
@@ -200,7 +244,6 @@ describe("MarketHeatPreview component", () => {
         rows={rows.slice(0, 8)}
         sourceLabel="Live Testnet"
         sortMode="latest"
-        density="compact"
         selectedRowId={null}
         showExpired={false}
         canShowMore={true}
@@ -212,49 +255,36 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
     expect(html).toContain('data-testid="market-heat-show-more"');
     expect(html).toContain("Show 2 more");
-
-    const expandedHtml = renderToStaticMarkup(
-      <MarketHeatPreview
-        rows={rows.slice(0, 8)}
-        sourceLabel="Live Testnet"
-        sortMode="latest"
-        density="expanded"
-        selectedRowId={null}
-        showExpired={false}
-        canShowMore={true}
-        copyAmount={25}
-        showMoreLabel="Show 2 more"
-        onAmountSet={() => undefined}
-        onShowExpiredChange={() => undefined}
-        onShowMore={() => undefined}
-        onSortModeChange={() => undefined}
-        onWalletSubmit={() => undefined}
-        onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
-      />,
-    );
-
-    expect(expandedHtml).toContain('data-testid="market-heat-show-more"');
-    expect(expandedHtml).toContain("Show 2 more");
   });
 
-  test("renders market duration toggle buttons", () => {
+  test("renders feed expiration date buttons", () => {
     const rows = buildMarketHeatPreview(watchingOnlyRows, 1).rows;
     const html = renderToStaticMarkup(
       <MarketHeatPreview
         rows={rows}
         sourceLabel="Live Testnet"
         sortMode="latest"
-        selectedDuration="1h"
-        durationOptions={[
-          { count: rows.length, label: "1h", value: "1h" },
-          { count: 2, label: "1d", value: "1d" },
+        selectedExpiryDate={null}
+        expiryOptions={[
+          {
+            count: rows.length,
+            expiryMs: 1_781_227_200_000,
+            label: "Jun 12",
+            sublabel: "Fri · 1 market",
+            value: "2026-06-12",
+          },
+          {
+            count: 2,
+            expiryMs: 1_781_832_000_000,
+            label: "Jun 19",
+            sublabel: "2 markets",
+            value: "2026-06-19",
+          },
         ]}
         showExpired={false}
         canShowMore={false}
@@ -262,22 +292,27 @@ describe("MarketHeatPreview component", () => {
         showMoreLabel="Show more"
         selectedRowId={null}
         onAmountSet={() => undefined}
-        onDurationChange={() => undefined}
+        onAllExpiriesSelect={() => undefined}
+        onExpiryChange={() => undefined}
         onShowExpiredChange={() => undefined}
         onShowMore={() => undefined}
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
-    expect(html).toContain('data-testid="market-duration-all"');
-    expect(html).toContain('data-testid="market-duration-1h"');
-    expect(html).toContain('data-testid="market-duration-1d"');
+    expect(html).toContain('aria-label="Feed expiration dates"');
+    expect(html).toContain('data-testid="feed-expiry-all"');
+    expect(html).toContain('data-testid="feed-expiry-2026-06-12"');
+    expect(html).toContain('data-testid="feed-expiry-2026-06-19"');
     expect(html).toContain("All");
-    expect(html).toContain("1h");
-    expect(html).toContain("1d");
+    expect(html).toContain("2 dates");
+    expect(html).toContain("Jun 12");
+    expect(html).toContain("Fri · 1 market");
+    expect(html).toContain("Jun 19");
+    expect(html).toContain("2 markets");
+    expect(html).not.toContain('data-testid="market-duration-all"');
     expect(html).toContain('aria-pressed="true"');
   });
 
@@ -290,7 +325,6 @@ describe("MarketHeatPreview component", () => {
         rows={[row]}
         sourceLabel="Live Testnet"
         sortMode="latest"
-        density="compact"
         selectedRowId={null}
         showExpired={false}
         canShowMore={false}
@@ -302,13 +336,13 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
-        onCloseIntent={() => undefined}
       />,
     );
 
     expect(html).toContain("market-heat-list-compact");
     expect(html).toContain("market-heat-row-compact");
-    expect(html).toContain('data-testid="market-heat-density-compact"');
+    expect(html).not.toContain("market-heat-density-toggle");
+    expect(html).not.toContain("Expanded");
     expect(html).toContain("Wallet");
     expect(html).toContain("Direction");
     expect(html).toContain("Expiration");

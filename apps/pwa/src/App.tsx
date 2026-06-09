@@ -22,6 +22,8 @@ import {
   buildDepositQuoteTransaction,
 } from "@hot-hands/contracts";
 import {
+  clampCopyAmount,
+  COPY_AMOUNT_DEFAULT,
   COPY_AMOUNT_MAX,
   COPY_AMOUNT_MIN,
   formatCopyAmount,
@@ -44,7 +46,6 @@ import {
 } from "./replayModel";
 import {
   buildMarketHeatIntentPanel,
-  buildMarketDurationOptions,
   buildMarketHeatPreview,
   buildTradeMarketForMarketHeatRow,
   buildTradeMarketLadder,
@@ -59,7 +60,6 @@ import {
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
   type MarketHeatSortMode,
-  type MarketDurationOption,
   type TradeQuote,
   type TradeMarketLadderRow,
   type TradeMarketSideSummary,
@@ -114,7 +114,8 @@ import {
 } from "./walletRefresh";
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
-const MARKET_HEAT_REFRESH_MS = 1_000;
+const MARKET_HEAT_PRICE_REFRESH_MS = 1_000;
+const MARKET_HEAT_ROWS_REFRESH_MS = 3_000;
 const ORACLE_PRICE_CHART_TICK_REFRESH_MS = 1_000;
 const ORACLE_PRICE_CHART_HISTORY_REFRESH_MS = 60_000;
 const MARKET_HEAT_PAGE_SIZE = 8;
@@ -127,11 +128,12 @@ const DEPOSIT_AMOUNT_DEFAULT = 25;
 const DEPOSIT_AMOUNT_MIN = 0.01;
 const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
+const STAKE_AMOUNT_STORAGE_KEY = "hot-hands-default-stake-amount";
 const THEME_STORAGE_KEY = "hot-hands-theme-mode";
 type PreviewMode = "replay" | "market";
-export type AppView = "feed" | "trade" | "leaderboards" | "portfolio";
+export type AppView = "feed" | "trade" | "leaderboards" | "portfolio" | "profile";
+export type AccountSummaryVariant = "default" | "portfolio";
 type ThemeMode = "light" | "dark";
-type MarketHeatDensity = "compact" | "expanded";
 export type MarketHeatSwipeAction = "none" | "select" | "submit";
 type MarketHeatSwipePreview = {
   action: MarketHeatSwipeAction;
@@ -140,6 +142,18 @@ type MarketHeatSwipePreview = {
 };
 export function shouldShowAccountSummary(view: AppView): boolean {
   return view === "trade" || view === "portfolio";
+}
+
+export function getAccountSummaryVariant(view: AppView): AccountSummaryVariant {
+  return view === "trade" || view === "portfolio" ? "portfolio" : "default";
+}
+
+export function shouldAutoRefreshMarketHeatRows(view: AppView): boolean {
+  return view === "feed" || view === "profile";
+}
+
+export function getMarketHeatRowsRefreshMs(view: AppView): number | null {
+  return shouldAutoRefreshMarketHeatRows(view) ? MARKET_HEAT_ROWS_REFRESH_MS : null;
 }
 
 function getInitialThemeMode(): ThemeMode {
@@ -161,6 +175,35 @@ function writeThemeMode(themeMode: ThemeMode): void {
   }
 
   window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+}
+
+export function parseStoredStakeAmount(storedAmount: string | null): number {
+  if (!storedAmount) {
+    return COPY_AMOUNT_DEFAULT;
+  }
+
+  const parsedAmount = Number(storedAmount);
+  if (!Number.isFinite(parsedAmount)) {
+    return COPY_AMOUNT_DEFAULT;
+  }
+
+  return clampCopyAmount(parsedAmount);
+}
+
+function readStoredStakeAmount(): number {
+  if (typeof window === "undefined") {
+    return COPY_AMOUNT_DEFAULT;
+  }
+
+  return parseStoredStakeAmount(window.localStorage.getItem(STAKE_AMOUNT_STORAGE_KEY));
+}
+
+function writeStoredStakeAmount(amount: number): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(STAKE_AMOUNT_STORAGE_KEY, String(clampCopyAmount(amount)));
 }
 
 export type TradeSide = "UP" | "DOWN";
@@ -222,6 +265,17 @@ type WalletLeaderboardsState = {
   status: WalletLeaderboardsStatus;
 };
 type PortfolioTab = "positions" | "history";
+export type FollowedWallet = {
+  displayName: string;
+  wallet: string;
+};
+
+export function resolveSelectedProfileWalletForNav(
+  view: AppView,
+  selectedWallet: FollowedWallet | null,
+): FollowedWallet | null {
+  return view === "profile" ? null : selectedWallet;
+}
 
 const idleWalletTransactionState: WalletTransactionState = {
   status: "idle",
@@ -237,6 +291,7 @@ const idlePredictPortfolioPnl: PredictPortfolioPnlSummary = {
 };
 const PREDICT_MANAGER_STORAGE_KEY = "hot-hands-predict-manager-id";
 const DISMISSED_PORTFOLIO_STORAGE_KEY = "hot-hands-dismissed-portfolio-position-ids";
+const FOLLOWED_WALLETS_STORAGE_KEY = "hot-hands-followed-wallets";
 
 export function getInitialPreviewMode(_apiBaseUrl: string | undefined): PreviewMode {
   return "market";
@@ -287,9 +342,12 @@ function buildReturnPreview(spendUsd: number, estimatedPrice: number | undefined
 }
 
 function estimatePriceFromRow(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd" | "quantity">): number | undefined {
+  const rawCostUsd =
+    row.cost === undefined || !Number.isFinite(row.cost) ? undefined : row.cost / 1_000_000;
   const costUsd =
-    row.costUsd ??
-    (row.cost === undefined || !Number.isFinite(row.cost) ? undefined : row.cost / 1_000_000);
+    row.costUsd !== undefined && row.costUsd > 0
+      ? row.costUsd
+      : rawCostUsd;
   const payoutUsd =
     row.quantity === undefined || !Number.isFinite(row.quantity) || row.quantity <= 0
       ? undefined
@@ -300,18 +358,6 @@ function estimatePriceFromRow(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd"
   }
 
   return costUsd / payoutUsd;
-}
-
-function formatObservedBuyAmount(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd">): string {
-  const costUsd =
-    row.costUsd ??
-    (row.cost === undefined || !Number.isFinite(row.cost) ? undefined : row.cost / 1_000_000);
-
-  if (costUsd === undefined || !Number.isFinite(costUsd)) {
-    return "Unknown";
-  }
-
-  return formatUsdValue(costUsd);
 }
 
 function marketDurationTestId(value: string): string {
@@ -368,58 +414,6 @@ function tradeExpiryDayStartMs(expiryMs: number): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-function tradeIntervalSortMs(intervalLabel: string): number {
-  const match = /^(\d+)\s*([mhwd])$/i.exec(intervalLabel.trim());
-  if (!match) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  const value = Number(match[1]);
-  const unit = match[2].toLowerCase();
-
-  if (unit === "w") {
-    return value * 7 * TRADE_EXPIRY_DAY_MS;
-  }
-
-  if (unit === "d") {
-    return value * TRADE_EXPIRY_DAY_MS;
-  }
-
-  if (unit === "h") {
-    return value * 60 * 60_000;
-  }
-
-  return value * 60_000;
-}
-
-function marketDurationMatches(intervalLabel: string, duration: string): boolean {
-  return intervalLabel.trim().toLowerCase() === duration.toLowerCase();
-}
-
-function selectMarketHeatRowsForDuration(
-  rows: MarketHeatPreviewRow[],
-  duration: string,
-): MarketHeatPreviewRow[] {
-  if (duration === "all") {
-    return rows;
-  }
-
-  return rows.filter((row) => marketDurationMatches(row.intervalLabel, duration));
-}
-
-function selectTradeMarketsForDuration(
-  marketRows: TradeMarketLadderRow[],
-  duration: string,
-): TradeMarketLadderRow[] {
-  if (duration === "all") {
-    return marketRows;
-  }
-
-  return marketRows.filter((marketRow) =>
-    marketDurationMatches(marketRow.intervalLabel, duration),
-  );
-}
-
 function formatTradeExpiryHorizon(expiryMs: number, nowMs: number): string {
   const dayDelta = Math.round(
     (tradeExpiryDayStartMs(expiryMs) - tradeExpiryDayStartMs(nowMs)) / TRADE_EXPIRY_DAY_MS,
@@ -454,31 +448,23 @@ function formatTradeExpiryLabel(expiryMs: number, nowMs: number): string {
 
 function formatTradeExpirySublabel(
   expiryMs: number,
-  intervalLabels: string[],
   count: number,
   nowMs: number,
 ): string {
   const horizon = formatTradeExpiryHorizon(expiryMs, nowMs);
-  const uniqueIntervals = [...new Set(intervalLabels)].sort(
-    (left, right) =>
-      tradeIntervalSortMs(left) - tradeIntervalSortMs(right) || left.localeCompare(right),
-  );
-  const intervalSummary =
-    uniqueIntervals.length <= 2 ? uniqueIntervals.join(", ") : `${uniqueIntervals.length} expiries`;
   const countSummary = count === 1 ? "1 market" : `${count} markets`;
+  const parts: string[] = [];
 
-  if (horizon === "Today" || horizon === "Tomorrow") {
-    return intervalSummary || countSummary;
+  if (horizon && horizon !== "Today" && horizon !== "Tomorrow") {
+    parts.push(horizon);
   }
 
-  if (horizon) {
-    return `${horizon} · ${intervalSummary || countSummary}`;
-  }
+  parts.push(countSummary);
 
-  return intervalSummary ? `${countSummary} · ${intervalSummary}` : countSummary;
+  return parts.join(" · ");
 }
 
-function buildTradeExpiryOptions(
+export function buildTradeExpiryOptions(
   marketRows: TradeMarketLadderRow[],
   nowMs: number,
 ): TradeExpiryOption[] {
@@ -487,7 +473,6 @@ function buildTradeExpiryOptions(
     {
       count: number;
       earliestExpiryMs: number;
-      intervalLabels: string[];
     }
   >();
 
@@ -502,14 +487,12 @@ function buildTradeExpiryOptions(
     if (existing) {
       existing.count += 1;
       existing.earliestExpiryMs = Math.min(existing.earliestExpiryMs, marketRow.expiryMs);
-      existing.intervalLabels.push(marketRow.intervalLabel);
       continue;
     }
 
     expiriesByDate.set(value, {
       count: 1,
       earliestExpiryMs: marketRow.expiryMs,
-      intervalLabels: [marketRow.intervalLabel],
     });
   }
 
@@ -518,12 +501,7 @@ function buildTradeExpiryOptions(
       count: expiry.count,
       expiryMs: expiry.earliestExpiryMs,
       label: formatTradeExpiryLabel(expiry.earliestExpiryMs, nowMs),
-      sublabel: formatTradeExpirySublabel(
-        expiry.earliestExpiryMs,
-        expiry.intervalLabels,
-        expiry.count,
-        nowMs,
-      ),
+      sublabel: formatTradeExpirySublabel(expiry.earliestExpiryMs, expiry.count, nowMs),
       value,
     }))
     .sort((left, right) => left.expiryMs - right.expiryMs);
@@ -538,6 +516,17 @@ function selectTradeMarketsForExpiry(
   }
 
   return marketRows.filter((marketRow) => tradeExpiryDateKey(marketRow.expiryMs) === expiryDate);
+}
+
+function selectMarketHeatRowsForExpiry(
+  rows: MarketHeatPreviewRow[],
+  expiryDate: string | null,
+): MarketHeatPreviewRow[] {
+  if (!expiryDate) {
+    return rows;
+  }
+
+  return rows.filter((row) => tradeExpiryDateKey(row.expiryMs) === expiryDate);
 }
 
 function formatUsdValue(amount: number): string {
@@ -1106,6 +1095,95 @@ function writeDismissedPortfolioPositionIds(
   );
 }
 
+function readFollowedWallets(): FollowedWallet[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  const stored = window.localStorage.getItem(FOLLOWED_WALLETS_STORAGE_KEY);
+  if (!stored) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((item): FollowedWallet | null => {
+        if (typeof item === "string") {
+          const wallet = normalizeProfileWalletAddress(item);
+          return wallet ? { displayName: formatWalletAddress(wallet), wallet } : null;
+        }
+
+        if (!item || typeof item !== "object") {
+          return null;
+        }
+
+        const record = item as Record<string, unknown>;
+        const wallet =
+          typeof record.wallet === "string"
+            ? normalizeProfileWalletAddress(record.wallet)
+            : null;
+        if (!wallet) {
+          return null;
+        }
+
+        return {
+          displayName:
+            typeof record.displayName === "string" && record.displayName.trim()
+              ? record.displayName.trim()
+              : formatWalletAddress(wallet),
+          wallet,
+        };
+      })
+      .filter((wallet): wallet is FollowedWallet => wallet !== null);
+  } catch {
+    return [];
+  }
+}
+
+function writeFollowedWallets(wallets: FollowedWallet[]): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(FOLLOWED_WALLETS_STORAGE_KEY, JSON.stringify(wallets));
+}
+
+function normalizeProfileWalletAddress(wallet: string): string | null {
+  const normalized = wallet.trim();
+  return /^0x[0-9a-fA-F]{64}$/.test(normalized) ? normalized : null;
+}
+
+function mergeFollowedWallet(
+  wallets: FollowedWallet[],
+  wallet: FollowedWallet,
+): FollowedWallet[] {
+  const normalizedWallet = normalizeProfileWalletAddress(wallet.wallet);
+  if (!normalizedWallet) {
+    return wallets;
+  }
+
+  const nextWallet = {
+    displayName: wallet.displayName.trim() || formatWalletAddress(normalizedWallet),
+    wallet: normalizedWallet,
+  };
+  const existingIndex = wallets.findIndex(
+    (followedWallet) => followedWallet.wallet.toLowerCase() === normalizedWallet.toLowerCase(),
+  );
+
+  if (existingIndex === -1) {
+    return [nextWallet, ...wallets];
+  }
+
+  return wallets.map((followedWallet, index) =>
+    index === existingIndex ? nextWallet : followedWallet,
+  );
+}
+
 type WalletHeaderControlProps = {
   accountAddress: string | null;
   connectionStatus: string;
@@ -1301,6 +1379,7 @@ export function BottomNav({
     { label: "Leaders", view: "leaderboards" },
     { label: "Trade", view: "trade" },
     { label: "Portfolio", view: "portfolio" },
+    { label: "Profile", view: "profile" },
   ];
 
   return (
@@ -1354,11 +1433,16 @@ function NavIcon({ view }: { view: AppView }) {
           <path d="M17 17H6" />
           <path d="m9 14-3 3 3 3" />
         </>
-      ) : (
+      ) : view === "portfolio" ? (
         <>
           <path d="M4.5 8.5h15a1.5 1.5 0 0 1 1.5 1.5v7.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h12" />
           <path d="M16.5 13.5H21" />
           <path d="M17.8 13.5h.1" />
+        </>
+      ) : (
+        <>
+          <path d="M20 21a8 8 0 0 0-16 0" />
+          <path d="M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" />
         </>
       )}
     </svg>
@@ -1396,67 +1480,49 @@ function ThemeModeIcon({ mode }: { mode: ThemeMode }) {
   );
 }
 
-function MarketDurationToggle({
-  ariaLabel,
-  className = "",
-  onDurationChange,
-  options,
-  selectedDuration,
-  testIdPrefix,
-}: {
-  ariaLabel: string;
-  className?: string;
-  onDurationChange: (duration: string) => void;
-  options: MarketDurationOption[];
-  selectedDuration: string;
-  testIdPrefix: string;
-}) {
-  return (
-    <div className={`market-duration-toggle ${className}`} aria-label={ariaLabel}>
-      <button
-        type="button"
-        aria-pressed={selectedDuration === "all"}
-        data-testid={`${testIdPrefix}-all`}
-        onClick={() => onDurationChange("all")}
-      >
-        All
-      </button>
-      {options.map((option) => (
-        <button
-          type="button"
-          aria-pressed={selectedDuration === option.value}
-          data-testid={`${testIdPrefix}-${marketDurationTestId(option.value)}`}
-          key={option.value}
-          onClick={() => onDurationChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function TradeExpiryRail({
+  allSelected = false,
+  ariaLabel = "Trade expiration dates",
+  includeAllOption = false,
+  onAllSelect = () => undefined,
   onExpiryChange,
   options,
   selectedExpiryDate,
+  testIdPrefix = "trade-expiry",
 }: {
+  allSelected?: boolean;
+  ariaLabel?: string;
+  includeAllOption?: boolean;
+  onAllSelect?: () => void;
   onExpiryChange: (expiryDate: string) => void;
   options: TradeExpiryOption[];
   selectedExpiryDate: string | null;
+  testIdPrefix?: string;
 }) {
-  if (!options.length) {
+  if (!includeAllOption && !options.length) {
     return null;
   }
 
   return (
-    <div className="trade-expiry-rail" aria-label="Trade expiration dates">
+    <div className="trade-expiry-rail" aria-label={ariaLabel}>
+      {includeAllOption ? (
+        <button
+          type="button"
+          className="trade-expiry-option"
+          aria-pressed={allSelected}
+          data-testid={`${testIdPrefix}-all`}
+          onClick={onAllSelect}
+        >
+          <strong>All</strong>
+          <small>{options.length ? `${options.length} dates` : "No dates"}</small>
+        </button>
+      ) : null}
       {options.map((option) => (
         <button
           type="button"
           className="trade-expiry-option"
           aria-pressed={selectedExpiryDate === option.value}
-          data-testid={`trade-expiry-${marketDurationTestId(option.value)}`}
+          data-testid={`${testIdPrefix}-${marketDurationTestId(option.value)}`}
           key={option.value}
           onClick={() => onExpiryChange(option.value)}
         >
@@ -1477,8 +1543,6 @@ export function TradeTicket({
   selectedExpiryDate = null,
   selectedMarketId,
   selectedSide,
-  selectedDuration = "all",
-  durationOptions = [],
   quote = null,
   quoteStatus = "idle",
   predictManagerObjectId = "",
@@ -1486,7 +1550,6 @@ export function TradeTicket({
   walletActionPending = false,
   walletConnected = false,
   onAmountSet,
-  onDurationChange = () => undefined,
   onExpiryChange = () => undefined,
   onMarketChange,
   onSideChange,
@@ -1500,8 +1563,6 @@ export function TradeTicket({
   selectedExpiryDate?: string | null;
   selectedMarketId: string;
   selectedSide: TradeSide;
-  selectedDuration?: string;
-  durationOptions?: MarketDurationOption[];
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
   predictManagerObjectId?: string;
@@ -1509,7 +1570,6 @@ export function TradeTicket({
   walletActionPending?: boolean;
   walletConnected?: boolean;
   onAmountSet: (amount: number) => void;
-  onDurationChange?: (duration: string) => void;
   onExpiryChange?: (expiryDate: string) => void;
   onMarketChange: (selection: TradeMarketSelection) => void;
   onSideChange: (side: TradeSide) => void;
@@ -1573,16 +1633,6 @@ export function TradeTicket({
         <p>Trade</p>
         <span>{selectedMarket?.pairLabel ?? "BTC/USD"}</span>
       </div>
-      {durationOptions.length ? (
-        <MarketDurationToggle
-          ariaLabel="Trade market duration"
-          className="trade-duration-toggle"
-          options={durationOptions}
-          selectedDuration={selectedDuration}
-          testIdPrefix="trade-duration"
-          onDurationChange={onDurationChange}
-        />
-      ) : null}
       <TradeExpiryRail
         options={expiryOptions}
         selectedExpiryDate={selectedExpiryDate}
@@ -2157,6 +2207,172 @@ export function PortfolioPanel({
   );
 }
 
+export function ProfilePanel({
+  currentWalletAddress = null,
+  copyAmount = COPY_AMOUNT_DEFAULT,
+  followedWallets,
+  profileWallet,
+  profilePositionRows = [],
+  profilePositionsCanShowMore = false,
+  profilePositionsShowMoreLabel = "Show more",
+  selectedProfilePositionRowId = null,
+  onAmountSet = () => undefined,
+  onFollowWallet,
+  onProfilePositionSelect = () => undefined,
+  onProfilePositionsShowMore = () => undefined,
+  onProfilePositionWalletSubmit = () => undefined,
+  onSelectWallet,
+  onUnfollowWallet,
+}: {
+  currentWalletAddress?: string | null;
+  copyAmount?: number;
+  followedWallets: FollowedWallet[];
+  profileWallet: FollowedWallet | null;
+  profilePositionRows?: MarketHeatPreviewRow[];
+  profilePositionsCanShowMore?: boolean;
+  profilePositionsShowMoreLabel?: string;
+  selectedProfilePositionRowId?: string | null;
+  onAmountSet?: (amount: number) => void;
+  onFollowWallet: (wallet: FollowedWallet) => void;
+  onProfilePositionSelect?: (rowId: string) => void;
+  onProfilePositionsShowMore?: () => void;
+  onProfilePositionWalletSubmit?: (rowId: string) => void;
+  onSelectWallet: (wallet: FollowedWallet) => void;
+  onUnfollowWallet: (wallet: string) => void;
+}) {
+  const [walletInput, setWalletInput] = useState("");
+  const activeWallet =
+    profileWallet ??
+    (currentWalletAddress
+      ? { displayName: "Your wallet", wallet: currentWalletAddress }
+      : null);
+  const isOwnActiveWallet =
+    Boolean(activeWallet && currentWalletAddress) &&
+    activeWallet?.wallet.toLowerCase() === currentWalletAddress?.toLowerCase();
+  const isFollowingActiveWallet = activeWallet
+    ? followedWallets.some(
+        (followedWallet) =>
+          followedWallet.wallet.toLowerCase() === activeWallet.wallet.toLowerCase(),
+      )
+    : false;
+  const normalizedInputWallet = normalizeProfileWalletAddress(walletInput);
+
+  return (
+    <section className="profile-panel" aria-label="Profile" data-testid="profile-view">
+      <div className="section-heading">
+        <p>Profile</p>
+        <span>{followedWallets.length} following</span>
+      </div>
+      <div className="profile-card">
+        <span className="profile-card-label">Wallet</span>
+        {activeWallet ? (
+          <>
+            <strong>{activeWallet.displayName}</strong>
+            <small>{activeWallet.wallet}</small>
+            {!isOwnActiveWallet ? (
+              <button
+                type="button"
+                className="profile-follow-button"
+                data-testid="profile-follow-toggle"
+                onClick={() =>
+                  isFollowingActiveWallet
+                    ? onUnfollowWallet(activeWallet.wallet)
+                    : onFollowWallet(activeWallet)
+                }
+              >
+                {isFollowingActiveWallet ? "Following" : "Follow wallet"}
+              </button>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <strong>No wallet selected</strong>
+            <small>Open a wallet from Leaders or paste one below.</small>
+          </>
+        )}
+      </div>
+      {activeWallet ? (
+        <MarketHeatPreview
+          ariaLabel={`${activeWallet.displayName} positions`}
+          canShowMore={profilePositionsCanShowMore}
+          copyAmount={copyAmount}
+          emptyDetail="This wallet has no active positions to copy right now."
+          emptyTitle="No open positions"
+          rows={profilePositionRows}
+          selectedRowId={selectedProfilePositionRowId}
+          showControls={false}
+          showEmptyAction={false}
+          showExpired={false}
+          showMoreLabel={profilePositionsShowMoreLabel}
+          sortMode="latest"
+          sourceLabel=""
+          testId="profile-positions"
+          title="Positions"
+          onAmountSet={onAmountSet}
+          onSelectRow={onProfilePositionSelect}
+          onShowExpiredChange={() => undefined}
+          onShowMore={onProfilePositionsShowMore}
+          onSortModeChange={() => undefined}
+          onWalletSubmit={onProfilePositionWalletSubmit}
+        />
+      ) : null}
+      <form
+        className="profile-follow-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!normalizedInputWallet) {
+            return;
+          }
+
+          const wallet = {
+            displayName: formatWalletAddress(normalizedInputWallet),
+            wallet: normalizedInputWallet,
+          };
+          onFollowWallet(wallet);
+          onSelectWallet(wallet);
+          setWalletInput("");
+        }}
+      >
+        <label>
+          <span>Add wallet</span>
+          <input
+            aria-label="Wallet address to follow"
+            data-testid="profile-follow-wallet-input"
+            placeholder="0x..."
+            value={walletInput}
+            onChange={(event) => setWalletInput(event.currentTarget.value)}
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={!normalizedInputWallet}
+          data-testid="profile-follow-wallet-submit"
+        >
+          Add
+        </button>
+      </form>
+      <div className="profile-following-list">
+        <span className="profile-card-label">Following</span>
+        {followedWallets.length ? (
+          followedWallets.map((wallet) => (
+            <article className="profile-following-row" key={wallet.wallet}>
+              <button type="button" onClick={() => onSelectWallet(wallet)}>
+                <strong>{wallet.displayName}</strong>
+                <small>{wallet.wallet}</small>
+              </button>
+              <button type="button" onClick={() => onUnfollowWallet(wallet.wallet)}>
+                Unfollow
+              </button>
+            </article>
+          ))
+        ) : (
+          <div className="profile-empty">No followed wallets yet</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function walletLeaderboardMetricValue(
   entry: WalletLeaderboardEntry,
   board: WalletLeaderboardBoardKey,
@@ -2234,6 +2450,15 @@ function compactWalletLeaderboardLastLabel(label: string): string {
   return datePart.trim() || label;
 }
 
+function formatWalletLeaderboardWinRate(entry: WalletLeaderboardEntry): string {
+  const settledCount = entry.winCount + entry.lossCount;
+  if (settledCount <= 0) {
+    return "--";
+  }
+
+  return `${Math.round((entry.winCount / settledCount) * 100)}%`;
+}
+
 function walletLeaderboardListLabel(
   board: WalletLeaderboardPanelBoardKey,
   sortDirection: WalletLeaderboardSortDirection,
@@ -2256,6 +2481,7 @@ export function WalletLeaderboardsPanel({
   snapshot,
   status = "ready",
   onBoardChange,
+  onWalletOpen,
   onRangeModeChange,
   onSortDirectionChange,
 }: {
@@ -2265,6 +2491,7 @@ export function WalletLeaderboardsPanel({
   snapshot: WalletLeaderboardsSnapshot;
   status?: WalletLeaderboardsStatus;
   onBoardChange: (board: WalletLeaderboardPanelBoardKey) => void;
+  onWalletOpen?: (wallet: FollowedWallet) => void;
   onRangeModeChange?: (mode: WalletLeaderboardRangeMode) => void;
   onSortDirectionChange?: (direction: WalletLeaderboardSortDirection) => void;
 }) {
@@ -2364,8 +2591,7 @@ export function WalletLeaderboardsPanel({
             <span>Wallet</span>
             <span>{coreMetricLabel}</span>
             {activeBoardDefinition.key === "streaks" ? <span>PNL</span> : null}
-            <span>Wins</span>
-            <span>Losses</span>
+            <span>Win Rate</span>
             <span>Open</span>
             <span>{activeBoardDefinition.key === "streaks" ? "Current" : "Streak"}</span>
             <span>Last</span>
@@ -2382,10 +2608,20 @@ export function WalletLeaderboardsPanel({
               >
                 <div className="wallet-leaderboard-main">
                   <span className="wallet-leaderboard-rank">#{entry.rank}</span>
-                  <div>
+                  <button
+                    type="button"
+                    className="wallet-leaderboard-profile-button"
+                    data-testid="wallet-leaderboard-profile"
+                    onClick={() =>
+                      onWalletOpen?.({
+                        displayName: entry.displayName,
+                        wallet: entry.wallet,
+                      })
+                    }
+                  >
                     <strong>{entry.displayName}</strong>
                     <small>{listLabel}</small>
-                  </div>
+                  </button>
                   <div
                     className={`wallet-leaderboard-core wallet-leaderboard-core-${coreMetricTone}`}
                     data-testid="wallet-leaderboard-core-metric"
@@ -2402,12 +2638,8 @@ export function WalletLeaderboardsPanel({
                     </span>
                   )}
                   <span>
-                    <small>Wins</small>
-                    {entry.winCount}
-                  </span>
-                  <span>
-                    <small>Losses</small>
-                    {entry.lossCount}
+                    <small>Win Rate</small>
+                    {formatWalletLeaderboardWinRate(entry)}
                   </span>
                   <span>
                     <small>Open</small>
@@ -2441,51 +2673,58 @@ export function MarketHeatPreview({
   rows,
   sourceLabel,
   sortMode,
-  density = "expanded",
-  selectedDuration = "all",
+  title = "Alpha Feed",
+  ariaLabel = title,
+  selectedExpiryDate = null,
+  showControls = true,
   showExpired,
+  showEmptyAction = true,
+  emptyTitle,
+  emptyDetail,
   canShowMore,
   selectedRowId,
   copyAmount,
-  durationOptions = [],
+  expiryOptions = [],
   showMoreLabel,
   testId = "market-heat-preview",
   onAmountSet,
-  onDurationChange = () => undefined,
-  onDensityChange = () => undefined,
+  onAllExpiriesSelect = () => undefined,
+  onExpiryChange = () => undefined,
   onShowExpiredChange,
   onShowMore,
   onSortModeChange,
   onWalletSubmit,
   onSelectRow,
-  onCloseIntent,
 }: {
   rows: MarketHeatPreviewRow[];
   sourceLabel: string;
   sortMode: MarketHeatSortMode;
-  density?: MarketHeatDensity;
-  selectedDuration?: string;
+  title?: string;
+  ariaLabel?: string;
+  selectedExpiryDate?: string | null;
+  showControls?: boolean;
   showExpired: boolean;
+  showEmptyAction?: boolean;
+  emptyTitle?: string;
+  emptyDetail?: string;
   canShowMore: boolean;
   selectedRowId: string | null;
   copyAmount: number;
-  durationOptions?: MarketDurationOption[];
+  expiryOptions?: TradeExpiryOption[];
   showMoreLabel: string;
   testId?: string;
   onAmountSet: (amount: number) => void;
-  onDurationChange?: (duration: string) => void;
-  onDensityChange?: (density: MarketHeatDensity) => void;
+  onAllExpiriesSelect?: () => void;
+  onExpiryChange?: (expiryDate: string) => void;
   onShowExpiredChange: (showExpired: boolean) => void;
   onShowMore: () => void;
   onSortModeChange: (sortMode: MarketHeatSortMode) => void;
   onWalletSubmit: (rowId: string) => void;
   onSelectRow: (rowId: string) => void;
-  onCloseIntent: () => void;
 }) {
   const swipeStartRef = useRef<{ rowId: string; x: number; y: number } | null>(null);
   const swipedRowRef = useRef<string | null>(null);
   const [swipePreview, setSwipePreview] = useState<MarketHeatSwipePreview | null>(null);
-  const isCompact = density === "compact";
   const startMarketHeatSwipe = (
     rowId: string,
     event: PointerEvent<HTMLElement>,
@@ -2556,110 +2795,86 @@ export function MarketHeatPreview({
     onSelectRow(row.id);
   };
 
+  const resolvedEmptyTitle =
+    emptyTitle ?? (showExpired ? "No positions for this filter" : "No live positions right now");
+  const resolvedEmptyDetail =
+    emptyDetail ??
+    (showExpired ? "Try another expiration." : "Show expired to review recent testnet activity.");
+  const headingAriaLabel = sourceLabel ? `${title}, ${sourceLabel} BTC markets` : title;
+  const headingTitle = sourceLabel ? `${sourceLabel} BTC markets` : title;
+
   return (
     <section
-      className={`market-heat-list market-heat-list-${density}`}
-      aria-label="Alpha Feed"
+      className="market-heat-list market-heat-list-compact"
+      aria-label={ariaLabel}
       data-testid={testId}
     >
       <div className="section-heading market-heat-heading">
         <div className="market-heat-heading-title">
           <p
-            aria-label={`Alpha Feed, ${sourceLabel} BTC markets`}
-            title={`${sourceLabel} BTC markets`}
+            aria-label={headingAriaLabel}
+            title={headingTitle}
           >
-            Alpha Feed
+            {title}
           </p>
         </div>
-        <div className="market-heat-controls">
-          {durationOptions.length ? (
-            <div className="market-duration-toggle" aria-label="Market duration">
-              <button
-                type="button"
-                aria-pressed={selectedDuration === "all"}
-                data-testid="market-duration-all"
-                onClick={() => onDurationChange("all")}
-              >
-                All
-              </button>
-              {durationOptions.map((option) => (
+        {showControls ? (
+          <div className="market-heat-controls">
+            <TradeExpiryRail
+              allSelected={!selectedExpiryDate}
+              ariaLabel="Feed expiration dates"
+              includeAllOption
+              onAllSelect={onAllExpiriesSelect}
+              options={expiryOptions}
+              selectedExpiryDate={selectedExpiryDate}
+              testIdPrefix="feed-expiry"
+              onExpiryChange={onExpiryChange}
+            />
+            <div className="market-heat-secondary-controls">
+              <div className="market-heat-sort" aria-label="Market heat sort">
                 <button
                   type="button"
-                  aria-pressed={selectedDuration === option.value}
-                  data-testid={`market-duration-${marketDurationTestId(option.value)}`}
-                  key={option.value}
-                  onClick={() => onDurationChange(option.value)}
+                  aria-pressed={sortMode === "latest"}
+                  data-testid="market-heat-sort-latest"
+                  onClick={() => onSortModeChange("latest")}
                 >
-                  {option.label}
+                  Latest
                 </button>
-              ))}
-            </div>
-          ) : null}
-          <label className="market-heat-expired-toggle">
-            <input
-              type="checkbox"
-              checked={showExpired}
-              data-testid="market-heat-show-expired"
-              onChange={(event) => onShowExpiredChange(event.currentTarget.checked)}
-            />
-            <span>Show expired</span>
-          </label>
-          <div className="market-heat-secondary-controls">
-            <div className="market-heat-sort" aria-label="Market heat sort">
+                <button
+                  type="button"
+                  aria-pressed={sortMode === "heat"}
+                  data-testid="market-heat-sort-heat"
+                  onClick={() => onSortModeChange("heat")}
+                >
+                  Heat
+                </button>
+              </div>
               <button
                 type="button"
-                aria-pressed={sortMode === "latest"}
-                data-testid="market-heat-sort-latest"
-                onClick={() => onSortModeChange("latest")}
+                className="market-heat-expired-toggle"
+                aria-label={showExpired ? "Hide expired positions" : "Show expired positions"}
+                aria-pressed={showExpired}
+                data-testid="market-heat-show-expired"
+                onClick={() => onShowExpiredChange(!showExpired)}
               >
-                Latest
-              </button>
-              <button
-                type="button"
-                aria-pressed={sortMode === "heat"}
-                data-testid="market-heat-sort-heat"
-                onClick={() => onSortModeChange("heat")}
-              >
-                Heat
-              </button>
-            </div>
-            <div className="market-heat-density-toggle" aria-label="Feed row density">
-              <button
-                type="button"
-                aria-pressed={density === "compact"}
-                data-testid="market-heat-density-compact"
-                onClick={() => onDensityChange("compact")}
-              >
-                Compact
-              </button>
-              <button
-                type="button"
-                aria-pressed={density === "expanded"}
-                data-testid="market-heat-density-expanded"
-                onClick={() => onDensityChange("expanded")}
-              >
-                Expanded
+                Expired
               </button>
             </div>
           </div>
-        </div>
+        ) : null}
       </div>
       {rows.length === 0 ? (
         <div className="market-heat-empty" data-testid="market-heat-empty">
-          <strong>{showExpired ? "No positions for this filter" : "No live positions right now"}</strong>
-          <span>
-            {showExpired
-              ? "Try another duration."
-              : "Show expired to review recent testnet activity."}
-          </span>
-          {!showExpired ? (
+          <strong>{resolvedEmptyTitle}</strong>
+          <span>{resolvedEmptyDetail}</span>
+          {!showExpired && showEmptyAction ? (
             <button type="button" onClick={() => onShowExpiredChange(true)}>
               Show expired
             </button>
           ) : null}
         </div>
       ) : null}
-      {rows.length > 0 && isCompact ? (
+      {rows.length > 0 ? (
         <div className="market-heat-table-head" aria-hidden="true">
           <span>Wallet</span>
           <span>Direction</span>
@@ -2744,7 +2959,7 @@ export function MarketHeatPreview({
         return (
           <article
             aria-current={isSelected ? "true" : undefined}
-            className={`market-heat-row market-heat-row-${density} market-heat-row-${row.status} market-heat-row-${sideClass} ${
+            className={`market-heat-row market-heat-row-compact market-heat-row-${row.status} market-heat-row-${sideClass} ${
               isSelected ? "market-heat-row-selected" : ""
             } ${swipePreviewForRow ? "market-heat-row-swiping" : ""} ${
               isSwipeConfirming ? "market-heat-row-swipe-confirming" : ""
@@ -2762,109 +2977,51 @@ export function MarketHeatPreview({
             onPointerCancel={() => {
               swipeStartRef.current = null;
             }}
-            onPointerDown={
-              isCompact ? (event) => startMarketHeatSwipe(row.id, event) : undefined
-            }
-            onPointerMove={
-              isCompact ? (event) => updateMarketHeatSwipe(row, event) : undefined
-            }
-            onPointerUp={
-              isCompact ? (event) => finishMarketHeatSwipe(row, event) : undefined
-            }
+            onPointerDown={(event) => startMarketHeatSwipe(row.id, event)}
+            onPointerMove={(event) => updateMarketHeatSwipe(row, event)}
+            onPointerUp={(event) => finishMarketHeatSwipe(row, event)}
           >
-            {isCompact ? (
-              <>
-                {swipePreviewForRow ? (
-                  <div className="market-heat-swipe-action" aria-hidden="true">
-                    {isSwipeConfirming ? "Confirm" : "Open"}
-                  </div>
-                ) : null}
-                <div
-                  className="market-heat-compact-row"
-                  style={
-                    swipePreviewForRow
-                      ? { transform: `translateX(${swipePreviewForRow.deltaX}px)` }
-                      : undefined
-                  }
-                >
-                  <div className="market-heat-compact-wallet">
-                    <div className="wallet-avatar wallet-avatar-compact" aria-hidden="true">
-                      {walletAvatarLabel(row.displayName)}
-                    </div>
-                    <div className="market-heat-compact-identity">
-                      <strong>{row.displayName}</strong>
-                      <span>{row.walletStatsLabel ?? row.statusLabel}</span>
-                    </div>
-                  </div>
-                  <strong className={`direction-pill direction-pill-${sideClass}`}>
-                    {row.side}
-                  </strong>
-                  <div className="market-heat-compact-strike">
-                    <strong>{row.strikeLabel.replace(/^Strike\s+/, "")}</strong>
-                  </div>
-                  <div className="market-heat-compact-duration">
-                    <strong>{row.timeRemainingLabel ?? row.expiryTimeLabel}</strong>
-                  </div>
-                  <div className="market-heat-compact-heat">
-                    <strong>{row.heatScore}</strong>
-                  </div>
-                  <ChevronIcon
-                    className={`market-heat-compact-chevron ${
-                      isSelected ? "market-heat-compact-chevron-open" : ""
-                    }`}
-                  />
+            {swipePreviewForRow ? (
+              <div className="market-heat-swipe-action" aria-hidden="true">
+                {isSwipeConfirming ? "Confirm" : "Open"}
+              </div>
+            ) : null}
+            <div
+              className="market-heat-compact-row"
+              style={
+                swipePreviewForRow
+                  ? { transform: `translateX(${swipePreviewForRow.deltaX}px)` }
+                  : undefined
+              }
+            >
+              <div className="market-heat-compact-wallet">
+                <div className="wallet-avatar wallet-avatar-compact" aria-hidden="true">
+                  {walletAvatarLabel(row.displayName)}
                 </div>
-                {intentPanelElement}
-              </>
-            ) : (
-              <>
-                <div className="market-heat-main">
-                  <div className="wallet-avatar" aria-hidden="true">
-                    {walletAvatarLabel(row.displayName)}
-                  </div>
-                  <div className="market-heat-identity">
-                    <div className="trader-title-row">
-                      <h2>{row.displayName}</h2>
-                      <span>{row.walletStatsLabel ?? row.statusLabel}</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    data-testid="market-heat-row-action"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onSelectRow(row.id);
-                    }}
-                  >
-                    {row.actionLabel}
-                  </button>
+                <div className="market-heat-compact-identity">
+                  <strong>{row.displayName}</strong>
+                  <span>{row.walletStatsLabel ?? row.statusLabel}</span>
                 </div>
-                <div className="alpha-call-line">
-                  <div>
-                    <span>{row.strikeLabel}</span>
-                    <strong className={`direction-pill direction-pill-${sideClass}`}>
-                      {row.side}
-                    </strong>
-                  </div>
-                  <span>{row.intervalLabel} market</span>
-                </div>
-                <div className="trader-row-metrics" aria-label={`${row.displayName} market stats`}>
-                  <span>
-                    <small>Cost</small>
-                    {formatObservedBuyAmount(row)}
-                  </span>
-                  <span>
-                    <small>Expiry</small>
-                    {row.expiryTimeLabel}
-                  </span>
-                  <span>
-                    <small>Heat</small>
-                    {row.heatScore}
-                  </span>
-                </div>
-                {intentPanelElement}
-              </>
-            )}
+              </div>
+              <strong className={`direction-pill direction-pill-${sideClass}`}>
+                {row.side}
+              </strong>
+              <div className="market-heat-compact-strike">
+                <strong>{row.strikeLabel.replace(/^Strike\s+/, "")}</strong>
+              </div>
+              <div className="market-heat-compact-duration">
+                <strong>{row.timeRemainingLabel ?? row.expiryTimeLabel}</strong>
+              </div>
+              <div className="market-heat-compact-heat">
+                <strong>{row.heatScore}</strong>
+              </div>
+              <ChevronIcon
+                className={`market-heat-compact-chevron ${
+                  isSelected ? "market-heat-compact-chevron-open" : ""
+                }`}
+              />
+            </div>
+            {intentPanelElement}
           </article>
         );
       })}
@@ -2932,23 +3089,34 @@ export function AccountSummary({
   depositAmount = DEPOSIT_AMOUNT_DEFAULT,
   onDeposit,
   onDepositAmountChange,
+  onStakeAmountChange,
   pnlLabel,
   pnlTitle = "All-time PNL",
   pnlTone,
+  stakeAmount,
   summary,
+  variant = "default",
 }: {
   availableLabel?: string | null;
   bankrollLabel?: string | null;
   depositAmount?: number;
   onDeposit?: () => void;
   onDepositAmountChange?: (amount: number) => void;
+  onStakeAmountChange?: (amount: number) => void;
   pnlLabel?: string;
   pnlTitle?: string;
   pnlTone?: "positive" | "negative" | "flat";
+  stakeAmount?: number;
   summary: ReturnType<typeof getReplayAccountSummary>;
+  variant?: AccountSummaryVariant;
 }) {
   const visiblePnlLabel = pnlLabel ?? summary.pnl;
   const visiblePnlTone = pnlTone ?? summary.pnlTone;
+  const visibleStakeAmount =
+    typeof stakeAmount === "number" && Number.isFinite(stakeAmount)
+      ? stakeAmount
+      : COPY_AMOUNT_DEFAULT;
+  const isPortfolioSummary = variant === "portfolio";
 
   return (
     <section
@@ -3000,14 +3168,48 @@ export function AccountSummary({
             {availableLabel ?? summary.available}
           </strong>
         </div>
-        <div>
-          <span>Copy</span>
-          <strong>{summary.copyValue}</strong>
-        </div>
-        <div>
-          <span>Position</span>
-          <strong>{summary.status}</strong>
-        </div>
+        {isPortfolioSummary ? (
+          <>
+            <div className="account-stake-cell">
+              <span>Stake</span>
+              <label className="account-stake-amount">
+                <span aria-hidden="true">$</span>
+                <input
+                  aria-label="Default stake amount"
+                  data-testid="default-stake-amount"
+                  inputMode="decimal"
+                  min={COPY_AMOUNT_MIN}
+                  max={COPY_AMOUNT_MAX}
+                  step="0.01"
+                  type="number"
+                  value={visibleStakeAmount}
+                  onChange={(event) => onStakeAmountChange?.(Number(event.currentTarget.value))}
+                />
+              </label>
+            </div>
+            <div className="account-deposit-cell">
+              <button
+                type="button"
+                className="account-summary-deposit-button"
+                data-testid="portfolio-deposit-bankroll"
+                onClick={onDeposit}
+              >
+                Deposit
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <span>Copy</span>
+              <strong>{summary.copyValue}</strong>
+            </div>
+            <div>
+              <span>Position</span>
+              <strong>{summary.status}</strong>
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
@@ -3082,11 +3284,20 @@ export function App() {
   const wallets = useWallets();
   const readOnlyWalletAddress = useMemo(() => getReadOnlyWalletAddress(), []);
   const [scenario, setScenario] = useState(() => createReplayScenario("opening-night"));
-  const [replayState, setReplayState] = useState(() => createInitialReplayState(scenario));
+  const [replayState, setReplayState] = useState(() =>
+    updateReplayCopy(createInitialReplayState(scenario), (copy) =>
+      setCopyAmount(copy, readStoredStakeAmount()),
+    ),
+  );
   const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
   const [activeView, setActiveView] = useState<AppView>(() =>
     readOnlyWalletAddress ? "portfolio" : "feed",
   );
+  const [followedWallets, setFollowedWallets] = useState<FollowedWallet[]>(() =>
+    readFollowedWallets(),
+  );
+  const [selectedProfileWallet, setSelectedProfileWallet] =
+    useState<FollowedWallet | null>(null);
   const appScrollRef = useRef<HTMLDivElement | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => getInitialThemeMode());
   const [tradeSide, setTradeSide] = useState<TradeSide>("UP");
@@ -3174,13 +3385,12 @@ export function App() {
   const [isOracleChartOpen, setIsOracleChartOpen] = useState(false);
   const [marketHeatSortMode, setMarketHeatSortMode] =
     useState<MarketHeatSortMode>("latest");
-  const [marketHeatDensity, setMarketHeatDensity] =
-    useState<MarketHeatDensity>("compact");
   const [marketHeatShowExpired, setMarketHeatShowExpired] = useState(false);
-  const [selectedMarketDuration, setSelectedMarketDuration] = useState("all");
-  const [selectedTradeDuration, setSelectedTradeDuration] = useState("all");
+  const [selectedFeedExpiryDate, setSelectedFeedExpiryDate] = useState<string | null>(null);
   const [selectedTradeExpiryDate, setSelectedTradeExpiryDate] = useState<string | null>(null);
   const [marketHeatVisibleLimit, setMarketHeatVisibleLimit] =
+    useState(MARKET_HEAT_PAGE_SIZE);
+  const [profilePositionVisibleLimit, setProfilePositionVisibleLimit] =
     useState(MARKET_HEAT_PAGE_SIZE);
   const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
     selectedRowId: null,
@@ -3211,6 +3421,9 @@ export function App() {
     }
   };
   const copyState = replayState.copy;
+  useEffect(() => {
+    writeStoredStakeAmount(copyState.copyAmount);
+  }, [copyState.copyAmount]);
   const replayTraders = useMemo(
     () => getReplayTraders(replayState, scenario),
     [replayState, scenario],
@@ -3230,14 +3443,6 @@ export function App() {
     return [...frozenTraders, ...newTraders];
   }, [frozenTraderOrder, replayTraders]);
   const marketHeatNowMs = Date.now();
-  const marketDurationOptions = buildMarketDurationOptions(marketHeatPreview, {
-    nowMs: marketHeatNowMs,
-  });
-  const activeMarketDuration =
-    selectedMarketDuration !== "all" &&
-    marketDurationOptions.some((option) => option.value === selectedMarketDuration)
-      ? selectedMarketDuration
-      : "all";
   const allVisibleMarketHeatRows = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
     intervalLabel: null,
     limit: Number.MAX_SAFE_INTEGER,
@@ -3245,32 +3450,28 @@ export function App() {
     showExpired: marketHeatShowExpired,
     sortMode: marketHeatSortMode,
   });
-  const durationFilteredMarketHeatRows = selectMarketHeatRowsForDuration(
-    allVisibleMarketHeatRows,
-    activeMarketDuration,
-  );
-  const sortedMarketHeatRows = durationFilteredMarketHeatRows.slice(0, marketHeatVisibleLimit);
   const allTradeMarketRows = buildTradeMarketLadder(marketHeatPreview, {
     intervalLabel: null,
     nowMs: marketHeatNowMs,
   });
-  const activeTradeDuration =
-    selectedTradeDuration !== "all" &&
-    marketDurationOptions.some((option) => option.value === selectedTradeDuration)
-      ? selectedTradeDuration
-      : "all";
-  const tradeDurationMarketRows = selectTradeMarketsForDuration(
-    allTradeMarketRows,
-    activeTradeDuration,
+  const tradeExpiryOptions = buildTradeExpiryOptions(allTradeMarketRows, marketHeatNowMs);
+  const activeFeedExpiryDate =
+    selectedFeedExpiryDate &&
+    tradeExpiryOptions.some((option) => option.value === selectedFeedExpiryDate)
+      ? selectedFeedExpiryDate
+      : null;
+  const expiryFilteredMarketHeatRows = selectMarketHeatRowsForExpiry(
+    allVisibleMarketHeatRows,
+    activeFeedExpiryDate,
   );
-  const tradeExpiryOptions = buildTradeExpiryOptions(tradeDurationMarketRows, marketHeatNowMs);
+  const sortedMarketHeatRows = expiryFilteredMarketHeatRows.slice(0, marketHeatVisibleLimit);
   const activeTradeExpiryDate =
     selectedTradeExpiryDate &&
     tradeExpiryOptions.some((option) => option.value === selectedTradeExpiryDate)
       ? selectedTradeExpiryDate
       : tradeExpiryOptions[0]?.value ?? null;
   const tradeMarketRows = selectTradeMarketsForExpiry(
-    tradeDurationMarketRows,
+    allTradeMarketRows,
     activeTradeExpiryDate,
   );
   const baseSelectedTradeMarket =
@@ -3339,7 +3540,7 @@ export function App() {
     });
   }, [activeView, baseSelectedTradeMarket?.id]);
 
-  const marketHeatVisibleTotal = durationFilteredMarketHeatRows.length;
+  const marketHeatVisibleTotal = expiryFilteredMarketHeatRows.length;
   const marketHeatRemainingCount = Math.max(
     0,
     marketHeatVisibleTotal - sortedMarketHeatRows.length,
@@ -3360,12 +3561,44 @@ export function App() {
   const isWalletActionPending = walletTxState.status === "pending";
   const isReadOnlyWalletView = !currentAccount && Boolean(readOnlyWalletAddress);
   const connectedAccountAddress = currentAccount?.address ?? readOnlyWalletAddress;
+  const activeProfileWalletAddress =
+    selectedProfileWallet?.wallet ?? connectedAccountAddress ?? null;
+  const allProfilePositionRows = activeProfileWalletAddress
+    ? selectVisibleMarketHeatRows(marketHeatPreview.rows, {
+        intervalLabel: null,
+        limit: Number.MAX_SAFE_INTEGER,
+        nowMs: marketHeatNowMs,
+        showExpired: false,
+        sortMode: "latest",
+      }).filter(
+        (row) =>
+          row.wallet.toLowerCase() === activeProfileWalletAddress.toLowerCase(),
+      )
+    : [];
+  const profilePositionRows = allProfilePositionRows.slice(0, profilePositionVisibleLimit);
+  const profilePositionRemainingCount = Math.max(
+    0,
+    allProfilePositionRows.length - profilePositionRows.length,
+  );
+  const profilePositionShowMoreCount = Math.min(
+    MARKET_HEAT_PAGE_SIZE,
+    profilePositionRemainingCount,
+  );
+  const profilePositionShowMoreLabel =
+    profilePositionShowMoreCount === 1
+      ? "Show 1 more"
+      : `Show ${profilePositionShowMoreCount} more`;
 
   useEffect(() => {
     if (connectedAccountAddress || wallets.length <= 1) {
       setIsWalletChooserOpen(false);
     }
   }, [connectedAccountAddress, wallets.length]);
+
+  useEffect(() => {
+    setProfilePositionVisibleLimit(MARKET_HEAT_PAGE_SIZE);
+    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
+  }, [activeProfileWalletAddress]);
 
   const liveDusdcBalanceLabel =
     connectedAccountAddress &&
@@ -3766,6 +3999,7 @@ export function App() {
       try {
         const preview = await loadMarketHeatPreview({
           apiBaseUrl: realtimeApiBaseUrl,
+          includeExpired: marketHeatShowExpired,
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
@@ -3785,6 +4019,7 @@ export function App() {
       try {
         const preview = await loadMarketHeatPriceSnapshot(marketHeatPreviewRef.current, {
           apiBaseUrl: realtimeApiBaseUrl,
+          includeExpired: marketHeatShowExpired,
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
@@ -3804,13 +4039,23 @@ export function App() {
       };
     }
 
-    const refreshTimer = window.setInterval(refreshMarketHeatPrice, MARKET_HEAT_REFRESH_MS);
+    const priceRefreshTimer = window.setInterval(
+      refreshMarketHeatPrice,
+      MARKET_HEAT_PRICE_REFRESH_MS,
+    );
+    const rowsRefreshMs = getMarketHeatRowsRefreshMs(activeView);
+    const rowsRefreshTimer = rowsRefreshMs === null
+      ? null
+      : window.setInterval(refreshMarketHeat, rowsRefreshMs);
 
     return () => {
       isCurrent = false;
-      window.clearInterval(refreshTimer);
+      window.clearInterval(priceRefreshTimer);
+      if (rowsRefreshTimer !== null) {
+        window.clearInterval(rowsRefreshTimer);
+      }
     };
-  }, [previewMode, realtimeApiBaseUrl]);
+  }, [activeView, marketHeatShowExpired, previewMode, realtimeApiBaseUrl]);
 
   useEffect(() => {
     if (activeView !== "leaderboards") {
@@ -4125,13 +4370,12 @@ export function App() {
 
   const handleMarketHeatSelect = (rowId: string) => {
     setMarketHeatIntent((state) =>
-      selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
+      state.selectedRowId === rowId
+        ? closeMarketHeatIntent(state)
+        : selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
     );
   };
 
-  const handleMarketHeatClose = () => {
-    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
-  };
   const handleMarketHeatWalletSubmit = async (rowId: string) => {
     setMarketHeatIntent((state) =>
       selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
@@ -4247,20 +4491,20 @@ export function App() {
     setMarketHeatSortMode(sortMode);
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
   };
-  const handleMarketDurationChange = (duration: string) => {
-    setSelectedMarketDuration(duration);
+  const handleFeedAllExpiriesSelect = () => {
+    setSelectedFeedExpiryDate(null);
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
   };
-  const handleTradeDurationChange = (duration: string) => {
-    setTradeQuoteRequested(false);
-    setSelectedTradeDuration(duration);
-    setSelectedTradeExpiryDate(null);
+  const handleFeedExpiryChange = (expiryDate: string) => {
+    setSelectedFeedExpiryDate(expiryDate);
+    setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
+    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
   };
   const handleTradeExpiryChange = (expiryDate: string) => {
     setTradeQuoteRequested(false);
     setSelectedTradeExpiryDate(expiryDate);
-    const nextMarket = tradeDurationMarketRows.find(
+    const nextMarket = allTradeMarketRows.find(
       (marketRow) => tradeExpiryDateKey(marketRow.expiryMs) === expiryDate,
     );
 
@@ -4274,6 +4518,49 @@ export function App() {
   };
   const handleMarketHeatShowMore = () => {
     setMarketHeatVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
+  };
+  const handleProfilePositionsShowMore = () => {
+    setProfilePositionVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
+  };
+  const handleBottomNavViewChange = (view: AppView) => {
+    setSelectedProfileWallet((wallet) => resolveSelectedProfileWalletForNav(view, wallet));
+    setActiveView(view);
+  };
+  const handleProfileWalletOpen = (wallet: FollowedWallet) => {
+    const normalizedWallet = normalizeProfileWalletAddress(wallet.wallet);
+    if (!normalizedWallet) {
+      return;
+    }
+
+    setSelectedProfileWallet({
+      displayName: wallet.displayName || formatWalletAddress(normalizedWallet),
+      wallet: normalizedWallet,
+    });
+    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
+    setProfilePositionVisibleLimit(MARKET_HEAT_PAGE_SIZE);
+    setActiveView("profile");
+  };
+  const handleFollowWallet = (wallet: FollowedWallet) => {
+    setFollowedWallets((currentWallets) => {
+      const nextWallets = mergeFollowedWallet(currentWallets, wallet);
+      writeFollowedWallets(nextWallets);
+      return nextWallets;
+    });
+  };
+  const handleUnfollowWallet = (wallet: string) => {
+    const normalizedWallet = normalizeProfileWalletAddress(wallet);
+    if (!normalizedWallet) {
+      return;
+    }
+
+    setFollowedWallets((currentWallets) => {
+      const nextWallets = currentWallets.filter(
+        (followedWallet) =>
+          followedWallet.wallet.toLowerCase() !== normalizedWallet.toLowerCase(),
+      );
+      writeFollowedWallets(nextWallets);
+      return nextWallets;
+    });
   };
   const handleDepositAmountChange = (amount: number) => {
     setDepositAmount(clampDepositAmount(amount));
@@ -4632,9 +4919,8 @@ export function App() {
       rows={sortedMarketHeatRows}
       sourceLabel={marketHeatPreview.sourceLabel}
       sortMode={marketHeatSortMode}
-      density={marketHeatDensity}
-      selectedDuration={activeMarketDuration}
-      durationOptions={marketDurationOptions}
+      selectedExpiryDate={activeFeedExpiryDate}
+      expiryOptions={tradeExpiryOptions}
       showExpired={marketHeatShowExpired}
       canShowMore={marketHeatRemainingCount > 0}
       selectedRowId={marketHeatIntent.selectedRowId}
@@ -4642,14 +4928,13 @@ export function App() {
       showMoreLabel={marketHeatShowMoreLabel}
       testId={testId}
       onAmountSet={handleAmountSet}
-      onDensityChange={setMarketHeatDensity}
-      onDurationChange={handleMarketDurationChange}
+      onAllExpiriesSelect={handleFeedAllExpiriesSelect}
+      onExpiryChange={handleFeedExpiryChange}
       onShowExpiredChange={handleMarketHeatShowExpiredChange}
       onShowMore={handleMarketHeatShowMore}
       onSortModeChange={handleMarketHeatSortModeChange}
       onWalletSubmit={handleMarketHeatWalletSubmit}
       onSelectRow={handleMarketHeatSelect}
-      onCloseIntent={handleMarketHeatClose}
     />
   );
 
@@ -4662,9 +4947,7 @@ export function App() {
       marketRows={displayedTradeMarketRows}
       selectedExpiryDate={activeTradeExpiryDate}
       selectedMarketId={baseSelectedTradeMarket?.id ?? ""}
-      selectedDuration={activeTradeDuration}
       selectedSide={tradeSide}
-      durationOptions={marketDurationOptions}
       quote={activeTradeQuote}
       quoteStatus={activeTradeQuoteStatus}
       predictManagerObjectId={activePredictManagerObjectId}
@@ -4672,7 +4955,6 @@ export function App() {
       walletActionPending={isWalletActionPending}
       walletConnected={Boolean(currentAccount)}
       onAmountSet={handleAmountSet}
-      onDurationChange={handleTradeDurationChange}
       onExpiryChange={handleTradeExpiryChange}
       onMarketChange={handleTradeMarketChange}
       onSideChange={handleTradeSideChange}
@@ -4748,9 +5030,12 @@ export function App() {
               depositAmount={depositAmount}
               onDeposit={handleDepositBankroll}
               onDepositAmountChange={handleDepositAmountChange}
+              onStakeAmountChange={handleAmountSet}
               pnlLabel={visiblePortfolioPnl.pnlLabel}
               pnlTone={visiblePortfolioPnl.pnlTone}
+              stakeAmount={copyState.copyAmount}
               summary={accountSummary}
+              variant={getAccountSummaryVariant(activeView)}
             />
           ) : null}
           {activeView === "feed" ? (
@@ -4765,10 +5050,11 @@ export function App() {
               snapshot={walletLeaderboardsState.snapshot}
               status={walletLeaderboardsState.status}
               onBoardChange={setActiveWalletLeaderboard}
+              onWalletOpen={handleProfileWalletOpen}
               onRangeModeChange={setWalletLeaderboardRangeMode}
               onSortDirectionChange={setWalletLeaderboardSortDirection}
             />
-          ) : (
+          ) : activeView === "portfolio" ? (
             <PortfolioPanel
               emptyLabel={
                 connectedAccountAddress
@@ -4786,6 +5072,24 @@ export function App() {
               onDismissPosition={handleDismissPortfolioPosition}
               onPositionAction={handlePortfolioPositionAction}
             />
+          ) : (
+            <ProfilePanel
+              currentWalletAddress={connectedAccountAddress}
+              copyAmount={copyState.copyAmount}
+              followedWallets={followedWallets}
+              profileWallet={selectedProfileWallet}
+              profilePositionRows={profilePositionRows}
+              profilePositionsCanShowMore={profilePositionRemainingCount > 0}
+              profilePositionsShowMoreLabel={profilePositionShowMoreLabel}
+              selectedProfilePositionRowId={marketHeatIntent.selectedRowId}
+              onAmountSet={handleAmountSet}
+              onFollowWallet={handleFollowWallet}
+              onProfilePositionSelect={handleMarketHeatSelect}
+              onProfilePositionsShowMore={handleProfilePositionsShowMore}
+              onProfilePositionWalletSubmit={handleMarketHeatWalletSubmit}
+              onSelectWallet={handleProfileWalletOpen}
+              onUnfollowWallet={handleUnfollowWallet}
+            />
           )}
         </div>
         {isOracleChartOpen ? (
@@ -4794,11 +5098,10 @@ export function App() {
             onClose={() => setIsOracleChartOpen(false)}
           >
             {renderTradeTicket("expanded-chart-trade-ticket")}
-            {renderMarketHeatPreview("expanded-chart-market-heat-preview")}
           </OraclePriceChartModal>
         ) : null}
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
-        <BottomNav activeView={activeView} onViewChange={setActiveView} />
+        <BottomNav activeView={activeView} onViewChange={handleBottomNavViewChange} />
       </section>
     </main>
   );

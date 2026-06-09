@@ -63,11 +63,14 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain("wallet-leaderboard-row-pnl");
     expect(html).not.toContain("wallet-leaderboard-table-head-streaks");
     expect(html).toContain("#1");
+    expect(html).toContain('data-testid="wallet-leaderboard-profile"');
     expect(html).toContain("0xaaaa...0001");
     expect(html).toContain("+$12.35");
     expect(html).toContain("PNL</small><strong>+$12.35");
-    expect(html).toContain("Wins</small>4");
-    expect(html).toContain("Losses</small>1");
+    expect(html).toContain(">Win Rate</span>");
+    expect(html).toContain("Win Rate</small>80%");
+    expect(html).not.toContain(">Wins</span>");
+    expect(html).not.toContain(">Losses</span>");
     expect(html).toContain("Open</small>2");
     expect(html).not.toContain("Closed</small>5");
     expect(html).toContain("Current</small>2 wins");
@@ -189,10 +192,12 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain("wallet-leaderboard-table-head-streaks");
     expect(html).toContain("wallet-leaderboard-row-streaks");
     expect(html.indexOf(">Win Streak</span>")).toBeLessThan(html.indexOf(">PNL</span>"));
-    expect(html.indexOf(">PNL</span>")).toBeLessThan(html.indexOf(">Wins</span>"));
+    expect(html.indexOf(">PNL</span>")).toBeLessThan(html.indexOf(">Win Rate</span>"));
     expect(html).toContain("Win Streak</small><strong>3 wins");
     expect(html).toContain("PNL</small>+$12.35");
-    expect(html).not.toContain("Wins</small>3 wins");
+    expect(html).toContain("Win Rate</small>80%");
+    expect(html).not.toContain(">Wins</span>");
+    expect(html).not.toContain(">Losses</span>");
   });
 
   test("switches streak boards between all-time and current streaks", () => {

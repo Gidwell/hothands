@@ -275,6 +275,175 @@ describe("testnet market heat endpoint", () => {
     ]);
   });
 
+  test("requests expired indexed activity when the feed asks for expired rows", async () => {
+    const requests: unknown[] = [];
+    const reader = createIndexedMarketHeatReader();
+    const projection = await getTestnetMarketHeat({
+      includeExpired: true,
+      reader: {
+        ...reader,
+        listRecentTradeEvents: async (options) => {
+          requests.push(options);
+          return reader.listRecentTradeEvents(options);
+        }
+      },
+      fetchImpl: async () => {
+        throw new Error("public Predict should not be read when indexed market heat exists");
+      }
+    });
+
+    expect(projection.source).toBe("indexed_testnet");
+    expect(requests).toEqual([
+      {
+        limit: expect.any(Number)
+      }
+    ]);
+  });
+
+  test("worker passes includeExpired market heat requests to the indexer", async () => {
+    const requests: unknown[] = [];
+    const reader = createIndexedMarketHeatReader();
+    const response = await worker.fetch(
+      new Request("https://api.hot-hands.test/testnet/market-heat?includeExpired=true"),
+      {
+        indexerReader: {
+          ...reader,
+          listRecentTradeEvents: async (options) => {
+            requests.push(options);
+            return reader.listRecentTradeEvents(options);
+          }
+        },
+        fetch: async () => {
+          throw new Error("public Predict should not be read when indexed market heat exists");
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(requests).toEqual([
+      {
+        limit: expect.any(Number)
+      }
+    ]);
+  });
+
+  test("requests the same deep wallet stats window used by leaderboards", async () => {
+    const oracleRequests: unknown[] = [];
+    const positionRequests: unknown[] = [];
+    const reader = createIndexedMarketHeatReader();
+
+    const projection = await getTestnetMarketHeat({
+      reader: {
+        ...reader,
+        listBtcOracles: async (options) => {
+          oracleRequests.push(options);
+          return reader.listBtcOracles(options);
+        },
+        listPositionSummaries: async (options) => {
+          positionRequests.push(options);
+          return reader.listPositionSummaries(options);
+        }
+      },
+      fetchImpl: async () => {
+        throw new Error("public Predict should not be read when indexed market heat exists");
+      }
+    });
+
+    expect(projection.source).toBe("indexed_testnet");
+    expect(positionRequests).toContainEqual({ limit: 10_000 });
+    expect(oracleRequests).toContainEqual({ includeSettled: true });
+  });
+
+  test("uses settled oracle history when attaching feed wallet PnL", async () => {
+    const nowMs = 1_779_159_000_000;
+    const reader = createIndexedMarketHeatReader();
+    const projection = await getTestnetMarketHeat({
+      reader: {
+        ...reader,
+        listRecentTradeEvents: async () => [],
+        listBtcOracles: async ({ includeSettled = false } = {}) => {
+          const oracles = [
+            btcIndexedOracle({
+              oracle_id: "btc-indexed-long",
+              expiry: 1_779_158_400_000,
+              activated_at: 1_779_157_500_000,
+              status: "active"
+            }),
+            btcIndexedOracle({
+              oracle_id: "btc-indexed-settled",
+              expiry: 1_779_157_000_000,
+              activated_at: 1_779_156_100_000,
+              settlement_price: 72_000_000_000,
+              settled_at: 1_779_157_050_000,
+              status: "settled"
+            })
+          ];
+
+          return includeSettled
+            ? oracles
+            : oracles.filter((oracle) => oracle.status === "active");
+        },
+        listPositionSummaries: async (options) => {
+          if (options?.status === "open") {
+            return [
+              {
+                id: "manager-pnl:btc-indexed-long:1779168400000:72125000000:DOWN",
+                owner: "0xpnlfeed",
+                managerId: "manager-pnl",
+                oracleId: "btc-indexed-long",
+                expiryMs: 1_779_168_400_000,
+                strike: 72_125_000_000,
+                isUp: false,
+                mintedQuantity: 2_000_000,
+                redeemedQuantity: 0,
+                openQuantity: 2_000_000,
+                cost: 1_000_000,
+                payout: 0,
+                realizedPnl: 0,
+                lastEventMs: 1_779_158_800_000,
+                status: "open"
+              }
+            ];
+          }
+
+          return [
+            {
+              id: "manager-pnl:btc-indexed-settled:1779157000000:70000000000:UP",
+              owner: "0xpnlfeed",
+              managerId: "manager-pnl",
+              oracleId: "btc-indexed-settled",
+              expiryMs: 1_779_157_000_000,
+              strike: 70_000_000_000,
+              isUp: true,
+              mintedQuantity: 3_000_000,
+              redeemedQuantity: 0,
+              openQuantity: 3_000_000,
+              cost: 1_000_000,
+              payout: 0,
+              realizedPnl: 0,
+              lastEventMs: 1_779_156_900_000,
+              status: "open"
+            }
+          ];
+        }
+      },
+      nowMs
+    });
+
+    expect(projection.source).toBe("indexed_testnet");
+    expect(projection.rows).toEqual([
+      expect.objectContaining({
+        wallet: "0xpnlfeed",
+        walletStats: expect.objectContaining({
+          totalPnl: 2_000_000,
+          currentStreakType: "win",
+          currentStreakLength: 1,
+          lastSeenMs: 1_779_158_800_000
+        })
+      })
+    ]);
+  });
+
   test("includes active open indexed positions even when their mint is outside latest activity", async () => {
     const nowMs = 1_779_071_500_000;
     const projection = await getTestnetMarketHeat({
@@ -1067,26 +1236,34 @@ function createIndexedMarketHeatReader(): PredictIndexerReader {
   ]);
 
   return {
-    listBtcOracles: async () => [
-      btcIndexedOracle({
-        oracle_id: "btc-indexed-long",
-        expiry: 1_779_158_400_000,
-        activated_at: 1_779_157_500_000,
-        status: "active"
-      }),
-      btcIndexedOracle({
-        oracle_id: "btc-indexed-settled",
-        expiry: 1_779_157_000_000,
-        activated_at: 1_779_156_100_000,
-        status: "settled"
-      }),
-      btcIndexedOracle({
-        oracle_id: "btc-indexed-short",
-        expiry: 1_779_158_100_000,
-        activated_at: 1_779_157_500_000,
-        status: "active"
-      })
-    ],
+    listBtcOracles: async ({ includeSettled = false } = {}) => {
+      const oracles = [
+        btcIndexedOracle({
+          oracle_id: "btc-indexed-long",
+          expiry: 1_779_158_400_000,
+          activated_at: 1_779_157_500_000,
+          status: "active"
+        }),
+        btcIndexedOracle({
+          oracle_id: "btc-indexed-settled",
+          expiry: 1_779_157_000_000,
+          activated_at: 1_779_156_100_000,
+          settlement_price: 72_000_000_000,
+          settled_at: 1_779_157_050_000,
+          status: "settled"
+        }),
+        btcIndexedOracle({
+          oracle_id: "btc-indexed-short",
+          expiry: 1_779_158_100_000,
+          activated_at: 1_779_157_500_000,
+          status: "active"
+        })
+      ];
+
+      return includeSettled
+        ? oracles
+        : oracles.filter((oracle) => oracle.status === "active");
+    },
     listRecentTradeEvents: async () => [
       indexedTradeEvent({
         eventId: "mint:newer:1",
