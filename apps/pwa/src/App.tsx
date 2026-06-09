@@ -344,9 +344,12 @@ function buildReturnPreview(spendUsd: number, estimatedPrice: number | undefined
 }
 
 function estimatePriceFromRow(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd" | "quantity">): number | undefined {
+  const rawCostUsd =
+    row.cost === undefined || !Number.isFinite(row.cost) ? undefined : row.cost / 1_000_000;
   const costUsd =
-    row.costUsd ??
-    (row.cost === undefined || !Number.isFinite(row.cost) ? undefined : row.cost / 1_000_000);
+    row.costUsd !== undefined && row.costUsd > 0
+      ? row.costUsd
+      : rawCostUsd;
   const payoutUsd =
     row.quantity === undefined || !Number.isFinite(row.quantity) || row.quantity <= 0
       ? undefined

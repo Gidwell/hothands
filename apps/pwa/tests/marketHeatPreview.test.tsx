@@ -129,6 +129,54 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("No wallet request until you tap Confirm transaction");
   });
 
+  test("estimates copy payout for dust rows whose display cost rounds to zero", () => {
+    const nowMs = 1_779_158_000_000;
+    const [row] = buildMarketHeatPreview(
+      [
+        {
+          id: "external-dust-copy",
+          wallet: "0xa9f24640b32f33fcfa8582791e84a542251398acfc3b696f382a08a768b6ddbf",
+          manager: "manager-dust",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 61_882,
+          expiryMs: nowMs + 24 * 60 * 60_000,
+          intervalLabel: "23d",
+          quantity: 2,
+          cost: 1,
+          costUsd: 0.000001,
+          observedAtMs: nowMs - 60_000,
+          heatScore: 16,
+          status: "copy_ready",
+        },
+      ],
+      1,
+      { nowMs },
+    ).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Indexed Testnet"
+        sortMode="latest"
+        selectedRowId={row.id}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Est. payout</small><strong>$50");
+    expect(html).toContain("Max profit</small><strong>+$25");
+    expect(html).not.toContain("Quote needed");
+  });
+
   test("keeps feed wallet notifications in the toast layer", () => {
     const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
       nowMs: 1_779_158_000_000,

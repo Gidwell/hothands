@@ -924,12 +924,16 @@ function summarizeTradeMarketSide(
   side: "UP" | "DOWN",
 ): TradeMarketSideSummary {
   const sideRows = rows.filter((row) => row.side === side);
-  const volumeUsd = roundUsd(
-    sideRows.reduce((total, row) => total + (row.costUsd ?? 0), 0),
+  const preciseVolumeUsd = sideRows.reduce(
+    (total, row) => total + (preciseRowCostUsd(row) ?? 0),
+    0,
   );
+  const volumeUsd = roundUsd(preciseVolumeUsd);
   const payoutUsd = sideRows.reduce((total, row) => total + normalizeQuantityUsd(row), 0);
   const estimatedPrice =
-    volumeUsd > 0 && payoutUsd > 0 ? roundPrice(volumeUsd / payoutUsd) : undefined;
+    preciseVolumeUsd > 0 && payoutUsd > 0
+      ? roundPrice(preciseVolumeUsd / payoutUsd)
+      : undefined;
 
   return {
     walletCount: new Set(sideRows.map((row) => row.wallet)).size,
@@ -949,12 +953,24 @@ function normalizeQuantityUsd(row: MarketHeatPreviewRow): number {
 }
 
 function estimateMarketHeatRowPrice(row: MarketHeatPreviewRow): number | undefined {
-  const costUsd = row.costUsd ?? (isNonNegativeNumber(row.cost) ? row.cost / 1_000_000 : undefined);
+  const costUsd = preciseRowCostUsd(row);
   const quantityUsd = normalizeQuantityUsd(row);
 
   return costUsd !== undefined && costUsd > 0 && quantityUsd > 0
     ? roundPrice(costUsd / quantityUsd)
     : undefined;
+}
+
+function preciseRowCostUsd(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd">): number | undefined {
+  if (isNonNegativeNumber(row.costUsd) && row.costUsd > 0) {
+    return row.costUsd;
+  }
+
+  if (isNonNegativeNumber(row.cost)) {
+    return row.cost / 1_000_000;
+  }
+
+  return undefined;
 }
 
 function normalizeCostUsd(row: MarketHeatPreviewRowInput): number | undefined {
