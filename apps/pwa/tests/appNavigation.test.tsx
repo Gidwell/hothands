@@ -11,6 +11,7 @@ import {
   WalletHeaderControl,
   WalletStatusBar,
   buildTradeQuoteKey,
+  resolveSelectedProfileWalletForNav,
   shouldShowAccountSummary,
 } from "../src/App";
 import { buildMarketHeatPreview, type MarketHeatPreviewRowInput } from "../src/marketHeatModel";
@@ -149,6 +150,18 @@ describe("mobile app navigation", () => {
     expect(shouldShowAccountSummary("profile")).toBe(false);
     expect(shouldShowAccountSummary("trade")).toBe(true);
     expect(shouldShowAccountSummary("portfolio")).toBe(true);
+  });
+
+  test("resets external wallet selection when opening the profile tab directly", () => {
+    const selectedWallet = {
+      displayName: "0x195b...756c",
+      wallet: "0x195b00000000000000000000000000000000000000000000000000000000756c",
+    };
+
+    expect(resolveSelectedProfileWalletForNav("profile", selectedWallet)).toBeNull();
+    expect(resolveSelectedProfileWalletForNav("leaderboards", selectedWallet)).toBe(
+      selectedWallet,
+    );
   });
 
   test("keeps the trade quote key stable across live estimated price refreshes", () => {
@@ -355,6 +368,22 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="profile-follow-wallet-submit"');
     expect(html).toContain("0x195b...756c");
     expect(html).toContain("Unfollow");
+  });
+
+  test("renders the current wallet as the profile when no external wallet is selected", () => {
+    const html = renderToStaticMarkup(
+      <ProfilePanel
+        currentWalletAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        followedWallets={[]}
+        profileWallet={null}
+        onFollowWallet={() => undefined}
+        onSelectWallet={() => undefined}
+        onUnfollowWallet={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Your wallet");
+    expect(html).toContain("0x00000000000000000000000000000000000000000000000000000000000000aa");
   });
 
   test("renders selected wallet positions on the profile page", () => {

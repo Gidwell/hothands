@@ -227,6 +227,13 @@ export type FollowedWallet = {
   wallet: string;
 };
 
+export function resolveSelectedProfileWalletForNav(
+  view: AppView,
+  selectedWallet: FollowedWallet | null,
+): FollowedWallet | null {
+  return view === "profile" ? null : selectedWallet;
+}
+
 const idleWalletTransactionState: WalletTransactionState = {
   status: "idle",
   label: "Wallet ready",
@@ -4529,6 +4536,10 @@ export function App() {
   const handleProfilePositionsShowMore = () => {
     setProfilePositionVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
   };
+  const handleBottomNavViewChange = (view: AppView) => {
+    setSelectedProfileWallet((wallet) => resolveSelectedProfileWalletForNav(view, wallet));
+    setActiveView(view);
+  };
   const handleProfileWalletOpen = (wallet: FollowedWallet) => {
     const normalizedWallet = normalizeProfileWalletAddress(wallet.wallet);
     if (!normalizedWallet) {
@@ -5103,7 +5114,7 @@ export function App() {
           </OraclePriceChartModal>
         ) : null}
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
-        <BottomNav activeView={activeView} onViewChange={setActiveView} />
+        <BottomNav activeView={activeView} onViewChange={handleBottomNavViewChange} />
       </section>
     </main>
   );
