@@ -248,8 +248,8 @@ button:disabled {
 
 .tradingview-chart-mark {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  right: 8px;
+  bottom: 8px;
   z-index: 1;
   display: inline-flex;
   align-items: center;
@@ -282,6 +282,121 @@ button:disabled {
   color: inherit;
   font-size: inherit;
   font-weight: inherit;
+}
+
+.oracle-market-chart-summary {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  max-width: calc(100% - 96px);
+  gap: 8px;
+  padding: 5px 7px;
+  border: 1px solid rgba(139, 108, 255, 0.24);
+  border-radius: 8px;
+  color: #111827;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.08);
+  font-size: 0.64rem;
+  font-weight: 950;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.oracle-market-chart-summary span {
+  color: #667085;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.oracle-market-zones {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.oracle-market-zone {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 0.58rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  opacity: 0.72;
+  text-transform: uppercase;
+}
+
+.oracle-market-zone-up {
+  top: 0;
+  height: max(0px, var(--oracle-strike-y));
+  justify-content: flex-end;
+  color: #0f9f5f;
+  background: linear-gradient(180deg, rgba(62, 217, 130, 0.14), transparent);
+}
+
+.oracle-market-zone-down {
+  top: var(--oracle-strike-y);
+  bottom: 0;
+  justify-content: flex-start;
+  color: #ef4444;
+  background: linear-gradient(180deg, transparent, rgba(255, 107, 107, 0.12));
+}
+
+.oracle-expiry-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--oracle-expiry-x);
+  width: 0;
+  border-left: 1px solid rgba(139, 108, 255, 0.72);
+}
+
+.oracle-expiry-line span {
+  position: absolute;
+  right: 6px;
+  bottom: 34px;
+  min-width: max-content;
+  padding: 4px 6px;
+  border-radius: 7px;
+  color: #ffffff;
+  background: rgba(109, 74, 255, 0.92);
+  font-size: 0.58rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.oracle-chart-toolbar {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid #e6edf4;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.oracle-chart-toolbar button {
+  min-width: 48px;
+  min-height: 30px;
+  border-radius: 7px;
+  color: #667085;
+  background: transparent;
+  font-size: 0.7rem;
+  font-weight: 950;
+}
+
+.oracle-chart-toolbar button[aria-pressed="true"] {
+  color: #ffffff;
+  background: #6d4aff;
 }
 
 .oracle-chart-empty {
@@ -1015,7 +1130,7 @@ button:disabled {
 
 .trade-expiry-option {
   display: grid;
-  flex: 0 0 92px;
+  flex: 0 0 104px;
   min-height: 54px;
   align-content: center;
   gap: 3px;
@@ -1025,17 +1140,22 @@ button:disabled {
   background: #ffffff;
   scroll-snap-align: start;
   text-align: left;
+  white-space: nowrap;
 }
 
 .trade-expiry-option strong {
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
   color: #111827;
   font-size: 0.88rem;
   line-height: 1.05;
 }
 
 .trade-expiry-option small {
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
   color: #667085;
   font-size: 0.68rem;
   font-weight: 900;
@@ -3098,6 +3218,24 @@ button:disabled {
 .app-shell[data-theme="dark"] .oracle-chart-canvas canvas,
 .app-shell[data-theme="dark"] .oracle-chart-shell canvas {
   filter: saturate(1.06) brightness(0.92);
+}
+
+.app-shell[data-theme="dark"] .oracle-market-chart-summary,
+.app-shell[data-theme="dark"] .tradingview-chart-mark {
+  border-color: rgba(139, 108, 255, 0.24);
+  color: #f4f7fb;
+  background: rgba(18, 24, 33, 0.9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+
+.app-shell[data-theme="dark"] .oracle-market-chart-summary span,
+.app-shell[data-theme="dark"] .tradingview-chart-mark {
+  color: #a5afc0;
+}
+
+.app-shell[data-theme="dark"] .oracle-chart-toolbar {
+  border-color: var(--hh-line);
+  background: var(--hh-surface-2);
 }
 
 @media (max-width: 390px) {

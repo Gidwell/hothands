@@ -116,16 +116,31 @@ describe("OraclePriceChartModal", () => {
     );
   });
 
-  test("defaults expanded charts to the latest thirty minutes when more history exists", () => {
+  test("defaults expanded charts to the latest six hours when more history exists", () => {
     expect(
       getInitialOraclePriceChartView({
         compact: false,
-        pointTimes: [100, 1_000, 1_900, 2_000],
+        pointTimes: [100, 10_000, 20_000, 30_000],
       }),
     ).toEqual({
       mode: "time-range",
-      from: 200,
-      to: 2_000,
+      from: 8_400,
+      to: 30_000,
+    });
+  });
+
+  test("extends expanded market charts through the settlement time", () => {
+    expect(
+      getInitialOraclePriceChartView({
+        compact: false,
+        expiryTime: 45_000_000,
+        pointTimes: [10_000, 20_000, 30_000],
+        rangeSeconds: 60 * 60,
+      }),
+    ).toEqual({
+      mode: "time-range",
+      from: 26_400,
+      to: 45_900,
     });
   });
 
@@ -142,7 +157,7 @@ describe("OraclePriceChartModal", () => {
     });
   });
 
-  test("fits short-history charts instead of forcing a thirty minute range", () => {
+  test("fits short-history charts instead of forcing an expanded range", () => {
     expect(
       getInitialOraclePriceChartView({
         compact: false,

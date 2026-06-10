@@ -79,6 +79,7 @@ import {
 import {
   OraclePriceChartCard,
   OraclePriceChartModal,
+  type OraclePriceChartMarketContext,
 } from "./OraclePriceChart";
 import {
   loadOraclePriceChart,
@@ -809,6 +810,75 @@ function buildTradeLadderDisplayRows({
     selectedCustomStrike,
     selectedLadderKey,
     selectedMarket,
+  };
+}
+
+function buildOraclePriceChartMarketContext({
+  marketRows,
+  selectedMarket,
+  selectedSide,
+}: {
+  marketRows: TradeMarketLadderRow[];
+  selectedMarket: TradeMarketLadderRow | null;
+  selectedSide: TradeSide;
+}): OraclePriceChartMarketContext | null {
+  if (!selectedMarket) {
+    return null;
+  }
+
+  const selectedStrike: TradeMarketSelection = {
+    marketId: selectedMarket.id,
+    strike: selectedMarket.strike,
+    strikeLabel: selectedMarket.strikeLabel,
+    strikeRaw: selectedMarket.strikeRaw,
+  };
+  const strikeRows =
+    marketRows.filter(
+      (row) =>
+        row.oracleId === selectedMarket.oracleId &&
+        row.expiryMs === selectedMarket.expiryMs,
+    );
+  const strikeMap = new Map<string, OraclePriceChartMarketContext["strikes"][number]>();
+
+  for (const row of strikeRows.length ? strikeRows : [selectedMarket]) {
+    const options = getTradeStrikeOptionsForSelection(
+      row,
+      row.id === selectedMarket.id ? selectedStrike : null,
+    );
+
+    for (const option of options) {
+      const selected =
+        option.strikeRaw === selectedMarket.strikeRaw ||
+        option.strike === selectedMarket.strike;
+      const existing = strikeMap.get(String(option.strikeRaw));
+
+      if (existing?.selected) {
+        continue;
+      }
+
+      strikeMap.set(String(option.strikeRaw), {
+        id: `${row.id}:${option.strikeRaw}`,
+        label: option.strikeLabel,
+        price: option.strike,
+        selected,
+      });
+    }
+  }
+
+  return {
+    expiryLabel: selectedMarket.expiryTimeLabel,
+    expiryMs: selectedMarket.expiryMs,
+    selectedSide,
+    selectedStrikeLabel: selectedMarket.strikeLabel,
+    selectedStrikePrice: selectedMarket.strike,
+    strikes: [...strikeMap.values()]
+      .filter((strike) => Number.isFinite(strike.price) && strike.price > 0)
+      .sort(
+        (left, right) =>
+          left.price - right.price ||
+          left.label.localeCompare(right.label),
+      ),
+    timeRemainingLabel: selectedMarket.timeRemainingLabel,
   };
 }
 
@@ -4504,6 +4574,11 @@ export function App() {
 
     return selectedTradeMarket ?? marketRow;
   });
+  const oracleChartMarketContext = buildOraclePriceChartMarketContext({
+    marketRows: displayedTradeMarketRows,
+    selectedMarket: selectedTradeMarket,
+    selectedSide: tradeSide,
+  });
   const tradeQuoteKey = selectedTradeMarket
     ? buildTradeQuoteKey(selectedTradeMarket, tradeSide, copyState.copyAmount)
     : null;
@@ -6431,6 +6506,8 @@ export function App() {
         {isOracleChartOpen ? (
           <OraclePriceChartModal
             chart={oraclePriceChart}
+            marketContext={oracleChartMarketContext}
+            nowMs={marketHeatNowMs}
             onClose={() => setIsOracleChartOpen(false)}
           >
             {renderTradeTicket("expanded-chart-trade-ticket")}
