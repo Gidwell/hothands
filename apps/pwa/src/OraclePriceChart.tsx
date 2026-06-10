@@ -13,14 +13,11 @@ import {
   LineSeries,
   LineStyle,
   TickMarkType,
-  createSeriesMarkers,
   createChart,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
-  type ISeriesMarkersPluginApi,
   type LineData,
-  type SeriesMarker,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
@@ -32,7 +29,6 @@ const EXPANDED_CHART_MIN_BAR_SPACING = 0.02;
 const COMPACT_CHART_DEFAULT_WINDOW_SECONDS = 15 * 60;
 const EXPANDED_CHART_DEFAULT_WINDOW_SECONDS = 6 * 60 * 60;
 const EXPIRY_AXIS_PADDING_SECONDS = 15 * 60;
-const EXPIRY_MARKER_PRICE_PADDING = 0.004;
 
 export type OraclePriceChartRangeKey = "1H" | "6H" | "24H";
 
@@ -166,7 +162,9 @@ export function OraclePriceChartModal({
   onClose: () => void;
 }) {
   const [rangeKey, setRangeKey] = useState<OraclePriceChartRangeKey>("6H");
+  const [showSettlementLines, setShowSettlementLines] = useState(true);
   const hasChart = chart?.status === "ready" && chart.points.length >= 2;
+  const visibleMarketContext = showSettlementLines ? marketContext : null;
   const activeRange =
     ORACLE_PRICE_CHART_RANGES.find((range) => range.key === rangeKey) ??
     ORACLE_PRICE_CHART_RANGES[1];
@@ -194,18 +192,31 @@ export function OraclePriceChartModal({
           <span>{formatOracleSourceBadge(chart?.sourceLabel)}</span>
           <strong>{chart?.latestPriceLabel ?? "No price yet"}</strong>
         </div>
-        <div className="oracle-chart-toolbar" aria-label="Oracle chart range">
-          {ORACLE_PRICE_CHART_RANGES.map((range) => (
+        <div className="oracle-chart-toolbar" aria-label="Oracle chart controls">
+          <div className="oracle-chart-range-controls" aria-label="Oracle chart range">
+            {ORACLE_PRICE_CHART_RANGES.map((range) => (
+              <button
+                type="button"
+                aria-pressed={range.key === rangeKey}
+                data-testid={`oracle-chart-range-${range.key}`}
+                key={range.key}
+                onClick={() => setRangeKey(range.key)}
+              >
+                {range.label}
+              </button>
+            ))}
+          </div>
+          {marketContext ? (
             <button
               type="button"
-              aria-pressed={range.key === rangeKey}
-              data-testid={`oracle-chart-range-${range.key}`}
-              key={range.key}
-              onClick={() => setRangeKey(range.key)}
+              className="oracle-chart-settlement-toggle"
+              aria-pressed={showSettlementLines}
+              data-testid="oracle-chart-settlement-toggle"
+              onClick={() => setShowSettlementLines((shown) => !shown)}
             >
-              {range.label}
+              Settlement
             </button>
-          ))}
+          ) : null}
         </div>
         <div className="oracle-expanded-chart" data-testid="oracle-expanded-chart">
           {hasChart ? (
@@ -213,7 +224,7 @@ export function OraclePriceChartModal({
               points={chart.points}
               fitResetKey={chart.oracleId}
               height={320}
-              marketContext={marketContext}
+              marketContext={visibleMarketContext}
               nowMs={nowMs}
               rangeSeconds={activeRange.seconds}
             />
@@ -251,7 +262,6 @@ function LightweightOraclePriceChart({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const hasFitInitialDataRef = useRef(false);
-  const markerApiRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const priceLinesRef = useRef<IPriceLine[]>([]);
   const seriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const [overlayState, setOverlayState] = useState<OracleChartOverlayState>({
@@ -259,10 +269,6 @@ function LightweightOraclePriceChart({
     strikeY: null,
   });
   const data = useMemo(() => buildLineData(points), [points]);
-  const markerData = useMemo(
-    () => buildOracleChartMarkers(data, marketContext),
-    [data, marketContext],
-  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -308,7 +314,7 @@ function LightweightOraclePriceChart({
 
     const series = chart.addSeries(LineSeries, {
       color: compact ? "#16a34a" : "#8b6cff",
-      lineWidth: compact ? 2 : 3,
+      lineWidth: compact ? 2 : 1,
       crosshairMarkerVisible: false,
       lastValueVisible: !compact,
       priceLineVisible: !compact,
@@ -319,16 +325,14 @@ function LightweightOraclePriceChart({
       },
       priceLineColor: compact ? "#16a34a" : "#8b6cff",
       priceLineStyle: LineStyle.Solid,
-      priceLineWidth: compact ? 1 : 2,
+      priceLineWidth: 1,
     });
     chartRef.current = chart;
     seriesRef.current = series;
-    markerApiRef.current = compact ? null : createSeriesMarkers(series, []);
     hasFitInitialDataRef.current = false;
 
     return () => {
       chartRef.current = null;
-      markerApiRef.current = null;
       priceLinesRef.current = [];
       seriesRef.current = null;
       hasFitInitialDataRef.current = false;
@@ -349,7 +353,6 @@ function LightweightOraclePriceChart({
     }
 
     series.setData(data);
-    markerApiRef.current?.setMarkers(markerData);
     syncOracleMarketPriceLines(series, priceLinesRef, marketContext, compact);
 
     if (
@@ -403,7 +406,7 @@ function LightweightOraclePriceChart({
     return () => {
       chart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
     };
-  }, [compact, data, markerData, marketContext, rangeSeconds]);
+  }, [compact, data, marketContext, rangeSeconds]);
 
   const canShowMarketOverlay =
     !compact &&
@@ -599,34 +602,6 @@ function formatOracleSourceBadge(sourceLabel: string | null | undefined): string
   return sourceLabel;
 }
 
-function buildOracleChartMarkers(
-  data: LineData<UTCTimestamp>[],
-  marketContext: OraclePriceChartMarketContext | null,
-): SeriesMarker<Time>[] {
-  const latestPoint = data.at(-1);
-  if (!latestPoint || !marketContext) {
-    return [];
-  }
-
-  const expiryTime = Math.floor(marketContext.expiryMs / 1_000) as UTCTimestamp;
-  const markerPrice =
-    marketContext.selectedSide === "UP"
-      ? marketContext.selectedStrikePrice * (1 + EXPIRY_MARKER_PRICE_PADDING)
-      : marketContext.selectedStrikePrice * (1 - EXPIRY_MARKER_PRICE_PADDING);
-
-  return [
-    {
-      color: marketContext.selectedSide === "UP" ? "#3ed982" : "#ff6b6b",
-      position: "atPriceMiddle",
-      price: markerPrice,
-      shape: marketContext.selectedSide === "UP" ? "arrowUp" : "arrowDown",
-      size: 1.25,
-      text: "Settlement",
-      time: expiryTime,
-    },
-  ];
-}
-
 function syncOracleMarketPriceLines(
   series: ISeriesApi<"Line">,
   priceLinesRef: MutableRefObject<IPriceLine[]>,
@@ -643,10 +618,10 @@ function syncOracleMarketPriceLines(
   }
 
   for (const strike of marketContext.strikes) {
-    const color = strike.selected ? "#8b6cff" : "rgba(165, 175, 192, 0.58)";
+    const color = strike.selected ? "#3ed982" : "rgba(62, 217, 130, 0.42)";
     priceLinesRef.current.push(
       series.createPriceLine({
-        axisLabelColor: strike.selected ? "#8b6cff" : "rgba(42, 52, 67, 0.92)",
+        axisLabelColor: strike.selected ? "#16a34a" : "rgba(20, 83, 45, 0.92)",
         axisLabelTextColor: "#ffffff",
         axisLabelVisible: strike.selected,
         color,
@@ -655,7 +630,7 @@ function syncOracleMarketPriceLines(
         lineWidth: strike.selected ? 2 : 1,
         price: strike.price,
         title: strike.selected
-          ? `${marketContext.selectedSide} ${strike.label}`
+          ? `Settlement ${strike.label}`
           : strike.label,
       }),
     );

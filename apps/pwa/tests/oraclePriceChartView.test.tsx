@@ -29,6 +29,23 @@ const readyChart: OraclePriceChart = {
   title: "DeepBook BTC oracle price",
 };
 
+const marketContext = {
+  expiryLabel: "Jun 11, 5:00 PM",
+  expiryMs: 1_779_200_000_000,
+  selectedSide: "UP" as const,
+  selectedStrikeLabel: "$66,950",
+  selectedStrikePrice: 66_950,
+  strikes: [
+    {
+      id: "strike-66950",
+      label: "$66,950",
+      price: 66_950,
+      selected: true,
+    },
+  ],
+  timeRemainingLabel: "2h left",
+};
+
 describe("OraclePriceChartModal", () => {
   test("renders a compact twenty-four hour change beside the mini chart", () => {
     const html = renderToStaticMarkup(
@@ -59,6 +76,22 @@ describe("OraclePriceChartModal", () => {
     expect(html.indexOf('data-testid="oracle-expanded-chart"')).toBeLessThan(
       html.indexOf('data-testid="expanded-chart-actions"'),
     );
+  });
+
+  test("renders market settlement controls when chart context is available", () => {
+    const html = renderToStaticMarkup(
+      <OraclePriceChartModal
+        chart={readyChart}
+        marketContext={marketContext}
+        nowMs={1_779_190_000_000}
+        onClose={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("BTC/USD market chart");
+    expect(html).toContain('data-testid="oracle-chart-settlement-toggle"');
+    expect(html).toContain("Settlement");
+    expect(html).toContain("UP $66,950");
   });
 
   test("shows muted TradingView attribution inside the expanded chart", () => {

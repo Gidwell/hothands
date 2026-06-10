@@ -356,7 +356,7 @@ button:disabled {
   bottom: 0;
   left: var(--oracle-expiry-x);
   width: 0;
-  border-left: 1px solid rgba(139, 108, 255, 0.72);
+  border-left: 1px solid rgba(22, 163, 74, 0.68);
 }
 
 .oracle-expiry-line span {
@@ -367,7 +367,7 @@ button:disabled {
   padding: 4px 6px;
   border-radius: 7px;
   color: #ffffff;
-  background: rgba(109, 74, 255, 0.92);
+  background: rgba(22, 163, 74, 0.92);
   font-size: 0.58rem;
   font-weight: 950;
   line-height: 1;
@@ -375,8 +375,14 @@ button:disabled {
 
 .oracle-chart-toolbar {
   display: flex;
+  align-items: center;
   width: fit-content;
   max-width: 100%;
+  gap: 3px;
+}
+
+.oracle-chart-range-controls {
+  display: flex;
   gap: 3px;
   padding: 3px;
   border: 1px solid #e6edf4;
@@ -397,6 +403,17 @@ button:disabled {
 .oracle-chart-toolbar button[aria-pressed="true"] {
   color: #ffffff;
   background: #6d4aff;
+}
+
+.oracle-chart-toolbar .oracle-chart-settlement-toggle {
+  padding-inline: 10px;
+  border: 1px solid rgba(22, 163, 74, 0.28);
+  color: #16a34a;
+  background: rgba(62, 217, 130, 0.1);
+}
+
+.oracle-chart-toolbar .oracle-chart-settlement-toggle[aria-pressed="true"] {
+  background: #16a34a;
 }
 
 .oracle-chart-empty {
@@ -3233,9 +3250,20 @@ button:disabled {
   color: #a5afc0;
 }
 
-.app-shell[data-theme="dark"] .oracle-chart-toolbar {
+.app-shell[data-theme="dark"] .oracle-chart-range-controls {
   border-color: var(--hh-line);
   background: var(--hh-surface-2);
+}
+
+.app-shell[data-theme="dark"] .oracle-chart-toolbar .oracle-chart-settlement-toggle {
+  border-color: rgba(62, 217, 130, 0.3);
+  color: #3ed982;
+  background: rgba(62, 217, 130, 0.11);
+}
+
+.app-shell[data-theme="dark"] .oracle-chart-toolbar .oracle-chart-settlement-toggle[aria-pressed="true"] {
+  color: #08110d;
+  background: #3ed982;
 }
 
 @media (max-width: 390px) {
