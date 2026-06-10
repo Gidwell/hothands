@@ -3579,6 +3579,8 @@ export function MarketHeatPreview({
 }) {
   const swipeStartRef = useRef<{ rowId: string; x: number; y: number } | null>(null);
   const swipedRowRef = useRef<string | null>(null);
+  const heatDescriptionId = `${testId}-heat-description`;
+  const [isHeatDescriptionOpen, setIsHeatDescriptionOpen] = useState(false);
   const [swipePreview, setSwipePreview] = useState<MarketHeatSwipePreview | null>(null);
   const startMarketHeatSwipe = (
     rowId: string,
@@ -3755,15 +3757,39 @@ export function MarketHeatPreview({
         </div>
       ) : null}
       {rows.length > 0 ? (
-        <div className="market-heat-table-head" aria-hidden="true">
-          <span>{identityMode === "market" ? "Market" : "Wallet"}</span>
-          <span>Direction</span>
-          <span>Strike</span>
-          <span>Expiration</span>
-          <span title={MARKET_HEAT_DESCRIPTION}>
-            Heat <span className="market-heat-info">i</span>
+        <div className="market-heat-table-head">
+          <span aria-hidden="true">{identityMode === "market" ? "Market" : "Wallet"}</span>
+          <span aria-hidden="true">Direction</span>
+          <span aria-hidden="true">Strike</span>
+          <span aria-hidden="true">Expiration</span>
+          <span className="market-heat-head-heat">
+            <button
+              type="button"
+              aria-describedby={isHeatDescriptionOpen ? heatDescriptionId : undefined}
+              aria-expanded={isHeatDescriptionOpen}
+              aria-label="What does Heat mean?"
+              className="market-heat-info-trigger"
+              data-testid="market-heat-info-trigger"
+              title={MARKET_HEAT_DESCRIPTION}
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsHeatDescriptionOpen((isOpen) => !isOpen);
+              }}
+            >
+              Heat <span className="market-heat-info" aria-hidden="true">i</span>
+            </button>
+            {isHeatDescriptionOpen ? (
+              <span
+                className="market-heat-info-tooltip"
+                data-testid="market-heat-info-tooltip"
+                id={heatDescriptionId}
+                role="tooltip"
+              >
+                {MARKET_HEAT_DESCRIPTION}
+              </span>
+            ) : null}
           </span>
-          <span />
+          <span aria-hidden="true" />
         </div>
       ) : null}
       {rows.map((row) => {

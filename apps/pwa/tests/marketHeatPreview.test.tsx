@@ -478,6 +478,9 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Heat");
     expect(html).toContain("Heat combines recency, copied volume, wallet streak, and trade activity.");
     expect(html).toContain("market-heat-info");
+    expect(html).toContain('data-testid="market-heat-info-trigger"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-label="What does Heat mean?"');
     expect(html).toContain("aria-label=\"Heat 94.");
     expect(html).toContain("94");
     expect(html).not.toContain("Cost</small>");
