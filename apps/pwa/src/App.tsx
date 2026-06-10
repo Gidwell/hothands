@@ -159,7 +159,7 @@ type ThemeMode = "light" | "dark";
 const MARKET_HEAT_DESCRIPTION =
   "Heat combines recency, copied volume, wallet streak, and trade activity.";
 const MARKET_HEAT_FEED_SUBTITLE =
-  "Every call is on-chain. Streaks don't lie. Copy the hot hands.";
+  "Every call is onchain. Streaks don't lie. Copy the hot hands.";
 export type MarketHeatSwipeAction = "none" | "select" | "submit";
 type MarketHeatSwipePreview = {
   action: MarketHeatSwipeAction;

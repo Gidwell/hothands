@@ -34,7 +34,7 @@ export function buildHotHandsShareText(input: HotHandsShareCardInput): string {
     callLine,
     statLine,
     input.copiedLabel,
-    "Every call is on-chain. Streaks don't lie.",
+    "Every call is onchain. Streaks don't lie.",
     input.url,
   ]
     .filter((line): line is string => Boolean(line))
@@ -189,7 +189,7 @@ function drawFooter(
   context.font = "900 30px Inter, ui-sans-serif, system-ui";
   fillFittedText(
     context,
-    input.copiedLabel ?? "Every call is on-chain. Streaks don't lie.",
+    input.copiedLabel ?? "Every call is onchain. Streaks don't lie.",
     68,
     590,
     730,
