@@ -119,7 +119,6 @@ export function summarizeCopyAttribution(
   target: CopyAttributionTarget,
   records: CopyAttributionRecord[],
 ): CopyAttributionSummary {
-  const seed = seededCopyAttributionSummary(target.positionId);
   const normalizedWallet = target.sourceWallet.toLowerCase();
   const localRecords = records.filter(
     (record) =>
@@ -128,13 +127,11 @@ export function summarizeCopyAttribution(
   );
 
   return {
-    count: seed.count + localRecords.length,
-    amount:
-      seed.amount +
-      localRecords.reduce(
-        (total, record) => total + (Number.isFinite(record.amount) ? record.amount : 0),
-        0,
-      ),
+    count: localRecords.length,
+    amount: localRecords.reduce(
+      (total, record) => total + (Number.isFinite(record.amount) ? record.amount : 0),
+      0,
+    ),
   };
 }
 
@@ -151,17 +148,6 @@ export function formatCopyAttributionAmount(amount: number): string {
     maximumFractionDigits: 2,
     minimumFractionDigits: Number.isInteger(safeAmount) ? 0 : 2,
   })}`;
-}
-
-function seededCopyAttributionSummary(positionId: string): CopyAttributionSummary {
-  const hash = stableHash(positionId);
-  const count = 2 + (hash % 11);
-  const averageCopyAmount = [10, 15, 25, 40, 50, 75][Math.floor(hash / 11) % 6];
-
-  return {
-    count,
-    amount: count * averageCopyAmount,
-  };
 }
 
 function parseCopyAttributionRecord(value: unknown): CopyAttributionRecord | null {
@@ -199,15 +185,4 @@ function stringValue(value: unknown): string | null {
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function stableHash(value: string): number {
-  let hash = 2166136261;
-
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-
-  return hash >>> 0;
 }

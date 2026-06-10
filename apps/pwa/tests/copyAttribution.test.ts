@@ -42,12 +42,16 @@ describe("copy attribution", () => {
     expect(parseCopyAttributionRecords("{not json")).toEqual([]);
   });
 
-  test("adds local receipts on top of deterministic seeded counts", () => {
+  test("summarizes only verified local copy receipts", () => {
     const target = {
       positionId: "0xsource:0xoracle:1779165600000:62500000000:UP",
       sourceWallet: "0xsource",
     };
-    const seed = summarizeCopyAttribution(target, []);
+    expect(summarizeCopyAttribution(target, [])).toEqual({
+      amount: 0,
+      count: 0,
+    });
+
     const records = appendCopyAttributionRecord(
       [],
       {
@@ -62,8 +66,8 @@ describe("copy attribution", () => {
     );
     const summary = summarizeCopyAttribution(target, records);
 
-    expect(summary.count).toBe(seed.count + 1);
-    expect(summary.amount).toBe(seed.amount + 25);
+    expect(summary.count).toBe(1);
+    expect(summary.amount).toBe(25);
     expect(formatCopyAttributionLabel(summary)).toContain("Copied by");
     expect(formatCopyAttributionLabel(summary)).toContain("copied");
   });

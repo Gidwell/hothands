@@ -259,9 +259,10 @@ function buildCopyAttributionLabelsByRowId(
   records: CopyAttributionRecord[],
 ): Record<string, string> {
   return rows.reduce<Record<string, string>>((labels, row) => {
-    labels[row.id] = formatCopyAttributionLabel(
-      summarizeCopyAttribution(copyAttributionTargetForMarketHeatRow(row), records),
-    );
+    const summary = summarizeCopyAttribution(copyAttributionTargetForMarketHeatRow(row), records);
+    if (summary.count > 0 || summary.amount > 0) {
+      labels[row.id] = formatCopyAttributionLabel(summary);
+    }
     return labels;
   }, {});
 }
@@ -283,6 +284,10 @@ function buildCopyAttributionLabelForRows(
       }),
       { amount: 0, count: 0 },
     );
+
+  if (summary.count <= 0 && summary.amount <= 0) {
+    return null;
+  }
 
   return formatCopyAttributionLabel(summary);
 }
