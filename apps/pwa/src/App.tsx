@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent,
   type ReactNode,
   type SyntheticEvent,
@@ -33,6 +34,16 @@ import {
   stepCopyAmount,
   toggleCopyArmed,
 } from "./copyModel";
+import {
+  appendCopyAttributionRecord,
+  buildCopyAttributionSourcePositionId,
+  formatCopyAttributionLabel,
+  readCopyAttributionRecords,
+  summarizeCopyAttribution,
+  writeCopyAttributionRecords,
+  type CopyAttributionRecord,
+  type CopyAttributionTarget,
+} from "./copyAttribution";
 import { market, type Trader } from "./mockData";
 import {
   advanceReplay,
@@ -75,6 +86,13 @@ import {
   type OraclePriceChart,
 } from "./oraclePriceChartModel";
 import {
+  buildHotHandsShareText,
+  buildShareToXUrl,
+  drawHotHandsShareCard,
+  type HotHandsShareCardInput,
+  type HotHandsShareStat,
+} from "./shareCards";
+import {
   buildWalletLeaderboards,
   loadWalletLeaderboards,
   selectWalletLeaderboardEntries,
@@ -101,6 +119,7 @@ import {
   createPredictPortfolioCloseQuoteClient,
   createPredictPortfolioIndexedEventClient,
   createPredictPortfolioSettlementClient,
+  buildPredictPortfolioPositionId,
   formatPortfolioTimeRemaining,
   loadPredictPortfolioSnapshot,
   selectVisiblePortfolioPositions,
@@ -133,7 +152,13 @@ const THEME_STORAGE_KEY = "hot-hands-theme-mode";
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "leaderboards" | "portfolio" | "profile";
 export type AccountSummaryVariant = "default" | "portfolio";
+type MarketHeatFeedMode = MarketHeatSortMode | "following";
+type MarketHeatIdentityMode = "wallet" | "market";
 type ThemeMode = "light" | "dark";
+const MARKET_HEAT_DESCRIPTION =
+  "Heat combines recency, copied volume, wallet streak, and trade activity.";
+const MARKET_HEAT_FEED_SUBTITLE =
+  "Every call is on-chain. Streaks don't lie. Copy the hot hands.";
 export type MarketHeatSwipeAction = "none" | "select" | "submit";
 type MarketHeatSwipePreview = {
   action: MarketHeatSwipeAction;
@@ -206,6 +231,61 @@ function writeStoredStakeAmount(amount: number): void {
   window.localStorage.setItem(STAKE_AMOUNT_STORAGE_KEY, String(clampCopyAmount(amount)));
 }
 
+function readStoredCopyAttributions(): CopyAttributionRecord[] {
+  return readCopyAttributionRecords(typeof window === "undefined" ? null : window.localStorage);
+}
+
+function writeStoredCopyAttributions(records: CopyAttributionRecord[]): void {
+  writeCopyAttributionRecords(typeof window === "undefined" ? null : window.localStorage, records);
+}
+
+function copyAttributionTargetForMarketHeatRow(row: MarketHeatPreviewRow): CopyAttributionTarget {
+  return {
+    positionId: buildCopyAttributionSourcePositionId({
+      expiryMs: row.expiryMs,
+      oracleId: row.oracleId,
+      rowId: row.id,
+      side: row.side,
+      sourceWallet: row.wallet,
+      strikeRaw: row.strikeRaw ?? Math.round(row.strike * 1_000_000),
+    }),
+    sourceWallet: row.wallet,
+  };
+}
+
+function buildCopyAttributionLabelsByRowId(
+  rows: MarketHeatPreviewRow[],
+  records: CopyAttributionRecord[],
+): Record<string, string> {
+  return rows.reduce<Record<string, string>>((labels, row) => {
+    labels[row.id] = formatCopyAttributionLabel(
+      summarizeCopyAttribution(copyAttributionTargetForMarketHeatRow(row), records),
+    );
+    return labels;
+  }, {});
+}
+
+function buildCopyAttributionLabelForRows(
+  rows: MarketHeatPreviewRow[],
+  records: CopyAttributionRecord[],
+): string | null {
+  if (!rows.length) {
+    return null;
+  }
+
+  const summary = rows
+    .map((row) => summarizeCopyAttribution(copyAttributionTargetForMarketHeatRow(row), records))
+    .reduce(
+      (total, item) => ({
+        amount: total.amount + item.amount,
+        count: total.count + item.count,
+      }),
+      { amount: 0, count: 0 },
+    );
+
+  return formatCopyAttributionLabel(summary);
+}
+
 export type TradeSide = "UP" | "DOWN";
 export type TradeMarketSelection = {
   marketId: string;
@@ -230,6 +310,13 @@ export type AppToast = {
   groupKey?: string;
 };
 export type AppToastInput = Omit<AppToast, "id">;
+export type ShareCardState = {
+  blob: Blob | null;
+  imageUrl: string;
+  input: HotHandsShareCardInput;
+  text: string;
+  xUrl: string;
+};
 type DusdcBalanceState = {
   accountAddress: string | null;
   refreshKey: number;
@@ -264,7 +351,26 @@ type WalletLeaderboardsState = {
   snapshot: WalletLeaderboardsSnapshot;
   status: WalletLeaderboardsStatus;
 };
+type ProfileHistoryStatus = "idle" | "loading" | "ready" | "error";
+type ProfileHistoryState = {
+  history: PredictPortfolioHistoryItem[];
+  status: ProfileHistoryStatus;
+  wallet: string | null;
+};
+type ProfileStatTone = "positive" | "negative" | "flat";
+type ProfileStatItem = {
+  label: string;
+  tone?: ProfileStatTone;
+  value: string;
+};
+type ProfileStatSummary = {
+  items: ProfileStatItem[];
+  sourceLabel: string;
+};
 type PortfolioTab = "positions" | "history";
+type AttributedPortfolioPosition = PredictPortfolioPosition & {
+  copiedFromLabel?: string;
+};
 export type FollowedWallet = {
   displayName: string;
   wallet: string;
@@ -339,25 +445,6 @@ function buildReturnPreview(spendUsd: number, estimatedPrice: number | undefined
     payoutLabel: formatUsdValue(payoutUsd),
     profitLabel: formatSignedUsdValue(profitUsd),
   };
-}
-
-function estimatePriceFromRow(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd" | "quantity">): number | undefined {
-  const rawCostUsd =
-    row.cost === undefined || !Number.isFinite(row.cost) ? undefined : row.cost / 1_000_000;
-  const costUsd =
-    row.costUsd !== undefined && row.costUsd > 0
-      ? row.costUsd
-      : rawCostUsd;
-  const payoutUsd =
-    row.quantity === undefined || !Number.isFinite(row.quantity) || row.quantity <= 0
-      ? undefined
-      : row.quantity / 1_000_000;
-
-  if (costUsd === undefined || costUsd <= 0 || payoutUsd === undefined || payoutUsd <= 0) {
-    return undefined;
-  }
-
-  return costUsd / payoutUsd;
 }
 
 function marketDurationTestId(value: string): string {
@@ -947,8 +1034,176 @@ function CopyAmountControls({
   );
 }
 
-function walletAvatarLabel(displayName: string): string {
-  return displayName.replace(/^0x/, "").slice(0, 2).toUpperCase() || "HH";
+function WalletIdenticon({
+  compact = false,
+  displayName,
+  wallet,
+}: {
+  compact?: boolean;
+  displayName: string;
+  wallet: string;
+}) {
+  const seed = walletIdenticonSeed(wallet || displayName);
+  const bars = [0, 1, 2, 3].map((index) => (seed >> (index * 3)) & 7);
+
+  return (
+    <span
+      className={`wallet-identicon${compact ? " wallet-identicon-compact" : ""}`}
+      style={walletIdenticonStyle(wallet || displayName)}
+      aria-hidden="true"
+    >
+      {bars.map((value, index) => (
+        <span
+          className="wallet-identicon-mark"
+          key={index}
+          style={{
+            height: `${34 + value * 7}%`,
+            opacity: 0.46 + (value % 4) * 0.12,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+function walletIdenticonSeed(value: string): number {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function walletIdenticonStyle(value: string): CSSProperties & {
+  "--hh-identicon-a": string;
+  "--hh-identicon-b": string;
+  "--hh-identicon-c": string;
+} {
+  const seed = walletIdenticonSeed(value);
+  const hueA = seed % 360;
+  const hueB = (hueA + 86 + ((seed >> 8) % 56)) % 360;
+  const hueC = (hueA + 188 + ((seed >> 16) % 42)) % 360;
+
+  return {
+    "--hh-identicon-a": `hsl(${hueA} 82% 58%)`,
+    "--hh-identicon-b": `hsl(${hueB} 78% 52%)`,
+    "--hh-identicon-c": `hsl(${hueC} 84% 64%)`,
+  };
+}
+
+function isLiveCountdownLabel(label: string | null | undefined): boolean {
+  if (!label || label === "Expired") {
+    return false;
+  }
+
+  const match = /^(\d+)([mh]) left$/i.exec(label);
+  if (!match) {
+    return false;
+  }
+
+  const value = Number(match[1]);
+  const unit = match[2].toLowerCase();
+
+  return unit === "m" || value <= 24;
+}
+
+function parsePnlAtomicLabel(item: PredictPortfolioHistoryItem): number | null {
+  if (!item.pnlAtomic) {
+    return null;
+  }
+
+  try {
+    return Number(BigInt(item.pnlAtomic)) / 1_000_000;
+  } catch {
+    return null;
+  }
+}
+
+function formatSparklineUsd(value: number): string {
+  if (!Number.isFinite(value) || Math.abs(value) < 0.005) {
+    return "$0";
+  }
+
+  const prefix = value > 0 ? "+" : "-";
+  return `${prefix}$${Math.abs(value).toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  })}`;
+}
+
+function buildProfilePnlSparkline(historyItems: PredictPortfolioHistoryItem[]): {
+  latestLabel: string;
+  path: string;
+  tone: ProfileStatTone;
+} | null {
+  let cumulativePnl = 0;
+  const values = [0];
+
+  for (const item of [...historyItems].reverse()) {
+    const pnl = parsePnlAtomicLabel(item);
+    if (pnl === null || !Number.isFinite(pnl)) {
+      continue;
+    }
+
+    cumulativePnl += pnl;
+    values.push(cumulativePnl);
+  }
+
+  if (values.length < 2) {
+    return null;
+  }
+
+  const width = 120;
+  const height = 34;
+  const padding = 3;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const usableWidth = width - padding * 2;
+  const usableHeight = height - padding * 2;
+  const points = values.map((value, index) => {
+    const x = padding + (index / Math.max(1, values.length - 1)) * usableWidth;
+    const y = height - padding - ((value - min) / range) * usableHeight;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const latest = values[values.length - 1] ?? 0;
+
+  return {
+    latestLabel: formatSparklineUsd(latest),
+    path: `M ${points.join(" L ")}`,
+    tone: latest > 0 ? "positive" : latest < 0 ? "negative" : "flat",
+  };
+}
+
+function ProfilePnlSparkline({
+  historyItems,
+}: {
+  historyItems: PredictPortfolioHistoryItem[];
+}) {
+  const sparkline = buildProfilePnlSparkline(historyItems);
+
+  if (!sparkline) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`profile-pnl-sparkline profile-pnl-sparkline-${sparkline.tone}`}
+      data-testid="profile-pnl-sparkline"
+    >
+      <span>
+        <small>PNL path</small>
+        <strong>{sparkline.latestLabel}</strong>
+      </span>
+      <svg viewBox="0 0 120 34" role="img" aria-label={`Profile PNL path ${sparkline.latestLabel}`}>
+        <path className="profile-pnl-sparkline-baseline" d="M 3,31 L 117,31" />
+        <path className="profile-pnl-sparkline-line" d={sparkline.path} />
+      </svg>
+    </div>
+  );
 }
 
 function formatWalletAddress(address: string | null | undefined): string {
@@ -957,6 +1212,119 @@ function formatWalletAddress(address: string | null | undefined): string {
   }
 
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function buildCopiedPositionSourceLabels(
+  records: CopyAttributionRecord[],
+  copierAddress: string | null,
+): Map<string, string> {
+  const labels = new Map<string, string>();
+  const normalizedCopier = copierAddress?.toLowerCase() ?? null;
+
+  if (!normalizedCopier) {
+    return labels;
+  }
+
+  for (const record of records) {
+    if (
+      !record.copied_position_id ||
+      record.copier.toLowerCase() !== normalizedCopier ||
+      labels.has(record.copied_position_id)
+    ) {
+      continue;
+    }
+
+    labels.set(record.copied_position_id, `Copied from ${formatWalletAddress(record.source_wallet)}`);
+  }
+
+  return labels;
+}
+
+function addCopiedSourceLabelsToPortfolioPositions(
+  positions: PredictPortfolioPosition[],
+  labelsByPositionId: ReadonlyMap<string, string>,
+): AttributedPortfolioPosition[] {
+  return positions.map((position) => {
+    const copiedFromLabel = labelsByPositionId.get(position.id);
+    return copiedFromLabel ? { ...position, copiedFromLabel } : position;
+  });
+}
+
+function profileStatValue(
+  summary: ProfileStatSummary,
+  label: string,
+  fallback = "--",
+): string {
+  return summary.items.find((item) => item.label === label)?.value ?? fallback;
+}
+
+function buildProfileShareStats(summary: ProfileStatSummary): HotHandsShareStat[] {
+  return [
+    { label: "Win rate", value: profileStatValue(summary, "Win rate") },
+    { label: "PnL", value: profileStatValue(summary, "All-time PNL") },
+    { label: "Streak", value: profileStatValue(summary, "Current streak") },
+    { label: "Calls", value: profileStatValue(summary, "Total calls") },
+  ];
+}
+
+function buildCallShareStats(
+  row: MarketHeatPreviewRow,
+  copiedLabel: string | undefined,
+): HotHandsShareStat[] {
+  return [
+    { label: "Heat", value: String(row.heatScore) },
+    { label: "Copied", value: copiedLabel?.replace(/^Copied by\s+/i, "") ?? "On-chain" },
+  ];
+}
+
+function currentShareUrl(): string {
+  if (typeof window === "undefined") {
+    return "http://localhost";
+  }
+
+  const url = new URL(window.location.href);
+  return `${url.origin}${url.pathname}`;
+}
+
+async function renderShareCard(input: HotHandsShareCardInput): Promise<ShareCardState> {
+  const canvas = document.createElement("canvas");
+  drawHotHandsShareCard(canvas, input);
+  const imageUrl = canvas.toDataURL("image/png");
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((nextBlob) => resolve(nextBlob), "image/png");
+  });
+
+  return {
+    blob,
+    imageUrl,
+    input,
+    text: buildHotHandsShareText(input),
+    xUrl: buildShareToXUrl(input),
+  };
+}
+
+async function copyShareCardToClipboard(card: ShareCardState): Promise<"image" | "text"> {
+  const clipboard = navigator.clipboard;
+  const clipboardItem =
+    typeof window !== "undefined" && "ClipboardItem" in window
+      ? (window as Window & { ClipboardItem: typeof ClipboardItem }).ClipboardItem
+      : null;
+
+  if (card.blob && clipboard?.write && clipboardItem) {
+    try {
+      await clipboard.write([new clipboardItem({ [card.blob.type]: card.blob })]);
+      return "image";
+    } catch {
+      // Fall through to text when image clipboard support is unavailable.
+    }
+  }
+
+  if (!clipboard?.writeText) {
+    throw new Error("Clipboard is unavailable.");
+  }
+
+  await clipboard.writeText(card.text);
+  return "text";
 }
 
 function walletErrorMessage(error: unknown): string {
@@ -1182,6 +1550,21 @@ function mergeFollowedWallet(
   return wallets.map((followedWallet, index) =>
     index === existingIndex ? nextWallet : followedWallet,
   );
+}
+
+export function filterMarketHeatRowsByFollowedWallets(
+  rows: MarketHeatPreviewRow[],
+  followedWallets: FollowedWallet[],
+): MarketHeatPreviewRow[] {
+  if (!followedWallets.length) {
+    return [];
+  }
+
+  const followedWalletKeys = new Set(
+    followedWallets.map((wallet) => wallet.wallet.toLowerCase()),
+  );
+
+  return rows.filter((row) => followedWalletKeys.has(row.wallet.toLowerCase()));
 }
 
 type WalletHeaderControlProps = {
@@ -1476,6 +1859,72 @@ function ThemeModeIcon({ mode }: { mode: ThemeMode }) {
       ) : (
         <path d="M20.5 14.2A7.8 7.8 0 0 1 9.8 3.5 8.7 8.7 0 1 0 20.5 14.2Z" />
       )}
+    </svg>
+  );
+}
+
+export function ShareCardModal({
+  card,
+  onClose,
+  onCopy,
+  onShareToX,
+}: {
+  card: ShareCardState;
+  onClose: () => void;
+  onCopy: () => void;
+  onShareToX: () => void;
+}) {
+  return (
+    <section
+      className="share-card-overlay"
+      aria-label="Share card"
+      data-testid="share-card-modal"
+      role="dialog"
+    >
+      <article className="share-card-panel">
+        <div className="share-card-header">
+          <div>
+            <span>Share card</span>
+            <strong>{card.input.kind === "call" ? "Call ready for X" : "Profile ready for X"}</strong>
+          </div>
+          <button
+            type="button"
+            aria-label="Close share card"
+            className="share-card-close"
+            onClick={onClose}
+          >
+            x
+          </button>
+        </div>
+        <img src={card.imageUrl} alt="Generated Hot Hands share card" />
+        <div className="share-card-actions">
+          <button type="button" data-testid="share-card-x" onClick={onShareToX}>
+            Share to X
+          </button>
+          <button type="button" data-testid="share-card-copy" onClick={onCopy}>
+            Copy image/link
+          </button>
+        </div>
+      </article>
+    </section>
+  );
+}
+
+function ShareIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
+      <path d="M12 16V4" />
+      <path d="m7 9 5-5 5 5" />
     </svg>
   );
 }
@@ -1999,6 +2448,61 @@ function TraderRow({
   );
 }
 
+function PortfolioHistoryList({
+  emptyLabel,
+  items,
+  testId = "portfolio-history",
+  title = "Trade history",
+}: {
+  emptyLabel: string;
+  items: PredictPortfolioHistoryItem[];
+  testId?: string;
+  title?: string;
+}) {
+  if (!items.length) {
+    return <div className="portfolio-empty">{emptyLabel}</div>;
+  }
+
+  return (
+    <div className="portfolio-history" data-testid={testId}>
+      <p className="portfolio-history-title">{title}</p>
+      <div className="portfolio-table-head portfolio-history-table-head" aria-hidden="true">
+        <span>Market / side</span>
+        <span>Closed</span>
+        <span>Cost</span>
+        <span>Payout</span>
+        <span>PNL</span>
+      </div>
+      {items.map((item) => (
+        <article
+          className={`portfolio-history-row portfolio-history-row-${item.pnlTone}`}
+          key={item.id}
+        >
+          <div className="portfolio-market-cell">
+            <span className={item.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
+              {item.direction}
+            </span>
+            <div>
+              <strong>BTC/USD</strong>
+              <small>{item.strikeLabel}</small>
+            </div>
+          </div>
+          <div className="portfolio-expiry-cell">
+            <strong>{item.expiryTimeLabel}</strong>
+            <small>{item.statusLabel}</small>
+          </div>
+          <span className="portfolio-table-cell">{item.costLabel}</span>
+          <span className="portfolio-table-cell">{item.payoutLabel}</span>
+          <div className={`portfolio-history-pnl portfolio-history-pnl-${item.pnlTone}`}>
+            <small>PNL</small>
+            <strong>{item.pnlLabel}</strong>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 export function PortfolioPanel({
   emptyLabel: emptyLabelOverride,
   historyItems = [],
@@ -2015,7 +2519,7 @@ export function PortfolioPanel({
   historyItems?: PredictPortfolioHistoryItem[];
   initialTab?: PortfolioTab;
   nowMs?: number;
-  positions: PredictPortfolioPosition[];
+  positions: AttributedPortfolioPosition[];
   status?: PredictPortfolioState["status"];
   walletActionPending?: boolean;
   walletSubmittedPositionId?: string | null;
@@ -2087,6 +2591,7 @@ export function PortfolioPanel({
               typeof nowMs === "number"
                 ? formatPortfolioTimeRemaining(position.expiryMs, nowMs)
                 : position.timeLabel;
+            const isLiveCountdown = !isExpired && isLiveCountdownLabel(timeLabel);
             const statusParts =
               statusLabel === timeLabel ? [statusLabel] : [statusLabel, timeLabel];
             const statusSummary = [
@@ -2121,11 +2626,24 @@ export function PortfolioPanel({
                   <div>
                     <strong>BTC/USD</strong>
                     <small>Strike {position.strikeLabel}</small>
+                    {position.copiedFromLabel ? (
+                      <small className="portfolio-copy-source-badge">
+                        {position.copiedFromLabel}
+                      </small>
+                    ) : null}
                   </div>
                 </div>
-                <div className="portfolio-expiry-cell">
+                <div
+                  className={`portfolio-expiry-cell${
+                    isLiveCountdown ? " portfolio-countdown-live" : ""
+                  }`}
+                  title={isLiveCountdown ? "Live expiry countdown" : undefined}
+                >
                   <strong>{position.expiryTimeLabel}</strong>
-                  <small>{statusSummary}</small>
+                  <small>
+                    {statusSummary}
+                    {isLiveCountdown ? <em>Live</em> : null}
+                  </small>
                 </div>
                 <span className="portfolio-table-cell">{position.costBasisLabel}</span>
                 <span className="portfolio-table-cell">
@@ -2163,45 +2681,8 @@ export function PortfolioPanel({
         <div className="portfolio-empty">
           <strong>{emptyLabel}</strong>
         </div>
-      ) : historyItems.length ? (
-        <div className="portfolio-history" data-testid="portfolio-history">
-          <p className="portfolio-history-title">Trade history</p>
-          <div className="portfolio-table-head portfolio-history-table-head" aria-hidden="true">
-            <span>Market / side</span>
-            <span>Closed</span>
-            <span>Cost</span>
-            <span>Payout</span>
-            <span>PNL</span>
-          </div>
-          {historyItems.map((item) => (
-            <article
-              className={`portfolio-history-row portfolio-history-row-${item.pnlTone}`}
-              key={item.id}
-            >
-              <div className="portfolio-market-cell">
-                <span className={item.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
-                  {item.direction}
-                </span>
-                <div>
-                  <strong>BTC/USD</strong>
-                  <small>{item.strikeLabel}</small>
-                </div>
-              </div>
-              <div className="portfolio-expiry-cell">
-                <strong>{item.expiryTimeLabel}</strong>
-                <small>{item.statusLabel}</small>
-              </div>
-              <span className="portfolio-table-cell">{item.costLabel}</span>
-              <span className="portfolio-table-cell">{item.payoutLabel}</span>
-              <div className={`portfolio-history-pnl portfolio-history-pnl-${item.pnlTone}`}>
-                <small>PNL</small>
-                <strong>{item.pnlLabel}</strong>
-              </div>
-            </article>
-          ))}
-        </div>
       ) : (
-        <div className="portfolio-empty">{historyEmptyLabel}</div>
+        <PortfolioHistoryList emptyLabel={historyEmptyLabel} items={historyItems} />
       )}
     </section>
   );
@@ -2210,33 +2691,55 @@ export function PortfolioPanel({
 export function ProfilePanel({
   currentWalletAddress = null,
   copyAmount = COPY_AMOUNT_DEFAULT,
+  copyAttributionLabels = {},
   followedWallets,
+  profileCopyAttributionLabel = null,
+  profileHistoryItems = [],
+  profileHistoryStatus = "idle",
+  profileStats = buildProfileStatSummary(null),
   profileWallet,
   profilePositionRows = [],
   profilePositionsCanShowMore = false,
   profilePositionsShowMoreLabel = "Show more",
+  quote = null,
+  quoteStatus = "idle",
   selectedProfilePositionRowId = null,
+  walletConnected = false,
   onAmountSet = () => undefined,
   onFollowWallet,
   onProfilePositionSelect = () => undefined,
   onProfilePositionsShowMore = () => undefined,
   onProfilePositionWalletSubmit = () => undefined,
+  onProfileQuoteRetry,
+  onShareProfile,
+  onShareRow,
   onSelectWallet,
   onUnfollowWallet,
 }: {
   currentWalletAddress?: string | null;
   copyAmount?: number;
+  copyAttributionLabels?: Record<string, string>;
   followedWallets: FollowedWallet[];
+  profileCopyAttributionLabel?: string | null;
+  profileHistoryItems?: PredictPortfolioHistoryItem[];
+  profileHistoryStatus?: ProfileHistoryStatus;
+  profileStats?: ProfileStatSummary;
   profileWallet: FollowedWallet | null;
   profilePositionRows?: MarketHeatPreviewRow[];
   profilePositionsCanShowMore?: boolean;
   profilePositionsShowMoreLabel?: string;
+  quote?: TradeQuote | null;
+  quoteStatus?: TradeQuoteStatus;
   selectedProfilePositionRowId?: string | null;
+  walletConnected?: boolean;
   onAmountSet?: (amount: number) => void;
   onFollowWallet: (wallet: FollowedWallet) => void;
   onProfilePositionSelect?: (rowId: string) => void;
   onProfilePositionsShowMore?: () => void;
   onProfilePositionWalletSubmit?: (rowId: string) => void;
+  onProfileQuoteRetry?: () => void;
+  onShareProfile?: () => void;
+  onShareRow?: (rowId: string) => void;
   onSelectWallet: (wallet: FollowedWallet) => void;
   onUnfollowWallet: (wallet: string) => void;
 }) {
@@ -2256,6 +2759,12 @@ export function ProfilePanel({
       )
     : false;
   const normalizedInputWallet = normalizeProfileWalletAddress(walletInput);
+  const profileHistoryEmptyLabel =
+    profileHistoryStatus === "loading"
+      ? "Loading trade history..."
+      : profileHistoryStatus === "error"
+        ? "Could not load trade history"
+        : "No trade history yet";
 
   return (
     <section className="profile-panel" aria-label="Profile" data-testid="profile-view">
@@ -2267,22 +2776,46 @@ export function ProfilePanel({
         <span className="profile-card-label">Wallet</span>
         {activeWallet ? (
           <>
-            <strong>{activeWallet.displayName}</strong>
-            <small>{activeWallet.wallet}</small>
-            {!isOwnActiveWallet ? (
-              <button
-                type="button"
-                className="profile-follow-button"
-                data-testid="profile-follow-toggle"
-                onClick={() =>
-                  isFollowingActiveWallet
-                    ? onUnfollowWallet(activeWallet.wallet)
-                    : onFollowWallet(activeWallet)
-                }
-              >
-                {isFollowingActiveWallet ? "Following" : "Follow wallet"}
-              </button>
+            <div className="profile-wallet-identity">
+              <WalletIdenticon
+                displayName={activeWallet.displayName}
+                wallet={activeWallet.wallet}
+              />
+              <div>
+                <strong>{activeWallet.displayName}</strong>
+                <small>{activeWallet.wallet}</small>
+              </div>
+            </div>
+            {profileCopyAttributionLabel ? (
+              <small className="profile-copy-summary">{profileCopyAttributionLabel}</small>
             ) : null}
+            <div className="profile-card-actions">
+              {onShareProfile ? (
+                <button
+                  type="button"
+                  className="profile-share-button"
+                  data-testid="profile-share"
+                  onClick={onShareProfile}
+                >
+                  <ShareIcon />
+                  <span>Share</span>
+                </button>
+              ) : null}
+              {!isOwnActiveWallet ? (
+                <button
+                  type="button"
+                  className="profile-follow-button"
+                  data-testid="profile-follow-toggle"
+                  onClick={() =>
+                    isFollowingActiveWallet
+                      ? onUnfollowWallet(activeWallet.wallet)
+                      : onFollowWallet(activeWallet)
+                  }
+                >
+                  {isFollowingActiveWallet ? "Following" : "Follow wallet"}
+                </button>
+              ) : null}
+            </div>
           </>
         ) : (
           <>
@@ -2290,6 +2823,26 @@ export function ProfilePanel({
             <small>Open a wallet from Leaders or paste one below.</small>
           </>
         )}
+      </div>
+      <div className="profile-stat-header" data-testid="profile-stat-header">
+        <div className="profile-stat-header-top">
+          <span className="profile-card-label">Track record</span>
+          <small>{profileStats.sourceLabel}</small>
+        </div>
+        <div className="profile-stat-grid">
+          {profileStats.items.map((item) => (
+            <span
+              className={`profile-stat-item${
+                item.tone ? ` profile-stat-item-${item.tone}` : ""
+              }`}
+              key={item.label}
+            >
+              <small>{item.label}</small>
+              <strong>{item.value}</strong>
+            </span>
+          ))}
+        </div>
+        <ProfilePnlSparkline historyItems={profileHistoryItems} />
       </div>
       {activeWallet ? (
         <MarketHeatPreview
@@ -2308,12 +2861,27 @@ export function ProfilePanel({
           sourceLabel=""
           testId="profile-positions"
           title="Positions"
+          identityMode="market"
+          walletConnected={walletConnected}
+          copyAttributionLabels={copyAttributionLabels}
+          quote={quote}
+          quoteStatus={quoteStatus}
           onAmountSet={onAmountSet}
           onSelectRow={onProfilePositionSelect}
           onShowExpiredChange={() => undefined}
           onShowMore={onProfilePositionsShowMore}
           onSortModeChange={() => undefined}
           onWalletSubmit={onProfilePositionWalletSubmit}
+          onRetryQuote={onProfileQuoteRetry}
+          onShareRow={onShareRow}
+        />
+      ) : null}
+      {activeWallet ? (
+        <PortfolioHistoryList
+          emptyLabel={profileHistoryEmptyLabel}
+          items={profileHistoryItems}
+          testId="profile-trade-history"
+          title="Trade history"
         />
       ) : null}
       <form
@@ -2457,6 +3025,203 @@ function formatWalletLeaderboardWinRate(entry: WalletLeaderboardEntry): string {
   }
 
   return `${Math.round((entry.winCount / settledCount) * 100)}%`;
+}
+
+const PROFILE_LEADERBOARD_SEARCH_ORDER: WalletLeaderboardBoardKey[] = [
+  "highestPnl",
+  "currentWinningStreak",
+  "longestWinningStreak",
+  "worstPnl",
+  "currentLosingStreak",
+  "longestLosingStreak",
+];
+
+const profileLastActiveFormatter = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  month: "short",
+});
+
+function findWalletLeaderboardEntry(
+  snapshot: WalletLeaderboardsSnapshot,
+  wallet: string | null,
+): WalletLeaderboardEntry | null {
+  const normalizedWallet = wallet?.toLowerCase();
+  if (!normalizedWallet) {
+    return null;
+  }
+
+  for (const board of PROFILE_LEADERBOARD_SEARCH_ORDER) {
+    const entry = selectWalletLeaderboardEntries(snapshot, board).find(
+      (candidate) => candidate.wallet.toLowerCase() === normalizedWallet,
+    );
+    if (entry) {
+      return entry;
+    }
+  }
+
+  return null;
+}
+
+function formatProfileLastActive(entry: WalletLeaderboardEntry): string {
+  const timestampMs = entry.lastSeenMs ?? entry.lastSettledAtMs;
+  if (!timestampMs) {
+    return "--";
+  }
+
+  return profileLastActiveFormatter.format(new Date(timestampMs));
+}
+
+function buildProfileStatSummary(entry: WalletLeaderboardEntry | null): ProfileStatSummary {
+  if (!entry) {
+    return {
+      sourceLabel: "Waiting for settled leaderboard data",
+      items: [
+        { label: "Win rate", value: "--" },
+        { label: "All-time PNL", value: "--" },
+        { label: "Current streak", value: "--" },
+        { label: "Best streak", value: "--" },
+        { label: "Total calls", value: "--" },
+        { label: "Last active", value: "--" },
+      ],
+    };
+  }
+
+  const totalCalls = entry.openCount + entry.closedCount;
+
+  return {
+    sourceLabel: "Indexed DeepBook Predict record",
+    items: [
+      { label: "Win rate", value: formatWalletLeaderboardWinRate(entry) },
+      { label: "All-time PNL", value: entry.totalPnlLabel, tone: entry.totalPnlTone },
+      {
+        label: "Current streak",
+        value: entry.currentStreakLabel,
+        tone:
+          entry.currentStreakType === "win"
+            ? "positive"
+            : entry.currentStreakType === "loss"
+              ? "negative"
+              : "flat",
+      },
+      {
+        label: "Best streak",
+        value: entry.longestWinningStreakLabel,
+        tone: entry.longestWinningStreak > 0 ? "positive" : "flat",
+      },
+      { label: "Total calls", value: totalCalls.toLocaleString() },
+      { label: "Last active", value: formatProfileLastActive(entry) },
+    ],
+  };
+}
+
+function parseProfilePnlAtomic(value: string | undefined): bigint | null {
+  if (!value || !/^-?\d+$/.test(value)) {
+    return null;
+  }
+
+  return BigInt(value);
+}
+
+function formatSignedProfileDusdc(value: bigint): string {
+  if (value === 0n) {
+    return "$0";
+  }
+
+  const prefix = value > 0n ? "+" : "-";
+  return `${prefix}${formatDusdcBalance(value > 0n ? value : -value)}`;
+}
+
+function buildProfileStatSummaryFromHistory(
+  historyItems: PredictPortfolioHistoryItem[],
+  status: ProfileHistoryStatus,
+): ProfileStatSummary {
+  const settledResults = historyItems
+    .map((item) => parseProfilePnlAtomic(item.pnlAtomic))
+    .filter((value): value is bigint => value !== null && value !== 0n);
+
+  if (!historyItems.length) {
+    return {
+      sourceLabel:
+        status === "loading"
+          ? "Loading indexed profile record"
+          : status === "error"
+            ? "Profile record unavailable"
+            : "Waiting for settled leaderboard data",
+      items: [
+        { label: "Win rate", value: "--" },
+        { label: "All-time PNL", value: "--" },
+        { label: "Current streak", value: "--" },
+        { label: "Best streak", value: "--" },
+        { label: "Total calls", value: "--" },
+        { label: "Last active", value: "--" },
+      ],
+    };
+  }
+
+  const wins = settledResults.filter((value) => value > 0n).length;
+  const losses = settledResults.filter((value) => value < 0n).length;
+  const settledCount = wins + losses;
+  const totalPnl = settledResults.reduce((sum, value) => sum + value, 0n);
+  let currentStreakType: "win" | "loss" | "none" = "none";
+  let currentStreakLength = 0;
+  let bestWinningStreak = 0;
+  let runningWinningStreak = 0;
+
+  for (const result of settledResults) {
+    const resultType = result > 0n ? "win" : "loss";
+    if (currentStreakType === "none" || currentStreakType === resultType) {
+      currentStreakType = resultType;
+      currentStreakLength += 1;
+    } else if (currentStreakLength > 0) {
+      break;
+    }
+  }
+
+  for (const result of [...settledResults].reverse()) {
+    if (result > 0n) {
+      runningWinningStreak += 1;
+      bestWinningStreak = Math.max(bestWinningStreak, runningWinningStreak);
+    } else {
+      runningWinningStreak = 0;
+    }
+  }
+
+  return {
+    sourceLabel: "Indexed profile history",
+    items: [
+      {
+        label: "Win rate",
+        value: settledCount > 0 ? `${Math.round((wins / settledCount) * 100)}%` : "--",
+      },
+      {
+        label: "All-time PNL",
+        value: formatSignedProfileDusdc(totalPnl),
+        tone: totalPnl > 0n ? "positive" : totalPnl < 0n ? "negative" : "flat",
+      },
+      {
+        label: "Current streak",
+        value:
+          currentStreakType === "none"
+            ? "No streak"
+            : `${currentStreakLength} ${currentStreakType}`,
+        tone:
+          currentStreakType === "win"
+            ? "positive"
+            : currentStreakType === "loss"
+              ? "negative"
+              : "flat",
+      },
+      {
+        label: "Best streak",
+        value: bestWinningStreak > 0 ? `${bestWinningStreak} win` : "No wins",
+        tone: bestWinningStreak > 0 ? "positive" : "flat",
+      },
+      { label: "Total calls", value: historyItems.length.toLocaleString() },
+      { label: "Last active", value: historyItems[0]?.updatedAtLabel ?? "--" },
+    ],
+  };
 }
 
 function walletLeaderboardListLabel(
@@ -2674,52 +3439,72 @@ export function MarketHeatPreview({
   sourceLabel,
   sortMode,
   title = "Alpha Feed",
+  subtitle = null,
   ariaLabel = title,
+  identityMode = "wallet",
   selectedExpiryDate = null,
   showControls = true,
   showExpired,
   showEmptyAction = true,
   emptyTitle,
   emptyDetail,
+  emptyActionLabel,
   canShowMore,
   selectedRowId,
   copyAmount,
+  copyAttributionLabels = {},
   expiryOptions = [],
+  quote = null,
+  quoteStatus = "idle",
   showMoreLabel,
   testId = "market-heat-preview",
+  walletConnected = false,
   onAmountSet,
   onAllExpiriesSelect = () => undefined,
+  onEmptyAction,
   onExpiryChange = () => undefined,
   onShowExpiredChange,
   onShowMore,
   onSortModeChange,
   onWalletSubmit,
+  onRetryQuote,
+  onShareRow,
   onSelectRow,
 }: {
   rows: MarketHeatPreviewRow[];
   sourceLabel: string;
-  sortMode: MarketHeatSortMode;
+  sortMode: MarketHeatFeedMode;
   title?: string;
+  subtitle?: string | null;
   ariaLabel?: string;
+  identityMode?: MarketHeatIdentityMode;
   selectedExpiryDate?: string | null;
   showControls?: boolean;
   showExpired: boolean;
   showEmptyAction?: boolean;
   emptyTitle?: string;
   emptyDetail?: string;
+  emptyActionLabel?: string;
   canShowMore: boolean;
   selectedRowId: string | null;
   copyAmount: number;
+  copyAttributionLabels?: Record<string, string>;
   expiryOptions?: TradeExpiryOption[];
+  quote?: TradeQuote | null;
+  quoteStatus?: TradeQuoteStatus;
   showMoreLabel: string;
   testId?: string;
+  walletConnected?: boolean;
   onAmountSet: (amount: number) => void;
   onAllExpiriesSelect?: () => void;
+  onEmptyAction?: () => void;
   onExpiryChange?: (expiryDate: string) => void;
   onShowExpiredChange: (showExpired: boolean) => void;
   onShowMore: () => void;
-  onSortModeChange: (sortMode: MarketHeatSortMode) => void;
+  onSortModeChange: (sortMode: MarketHeatFeedMode) => void;
   onWalletSubmit: (rowId: string) => void;
+  onRetryQuote?: () => void;
+  onShareRow?: (rowId: string) => void;
   onSelectRow: (rowId: string) => void;
 }) {
   const swipeStartRef = useRef<{ rowId: string; x: number; y: number } | null>(null);
@@ -2788,6 +3573,12 @@ export function MarketHeatPreview({
     swipedRowRef.current = row.id;
 
     if (action === "submit") {
+      const rowQuoteStatus = row.id === selectedRowId ? quoteStatus : "idle";
+      if (!walletConnected || rowQuoteStatus !== "ready") {
+        onSelectRow(row.id);
+        return;
+      }
+
       onWalletSubmit(row.id);
       return;
     }
@@ -2817,6 +3608,7 @@ export function MarketHeatPreview({
           >
             {title}
           </p>
+          {subtitle ? <small className="market-heat-subtitle">{subtitle}</small> : null}
         </div>
         {showControls ? (
           <div className="market-heat-controls">
@@ -2848,6 +3640,14 @@ export function MarketHeatPreview({
                 >
                   Heat
                 </button>
+                <button
+                  type="button"
+                  aria-pressed={sortMode === "following"}
+                  data-testid="market-heat-sort-following"
+                  onClick={() => onSortModeChange("following")}
+                >
+                  Following
+                </button>
               </div>
               <button
                 type="button"
@@ -2868,19 +3668,31 @@ export function MarketHeatPreview({
           <strong>{resolvedEmptyTitle}</strong>
           <span>{resolvedEmptyDetail}</span>
           {!showExpired && showEmptyAction ? (
-            <button type="button" onClick={() => onShowExpiredChange(true)}>
-              Show expired
+            <button
+              type="button"
+              onClick={() => {
+                if (onEmptyAction) {
+                  onEmptyAction();
+                  return;
+                }
+
+                onShowExpiredChange(true);
+              }}
+            >
+              {emptyActionLabel ?? "Show expired"}
             </button>
           ) : null}
         </div>
       ) : null}
       {rows.length > 0 ? (
         <div className="market-heat-table-head" aria-hidden="true">
-          <span>Wallet</span>
+          <span>{identityMode === "market" ? "Market" : "Wallet"}</span>
           <span>Direction</span>
           <span>Strike</span>
           <span>Expiration</span>
-          <span>Heat</span>
+          <span title={MARKET_HEAT_DESCRIPTION}>
+            Heat <span className="market-heat-info">i</span>
+          </span>
           <span />
         </div>
       ) : null}
@@ -2889,15 +3701,42 @@ export function MarketHeatPreview({
         const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
         const sideClass = row.side.toLowerCase();
         const isWalletSubmitReady = row.status === "copy_ready";
+        const rowQuote = isSelected ? quote : null;
+        const rowQuoteStatus = isSelected ? quoteStatus : "idle";
+        const isQuoteReady = Boolean(rowQuoteStatus === "ready" && rowQuote);
+        const isQuoteError = rowQuoteStatus === "error";
+        const quoteFallbackLabel = isQuoteError
+          ? "Quote unavailable — retry"
+          : rowQuoteStatus === "loading"
+            ? "Loading quote..."
+            : "Live quote needed";
+        const walletSubmitCta = !walletConnected
+          ? "Connect wallet first"
+          : isQuoteError
+            ? "Quote unavailable — retry"
+            : isQuoteReady
+              ? "Confirm transaction"
+              : "Loading quote...";
+        const copyAttributionLabel = copyAttributionLabels[row.id];
         const swipePreviewForRow = swipePreview?.rowId === row.id ? swipePreview : null;
         const isSwipeConfirming = swipePreviewForRow?.action === "submit";
-        const returnPreview = buildReturnPreview(copyAmount, estimatePriceFromRow(row));
+        const returnPreview = rowQuote ? buildReturnPreviewFromQuote(rowQuote) : null;
+        const rowIdentityTitle =
+          identityMode === "market" ? row.pairLabel : row.displayName;
+        const rowIdentityDetail =
+          identityMode === "market" ? row.statusLabel : row.walletStatsLabel ?? row.statusLabel;
+        const rowActionLabel =
+          identityMode === "market"
+            ? `${row.pairLabel} ${row.side} call`
+            : `${row.displayName} call`;
+        const durationLabel = row.timeRemainingLabel ?? row.expiryTimeLabel;
+        const isLiveCountdown = isLiveCountdownLabel(row.timeRemainingLabel);
         const intentPanelElement = intentPanel ? (
           <div
             className={`inline-watch-panel inline-watch-panel-${row.status}`}
             data-testid="market-heat-intent-panel"
           >
-            <div className="market-heat-intent-targets" aria-label={`${row.displayName} intent`}>
+            <div className="market-heat-intent-targets" aria-label={`${rowIdentityTitle} intent`}>
               <span>
                 <small>Target</small>
                 <strong>
@@ -2912,7 +3751,11 @@ export function MarketHeatPreview({
               </span>
               <span>
                 <small>Potential payout</small>
-                <strong>{returnPreview?.profitLabel ?? intentPanel.detailLabel}</strong>
+                <strong>
+                  {isWalletSubmitReady
+                    ? returnPreview?.profitLabel ?? quoteFallbackLabel
+                    : intentPanel.detailLabel}
+                </strong>
               </span>
             </div>
             <div className="market-heat-stake-label">Stake amount</div>
@@ -2925,11 +3768,11 @@ export function MarketHeatPreview({
             <div className="market-heat-intent-footer">
               <span>
                 <small>Est. payout</small>
-                <strong>{returnPreview?.payoutLabel ?? "Quote needed"}</strong>
+                <strong>{returnPreview?.payoutLabel ?? quoteFallbackLabel}</strong>
               </span>
               <span>
                 <small>Max profit</small>
-                <strong>{returnPreview?.profitLabel ?? "Quote needed"}</strong>
+                <strong>{returnPreview?.profitLabel ?? quoteFallbackLabel}</strong>
               </span>
               <span>
                 <small>Cost</small>
@@ -2944,12 +3787,26 @@ export function MarketHeatPreview({
                   type="button"
                   className="wallet-submit-button"
                   data-testid="market-heat-wallet-submit"
+                  disabled={!walletConnected || (!isQuoteReady && !isQuoteError)}
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (!walletConnected) {
+                      return;
+                    }
+
+                    if (isQuoteError) {
+                      onRetryQuote?.();
+                      return;
+                    }
+
+                    if (!isQuoteReady) {
+                      return;
+                    }
+
                     onWalletSubmit(row.id);
                   }}
                 >
-                  Confirm transaction
+                  {walletSubmitCta}
                 </button>
               ) : null}
             </div>
@@ -2994,13 +3851,31 @@ export function MarketHeatPreview({
                   : undefined
               }
             >
-              <div className="market-heat-compact-wallet">
-                <div className="wallet-avatar wallet-avatar-compact" aria-hidden="true">
-                  {walletAvatarLabel(row.displayName)}
-                </div>
+              <div
+                className={`market-heat-compact-wallet${
+                  identityMode === "market" ? " market-heat-compact-wallet-market" : ""
+                }`}
+              >
+                {identityMode === "wallet" ? (
+                  <WalletIdenticon
+                    compact
+                    displayName={row.displayName}
+                    wallet={row.wallet}
+                  />
+                ) : null}
                 <div className="market-heat-compact-identity">
-                  <strong>{row.displayName}</strong>
-                  <span>{row.walletStatsLabel ?? row.statusLabel}</span>
+                  <strong>{rowIdentityTitle}</strong>
+                  <span>{rowIdentityDetail}</span>
+                  {row.fillSummaryLabel ? (
+                    <span className="market-heat-fill-summary">
+                      {row.fillSummaryLabel}
+                    </span>
+                  ) : null}
+                  {copyAttributionLabel ? (
+                    <span className="market-heat-copy-attribution">
+                      {copyAttributionLabel}
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <strong className={`direction-pill direction-pill-${sideClass}`}>
@@ -3009,12 +3884,46 @@ export function MarketHeatPreview({
               <div className="market-heat-compact-strike">
                 <strong>{row.strikeLabel.replace(/^Strike\s+/, "")}</strong>
               </div>
-              <div className="market-heat-compact-duration">
-                <strong>{row.timeRemainingLabel ?? row.expiryTimeLabel}</strong>
+              <div
+                className={`market-heat-compact-duration${
+                  isLiveCountdown ? " market-heat-countdown-live" : ""
+                }`}
+                title={isLiveCountdown ? "Live expiry countdown" : undefined}
+              >
+                <strong>{durationLabel}</strong>
+                {isLiveCountdown ? <small>Live</small> : null}
               </div>
-              <div className="market-heat-compact-heat">
+              <div
+                className="market-heat-compact-heat"
+                aria-label={`Heat ${row.heatScore}. ${MARKET_HEAT_DESCRIPTION}`}
+                title={MARKET_HEAT_DESCRIPTION}
+              >
                 <strong>{row.heatScore}</strong>
               </div>
+              {onShareRow ? (
+                <button
+                  type="button"
+                  className="market-heat-share-button"
+                  aria-label={`Share ${rowActionLabel}`}
+                  title="Share call"
+                  data-testid="market-heat-share"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onShareRow(row.id);
+                  }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                  }}
+                  onPointerMove={(event) => {
+                    event.stopPropagation();
+                  }}
+                  onPointerUp={(event) => {
+                    event.stopPropagation();
+                  }}
+                >
+                  <ShareIcon />
+                </button>
+              ) : null}
               <ChevronIcon
                 className={`market-heat-compact-chevron ${
                   isSelected ? "market-heat-compact-chevron-open" : ""
@@ -3130,7 +4039,7 @@ export function AccountSummary({
           <strong>{visiblePnlLabel}</strong>
         </div>
         <div className="account-value">
-          <span>Bankroll</span>
+          <span title="Funds deposited into the Predict manager">Deposited</span>
           <strong data-testid="predict-bankroll-balance">
             {bankrollLabel ?? summary.accountValue}
           </strong>
@@ -3163,7 +4072,7 @@ export function AccountSummary({
       </div>
       <div className="account-summary-stats">
         <div>
-          <span>Available</span>
+          <span title="dUSDC available in the connected wallet">Wallet balance</span>
           <strong data-testid="available-wallet-balance">
             {availableLabel ?? summary.available}
           </strong>
@@ -3314,6 +4223,10 @@ export function App() {
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const toastCounterRef = useRef(0);
   const toastTimeoutsRef = useRef<number[]>([]);
+  const [shareCard, setShareCard] = useState<ShareCardState | null>(null);
+  const [copyAttributions, setCopyAttributions] = useState<CopyAttributionRecord[]>(() =>
+    readStoredCopyAttributions(),
+  );
   const [dusdcBalanceRefreshKey, setDusdcBalanceRefreshKey] = useState(0);
   const [dusdcBalanceState, setDusdcBalanceState] = useState<DusdcBalanceState>({
     accountAddress: null,
@@ -3348,6 +4261,11 @@ export function App() {
     status: "idle",
     positions: [],
   });
+  const [profileHistoryState, setProfileHistoryState] = useState<ProfileHistoryState>({
+    history: [],
+    status: "idle",
+    wallet: null,
+  });
   const [walletLeaderboardsState, setWalletLeaderboardsState] =
     useState<WalletLeaderboardsState>(() => ({
       snapshot: buildWalletLeaderboards(),
@@ -3373,6 +4291,16 @@ export function App() {
     status: "idle",
     quote: null,
   });
+  const [marketHeatQuoteState, setMarketHeatQuoteState] = useState<{
+    key: string | null;
+    status: TradeQuoteStatus;
+    quote: TradeQuote | null;
+  }>({
+    key: null,
+    status: "idle",
+    quote: null,
+  });
+  const [marketHeatQuoteRefreshKey, setMarketHeatQuoteRefreshKey] = useState(0);
   const [tradeQuoteRequested, setTradeQuoteRequested] = useState(false);
   const previewMode = getInitialPreviewMode(realtimeApiBaseUrl);
   const [marketHeatPreview, setMarketHeatPreview] = useState<MarketHeatPreviewModel>(() =>
@@ -3384,7 +4312,7 @@ export function App() {
   const oraclePriceChartRef = useRef<OraclePriceChart | null>(null);
   const [isOracleChartOpen, setIsOracleChartOpen] = useState(false);
   const [marketHeatSortMode, setMarketHeatSortMode] =
-    useState<MarketHeatSortMode>("latest");
+    useState<MarketHeatFeedMode>("latest");
   const [marketHeatShowExpired, setMarketHeatShowExpired] = useState(false);
   const [selectedFeedExpiryDate, setSelectedFeedExpiryDate] = useState<string | null>(null);
   const [selectedTradeExpiryDate, setSelectedTradeExpiryDate] = useState<string | null>(null);
@@ -3420,6 +4348,70 @@ export function App() {
       toastTimeoutsRef.current.push(timeoutId);
     }
   };
+  const recordCopyAttribution = (input: Omit<CopyAttributionRecord, "id">) => {
+    setCopyAttributions((currentRecords) => {
+      const nextRecords = appendCopyAttributionRecord(currentRecords, input);
+      writeStoredCopyAttributions(nextRecords);
+      return nextRecords;
+    });
+  };
+  const openShareCard = async (input: HotHandsShareCardInput) => {
+    try {
+      const card = await renderShareCard(input);
+      setShareCard(card);
+      pushToast({
+        kind: "success",
+        title: "Share card ready",
+        message: input.kind === "call" ? "Call card generated." : "Profile card generated.",
+        groupKey: "share-card",
+      });
+    } catch (error) {
+      pushToast({
+        kind: "error",
+        title: "Share failed",
+        message: walletErrorMessage(error),
+        groupKey: "share-card",
+      });
+    }
+  };
+  const handleCopyShareCard = async () => {
+    if (!shareCard) {
+      return;
+    }
+
+    try {
+      const copied = await copyShareCardToClipboard(shareCard);
+      pushToast({
+        kind: "success",
+        title: copied === "image" ? "Image copied" : "Link copied",
+        message:
+          copied === "image"
+            ? "Paste the card into X or a message."
+            : "Image copy was unavailable, so the share text was copied.",
+        groupKey: "share-card",
+      });
+    } catch (error) {
+      pushToast({
+        kind: "error",
+        title: "Copy failed",
+        message: walletErrorMessage(error),
+        groupKey: "share-card",
+      });
+    }
+  };
+  const handleShareCardToX = () => {
+    if (!shareCard) {
+      return;
+    }
+
+    window.open(shareCard.xUrl, "_blank", "noopener,noreferrer");
+    pushToast({
+      kind: "success",
+      title: "X composer opened",
+      message: "Share text is prefilled.",
+      groupKey: "share-card",
+    });
+  };
   const copyState = replayState.copy;
   useEffect(() => {
     writeStoredStakeAmount(copyState.copyAmount);
@@ -3443,13 +4435,23 @@ export function App() {
     return [...frozenTraders, ...newTraders];
   }, [frozenTraderOrder, replayTraders]);
   const marketHeatNowMs = Date.now();
+  const copyAttributionLabelsByRowId = useMemo(
+    () => buildCopyAttributionLabelsByRowId(marketHeatPreview.rows, copyAttributions),
+    [copyAttributions, marketHeatPreview.rows],
+  );
+  const effectiveMarketHeatSortMode: MarketHeatSortMode =
+    marketHeatSortMode === "following" ? "latest" : marketHeatSortMode;
   const allVisibleMarketHeatRows = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
     intervalLabel: null,
     limit: Number.MAX_SAFE_INTEGER,
     nowMs: marketHeatNowMs,
     showExpired: marketHeatShowExpired,
-    sortMode: marketHeatSortMode,
+    sortMode: effectiveMarketHeatSortMode,
   });
+  const feedModeMarketHeatRows =
+    marketHeatSortMode === "following"
+      ? filterMarketHeatRowsByFollowedWallets(allVisibleMarketHeatRows, followedWallets)
+      : allVisibleMarketHeatRows;
   const allTradeMarketRows = buildTradeMarketLadder(marketHeatPreview, {
     intervalLabel: null,
     nowMs: marketHeatNowMs,
@@ -3461,7 +4463,7 @@ export function App() {
       ? selectedFeedExpiryDate
       : null;
   const expiryFilteredMarketHeatRows = selectMarketHeatRowsForExpiry(
-    allVisibleMarketHeatRows,
+    feedModeMarketHeatRows,
     activeFeedExpiryDate,
   );
   const sortedMarketHeatRows = expiryFilteredMarketHeatRows.slice(0, marketHeatVisibleLimit);
@@ -3513,6 +4515,26 @@ export function App() {
       : tradeQuoteState.key === tradeQuoteKey
         ? tradeQuoteState.status
         : "idle";
+  const activeMarketHeatCopyTrade = marketHeatIntent.selectedRowId
+    ? buildTradeMarketForMarketHeatRow(marketHeatPreview, marketHeatIntent.selectedRowId, {
+        nowMs: marketHeatNowMs,
+      })
+    : null;
+  const marketHeatQuoteKey = activeMarketHeatCopyTrade
+    ? buildTradeQuoteKey(
+        activeMarketHeatCopyTrade.market,
+        activeMarketHeatCopyTrade.row.side,
+        copyState.copyAmount,
+      )
+    : null;
+  const activeMarketHeatQuote =
+    marketHeatQuoteState.key === marketHeatQuoteKey ? marketHeatQuoteState.quote : null;
+  const activeMarketHeatQuoteStatus =
+    activeMarketHeatQuote
+      ? "ready"
+      : marketHeatQuoteState.key === marketHeatQuoteKey
+        ? marketHeatQuoteState.status
+        : "idle";
 
   useEffect(() => {
     marketHeatPreviewRef.current = marketHeatPreview;
@@ -3563,6 +4585,13 @@ export function App() {
   const connectedAccountAddress = currentAccount?.address ?? readOnlyWalletAddress;
   const activeProfileWalletAddress =
     selectedProfileWallet?.wallet ?? connectedAccountAddress ?? null;
+  const isOwnActiveProfileWallet =
+    Boolean(activeProfileWalletAddress && connectedAccountAddress) &&
+    activeProfileWalletAddress?.toLowerCase() === connectedAccountAddress?.toLowerCase();
+  const activeProfileLeaderboardEntry = findWalletLeaderboardEntry(
+    walletLeaderboardsState.snapshot,
+    activeProfileWalletAddress,
+  );
   const allProfilePositionRows = activeProfileWalletAddress
     ? selectVisibleMarketHeatRows(marketHeatPreview.rows, {
         intervalLabel: null,
@@ -3575,6 +4604,9 @@ export function App() {
           row.wallet.toLowerCase() === activeProfileWalletAddress.toLowerCase(),
       )
     : [];
+  const activeProfileCopyAttributionLabel = activeProfileWalletAddress
+    ? buildCopyAttributionLabelForRows(allProfilePositionRows, copyAttributions)
+    : null;
   const profilePositionRows = allProfilePositionRows.slice(0, profilePositionVisibleLimit);
   const profilePositionRemainingCount = Math.max(
     0,
@@ -3599,6 +4631,70 @@ export function App() {
     setProfilePositionVisibleLimit(MARKET_HEAT_PAGE_SIZE);
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
   }, [activeProfileWalletAddress]);
+
+  useEffect(() => {
+    if (activeView !== "profile" || !activeProfileWalletAddress || isOwnActiveProfileWallet) {
+      return undefined;
+    }
+
+    const client = createPredictPortfolioIndexedEventClient({
+      apiBaseUrl: realtimeApiBaseUrl,
+      walletAddress: activeProfileWalletAddress,
+    });
+
+    if (!client) {
+      setProfileHistoryState({
+        history: [],
+        status: "idle",
+        wallet: activeProfileWalletAddress,
+      });
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setProfileHistoryState({
+      history: [],
+      status: "loading",
+      wallet: activeProfileWalletAddress,
+    });
+
+    void loadPredictPortfolioSnapshot({
+      client,
+      limit: 80,
+      managerObjectId: null,
+      maxPages: 1,
+      nowMs: Date.now(),
+      settlementClient: createPredictPortfolioSettlementClient({
+        apiBaseUrl: realtimeApiBaseUrl,
+      }),
+    })
+      .then((snapshot) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setProfileHistoryState({
+          history: snapshot.history.slice(0, 8),
+          status: "ready",
+          wallet: activeProfileWalletAddress,
+        });
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setProfileHistoryState({
+          history: [],
+          status: "error",
+          wallet: activeProfileWalletAddress,
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [activeProfileWalletAddress, activeView, isOwnActiveProfileWallet, realtimeApiBaseUrl]);
 
   const liveDusdcBalanceLabel =
     connectedAccountAddress &&
@@ -3670,9 +4766,42 @@ export function App() {
         nowMs: portfolioNowMs,
       })
     : [];
+  const copiedPositionSourceLabels = useMemo(
+    () => buildCopiedPositionSourceLabels(copyAttributions, connectedAccountAddress),
+    [connectedAccountAddress, copyAttributions],
+  );
+  const visiblePortfolioPositionsWithAttribution = useMemo(
+    () =>
+      addCopiedSourceLabelsToPortfolioPositions(
+        visiblePortfolioPositions,
+        copiedPositionSourceLabels,
+      ),
+    [copiedPositionSourceLabels, visiblePortfolioPositions],
+  );
   const visiblePortfolioHistory = isPredictPortfolioStateCurrent
     ? predictPortfolioState.history
     : [];
+  const isProfileHistoryStateCurrent =
+    activeProfileWalletAddress &&
+    profileHistoryState.wallet?.toLowerCase() === activeProfileWalletAddress.toLowerCase();
+  const activeProfileHistoryItems = isOwnActiveProfileWallet
+    ? visiblePortfolioHistory
+    : isProfileHistoryStateCurrent
+      ? profileHistoryState.history
+      : [];
+  const activeProfileHistoryStatus: ProfileHistoryStatus = isOwnActiveProfileWallet
+    ? visiblePortfolioStatus
+    : isProfileHistoryStateCurrent
+      ? profileHistoryState.status
+      : activeProfileWalletAddress
+        ? "loading"
+        : "idle";
+  const activeProfileStats = activeProfileLeaderboardEntry
+    ? buildProfileStatSummary(activeProfileLeaderboardEntry)
+    : buildProfileStatSummaryFromHistory(
+        activeProfileHistoryItems,
+        activeProfileHistoryStatus,
+      );
   const visiblePortfolioPnl =
     activePredictManagerObjectId && isPredictPortfolioStateCurrent
       ? predictPortfolioState.status === "ready"
@@ -4000,6 +5129,7 @@ export function App() {
         const preview = await loadMarketHeatPreview({
           apiBaseUrl: realtimeApiBaseUrl,
           includeExpired: marketHeatShowExpired,
+          useDemoDisplayNames: true,
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
@@ -4079,6 +5209,7 @@ export function App() {
       try {
         const snapshot = await loadWalletLeaderboards({
           apiBaseUrl: realtimeApiBaseUrl,
+          useDemoDisplayNames: true,
           useMainnetSuinsNames: true,
         });
 
@@ -4273,6 +5404,75 @@ export function App() {
     tradeQuoteKey,
     tradeQuoteRequested,
     tradeSide,
+  ]);
+
+  useEffect(() => {
+    if (
+      (activeView !== "feed" && activeView !== "profile") ||
+      previewMode !== "market" ||
+      !realtimeApiBaseUrl ||
+      !activeMarketHeatCopyTrade ||
+      !marketHeatQuoteKey
+    ) {
+      setMarketHeatQuoteState({
+        key: null,
+        status: "idle",
+        quote: null,
+      });
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setMarketHeatQuoteState({
+      key: marketHeatQuoteKey,
+      status: "loading",
+      quote: null,
+    });
+
+    void loadTradeQuote({
+      apiBaseUrl: realtimeApiBaseUrl,
+      market: activeMarketHeatCopyTrade.market,
+      side: activeMarketHeatCopyTrade.row.side,
+      spendUsd: copyState.copyAmount,
+    })
+      .then((quote) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setMarketHeatQuoteState({
+          key: marketHeatQuoteKey,
+          status: quote ? "ready" : "error",
+          quote,
+        });
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setMarketHeatQuoteState({
+          key: marketHeatQuoteKey,
+          status: "error",
+          quote: null,
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [
+    activeMarketHeatCopyTrade?.market.expiry,
+    activeMarketHeatCopyTrade?.market.id,
+    activeMarketHeatCopyTrade?.market.oracleId,
+    activeMarketHeatCopyTrade?.market.strikeRaw,
+    activeMarketHeatCopyTrade?.row.side,
+    activeView,
+    copyState.copyAmount,
+    marketHeatQuoteKey,
+    marketHeatQuoteRefreshKey,
+    previewMode,
+    realtimeApiBaseUrl,
   ]);
 
   useEffect(() => {
@@ -4478,6 +5678,23 @@ export function App() {
         label: "Copy transaction sent.",
         digest,
       });
+      recordCopyAttribution({
+        amount:
+          Number.isFinite(quote.costUsd) && quote.costUsd > 0
+            ? quote.costUsd
+            : copyState.copyAmount,
+        copied_position_id: buildPredictPortfolioPositionId({
+          managerId: activePredictManagerObjectId,
+          oracleId: copyTrade.market.oracleId,
+          expiry: copyTrade.market.expiry,
+          strike: copyTrade.market.strikeRaw,
+          direction: copyTrade.row.side,
+        }),
+        copier: currentAccount.address,
+        position_id: copyAttributionTargetForMarketHeatRow(copyTrade.row).positionId,
+        source_wallet: copyTrade.row.wallet,
+        timestamp: Date.now(),
+      });
       refreshAfterWalletTransaction(digest);
     } catch (error) {
       setWalletTxState({
@@ -4487,9 +5704,10 @@ export function App() {
       });
     }
   };
-  const handleMarketHeatSortModeChange = (sortMode: MarketHeatSortMode) => {
+  const handleMarketHeatSortModeChange = (sortMode: MarketHeatFeedMode) => {
     setMarketHeatSortMode(sortMode);
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
+    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
   };
   const handleFeedAllExpiriesSelect = () => {
     setSelectedFeedExpiryDate(null);
@@ -4519,6 +5737,9 @@ export function App() {
   const handleMarketHeatShowMore = () => {
     setMarketHeatVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
   };
+  const handleFeedEmptyAction = () => {
+    setActiveView("leaderboards");
+  };
   const handleProfilePositionsShowMore = () => {
     setProfilePositionVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
   };
@@ -4541,15 +5762,38 @@ export function App() {
     setActiveView("profile");
   };
   const handleFollowWallet = (wallet: FollowedWallet) => {
+    const normalizedWallet = normalizeProfileWalletAddress(wallet.wallet);
+    if (!normalizedWallet) {
+      pushToast({
+        kind: "error",
+        title: "Follow failed",
+        message: "Wallet address was invalid.",
+        groupKey: "follow-wallet",
+      });
+      return;
+    }
+
     setFollowedWallets((currentWallets) => {
       const nextWallets = mergeFollowedWallet(currentWallets, wallet);
       writeFollowedWallets(nextWallets);
       return nextWallets;
     });
+    pushToast({
+      kind: "success",
+      title: "Wallet followed",
+      message: wallet.displayName || formatWalletAddress(normalizedWallet),
+      groupKey: "follow-wallet",
+    });
   };
   const handleUnfollowWallet = (wallet: string) => {
     const normalizedWallet = normalizeProfileWalletAddress(wallet);
     if (!normalizedWallet) {
+      pushToast({
+        kind: "error",
+        title: "Unfollow failed",
+        message: "Wallet address was invalid.",
+        groupKey: "follow-wallet",
+      });
       return;
     }
 
@@ -4560,6 +5804,12 @@ export function App() {
       );
       writeFollowedWallets(nextWallets);
       return nextWallets;
+    });
+    pushToast({
+      kind: "success",
+      title: "Wallet unfollowed",
+      message: formatWalletAddress(normalizedWallet),
+      groupKey: "follow-wallet",
     });
   };
   const handleDepositAmountChange = (amount: number) => {
@@ -4913,27 +6163,102 @@ export function App() {
       });
     }
   };
+  const handleShareProfile = () => {
+    if (!activeProfileWalletAddress) {
+      pushToast({
+        kind: "error",
+        title: "No profile selected",
+        message: "Open a wallet profile first.",
+        groupKey: "share-card",
+      });
+      return;
+    }
+
+    const walletLabel =
+      selectedProfileWallet?.displayName ??
+      (isOwnActiveProfileWallet ? "Your wallet" : formatWalletAddress(activeProfileWalletAddress));
+
+    void openShareCard({
+      kind: "profile",
+      title: walletLabel,
+      subtitle: "Verifiable DeepBook Predict record",
+      walletLabel,
+      walletAddress: activeProfileWalletAddress,
+      stats: buildProfileShareStats(activeProfileStats),
+      copiedLabel: activeProfileCopyAttributionLabel,
+      url: currentShareUrl(),
+    });
+  };
+  const handleMarketHeatShare = (rowId: string) => {
+    const row = marketHeatPreview.rows.find((candidate) => candidate.id === rowId);
+    if (!row) {
+      pushToast({
+        kind: "error",
+        title: "Call unavailable",
+        message: "Refresh the feed and try again.",
+        groupKey: "share-card",
+      });
+      return;
+    }
+
+    const copiedLabel = copyAttributionLabelsByRowId[row.id];
+    void openShareCard({
+      kind: "call",
+      title: `${row.side} ${row.pairLabel} call`,
+      subtitle: `${row.displayName} · ${row.statusLabel}`,
+      walletLabel: row.displayName,
+      walletAddress: row.wallet,
+      stats: buildCallShareStats(row, copiedLabel),
+      call: {
+        direction: row.side,
+        expiry: row.expiryTimeLabel,
+        strike: row.strikeLabel.replace(/^Strike\s+/, ""),
+      },
+      copiedLabel,
+      url: currentShareUrl(),
+    });
+  };
+
+  const isFollowingFeedMode = marketHeatSortMode === "following";
+  const followingFeedEmptyTitle = followedWallets.length
+    ? "No followed calls right now"
+    : "You're not following anyone yet";
+  const followingFeedEmptyDetail = followedWallets.length
+    ? "Fresh calls from followed wallets will appear here."
+    : "Find leaders to follow.";
 
   const renderMarketHeatPreview = (testId = "market-heat-preview") => (
     <MarketHeatPreview
       rows={sortedMarketHeatRows}
       sourceLabel={marketHeatPreview.sourceLabel}
       sortMode={marketHeatSortMode}
+      subtitle={MARKET_HEAT_FEED_SUBTITLE}
       selectedExpiryDate={activeFeedExpiryDate}
+      emptyActionLabel={isFollowingFeedMode ? "Find leaders" : undefined}
+      emptyDetail={isFollowingFeedMode ? followingFeedEmptyDetail : undefined}
+      emptyTitle={isFollowingFeedMode ? followingFeedEmptyTitle : undefined}
       expiryOptions={tradeExpiryOptions}
       showExpired={marketHeatShowExpired}
+      showEmptyAction={isFollowingFeedMode ? true : undefined}
       canShowMore={marketHeatRemainingCount > 0}
       selectedRowId={marketHeatIntent.selectedRowId}
       copyAmount={copyState.copyAmount}
+      copyAttributionLabels={copyAttributionLabelsByRowId}
+      quote={activeMarketHeatQuote}
+      quoteStatus={activeMarketHeatQuoteStatus}
       showMoreLabel={marketHeatShowMoreLabel}
       testId={testId}
+      walletConnected={Boolean(currentAccount)}
       onAmountSet={handleAmountSet}
       onAllExpiriesSelect={handleFeedAllExpiriesSelect}
+      onEmptyAction={isFollowingFeedMode ? handleFeedEmptyAction : undefined}
       onExpiryChange={handleFeedExpiryChange}
       onShowExpiredChange={handleMarketHeatShowExpiredChange}
       onShowMore={handleMarketHeatShowMore}
       onSortModeChange={handleMarketHeatSortModeChange}
       onWalletSubmit={handleMarketHeatWalletSubmit}
+      onRetryQuote={() => setMarketHeatQuoteRefreshKey((key) => key + 1)}
+      onShareRow={handleMarketHeatShare}
       onSelectRow={handleMarketHeatSelect}
     />
   );
@@ -5065,7 +6390,7 @@ export function App() {
               }
               historyItems={visiblePortfolioHistory}
               nowMs={portfolioNowMs}
-              positions={visiblePortfolioPositions}
+              positions={visiblePortfolioPositionsWithAttribution}
               status={visiblePortfolioStatus}
               walletActionPending={isWalletActionPending}
               walletSubmittedPositionId={portfolioWalletSubmitPositionId}
@@ -5076,17 +6401,28 @@ export function App() {
             <ProfilePanel
               currentWalletAddress={connectedAccountAddress}
               copyAmount={copyState.copyAmount}
+              copyAttributionLabels={copyAttributionLabelsByRowId}
               followedWallets={followedWallets}
+              profileCopyAttributionLabel={activeProfileCopyAttributionLabel}
+              profileHistoryItems={activeProfileHistoryItems}
+              profileHistoryStatus={activeProfileHistoryStatus}
+              profileStats={activeProfileStats}
               profileWallet={selectedProfileWallet}
               profilePositionRows={profilePositionRows}
               profilePositionsCanShowMore={profilePositionRemainingCount > 0}
               profilePositionsShowMoreLabel={profilePositionShowMoreLabel}
               selectedProfilePositionRowId={marketHeatIntent.selectedRowId}
+              quote={activeMarketHeatQuote}
+              quoteStatus={activeMarketHeatQuoteStatus}
+              walletConnected={Boolean(currentAccount)}
               onAmountSet={handleAmountSet}
               onFollowWallet={handleFollowWallet}
               onProfilePositionSelect={handleMarketHeatSelect}
               onProfilePositionsShowMore={handleProfilePositionsShowMore}
               onProfilePositionWalletSubmit={handleMarketHeatWalletSubmit}
+              onProfileQuoteRetry={() => setMarketHeatQuoteRefreshKey((key) => key + 1)}
+              onShareProfile={handleShareProfile}
+              onShareRow={handleMarketHeatShare}
               onSelectWallet={handleProfileWalletOpen}
               onUnfollowWallet={handleUnfollowWallet}
             />
@@ -5099,6 +6435,16 @@ export function App() {
           >
             {renderTradeTicket("expanded-chart-trade-ticket")}
           </OraclePriceChartModal>
+        ) : null}
+        {shareCard ? (
+          <ShareCardModal
+            card={shareCard}
+            onClose={() => setShareCard(null)}
+            onCopy={() => {
+              void handleCopyShareCard();
+            }}
+            onShareToX={handleShareCardToX}
+          />
         ) : null}
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
         <BottomNav activeView={activeView} onViewChange={handleBottomNavViewChange} />

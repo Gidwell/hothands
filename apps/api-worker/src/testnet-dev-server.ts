@@ -233,7 +233,8 @@ export function createTestnetDevServerFetch({
             eventType: readPortfolioEventType(url),
             indexerReader,
             limit: readOptionalPositiveIntegerSearchParam(url, "limit") ?? 50,
-            managerId: requireSearchParam(url, "managerId")
+            managerId: url.searchParams.get("managerId")?.trim() || undefined,
+            owner: url.searchParams.get("wallet")?.trim() || undefined
           })
         );
       } catch (error) {
@@ -415,17 +416,24 @@ async function getIndexedPortfolioEvents({
   eventType,
   indexerReader,
   limit,
-  managerId
+  managerId,
+  owner
 }: {
   eventType: "mint" | "redeem";
   indexerReader: PredictIndexerReader;
   limit: number;
-  managerId: string;
+  managerId?: string;
+  owner?: string;
 }) {
+  if (!managerId && !owner) {
+    throw new Error("managerId or wallet is required");
+  }
+
   const events = await indexerReader.listRecentTradeEvents({
     kind: eventType,
     limit,
-    managerId
+    managerId,
+    owner
   });
 
   return {

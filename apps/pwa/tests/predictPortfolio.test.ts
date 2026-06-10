@@ -601,6 +601,66 @@ describe("Predict portfolio", () => {
     expect(positions[0]?.quantity).toBe("5000000");
   });
 
+  test("loads indexed portfolio events by wallet for profile history", async () => {
+    const calls: string[] = [];
+    const fallbackQueries: unknown[] = [];
+    const client = createPredictPortfolioIndexedEventClient({
+      apiBaseUrl: "https://api.hot-hands.test",
+      fallbackClient: {
+        queryEvents: async (input) => {
+          fallbackQueries.push(input.query);
+
+          return {
+            data: [],
+            hasNextPage: false,
+            nextCursor: null,
+          };
+        },
+      },
+      walletAddress: "0xwallet",
+      fetcher: async (input) => {
+        calls.push(String(input));
+
+        return Response.json({
+          data: [
+            {
+              id: {
+                txDigest: "mint-wallet-digest",
+                eventSeq: "0",
+              },
+              timestampMs: "1779100000000",
+              parsedJson: {
+                manager_id: "0xmanager",
+                oracle_id: "0xoracle",
+                expiry: "1779193600",
+                strike: "65000000000",
+                is_up: true,
+                quantity: "5000000",
+                cost: "2250000",
+              },
+            },
+          ],
+          hasNextPage: false,
+          nextCursor: null,
+        });
+      },
+    });
+
+    const result = await client?.queryEvents({
+      query: {
+        MoveEventType: POSITION_MINTED_EVENT_TYPE,
+      },
+      limit: 20,
+      order: "descending",
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/portfolio-events?wallet=0xwallet&eventType=mint&limit=20",
+    ]);
+    expect(fallbackQueries).toEqual([]);
+    expect(result?.data).toHaveLength(1);
+  });
+
   test("falls back to a direct event client when indexed portfolio API is unavailable", async () => {
     const fallbackQueries: unknown[] = [];
     const client = createPredictPortfolioIndexedEventClient({

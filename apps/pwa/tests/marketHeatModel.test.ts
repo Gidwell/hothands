@@ -122,6 +122,61 @@ describe("market heat preview model", () => {
     expect(preview.rows[0]?.expiryTimeLabel).toBe("Jun 7, 17:00 UTC+9");
   });
 
+  test("collapses repeated feed fills into one visible row with fill counts", () => {
+    const nowMs = 1_779_158_000_000;
+    const expiryMs = nowMs + 60 * 60_000;
+    const duplicateFillBase = {
+      wallet: "0x5e2a00000000000000000000000000000000efb6",
+      manager: "manager 0xfeed...cafe",
+      oracleId: "oracle-duplicate",
+      market: "BTC-USD",
+      side: "DOWN" as const,
+      strike: 63_187,
+      strikeRaw: 63_187_000_000,
+      expiryMs,
+      intervalLabel: "1h",
+      status: "copy_ready" as const,
+    };
+    const preview = buildMarketHeatPreview(
+      [
+        {
+          ...duplicateFillBase,
+          id: "fill-a",
+          observedAtMs: nowMs - 60_000,
+          heatScore: 56,
+          quantity: 50_000_000,
+          cost: 25_000_000,
+          costUsd: 25,
+        },
+        {
+          ...duplicateFillBase,
+          id: "fill-b",
+          observedAtMs: nowMs - 30_000,
+          heatScore: 61,
+          quantity: 25_000_000,
+          cost: 12_500_000,
+          costUsd: 12.5,
+        },
+      ],
+      8,
+      { nowMs },
+    );
+    const [row] = preview.rows;
+    const [market] = buildTradeMarketLadder(preview, { nowMs });
+
+    expect(preview.rows).toHaveLength(1);
+    expect(row?.id).toBe("fill-b");
+    expect(row?.fillCount).toBe(2);
+    expect(row?.fillSummaryLabel).toBe("2 fills · $37.50 total");
+    expect(row?.quantity).toBe(75_000_000);
+    expect(row?.cost).toBe(37_500_000);
+    expect(row?.costUsd).toBe(37.5);
+    expect(row?.heatScore).toBe(61);
+    expect(market?.tradeCount).toBe(2);
+    expect(market?.down.tradeCount).toBe(2);
+    expect(market?.volumeUsd).toBe(37.5);
+  });
+
   test("selects and closes a next-mint row without implying a ready signature", () => {
     const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 3, {
       nowMs: 1_779_165_600_000,
@@ -1462,6 +1517,18 @@ describe("market heat preview model", () => {
       status: "copy_ready",
       statusLabel: "5m ago",
     });
+  });
+
+  test("can seed captured fallback rows with SuiNS-style demo names", async () => {
+    const nowMs = Date.UTC(2026, 5, 1, 12, 0, 0);
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "",
+      nowMs,
+      useDemoDisplayNames: true,
+    });
+
+    expect(preview.rows[0]?.displayName).toMatch(/\.sui$/);
+    expect(preview.rows[0]?.displayNameSource).toBe("demo_seed");
   });
 
   test("falls back to captured rows when the testnet API request fails", async () => {

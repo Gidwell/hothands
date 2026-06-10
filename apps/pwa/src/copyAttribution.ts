@@ -1,0 +1,213 @@
+export const COPY_ATTRIBUTION_STORAGE_KEY = "hot-hands-copy-attribution-records";
+const MAX_STORED_COPY_ATTRIBUTIONS = 200;
+
+export type CopyAttributionRecord = {
+  id: string;
+  copier: string;
+  source_wallet: string;
+  position_id: string;
+  amount: number;
+  timestamp: number;
+  copied_position_id?: string;
+};
+
+export type CopyAttributionInput = Omit<CopyAttributionRecord, "id">;
+
+export type CopyAttributionTarget = {
+  positionId: string;
+  sourceWallet: string;
+};
+
+export type CopyAttributionSummary = {
+  amount: number;
+  count: number;
+};
+
+type CopyAttributionStorage = Pick<Storage, "getItem" | "setItem">;
+
+export function buildCopyAttributionSourcePositionId({
+  expiryMs,
+  oracleId,
+  rowId,
+  side,
+  sourceWallet,
+  strikeRaw,
+}: {
+  expiryMs: number;
+  oracleId?: string | null;
+  rowId: string;
+  side: "UP" | "DOWN";
+  sourceWallet: string;
+  strikeRaw?: number | null;
+}): string {
+  const normalizedWallet = sourceWallet.trim().toLowerCase();
+  const normalizedOracle = (oracleId ?? rowId).trim();
+  const normalizedStrike =
+    typeof strikeRaw === "number" && Number.isFinite(strikeRaw)
+      ? Math.trunc(strikeRaw)
+      : "unknown";
+  const normalizedExpiry = Number.isFinite(expiryMs) ? Math.trunc(expiryMs) : "unknown";
+
+  return [
+    normalizedWallet || "unknown-wallet",
+    normalizedOracle || rowId,
+    normalizedExpiry,
+    normalizedStrike,
+    side,
+  ].join(":");
+}
+
+export function readCopyAttributionRecords(
+  storage: CopyAttributionStorage | null | undefined,
+): CopyAttributionRecord[] {
+  if (!storage) {
+    return [];
+  }
+
+  return parseCopyAttributionRecords(storage.getItem(COPY_ATTRIBUTION_STORAGE_KEY));
+}
+
+export function writeCopyAttributionRecords(
+  storage: CopyAttributionStorage | null | undefined,
+  records: CopyAttributionRecord[],
+): void {
+  if (!storage) {
+    return;
+  }
+
+  storage.setItem(
+    COPY_ATTRIBUTION_STORAGE_KEY,
+    JSON.stringify(records.slice(0, MAX_STORED_COPY_ATTRIBUTIONS)),
+  );
+}
+
+export function parseCopyAttributionRecords(serialized: string | null): CopyAttributionRecord[] {
+  if (!serialized) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(serialized);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map(parseCopyAttributionRecord)
+      .filter((record): record is CopyAttributionRecord => record !== null)
+      .slice(0, MAX_STORED_COPY_ATTRIBUTIONS);
+  } catch {
+    return [];
+  }
+}
+
+export function appendCopyAttributionRecord(
+  records: CopyAttributionRecord[],
+  input: CopyAttributionInput,
+  id = `copy-${Date.now()}-${records.length + 1}`,
+): CopyAttributionRecord[] {
+  const record = parseCopyAttributionRecord({ ...input, id });
+
+  if (!record) {
+    return records;
+  }
+
+  return [record, ...records].slice(0, MAX_STORED_COPY_ATTRIBUTIONS);
+}
+
+export function summarizeCopyAttribution(
+  target: CopyAttributionTarget,
+  records: CopyAttributionRecord[],
+): CopyAttributionSummary {
+  const seed = seededCopyAttributionSummary(target.positionId);
+  const normalizedWallet = target.sourceWallet.toLowerCase();
+  const localRecords = records.filter(
+    (record) =>
+      record.position_id === target.positionId &&
+      record.source_wallet.toLowerCase() === normalizedWallet,
+  );
+
+  return {
+    count: seed.count + localRecords.length,
+    amount:
+      seed.amount +
+      localRecords.reduce(
+        (total, record) => total + (Number.isFinite(record.amount) ? record.amount : 0),
+        0,
+      ),
+  };
+}
+
+export function formatCopyAttributionLabel(summary: CopyAttributionSummary): string {
+  return `Copied by ${summary.count.toLocaleString("en-US")} · ${formatCopyAttributionAmount(
+    summary.amount,
+  )} copied`;
+}
+
+export function formatCopyAttributionAmount(amount: number): string {
+  const safeAmount = Number.isFinite(amount) ? Math.max(0, amount) : 0;
+
+  return `$${safeAmount.toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: Number.isInteger(safeAmount) ? 0 : 2,
+  })}`;
+}
+
+function seededCopyAttributionSummary(positionId: string): CopyAttributionSummary {
+  const hash = stableHash(positionId);
+  const count = 2 + (hash % 11);
+  const averageCopyAmount = [10, 15, 25, 40, 50, 75][Math.floor(hash / 11) % 6];
+
+  return {
+    count,
+    amount: count * averageCopyAmount,
+  };
+}
+
+function parseCopyAttributionRecord(value: unknown): CopyAttributionRecord | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const record = value as Partial<CopyAttributionRecord>;
+  const id = stringValue(record.id);
+  const copier = stringValue(record.copier);
+  const sourceWallet = stringValue(record.source_wallet);
+  const positionId = stringValue(record.position_id);
+  const amount = finiteNumber(record.amount);
+  const timestamp = finiteNumber(record.timestamp);
+  const copiedPositionId = stringValue(record.copied_position_id);
+
+  if (!id || !copier || !sourceWallet || !positionId || amount === null || timestamp === null) {
+    return null;
+  }
+
+  return {
+    id,
+    copier,
+    source_wallet: sourceWallet,
+    position_id: positionId,
+    amount,
+    timestamp,
+    ...(copiedPositionId ? { copied_position_id: copiedPositionId } : {}),
+  };
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stableHash(value: string): number {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
