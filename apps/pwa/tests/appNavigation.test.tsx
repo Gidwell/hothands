@@ -1331,6 +1331,62 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain('data-testid="trade-custom-strike"');
   });
 
+  test("renders same-day trade markets as separate expiry cards", () => {
+    const earlyMarket = tradeMarketRowFixture({
+      id: "btc-jun12-0100",
+      expiryMs: new Date(2026, 5, 12, 1).getTime(),
+      expiryTimeLabel: "Jun 12, 01:00 PDT",
+      intervalLabel: "23d",
+      timeRemainingLabel: "8h left",
+      strike: 62_000,
+      strikeLabel: "$62,000",
+      strikeRaw: 62_000_000_000,
+      strikeOptions: [
+        {
+          strike: 62_000,
+          strikeLabel: "$62,000",
+          strikeRaw: 62_000_000_000,
+        },
+      ],
+    });
+    const laterMarket = tradeMarketRowFixture({
+      id: "btc-jun12-0500",
+      expiryMs: new Date(2026, 5, 12, 5).getTime(),
+      expiryTimeLabel: "Jun 12, 05:00 PDT",
+      intervalLabel: "23d",
+      timeRemainingLabel: "12h left",
+      strike: 63_000,
+      strikeLabel: "$63,000",
+      strikeRaw: 63_000_000_000,
+      strikeOptions: [
+        {
+          strike: 63_000,
+          strikeLabel: "$63,000",
+          strikeRaw: 63_000_000_000,
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[laterMarket, earlyMarket]}
+        copyAmount={25}
+        selectedMarketId={earlyMarket.id}
+        selectedSide="UP"
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html.match(/data-testid="trade-market-card"/g) ?? []).toHaveLength(2);
+    expect(html.indexOf("Jun 12, 01:00 PDT")).toBeLessThan(
+      html.indexOf("Jun 12, 05:00 PDT"),
+    );
+    expect(html).toContain('aria-label="Trade UP $62,000"');
+    expect(html).toContain('aria-label="Trade UP $63,000"');
+  });
+
   test("limits the trade ladder to four prices around the active strike", () => {
     const html = renderToStaticMarkup(
       <TradeTicket

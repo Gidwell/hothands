@@ -2095,6 +2095,260 @@ function TradeExpiryRail({
   );
 }
 
+function sortTradeMarketCards(
+  left: TradeMarketLadderRow,
+  right: TradeMarketLadderRow,
+): number {
+  return (
+    left.expiryMs - right.expiryMs ||
+    right.tradeCount - left.tradeCount ||
+    left.strike - right.strike ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function TradeMarketCard({
+  canSubmitTrade,
+  copyAmount,
+  customStrike = null,
+  isSelectedMarket,
+  marketPriceLabel = null,
+  marketRow,
+  quote = null,
+  quoteStatus = "idle",
+  returnPreview,
+  selectedSide,
+  tradeWalletButtonLabel,
+  walletActionPending = false,
+  onAmountSet,
+  onMarketChange,
+  onSideChange,
+  onWalletSubmit,
+}: {
+  canSubmitTrade: boolean;
+  copyAmount: number;
+  customStrike?: TradeMarketSelection | null;
+  isSelectedMarket: boolean;
+  marketPriceLabel?: string | null;
+  marketRow: TradeMarketLadderRow;
+  quote?: TradeQuote | null;
+  quoteStatus?: TradeQuoteStatus;
+  returnPreview: ReturnPreview | null;
+  selectedSide: TradeSide;
+  tradeWalletButtonLabel: string;
+  walletActionPending?: boolean;
+  onAmountSet: (amount: number) => void;
+  onMarketChange: (selection: TradeMarketSelection) => void;
+  onSideChange: (side: TradeSide) => void;
+  onWalletSubmit: () => void;
+}) {
+  const {
+    ladderRows,
+    selectedLadderKey,
+    selectedMarket,
+  } = buildTradeLadderDisplayRows({
+    customStrike: isSelectedMarket ? customStrike : null,
+    marketPriceLabel,
+    marketRows: [marketRow],
+    selectedMarketId: marketRow.id,
+  });
+  const cardMarket = selectedMarket ?? marketRow;
+  const spotPrice = marketPriceLabel ? parseTradeStrikeInputValue(marketPriceLabel) : null;
+  const spotLineIndex =
+    spotPrice === null
+      ? -1
+      : ladderRows.findIndex((row) => row.selection.strike >= spotPrice);
+  const normalizedSpotLineIndex =
+    spotPrice === null || ladderRows.length === 0
+      ? -1
+      : spotLineIndex === -1
+        ? ladderRows.length
+        : spotLineIndex;
+  const selectedQuoteStatus = isSelectedMarket ? quoteStatus : "idle";
+  const selectedQuote = isSelectedMarket ? quote : null;
+
+  return (
+    <div className="trade-ticket-panel" data-testid="trade-market-card">
+      <div className="trade-ticket-title-row">
+        <div className="trade-ticket-title">
+          <p>Up/Down</p>
+          <strong>BTC strike ladder</strong>
+        </div>
+        <span className="trade-duration-pill">{cardMarket.intervalLabel}</span>
+      </div>
+
+      <div className="trade-ticket-stats">
+        <span>
+          <small>{cardMarket.pairLabel}</small>
+          {marketPriceLabel ?? "Live market"}
+        </span>
+        <span>
+          <small>Expiry</small>
+          {cardMarket.expiryTimeLabel}
+        </span>
+      </div>
+
+      <div className="trade-market-ladder" aria-label="Up Down strike ladder">
+        <div className="trade-ladder-heading">
+          <span>UP</span>
+          <span>Strike</span>
+          <span>DOWN</span>
+        </div>
+        {ladderRows.length ? (
+          ladderRows.map(({ key, market, selection }, index) => {
+            const isSelectedStrike = isSelectedMarket && key === selectedLadderKey;
+            const isSelectedUp = isSelectedStrike && selectedSide === "UP";
+            const isSelectedDown = isSelectedStrike && selectedSide === "DOWN";
+            const upQuote =
+              isSelectedUp && selectedQuoteStatus === "ready" && selectedQuote?.side === "UP"
+                ? selectedQuote
+                : null;
+            const downQuote =
+              isSelectedDown && selectedQuoteStatus === "ready" && selectedQuote?.side === "DOWN"
+                ? selectedQuote
+                : null;
+
+            return (
+              <div className="trade-ladder-row" key={key}>
+                {index === normalizedSpotLineIndex ? (
+                  <div className="trade-spot-line">Oracle price {marketPriceLabel}</div>
+                ) : null}
+                <button
+                  type="button"
+                  className={`trade-ladder-side trade-ladder-side-up ${
+                    isSelectedUp ? "selected" : ""
+                  }`}
+                  aria-label={`Trade UP ${selection.strikeLabel}`}
+                  aria-pressed={isSelectedUp}
+                  onClick={() => {
+                    onMarketChange(selection);
+                    onSideChange("UP");
+                  }}
+                >
+                  <strong>
+                    {upQuote ? formatTradeQuotePrice(upQuote) : formatTradeSidePrice(market.up)}
+                  </strong>
+                </button>
+                <span className="trade-ladder-strike">
+                  <strong>{selection.strikeLabel}</strong>
+                  <small>
+                    {market.timeRemainingLabel} · {market.moneynessLabel}
+                  </small>
+                </span>
+                <button
+                  type="button"
+                  className={`trade-ladder-side trade-ladder-side-down ${
+                    isSelectedDown ? "selected" : ""
+                  }`}
+                  aria-label={`Trade DOWN ${selection.strikeLabel}`}
+                  aria-pressed={isSelectedDown}
+                  onClick={() => {
+                    onMarketChange(selection);
+                    onSideChange("DOWN");
+                  }}
+                >
+                  <strong>
+                    {downQuote
+                      ? formatTradeQuotePrice(downQuote)
+                      : formatTradeSidePrice(market.down)}
+                  </strong>
+                </button>
+              </div>
+            );
+          })
+        ) : (
+          <div className="trade-ladder-empty">No active markets</div>
+        )}
+        {normalizedSpotLineIndex === ladderRows.length ? (
+          <div className="trade-spot-line trade-spot-line-standalone">
+            Oracle price {marketPriceLabel}
+          </div>
+        ) : null}
+      </div>
+
+      {isSelectedMarket ? (
+        <section className="trade-order-panel" aria-label="Selected position">
+          <div className="trade-row-ticket-heading">
+            <div>
+              <span>Selected</span>
+              <strong>
+                {selectedSide} {cardMarket.strikeLabel}
+              </strong>
+              <small>{formatTradeOutcome(selectedSide, cardMarket.strikeLabel)}</small>
+            </div>
+            <small>{cardMarket.expiryTimeLabel}</small>
+          </div>
+          <CopyAmountControls
+            ariaLabel="Trade spend amounts"
+            copyAmount={copyAmount}
+            onAmountSet={onAmountSet}
+          />
+          <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
+            <span>
+              <small>Spend</small>
+              {formatCopyAmount(copyAmount)}
+            </span>
+            {selectedQuoteStatus === "loading" ? (
+              <>
+                <span className="metric-muted">
+                  <small>Est. payout</small>
+                  Quoting...
+                </span>
+                <span className="metric-muted">
+                  <small>Max profit</small>
+                  Quoting...
+                </span>
+              </>
+            ) : selectedQuoteStatus === "error" ? (
+              <>
+                <span className="metric-muted">
+                  <small>Est. payout</small>
+                  Quote unavailable
+                </span>
+                <span className="metric-muted">
+                  <small>Max profit</small>
+                  Quote unavailable
+                </span>
+              </>
+            ) : returnPreview ? (
+              <>
+                <span>
+                  <small>Est. payout</small>
+                  {returnPreview.payoutLabel}
+                </span>
+                <span>
+                  <small>Max profit</small>
+                  {returnPreview.profitLabel}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="metric-muted">
+                  <small>Est. payout</small>
+                  Quote needed
+                </span>
+                <span className="metric-muted">
+                  <small>Max profit</small>
+                  Quote needed
+                </span>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            className="trade-wallet-button"
+            data-testid="trade-wallet-submit"
+            disabled={!canSubmitTrade}
+            onClick={onWalletSubmit}
+          >
+            {walletActionPending ? "Sending..." : tradeWalletButtonLabel}
+          </button>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 export function TradeTicket({
   customStrike = null,
   copyAmount,
@@ -2137,8 +2391,6 @@ export function TradeTicket({
   onWalletSubmit: () => void;
 }) {
   const {
-    ladderRows,
-    selectedLadderKey,
     selectedMarket,
   } = buildTradeLadderDisplayRows({
     customStrike,
@@ -2154,17 +2406,7 @@ export function TradeTicket({
   const returnPreview = quote
     ? buildReturnPreviewFromQuote(quote)
     : buildReturnPreview(copyAmount, selectedSideSummary?.estimatedPrice);
-  const spotPrice = marketPriceLabel ? parseTradeStrikeInputValue(marketPriceLabel) : null;
-  const spotLineIndex =
-    spotPrice === null
-      ? -1
-      : ladderRows.findIndex((row) => row.selection.strike >= spotPrice);
-  const normalizedSpotLineIndex =
-    spotPrice === null || ladderRows.length === 0
-      ? -1
-      : spotLineIndex === -1
-        ? ladderRows.length
-        : spotLineIndex;
+  const displayedMarketRows = [...marketRows].sort(sortTradeMarketCards);
   const hasPredictManagerObjectId = predictManagerObjectId.trim().length > 0;
   const canSubmitTrade =
     walletConnected &&
@@ -2199,179 +2441,42 @@ export function TradeTicket({
         selectedExpiryDate={selectedExpiryDate}
         onExpiryChange={onExpiryChange}
       />
-      <div className="trade-ticket-panel">
-        <div className="trade-ticket-title-row">
-          <div className="trade-ticket-title">
-            <p>Up/Down</p>
-            <strong>BTC strike ladder</strong>
-          </div>
-          <span className="trade-duration-pill">
-            {selectedMarket?.intervalLabel ?? "No markets"}
-          </span>
-        </div>
+      {displayedMarketRows.length ? (
+        displayedMarketRows.map((marketRow) => {
+          const isSelectedMarket = selectedMarket?.id === marketRow.id;
 
-        <div className="trade-ticket-stats">
-          <span>
-            <small>{selectedMarket?.pairLabel ?? "BTC/USD"}</small>
-            {marketPriceLabel ?? "Live market"}
-          </span>
-          <span>
-            <small>Expiry</small>
-            {selectedMarket?.expiryTimeLabel ?? "No active market"}
-          </span>
-        </div>
-
-        <div className="trade-market-ladder" aria-label="Up Down strike ladder">
-          <div className="trade-ladder-heading">
-            <span>UP</span>
-            <span>Strike</span>
-            <span>DOWN</span>
-          </div>
-          {ladderRows.length ? (
-            ladderRows.map(({ key, market, selection }, index) => {
-              const isSelectedStrike = key === selectedLadderKey;
-              const isSelectedUp = isSelectedStrike && selectedSide === "UP";
-              const isSelectedDown = isSelectedStrike && selectedSide === "DOWN";
-              const upQuote =
-                isSelectedUp && quoteStatus === "ready" && quote?.side === "UP" ? quote : null;
-              const downQuote =
-                isSelectedDown && quoteStatus === "ready" && quote?.side === "DOWN" ? quote : null;
-
-              return (
-                <div className="trade-ladder-row" key={key}>
-                  {index === normalizedSpotLineIndex ? (
-                    <div className="trade-spot-line">Oracle price {marketPriceLabel}</div>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={`trade-ladder-side trade-ladder-side-up ${
-                      isSelectedUp ? "selected" : ""
-                    }`}
-                    aria-label={`Trade UP ${selection.strikeLabel}`}
-                    aria-pressed={isSelectedUp}
-                    onClick={() => {
-                      onMarketChange(selection);
-                      onSideChange("UP");
-                    }}
-                  >
-                    <strong>
-                      {upQuote ? formatTradeQuotePrice(upQuote) : formatTradeSidePrice(market.up)}
-                    </strong>
-                  </button>
-                  <span className="trade-ladder-strike">
-                    <strong>{selection.strikeLabel}</strong>
-                    <small>
-                      {market.timeRemainingLabel} · {market.moneynessLabel}
-                    </small>
-                  </span>
-                  <button
-                    type="button"
-                    className={`trade-ladder-side trade-ladder-side-down ${
-                      isSelectedDown ? "selected" : ""
-                    }`}
-                    aria-label={`Trade DOWN ${selection.strikeLabel}`}
-                    aria-pressed={isSelectedDown}
-                    onClick={() => {
-                      onMarketChange(selection);
-                      onSideChange("DOWN");
-                    }}
-                  >
-                    <strong>
-                      {downQuote ? formatTradeQuotePrice(downQuote) : formatTradeSidePrice(market.down)}
-                    </strong>
-                  </button>
-                </div>
-              );
-            })
-          ) : (
-            <div className="trade-ladder-empty">No active markets</div>
-          )}
-          {normalizedSpotLineIndex === ladderRows.length ? (
-            <div className="trade-spot-line trade-spot-line-standalone">
-              Oracle price {marketPriceLabel}
-            </div>
-          ) : null}
-        </div>
-
-        {selectedMarket ? (
-          <section className="trade-order-panel" aria-label="Selected position">
-            <div className="trade-row-ticket-heading">
-              <div>
-                <span>Selected</span>
-                <strong>
-                  {selectedSide} {selectedMarket.strikeLabel}
-                </strong>
-                <small>{formatTradeOutcome(selectedSide, selectedMarket.strikeLabel)}</small>
-              </div>
-              <small>{selectedMarket.expiryTimeLabel}</small>
-            </div>
-            <CopyAmountControls
-              ariaLabel="Trade spend amounts"
+          return (
+            <TradeMarketCard
+              canSubmitTrade={isSelectedMarket && canSubmitTrade}
               copyAmount={copyAmount}
+              customStrike={isSelectedMarket ? customStrike : null}
+              isSelectedMarket={isSelectedMarket}
+              key={marketRow.id}
+              marketPriceLabel={marketPriceLabel}
+              marketRow={marketRow}
+              quote={isSelectedMarket ? quote : null}
+              quoteStatus={isSelectedMarket ? quoteStatus : "idle"}
+              returnPreview={isSelectedMarket ? returnPreview : null}
+              selectedSide={selectedSide}
+              tradeWalletButtonLabel={tradeWalletButtonLabel}
+              walletActionPending={walletActionPending}
               onAmountSet={onAmountSet}
+              onMarketChange={onMarketChange}
+              onSideChange={onSideChange}
+              onWalletSubmit={onWalletSubmit}
             />
-            <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
-              <span>
-                <small>Spend</small>
-                {formatCopyAmount(copyAmount)}
-              </span>
-              {quoteStatus === "loading" ? (
-                <>
-                  <span className="metric-muted">
-                    <small>Est. payout</small>
-                    Quoting...
-                  </span>
-                  <span className="metric-muted">
-                    <small>Max profit</small>
-                    Quoting...
-                  </span>
-                </>
-              ) : quoteStatus === "error" ? (
-                <>
-                  <span className="metric-muted">
-                    <small>Est. payout</small>
-                    Quote unavailable
-                  </span>
-                  <span className="metric-muted">
-                    <small>Max profit</small>
-                    Quote unavailable
-                  </span>
-                </>
-              ) : returnPreview ? (
-                <>
-                  <span>
-                    <small>Est. payout</small>
-                    {returnPreview.payoutLabel}
-                  </span>
-                  <span>
-                    <small>Max profit</small>
-                    {returnPreview.profitLabel}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="metric-muted">
-                    <small>Est. payout</small>
-                    Quote needed
-                  </span>
-                  <span className="metric-muted">
-                    <small>Max profit</small>
-                    Quote needed
-                  </span>
-                </>
-              )}
+          );
+        })
+      ) : (
+        <div className="trade-ticket-panel" data-testid="trade-market-card">
+          <div className="trade-ticket-title-row">
+            <div className="trade-ticket-title">
+              <p>Up/Down</p>
+              <strong>BTC strike ladder</strong>
             </div>
-            <button
-              type="button"
-              className="trade-wallet-button"
-              data-testid="trade-wallet-submit"
-              disabled={!canSubmitTrade}
-              onClick={onWalletSubmit}
-            >
-              {tradeWalletButtonLabel}
-            </button>
-          </section>
-        ) : (
+            <span className="trade-duration-pill">No markets</span>
+          </div>
+          <div className="trade-ladder-empty">No active markets</div>
           <button
             type="button"
             className="trade-wallet-button"
@@ -2380,8 +2485,8 @@ export function TradeTicket({
           >
             {tradeWalletButtonLabel}
           </button>
+        </div>
         )}
-      </div>
     </section>
   );
 }
