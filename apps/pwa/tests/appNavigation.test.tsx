@@ -683,7 +683,8 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain("portfolio-countdown-live");
     expect(html).not.toContain(">Live</em>");
-    expect(html).toContain("Open · 30m left · Quoted now");
+    expect(html).toContain("<strong>30m left</strong><small>Open · Quoted now</small>");
+    expect(html).not.toContain("<strong>Jun 12, 2026, 5:30 PM</strong>");
   });
 
   test("filters market heat rows to followed wallets", () => {
@@ -932,6 +933,43 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("$123.45");
   });
 
+  test("renders open portfolio history rows with a live countdown", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        historyItems={[
+          {
+            closeLabel: "Open",
+            costLabel: "$4.97",
+            direction: "UP",
+            expiryTimeLabel: "Jun 12, 2026, 1:00 AM",
+            id: "history-open",
+            managerId: "0xmanager",
+            openedAtLabel: "Jun 11, 2026, 1:00 PM",
+            oracleId: "0xoracle",
+            payoutLabel: "Pending",
+            pnlLabel: "Open",
+            pnlTone: "flat",
+            quantityLabel: "$10.45",
+            remainingLabel: "$10.45",
+            statusLabel: "Open",
+            strikeLabel: "$62,000.00",
+            timeLabel: "8h left",
+            updatedAtLabel: "Jun 11, 2026, 1:00 PM",
+          },
+        ]}
+        initialTab="history"
+        positions={[]}
+        walletActionPending={false}
+        walletSubmittedPositionId={null}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("portfolio-countdown-live");
+    expect(html).toContain("<strong>8h left</strong><small>Open</small>");
+    expect(html).not.toContain("<strong>Jun 12, 2026, 1:00 AM</strong>");
+  });
+
   test("renders portfolio time remaining from the current clock", () => {
     const html = renderToStaticMarkup(
       <PortfolioPanel
@@ -963,7 +1001,9 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("Open · 2m left");
+    expect(html).toContain("portfolio-countdown-live");
+    expect(html).toContain("<strong>2m left</strong><small>Open</small>");
+    expect(html).not.toContain("<strong>May 18, 2026, 9:46 PM</strong>");
     expect(html).not.toContain("1d left");
   });
 

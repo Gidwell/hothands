@@ -80,6 +80,7 @@ export type PredictPortfolioHistoryItem = {
   direction: "UP" | "DOWN";
   strikeLabel: string;
   expiryTimeLabel: string;
+  timeLabel?: string;
   openedAtLabel: string;
   updatedAtLabel: string;
   quantityLabel: string;
@@ -822,6 +823,7 @@ function buildPortfolioHistoryItem(
     direction,
     strikeLabel: formatStrike(history.strike),
     expiryTimeLabel: formatExpiryTime(expiryMs),
+    timeLabel: !isExpired ? formatPortfolioTimeRemaining(expiryMs, nowMs) : undefined,
     openedAtLabel: formatExpiryTime(history.firstTimestampMs),
     updatedAtLabel: formatExpiryTime(history.lastTimestampMs),
     quantityLabel: formatDusdcBalance(history.totalQuantity),

@@ -2585,32 +2585,42 @@ function PortfolioHistoryList({
         <span>Payout</span>
         <span>PNL</span>
       </div>
-      {items.map((item) => (
-        <article
-          className={`portfolio-history-row portfolio-history-row-${item.pnlTone}`}
-          key={item.id}
-        >
-          <div className="portfolio-market-cell">
-            <span className={item.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
-              {item.direction}
-            </span>
-            <div>
-              <strong>BTC/USD</strong>
-              <small>{item.strikeLabel}</small>
+      {items.map((item) => {
+        const isOpen = item.statusLabel === "Open";
+        const timeLabel = isOpen && item.timeLabel ? item.timeLabel : item.expiryTimeLabel;
+        const isLiveCountdown = isOpen && isLiveCountdownLabel(timeLabel);
+
+        return (
+          <article
+            className={`portfolio-history-row portfolio-history-row-${item.pnlTone}`}
+            key={item.id}
+          >
+            <div className="portfolio-market-cell">
+              <span className={item.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
+                {item.direction}
+              </span>
+              <div>
+                <strong>BTC/USD</strong>
+                <small>{item.strikeLabel}</small>
+              </div>
             </div>
-          </div>
-          <div className="portfolio-expiry-cell">
-            <strong>{item.expiryTimeLabel}</strong>
-            <small>{item.statusLabel}</small>
-          </div>
-          <span className="portfolio-table-cell">{item.costLabel}</span>
-          <span className="portfolio-table-cell">{item.payoutLabel}</span>
-          <div className={`portfolio-history-pnl portfolio-history-pnl-${item.pnlTone}`}>
-            <small>PNL</small>
-            <strong>{item.pnlLabel}</strong>
-          </div>
-        </article>
-      ))}
+            <div
+              className={`portfolio-expiry-cell${
+                isLiveCountdown ? " portfolio-countdown-live" : ""
+              }`}
+            >
+              <strong>{timeLabel}</strong>
+              <small>{item.statusLabel}</small>
+            </div>
+            <span className="portfolio-table-cell">{item.costLabel}</span>
+            <span className="portfolio-table-cell">{item.payoutLabel}</span>
+            <div className={`portfolio-history-pnl portfolio-history-pnl-${item.pnlTone}`}>
+              <small>PNL</small>
+              <strong>{item.pnlLabel}</strong>
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -2704,14 +2714,13 @@ export function PortfolioPanel({
                 ? formatPortfolioTimeRemaining(position.expiryMs, nowMs)
                 : position.timeLabel;
             const isLiveCountdown = !isExpired && isLiveCountdownLabel(timeLabel);
-            const statusParts =
-              statusLabel === timeLabel ? [statusLabel] : [statusLabel, timeLabel];
+            const primaryTimeLabel = isExpired ? position.expiryTimeLabel : timeLabel;
             const statusSummary = [
-              ...statusParts,
+              statusLabel,
               !isExpired && position.closeValueStatusLabel ? position.closeValueStatusLabel : null,
               isExpired && position.outcomeLabel ? position.outcomeLabel : null,
             ]
-              .filter((label): label is string => Boolean(label))
+              .filter(Boolean)
               .join(" · ");
             const isDismissible = isExpired && position.dismissible;
             const actionLabel = isExpired
@@ -2750,7 +2759,7 @@ export function PortfolioPanel({
                     isLiveCountdown ? " portfolio-countdown-live" : ""
                   }`}
                 >
-                  <strong>{position.expiryTimeLabel}</strong>
+                  <strong>{primaryTimeLabel}</strong>
                   <small>{statusSummary}</small>
                 </div>
                 <span className="portfolio-table-cell">{position.costBasisLabel}</span>
