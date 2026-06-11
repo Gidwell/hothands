@@ -3719,7 +3719,6 @@ export function MarketHeatPreview({
   selectedRowId,
   copyAmount,
   copyAttributionLabels = {},
-  defaultExpandedFillGroupIds = [],
   expiryOptions = [],
   quote = null,
   quoteStatus = "idle",
@@ -3737,6 +3736,7 @@ export function MarketHeatPreview({
   onRetryQuote,
   onShareRow,
   onSelectRow,
+  onWalletOpen,
 }: {
   rows: MarketHeatPreviewRow[];
   sourceLabel: string;
@@ -3756,7 +3756,6 @@ export function MarketHeatPreview({
   selectedRowId: string | null;
   copyAmount: number;
   copyAttributionLabels?: Record<string, string>;
-  defaultExpandedFillGroupIds?: string[];
   expiryOptions?: TradeExpiryOption[];
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
@@ -3774,27 +3773,13 @@ export function MarketHeatPreview({
   onRetryQuote?: () => void;
   onShareRow?: (rowId: string) => void;
   onSelectRow: (rowId: string) => void;
+  onWalletOpen?: (wallet: FollowedWallet) => void;
 }) {
   const swipeStartRef = useRef<{ rowId: string; x: number; y: number } | null>(null);
   const swipedRowRef = useRef<string | null>(null);
   const heatDescriptionId = `${testId}-heat-description`;
   const [isHeatDescriptionOpen, setIsHeatDescriptionOpen] = useState(false);
   const [swipePreview, setSwipePreview] = useState<MarketHeatSwipePreview | null>(null);
-  const [expandedFillGroupIds, setExpandedFillGroupIds] = useState<Set<string>>(
-    () => new Set(defaultExpandedFillGroupIds),
-  );
-  const toggleFillGroup = (groupId: string) => {
-    setExpandedFillGroupIds((currentIds) => {
-      const nextIds = new Set(currentIds);
-      if (nextIds.has(groupId)) {
-        nextIds.delete(groupId);
-      } else {
-        nextIds.add(groupId);
-      }
-
-      return nextIds;
-    });
-  };
   const startMarketHeatSwipe = (
     rowId: string,
     event: PointerEvent<HTMLElement>,
@@ -3878,10 +3863,7 @@ export function MarketHeatPreview({
     (showExpired ? "Try another expiration." : "Show expired to review recent testnet activity.");
   const headingAriaLabel = sourceLabel ? `${title}, ${sourceLabel} BTC markets` : title;
   const headingTitle = sourceLabel ? `${sourceLabel} BTC markets` : title;
-  const renderMarketHeatTradeRow = (
-    row: MarketHeatPreviewRow,
-    { isGroupedChild = false }: { isGroupedChild?: boolean } = {},
-  ) => {
+  const renderMarketHeatTradeRow = (row: MarketHeatPreviewRow) => {
     const isSelected = row.id === selectedRowId;
     const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
     const sideClass = row.side.toLowerCase();
@@ -3913,6 +3895,21 @@ export function MarketHeatPreview({
       identityMode === "market"
         ? `${row.pairLabel} ${row.side} call`
         : `${row.displayName} call`;
+    const walletProfileLabel = `Open ${row.displayName} profile`;
+    const walletProfileContent = (
+      <>
+        {identityMode === "wallet" ? (
+          <WalletIdenticon compact displayName={row.displayName} wallet={row.wallet} />
+        ) : null}
+        <div className="market-heat-compact-identity">
+          <strong>{rowIdentityTitle}</strong>
+          <span>{rowIdentityDetail}</span>
+          {copyAttributionLabel ? (
+            <span className="market-heat-copy-attribution">{copyAttributionLabel}</span>
+          ) : null}
+        </div>
+      </>
+    );
     const durationLabel = row.timeRemainingLabel ?? row.expiryTimeLabel;
     const isLiveCountdown = isLiveCountdownLabel(row.timeRemainingLabel);
     const intentPanelElement = intentPanel ? (
@@ -4004,8 +4001,8 @@ export function MarketHeatPreview({
           isSelected ? "market-heat-row-selected" : ""
         } ${swipePreviewForRow ? "market-heat-row-swiping" : ""} ${
           isSwipeConfirming ? "market-heat-row-swipe-confirming" : ""
-        } ${isGroupedChild ? "market-heat-fill-child-row" : ""}`}
-        data-testid={isGroupedChild ? "market-heat-fill-child-row" : "market-heat-row"}
+        }`}
+        data-testid="market-heat-row"
         key={row.id}
         onClick={() => {
           if (swipedRowRef.current === row.id) {
@@ -4040,21 +4037,34 @@ export function MarketHeatPreview({
               identityMode === "market" ? " market-heat-compact-wallet-market" : ""
             }`}
           >
-            {identityMode === "wallet" ? (
-              <WalletIdenticon compact displayName={row.displayName} wallet={row.wallet} />
-            ) : null}
-            <div className="market-heat-compact-identity">
-              <strong>{rowIdentityTitle}</strong>
-              <span>{rowIdentityDetail}</span>
-              {row.fillSummaryLabel ? (
-                <span className="market-heat-fill-summary">{row.fillSummaryLabel}</span>
-              ) : null}
-              {copyAttributionLabel ? (
-                <span className="market-heat-copy-attribution">
-                  {copyAttributionLabel}
-                </span>
-              ) : null}
-            </div>
+            {identityMode === "wallet" && onWalletOpen ? (
+              <button
+                type="button"
+                aria-label={walletProfileLabel}
+                className="market-heat-wallet-profile"
+                data-testid="market-heat-wallet-profile"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onWalletOpen({
+                    displayName: row.displayName,
+                    wallet: row.wallet,
+                  });
+                }}
+                onPointerDown={(event) => {
+                  event.stopPropagation();
+                }}
+                onPointerMove={(event) => {
+                  event.stopPropagation();
+                }}
+                onPointerUp={(event) => {
+                  event.stopPropagation();
+                }}
+              >
+                {walletProfileContent}
+              </button>
+            ) : (
+              walletProfileContent
+            )}
           </div>
           <strong className={`direction-pill direction-pill-${sideClass}`}>
             {row.side}
@@ -4110,69 +4120,6 @@ export function MarketHeatPreview({
       </article>
     );
   };
-  const renderMarketHeatFillGroup = (row: MarketHeatPreviewRow) => {
-    const fillRows = row.fillRows ?? [];
-    const isExpanded = expandedFillGroupIds.has(row.id);
-    const rowIdentityTitle = identityMode === "market" ? row.pairLabel : row.displayName;
-    const rowIdentityDetail =
-      identityMode === "market" ? row.statusLabel : row.walletStatsLabel ?? row.statusLabel;
-
-    return (
-      <div className="market-heat-fill-group" key={row.id}>
-        <article
-          aria-expanded={isExpanded}
-          aria-label={isExpanded ? "Hide grouped buys" : "Show grouped buys"}
-          className="market-heat-row market-heat-row-compact market-heat-fill-group-row"
-          data-testid="market-heat-fill-group"
-          onClick={() => toggleFillGroup(row.id)}
-        >
-          <div className="market-heat-compact-row">
-            <div
-              className={`market-heat-compact-wallet${
-                identityMode === "market" ? " market-heat-compact-wallet-market" : ""
-              }`}
-            >
-              {identityMode === "wallet" ? (
-                <WalletIdenticon compact displayName={row.displayName} wallet={row.wallet} />
-              ) : null}
-              <div className="market-heat-compact-identity">
-                <strong>{rowIdentityTitle}</strong>
-                <span>{rowIdentityDetail}</span>
-                {row.fillSummaryLabel ? (
-                  <span className="market-heat-fill-summary">{row.fillSummaryLabel}</span>
-                ) : null}
-                <span className="market-heat-fill-group-hint">Copyable buys</span>
-              </div>
-            </div>
-            <span className="market-heat-compact-empty-cell" aria-hidden="true" />
-            <span className="market-heat-compact-empty-cell" aria-hidden="true" />
-            <span className="market-heat-compact-empty-cell" aria-hidden="true" />
-            <div
-              className="market-heat-compact-heat"
-              aria-label={`Heat ${row.heatScore}. ${MARKET_HEAT_DESCRIPTION}`}
-              title={MARKET_HEAT_DESCRIPTION}
-            >
-              <strong>{row.heatScore}</strong>
-            </div>
-            <span aria-hidden="true" />
-            <ChevronIcon
-              className={`market-heat-compact-chevron ${
-                isExpanded ? "market-heat-compact-chevron-open" : ""
-              }`}
-            />
-          </div>
-        </article>
-        {isExpanded ? (
-          <div className="market-heat-fill-children">
-            {fillRows.map((fillRow) =>
-              renderMarketHeatTradeRow(fillRow, { isGroupedChild: true }),
-            )}
-          </div>
-        ) : null}
-      </div>
-    );
-  };
-
   return (
     <section
       className="market-heat-list market-heat-list-compact"
@@ -4299,13 +4246,7 @@ export function MarketHeatPreview({
           <span aria-hidden="true" />
         </div>
       ) : null}
-      {rows.map((row) => {
-        if (row.isFillGroup) {
-          return renderMarketHeatFillGroup(row);
-        }
-
-        return renderMarketHeatTradeRow(row);
-      })}
+      {rows.map((row) => renderMarketHeatTradeRow(row))}
       {canShowMore ? (
         <button
           type="button"
@@ -6654,6 +6595,7 @@ export function App() {
       onRetryQuote={() => setMarketHeatQuoteRefreshKey((key) => key + 1)}
       onShareRow={handleMarketHeatShare}
       onSelectRow={handleMarketHeatSelect}
+      onWalletOpen={handleProfileWalletOpen}
     />
   );
 
