@@ -3662,6 +3662,45 @@ button:disabled {
   margin-top: -1px;
 }
 
+.market-heat-fill-group {
+  margin-top: -1px;
+}
+
+.market-heat-fill-group:first-of-type {
+  margin-top: 0;
+}
+
+.market-heat-fill-group-row {
+  cursor: pointer;
+}
+
+.market-heat-fill-group-row .market-heat-compact-row {
+  background: color-mix(in srgb, var(--hh-surface) 92%, var(--hh-accent));
+}
+
+.market-heat-fill-children {
+  display: grid;
+  gap: 0;
+  padding-left: 10px;
+  border-left: 1px dotted color-mix(in srgb, var(--hh-line) 72%, var(--hh-accent));
+}
+
+.market-heat-fill-child-row {
+  margin-top: -1px;
+}
+
+.market-heat-fill-group-hint {
+  color: var(--hh-accent);
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-heat-compact-empty-cell {
+  min-height: 24px;
+}
+
 .market-heat-compact-row {
   min-height: 48px;
   padding: 7px 9px;

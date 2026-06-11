@@ -123,7 +123,7 @@ describe("market heat preview model", () => {
     expect(preview.rows[0]?.expiryTimeLabel).toBe("Jun 7, 17:00 UTC+9");
   });
 
-  test("collapses repeated feed fills into one visible row with fill counts", () => {
+  test("groups repeated feed fills behind a non-copyable parent row", () => {
     const nowMs = 1_779_158_000_000;
     const expiryMs = nowMs + 60 * 60_000;
     const duplicateFillBase = {
@@ -164,15 +164,34 @@ describe("market heat preview model", () => {
     );
     const [row] = preview.rows;
     const [market] = buildTradeMarketLadder(preview, { nowMs });
+    const childCopyTrade = buildTradeMarketForMarketHeatRow(preview, "fill-b", {
+      nowMs,
+    });
+    const parentCopyTrade = buildTradeMarketForMarketHeatRow(preview, row?.id ?? "", {
+      nowMs,
+    });
+    const childIntent = selectMarketHeatIntent({ selectedRowId: null }, "fill-b", preview.rows);
+    const parentIntent = selectMarketHeatIntent(
+      { selectedRowId: null },
+      row?.id ?? "",
+      preview.rows,
+    );
 
     expect(preview.rows).toHaveLength(1);
-    expect(row?.id).toBe("fill-b");
+    expect(row?.id).toContain("fill-group:");
+    expect(row?.isFillGroup).toBe(true);
     expect(row?.fillCount).toBe(2);
-    expect(row?.fillSummaryLabel).toBe("2 fills · $37.50 total");
+    expect(row?.fillSummaryLabel).toBe("2 buys · $37.50 total");
+    expect(row?.fillRows).toHaveLength(2);
+    expect(row?.fillRows?.map((fillRow) => fillRow.id)).toEqual(["fill-b", "fill-a"]);
     expect(row?.quantity).toBe(75_000_000);
     expect(row?.cost).toBe(37_500_000);
     expect(row?.costUsd).toBe(37.5);
     expect(row?.heatScore).toBe(61);
+    expect(childCopyTrade?.row.id).toBe("fill-b");
+    expect(parentCopyTrade).toBeNull();
+    expect(childIntent.selectedRowId).toBe("fill-b");
+    expect(parentIntent.selectedRowId).toBeNull();
     expect(market?.tradeCount).toBe(2);
     expect(market?.down.tradeCount).toBe(2);
     expect(market?.volumeUsd).toBe(37.5);

@@ -124,6 +124,8 @@ export type MarketHeatPreviewRow = {
   walletStatsLabel?: string;
   fillCount?: number;
   fillSummaryLabel?: string;
+  isFillGroup?: boolean;
+  fillRows?: MarketHeatPreviewRow[];
   actionLabel: "Copy now";
   status: MarketHeatStatus;
   statusLabel: string;
@@ -153,6 +155,18 @@ export type MarketHeatPreview = {
   marketPrice: MarketHeatPrice;
   availableMarkets?: MarketHeatAvailableMarket[];
   rows: MarketHeatPreviewRow[];
+};
+
+type MarketHeatPreviewRowBuildOptions = {
+  nowMs: number;
+  timeZone?: string;
+  walletDisplayNames: WalletDisplayNamesByAddress;
+};
+
+type MarketHeatInputGroup = {
+  key: string;
+  rows: MarketHeatPreviewRowInput[];
+  summary: MarketHeatPreviewRowInput;
 };
 
 export type LoadMarketHeatPreviewOptions = {
@@ -333,60 +347,108 @@ export function buildMarketHeatPreview(
     detailLabel: "Live BTC Predict mints",
     sourceLabel: "Captured",
     marketPrice: buildMarketHeatPrice(marketPrice),
-    rows: sortMarketHeatInputs(collapseMarketHeatInputs(rows))
+    rows: sortMarketHeatInputGroups(groupMarketHeatInputs(rows))
       .slice(0, limit)
-      .map((row) => {
-        const isActionableCopy = row.status === "copy_ready" && row.expiryMs > nowMs;
-        const oracleId = isNonEmptyString(row.oracleId) ? row.oracleId : undefined;
-        const quantity = optionalNonNegativeNumber(row.quantity);
-        const cost = optionalNonNegativeNumber(row.cost);
-        const costUsd = normalizeCostUsd(row);
-        const strikeRaw = optionalNonNegativeNumber(row.strikeRaw);
-        const walletDisplayName = resolveWalletDisplayName(row.wallet, walletDisplayNames);
-        const fillCount = Math.max(1, Math.floor(row.fillCount ?? 1));
-
-        return {
-          id: row.id,
-          ...(oracleId === undefined ? {} : { oracleId }),
-          wallet: row.wallet,
-          displayName: walletDisplayName?.name ?? formatWallet(row.wallet),
-          ...(walletDisplayName
-            ? { displayNameSource: walletDisplayName.source }
-            : {}),
-          manager: formatManager(row.manager),
-          pairLabel: formatPair(row.market),
-          side: row.side,
-          ...(quantity === undefined ? {} : { quantity }),
-          ...(cost === undefined ? {} : { cost }),
-          ...(costUsd === undefined ? {} : { costUsd }),
-          strike: row.strike,
-          ...(strikeRaw === undefined ? {} : { strikeRaw }),
-          strikeLabel: `Strike ${formatStrike(row.strike)}`,
-          intervalLabel: row.intervalLabel,
-          expiryMs: row.expiryMs,
-          expiryTimeLabel: formatExpiryTime(row.expiryMs, timeZone),
-          timeRemainingLabel: formatTimeRemaining(row.expiryMs, nowMs),
-          observedAtMs: row.observedAtMs,
-          heatScore: row.heatScore,
-          ...(fillCount > 1
-            ? { fillCount, fillSummaryLabel: formatFillSummaryLabel(fillCount, costUsd) }
-            : {}),
-          ...(row.walletStats === undefined
-            ? {}
-            : {
-                walletStats: row.walletStats,
-                walletStatsLabel: formatWalletStatsLabel(
-                  row.walletStats,
-                  row.observedAtMs,
-                  nowMs,
-                ),
-              }),
-          actionLabel: "Copy now",
-          status: isActionableCopy ? "copy_ready" : "watching",
-          statusLabel: formatTradeTime(row.observedAtMs, nowMs),
-        };
-      }),
+      .map((group) =>
+        buildMarketHeatPreviewRowFromGroup(group, {
+          nowMs,
+          timeZone,
+          walletDisplayNames,
+        }),
+      ),
   };
+}
+
+function buildMarketHeatPreviewRowFromGroup(
+  group: MarketHeatInputGroup,
+  options: MarketHeatPreviewRowBuildOptions,
+): MarketHeatPreviewRow {
+  const row = buildMarketHeatPreviewRowFromInput(group.summary, options);
+
+  if (group.rows.length <= 1) {
+    return row;
+  }
+
+  const fillRows = sortMarketHeatInputs(group.rows).map((fillRow) =>
+    buildMarketHeatPreviewRowFromInput(fillRow, options),
+  );
+
+  return {
+    ...row,
+    id: buildMarketHeatFillGroupId(group.key),
+    isFillGroup: true,
+    fillRows,
+  };
+}
+
+function buildMarketHeatPreviewRowFromInput(
+  row: MarketHeatPreviewRowInput,
+  {
+    nowMs,
+    timeZone,
+    walletDisplayNames,
+  }: MarketHeatPreviewRowBuildOptions,
+): MarketHeatPreviewRow {
+  const isActionableCopy = row.status === "copy_ready" && row.expiryMs > nowMs;
+  const oracleId = isNonEmptyString(row.oracleId) ? row.oracleId : undefined;
+  const quantity = optionalNonNegativeNumber(row.quantity);
+  const cost = optionalNonNegativeNumber(row.cost);
+  const costUsd = normalizeCostUsd(row);
+  const strikeRaw = optionalNonNegativeNumber(row.strikeRaw);
+  const walletDisplayName = resolveWalletDisplayName(row.wallet, walletDisplayNames);
+  const fillCount = Math.max(1, Math.floor(row.fillCount ?? 1));
+
+  return {
+    id: row.id,
+    ...(oracleId === undefined ? {} : { oracleId }),
+    wallet: row.wallet,
+    displayName: walletDisplayName?.name ?? formatWallet(row.wallet),
+    ...(walletDisplayName ? { displayNameSource: walletDisplayName.source } : {}),
+    manager: formatManager(row.manager),
+    pairLabel: formatPair(row.market),
+    side: row.side,
+    ...(quantity === undefined ? {} : { quantity }),
+    ...(cost === undefined ? {} : { cost }),
+    ...(costUsd === undefined ? {} : { costUsd }),
+    strike: row.strike,
+    ...(strikeRaw === undefined ? {} : { strikeRaw }),
+    strikeLabel: `Strike ${formatStrike(row.strike)}`,
+    intervalLabel: row.intervalLabel,
+    expiryMs: row.expiryMs,
+    expiryTimeLabel: formatExpiryTime(row.expiryMs, timeZone),
+    timeRemainingLabel: formatTimeRemaining(row.expiryMs, nowMs),
+    observedAtMs: row.observedAtMs,
+    heatScore: row.heatScore,
+    ...(fillCount > 1
+      ? { fillCount, fillSummaryLabel: formatFillSummaryLabel(fillCount, costUsd) }
+      : {}),
+    ...(row.walletStats === undefined
+      ? {}
+      : {
+          walletStats: row.walletStats,
+          walletStatsLabel: formatWalletStatsLabel(
+            row.walletStats,
+            row.observedAtMs,
+            nowMs,
+          ),
+        }),
+    actionLabel: "Copy now",
+    status: isActionableCopy ? "copy_ready" : "watching",
+    statusLabel: formatTradeTime(row.observedAtMs, nowMs),
+  };
+}
+
+export function getCopyableMarketHeatRows(
+  rows: MarketHeatPreviewRow[],
+): MarketHeatPreviewRow[] {
+  return rows.flatMap((row) => (row.isFillGroup ? row.fillRows ?? [] : [row]));
+}
+
+function findMarketHeatPreviewRow(
+  rows: MarketHeatPreviewRow[],
+  rowId: string,
+): MarketHeatPreviewRow | null {
+  return getCopyableMarketHeatRows(rows).find((row) => row.id === rowId) ?? null;
 }
 
 export function selectTradeMarkets(
@@ -402,7 +464,7 @@ export function selectTradeMarkets(
 
   const seen = new Set<string>();
 
-  return preview.rows
+  return getCopyableMarketHeatRows(preview.rows)
     .filter((row) => row.expiryMs > nowMs)
     .map((row) => {
       const strike = parseFormattedUsd(row.strikeLabel.replace(/^Strike\s+/i, ""));
@@ -452,9 +514,11 @@ export function buildTradeMarketLadder(
 ): TradeMarketLadderRow[] {
   const spotPrice = parseFormattedUsd(spotPriceLabel ?? preview.marketPrice.priceLabel);
 
+  const copyableRows = getCopyableMarketHeatRows(preview.rows);
+
   return selectTradeMarkets(preview, { intervalLabel, nowMs })
     .map((market) => {
-      const activityRows = preview.rows.filter((row) => isActivityForMarket(row, market));
+      const activityRows = copyableRows.filter((row) => isActivityForMarket(row, market));
       const pricing = computeOracleIndicativePrices(market, market.strikeRaw);
       const up = withEstimatedPrice(
         summarizeTradeMarketSide(activityRows, "UP"),
@@ -514,7 +578,7 @@ export function buildTradeMarketForMarketHeatRow(
     spotPriceLabel = null,
   }: SelectTradeMarketsOptions = {},
 ): MarketHeatCopyTrade | null {
-  const row = preview.rows.find((candidate) => candidate.id === rowId);
+  const row = findMarketHeatPreviewRow(preview.rows, rowId);
   if (!row || row.status !== "copy_ready" || row.expiryMs <= nowMs) {
     return null;
   }
@@ -715,7 +779,7 @@ export function selectMarketHeatIntent(
   rowId: string,
   rows: MarketHeatPreviewRow[],
 ): MarketHeatIntentState {
-  if (!rows.some((row) => row.id === rowId)) {
+  if (!findMarketHeatPreviewRow(rows, rowId)) {
     return state;
   }
 
@@ -1251,7 +1315,7 @@ function pluralize(count: number, noun: string): string {
 }
 
 function formatFillSummaryLabel(fillCount: number, costUsd: number | undefined): string {
-  const countLabel = `${fillCount} ${pluralize(fillCount, "fill")}`;
+  const countLabel = `${fillCount} ${pluralize(fillCount, "buy")}`;
 
   if (costUsd === undefined || costUsd <= 0) {
     return countLabel;
@@ -1390,25 +1454,39 @@ function sortMarketHeatInputs(rows: MarketHeatPreviewRowInput[]): MarketHeatPrev
   return [...rows].sort((left, right) => compareMarketHeatRows(left, right, "latest"));
 }
 
-function collapseMarketHeatInputs(rows: MarketHeatPreviewRowInput[]): MarketHeatPreviewRowInput[] {
+function sortMarketHeatInputGroups(groups: MarketHeatInputGroup[]): MarketHeatInputGroup[] {
+  return [...groups].sort((left, right) =>
+    compareMarketHeatRows(left.summary, right.summary, "latest"),
+  );
+}
+
+function groupMarketHeatInputs(rows: MarketHeatPreviewRowInput[]): MarketHeatInputGroup[] {
   const byPosition = new Map<string, MarketHeatPreviewRowInput>();
+  const groupedRows = new Map<string, MarketHeatPreviewRowInput[]>();
 
   for (const row of rows) {
     const key = marketHeatInputDedupeKey(row);
     const existing = byPosition.get(key);
+    const normalizedRow = {
+      ...row,
+      fillCount: Math.max(1, Math.floor(row.fillCount ?? 1)),
+    };
 
     if (!existing) {
-      byPosition.set(key, {
-        ...row,
-        fillCount: Math.max(1, Math.floor(row.fillCount ?? 1)),
-      });
+      byPosition.set(key, normalizedRow);
+      groupedRows.set(key, [normalizedRow]);
       continue;
     }
 
-    byPosition.set(key, mergeMarketHeatInputs(existing, row));
+    byPosition.set(key, mergeMarketHeatInputs(existing, normalizedRow));
+    groupedRows.set(key, [...(groupedRows.get(key) ?? []), normalizedRow]);
   }
 
-  return [...byPosition.values()];
+  return [...byPosition.entries()].map(([key, summary]) => ({
+    key,
+    rows: groupedRows.get(key) ?? [summary],
+    summary,
+  }));
 }
 
 function mergeMarketHeatInputs(
@@ -1480,6 +1558,10 @@ function marketHeatInputDedupeKey(row: MarketHeatPreviewRowInput): string {
     row.strikeRaw ?? row.strike,
     row.oracleId ?? "",
   ].join("|");
+}
+
+function buildMarketHeatFillGroupId(key: string): string {
+  return `fill-group:${key}`;
 }
 
 function sumOptionalNonNegative(

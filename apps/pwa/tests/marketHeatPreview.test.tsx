@@ -443,15 +443,27 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("0xbbbb...0000");
     expect(html).toContain("wallet-identicon");
     expect(html).toContain("+$22.23 · 12 wins · just now");
+    const [fillGroupRow] = buildMarketHeatPreview(
+      [
+        {
+          ...copyReadyRows[0],
+          id: "fill-a",
+          observedAtMs: 1_779_158_000_000,
+          costUsd: 12.5,
+        },
+        {
+          ...copyReadyRows[0],
+          id: "fill-b",
+          observedAtMs: 1_779_158_030_000,
+          costUsd: 25,
+        },
+      ],
+      8,
+      { nowMs: 1_779_158_030_000 },
+    ).rows;
     const fillSummaryHtml = renderToStaticMarkup(
       <MarketHeatPreview
-        rows={[
-          {
-            ...row,
-            fillCount: 2,
-            fillSummaryLabel: "2 fills · $37.50 total",
-          },
-        ]}
+        rows={[fillGroupRow]}
         sourceLabel="Live Testnet"
         sortMode="latest"
         selectedRowId={null}
@@ -465,9 +477,18 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
+        defaultExpandedFillGroupIds={[fillGroupRow.id]}
       />,
     );
-    expect(fillSummaryHtml).toContain("2 fills · $37.50 total");
+    expect(fillSummaryHtml).toContain("2 buys · $37.50 total");
+    expect(fillSummaryHtml).toContain("market-heat-fill-group-row");
+    expect(fillSummaryHtml).toContain("data-testid=\"market-heat-fill-group\"");
+    expect(fillSummaryHtml).toContain("data-testid=\"market-heat-fill-child-row\"");
+    expect(fillSummaryHtml).toContain("aria-label=\"Hide grouped buys\"");
+    expect(fillSummaryHtml).toContain("UP");
+    expect(fillSummaryHtml).toContain("$7,100");
+    expect(fillSummaryHtml).toContain("3h left");
+    expect(fillSummaryHtml).toContain("Copyable buys");
     expect(html).toContain("UP");
     expect(html).toContain("$7,100");
     expect(html).toContain("3h left");

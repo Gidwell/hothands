@@ -62,6 +62,7 @@ import {
   buildTradeMarketLadder,
   closeMarketHeatIntent,
   computeOracleIndicativeUpPrice,
+  getCopyableMarketHeatRows,
   loadTradeQuote,
   loadMarketHeatPreview,
   loadMarketHeatPriceSnapshot,
@@ -265,7 +266,7 @@ function buildCopyAttributionLabelsByRowId(
   rows: MarketHeatPreviewRow[],
   records: CopyAttributionRecord[],
 ): Record<string, string> {
-  return rows.reduce<Record<string, string>>((labels, row) => {
+  return getCopyableMarketHeatRows(rows).reduce<Record<string, string>>((labels, row) => {
     const summary = summarizeCopyAttribution(copyAttributionTargetForMarketHeatRow(row), records);
     if (summary.count > 0 || summary.amount > 0) {
       labels[row.id] = formatCopyAttributionLabel(summary);
@@ -282,7 +283,7 @@ function buildCopyAttributionLabelForRows(
     return null;
   }
 
-  const summary = rows
+  const summary = getCopyableMarketHeatRows(rows)
     .map((row) => summarizeCopyAttribution(copyAttributionTargetForMarketHeatRow(row), records))
     .reduce(
       (total, item) => ({
@@ -3718,6 +3719,7 @@ export function MarketHeatPreview({
   selectedRowId,
   copyAmount,
   copyAttributionLabels = {},
+  defaultExpandedFillGroupIds = [],
   expiryOptions = [],
   quote = null,
   quoteStatus = "idle",
@@ -3754,6 +3756,7 @@ export function MarketHeatPreview({
   selectedRowId: string | null;
   copyAmount: number;
   copyAttributionLabels?: Record<string, string>;
+  defaultExpandedFillGroupIds?: string[];
   expiryOptions?: TradeExpiryOption[];
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
@@ -3777,6 +3780,21 @@ export function MarketHeatPreview({
   const heatDescriptionId = `${testId}-heat-description`;
   const [isHeatDescriptionOpen, setIsHeatDescriptionOpen] = useState(false);
   const [swipePreview, setSwipePreview] = useState<MarketHeatSwipePreview | null>(null);
+  const [expandedFillGroupIds, setExpandedFillGroupIds] = useState<Set<string>>(
+    () => new Set(defaultExpandedFillGroupIds),
+  );
+  const toggleFillGroup = (groupId: string) => {
+    setExpandedFillGroupIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      if (nextIds.has(groupId)) {
+        nextIds.delete(groupId);
+      } else {
+        nextIds.add(groupId);
+      }
+
+      return nextIds;
+    });
+  };
   const startMarketHeatSwipe = (
     rowId: string,
     event: PointerEvent<HTMLElement>,
@@ -3860,6 +3878,300 @@ export function MarketHeatPreview({
     (showExpired ? "Try another expiration." : "Show expired to review recent testnet activity.");
   const headingAriaLabel = sourceLabel ? `${title}, ${sourceLabel} BTC markets` : title;
   const headingTitle = sourceLabel ? `${sourceLabel} BTC markets` : title;
+  const renderMarketHeatTradeRow = (
+    row: MarketHeatPreviewRow,
+    { isGroupedChild = false }: { isGroupedChild?: boolean } = {},
+  ) => {
+    const isSelected = row.id === selectedRowId;
+    const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
+    const sideClass = row.side.toLowerCase();
+    const isWalletSubmitReady = row.status === "copy_ready";
+    const rowQuote = isSelected ? quote : null;
+    const rowQuoteStatus = isSelected ? quoteStatus : "idle";
+    const isQuoteReady = Boolean(rowQuoteStatus === "ready" && rowQuote);
+    const isQuoteError = rowQuoteStatus === "error";
+    const quoteFallbackLabel = isQuoteError
+      ? "Quote unavailable — retry"
+      : rowQuoteStatus === "loading"
+        ? "Loading quote..."
+        : "Live quote needed";
+    const walletSubmitCta = !walletConnected
+      ? "Connect wallet first"
+      : isQuoteError
+        ? "Quote unavailable — retry"
+        : isQuoteReady
+          ? "Confirm transaction"
+          : "Loading quote...";
+    const copyAttributionLabel = copyAttributionLabels[row.id];
+    const swipePreviewForRow = swipePreview?.rowId === row.id ? swipePreview : null;
+    const isSwipeConfirming = swipePreviewForRow?.action === "submit";
+    const returnPreview = rowQuote ? buildReturnPreviewFromQuote(rowQuote) : null;
+    const rowIdentityTitle = identityMode === "market" ? row.pairLabel : row.displayName;
+    const rowIdentityDetail =
+      identityMode === "market" ? row.statusLabel : row.walletStatsLabel ?? row.statusLabel;
+    const rowActionLabel =
+      identityMode === "market"
+        ? `${row.pairLabel} ${row.side} call`
+        : `${row.displayName} call`;
+    const durationLabel = row.timeRemainingLabel ?? row.expiryTimeLabel;
+    const isLiveCountdown = isLiveCountdownLabel(row.timeRemainingLabel);
+    const intentPanelElement = intentPanel ? (
+      <div
+        className={`inline-watch-panel inline-watch-panel-${row.status}`}
+        data-testid="market-heat-intent-panel"
+      >
+        <div className="market-heat-intent-targets" aria-label={`${rowIdentityTitle} intent`}>
+          <span>
+            <small>Target</small>
+            <strong>
+              {row.side === "UP" ? "Above" : "Below"}{" "}
+              {row.strikeLabel.replace(/^Strike\s+/, "")}
+            </strong>
+            <em>at expiry</em>
+          </span>
+          <span>
+            <small>Expiry</small>
+            <strong>{row.expiryTimeLabel}</strong>
+          </span>
+          <span>
+            <small>Potential payout</small>
+            <strong>
+              {isWalletSubmitReady
+                ? returnPreview?.profitLabel ?? quoteFallbackLabel
+                : intentPanel.detailLabel}
+            </strong>
+          </span>
+        </div>
+        <div className="market-heat-stake-label">Stake amount</div>
+        <CopyAmountControls
+          ariaLabel="Quick spend amounts"
+          copyAmount={copyAmount}
+          onAmountSet={onAmountSet}
+          stopPropagation={true}
+        />
+        <div className="market-heat-intent-footer">
+          <span>
+            <small>Est. payout</small>
+            <strong>{returnPreview?.payoutLabel ?? quoteFallbackLabel}</strong>
+          </span>
+          <span>
+            <small>Max profit</small>
+            <strong>{returnPreview?.profitLabel ?? quoteFallbackLabel}</strong>
+          </span>
+          <span>
+            <small>Cost</small>
+            <strong>{formatCopyAmount(copyAmount)}</strong>
+          </span>
+          <span>
+            <small>Heat</small>
+            <strong>{row.heatScore}</strong>
+          </span>
+          {isWalletSubmitReady ? (
+            <button
+              type="button"
+              className="wallet-submit-button"
+              data-testid="market-heat-wallet-submit"
+              disabled={!walletConnected || (!isQuoteReady && !isQuoteError)}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!walletConnected) {
+                  return;
+                }
+
+                if (isQuoteError) {
+                  onRetryQuote?.();
+                  return;
+                }
+
+                if (!isQuoteReady) {
+                  return;
+                }
+
+                onWalletSubmit(row.id);
+              }}
+            >
+              {walletSubmitCta}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    ) : null;
+
+    return (
+      <article
+        aria-current={isSelected ? "true" : undefined}
+        className={`market-heat-row market-heat-row-compact market-heat-row-${row.status} market-heat-row-${sideClass} ${
+          isSelected ? "market-heat-row-selected" : ""
+        } ${swipePreviewForRow ? "market-heat-row-swiping" : ""} ${
+          isSwipeConfirming ? "market-heat-row-swipe-confirming" : ""
+        } ${isGroupedChild ? "market-heat-fill-child-row" : ""}`}
+        data-testid={isGroupedChild ? "market-heat-fill-child-row" : "market-heat-row"}
+        key={row.id}
+        onClick={() => {
+          if (swipedRowRef.current === row.id) {
+            swipedRowRef.current = null;
+            return;
+          }
+
+          onSelectRow(row.id);
+        }}
+        onPointerCancel={() => {
+          swipeStartRef.current = null;
+        }}
+        onPointerDown={(event) => startMarketHeatSwipe(row.id, event)}
+        onPointerMove={(event) => updateMarketHeatSwipe(row, event)}
+        onPointerUp={(event) => finishMarketHeatSwipe(row, event)}
+      >
+        {swipePreviewForRow ? (
+          <div className="market-heat-swipe-action" aria-hidden="true">
+            {isSwipeConfirming ? "Confirm" : "Open"}
+          </div>
+        ) : null}
+        <div
+          className="market-heat-compact-row"
+          style={
+            swipePreviewForRow
+              ? { transform: `translateX(${swipePreviewForRow.deltaX}px)` }
+              : undefined
+          }
+        >
+          <div
+            className={`market-heat-compact-wallet${
+              identityMode === "market" ? " market-heat-compact-wallet-market" : ""
+            }`}
+          >
+            {identityMode === "wallet" ? (
+              <WalletIdenticon compact displayName={row.displayName} wallet={row.wallet} />
+            ) : null}
+            <div className="market-heat-compact-identity">
+              <strong>{rowIdentityTitle}</strong>
+              <span>{rowIdentityDetail}</span>
+              {row.fillSummaryLabel ? (
+                <span className="market-heat-fill-summary">{row.fillSummaryLabel}</span>
+              ) : null}
+              {copyAttributionLabel ? (
+                <span className="market-heat-copy-attribution">
+                  {copyAttributionLabel}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <strong className={`direction-pill direction-pill-${sideClass}`}>
+            {row.side}
+          </strong>
+          <div className="market-heat-compact-strike">
+            <strong>{row.strikeLabel.replace(/^Strike\s+/, "")}</strong>
+          </div>
+          <div
+            className={`market-heat-compact-duration${
+              isLiveCountdown ? " market-heat-countdown-live" : ""
+            }`}
+          >
+            <strong>{durationLabel}</strong>
+          </div>
+          <div
+            className="market-heat-compact-heat"
+            aria-label={`Heat ${row.heatScore}. ${MARKET_HEAT_DESCRIPTION}`}
+            title={MARKET_HEAT_DESCRIPTION}
+          >
+            <strong>{row.heatScore}</strong>
+          </div>
+          {onShareRow ? (
+            <button
+              type="button"
+              className="market-heat-share-button"
+              aria-label={`Share ${rowActionLabel}`}
+              title="Share call"
+              data-testid="market-heat-share"
+              onClick={(event) => {
+                event.stopPropagation();
+                onShareRow(row.id);
+              }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
+              onPointerMove={(event) => {
+                event.stopPropagation();
+              }}
+              onPointerUp={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <ShareIcon />
+            </button>
+          ) : null}
+          <ChevronIcon
+            className={`market-heat-compact-chevron ${
+              isSelected ? "market-heat-compact-chevron-open" : ""
+            }`}
+          />
+        </div>
+        {intentPanelElement}
+      </article>
+    );
+  };
+  const renderMarketHeatFillGroup = (row: MarketHeatPreviewRow) => {
+    const fillRows = row.fillRows ?? [];
+    const isExpanded = expandedFillGroupIds.has(row.id);
+    const rowIdentityTitle = identityMode === "market" ? row.pairLabel : row.displayName;
+    const rowIdentityDetail =
+      identityMode === "market" ? row.statusLabel : row.walletStatsLabel ?? row.statusLabel;
+
+    return (
+      <div className="market-heat-fill-group" key={row.id}>
+        <article
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? "Hide grouped buys" : "Show grouped buys"}
+          className="market-heat-row market-heat-row-compact market-heat-fill-group-row"
+          data-testid="market-heat-fill-group"
+          onClick={() => toggleFillGroup(row.id)}
+        >
+          <div className="market-heat-compact-row">
+            <div
+              className={`market-heat-compact-wallet${
+                identityMode === "market" ? " market-heat-compact-wallet-market" : ""
+              }`}
+            >
+              {identityMode === "wallet" ? (
+                <WalletIdenticon compact displayName={row.displayName} wallet={row.wallet} />
+              ) : null}
+              <div className="market-heat-compact-identity">
+                <strong>{rowIdentityTitle}</strong>
+                <span>{rowIdentityDetail}</span>
+                {row.fillSummaryLabel ? (
+                  <span className="market-heat-fill-summary">{row.fillSummaryLabel}</span>
+                ) : null}
+                <span className="market-heat-fill-group-hint">Copyable buys</span>
+              </div>
+            </div>
+            <span className="market-heat-compact-empty-cell" aria-hidden="true" />
+            <span className="market-heat-compact-empty-cell" aria-hidden="true" />
+            <span className="market-heat-compact-empty-cell" aria-hidden="true" />
+            <div
+              className="market-heat-compact-heat"
+              aria-label={`Heat ${row.heatScore}. ${MARKET_HEAT_DESCRIPTION}`}
+              title={MARKET_HEAT_DESCRIPTION}
+            >
+              <strong>{row.heatScore}</strong>
+            </div>
+            <span aria-hidden="true" />
+            <ChevronIcon
+              className={`market-heat-compact-chevron ${
+                isExpanded ? "market-heat-compact-chevron-open" : ""
+              }`}
+            />
+          </div>
+        </article>
+        {isExpanded ? (
+          <div className="market-heat-fill-children">
+            {fillRows.map((fillRow) =>
+              renderMarketHeatTradeRow(fillRow, { isGroupedChild: true }),
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <section
@@ -3988,240 +4300,11 @@ export function MarketHeatPreview({
         </div>
       ) : null}
       {rows.map((row) => {
-        const isSelected = row.id === selectedRowId;
-        const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
-        const sideClass = row.side.toLowerCase();
-        const isWalletSubmitReady = row.status === "copy_ready";
-        const rowQuote = isSelected ? quote : null;
-        const rowQuoteStatus = isSelected ? quoteStatus : "idle";
-        const isQuoteReady = Boolean(rowQuoteStatus === "ready" && rowQuote);
-        const isQuoteError = rowQuoteStatus === "error";
-        const quoteFallbackLabel = isQuoteError
-          ? "Quote unavailable — retry"
-          : rowQuoteStatus === "loading"
-            ? "Loading quote..."
-            : "Live quote needed";
-        const walletSubmitCta = !walletConnected
-          ? "Connect wallet first"
-          : isQuoteError
-            ? "Quote unavailable — retry"
-            : isQuoteReady
-              ? "Confirm transaction"
-              : "Loading quote...";
-        const copyAttributionLabel = copyAttributionLabels[row.id];
-        const swipePreviewForRow = swipePreview?.rowId === row.id ? swipePreview : null;
-        const isSwipeConfirming = swipePreviewForRow?.action === "submit";
-        const returnPreview = rowQuote ? buildReturnPreviewFromQuote(rowQuote) : null;
-        const rowIdentityTitle =
-          identityMode === "market" ? row.pairLabel : row.displayName;
-        const rowIdentityDetail =
-          identityMode === "market" ? row.statusLabel : row.walletStatsLabel ?? row.statusLabel;
-        const rowActionLabel =
-          identityMode === "market"
-            ? `${row.pairLabel} ${row.side} call`
-            : `${row.displayName} call`;
-        const durationLabel = row.timeRemainingLabel ?? row.expiryTimeLabel;
-        const isLiveCountdown = isLiveCountdownLabel(row.timeRemainingLabel);
-        const intentPanelElement = intentPanel ? (
-          <div
-            className={`inline-watch-panel inline-watch-panel-${row.status}`}
-            data-testid="market-heat-intent-panel"
-          >
-            <div className="market-heat-intent-targets" aria-label={`${rowIdentityTitle} intent`}>
-              <span>
-                <small>Target</small>
-                <strong>
-                  {row.side === "UP" ? "Above" : "Below"}{" "}
-                  {row.strikeLabel.replace(/^Strike\s+/, "")}
-                </strong>
-                <em>at expiry</em>
-              </span>
-              <span>
-                <small>Expiry</small>
-                <strong>{row.expiryTimeLabel}</strong>
-              </span>
-              <span>
-                <small>Potential payout</small>
-                <strong>
-                  {isWalletSubmitReady
-                    ? returnPreview?.profitLabel ?? quoteFallbackLabel
-                    : intentPanel.detailLabel}
-                </strong>
-              </span>
-            </div>
-            <div className="market-heat-stake-label">Stake amount</div>
-            <CopyAmountControls
-              ariaLabel="Quick spend amounts"
-              copyAmount={copyAmount}
-              onAmountSet={onAmountSet}
-              stopPropagation={true}
-            />
-            <div className="market-heat-intent-footer">
-              <span>
-                <small>Est. payout</small>
-                <strong>{returnPreview?.payoutLabel ?? quoteFallbackLabel}</strong>
-              </span>
-              <span>
-                <small>Max profit</small>
-                <strong>{returnPreview?.profitLabel ?? quoteFallbackLabel}</strong>
-              </span>
-              <span>
-                <small>Cost</small>
-                <strong>{formatCopyAmount(copyAmount)}</strong>
-              </span>
-              <span>
-                <small>Heat</small>
-                <strong>{row.heatScore}</strong>
-              </span>
-              {isWalletSubmitReady ? (
-                <button
-                  type="button"
-                  className="wallet-submit-button"
-                  data-testid="market-heat-wallet-submit"
-                  disabled={!walletConnected || (!isQuoteReady && !isQuoteError)}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (!walletConnected) {
-                      return;
-                    }
+        if (row.isFillGroup) {
+          return renderMarketHeatFillGroup(row);
+        }
 
-                    if (isQuoteError) {
-                      onRetryQuote?.();
-                      return;
-                    }
-
-                    if (!isQuoteReady) {
-                      return;
-                    }
-
-                    onWalletSubmit(row.id);
-                  }}
-                >
-                  {walletSubmitCta}
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null;
-
-        return (
-          <article
-            aria-current={isSelected ? "true" : undefined}
-            className={`market-heat-row market-heat-row-compact market-heat-row-${row.status} market-heat-row-${sideClass} ${
-              isSelected ? "market-heat-row-selected" : ""
-            } ${swipePreviewForRow ? "market-heat-row-swiping" : ""} ${
-              isSwipeConfirming ? "market-heat-row-swipe-confirming" : ""
-            }`}
-            data-testid="market-heat-row"
-            key={row.id}
-            onClick={() => {
-              if (swipedRowRef.current === row.id) {
-                swipedRowRef.current = null;
-                return;
-              }
-
-              onSelectRow(row.id);
-            }}
-            onPointerCancel={() => {
-              swipeStartRef.current = null;
-            }}
-            onPointerDown={(event) => startMarketHeatSwipe(row.id, event)}
-            onPointerMove={(event) => updateMarketHeatSwipe(row, event)}
-            onPointerUp={(event) => finishMarketHeatSwipe(row, event)}
-          >
-            {swipePreviewForRow ? (
-              <div className="market-heat-swipe-action" aria-hidden="true">
-                {isSwipeConfirming ? "Confirm" : "Open"}
-              </div>
-            ) : null}
-            <div
-              className="market-heat-compact-row"
-              style={
-                swipePreviewForRow
-                  ? { transform: `translateX(${swipePreviewForRow.deltaX}px)` }
-                  : undefined
-              }
-            >
-              <div
-                className={`market-heat-compact-wallet${
-                  identityMode === "market" ? " market-heat-compact-wallet-market" : ""
-                }`}
-              >
-                {identityMode === "wallet" ? (
-                  <WalletIdenticon
-                    compact
-                    displayName={row.displayName}
-                    wallet={row.wallet}
-                  />
-                ) : null}
-                <div className="market-heat-compact-identity">
-                  <strong>{rowIdentityTitle}</strong>
-                  <span>{rowIdentityDetail}</span>
-                  {row.fillSummaryLabel ? (
-                    <span className="market-heat-fill-summary">
-                      {row.fillSummaryLabel}
-                    </span>
-                  ) : null}
-                  {copyAttributionLabel ? (
-                    <span className="market-heat-copy-attribution">
-                      {copyAttributionLabel}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              <strong className={`direction-pill direction-pill-${sideClass}`}>
-                {row.side}
-              </strong>
-              <div className="market-heat-compact-strike">
-                <strong>{row.strikeLabel.replace(/^Strike\s+/, "")}</strong>
-              </div>
-              <div
-                className={`market-heat-compact-duration${
-                  isLiveCountdown ? " market-heat-countdown-live" : ""
-                }`}
-              >
-                <strong>{durationLabel}</strong>
-              </div>
-              <div
-                className="market-heat-compact-heat"
-                aria-label={`Heat ${row.heatScore}. ${MARKET_HEAT_DESCRIPTION}`}
-                title={MARKET_HEAT_DESCRIPTION}
-              >
-                <strong>{row.heatScore}</strong>
-              </div>
-              {onShareRow ? (
-                <button
-                  type="button"
-                  className="market-heat-share-button"
-                  aria-label={`Share ${rowActionLabel}`}
-                  title="Share call"
-                  data-testid="market-heat-share"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onShareRow(row.id);
-                  }}
-                  onPointerDown={(event) => {
-                    event.stopPropagation();
-                  }}
-                  onPointerMove={(event) => {
-                    event.stopPropagation();
-                  }}
-                  onPointerUp={(event) => {
-                    event.stopPropagation();
-                  }}
-                >
-                  <ShareIcon />
-                </button>
-              ) : null}
-              <ChevronIcon
-                className={`market-heat-compact-chevron ${
-                  isSelected ? "market-heat-compact-chevron-open" : ""
-                }`}
-              />
-            </div>
-            {intentPanelElement}
-          </article>
-        );
+        return renderMarketHeatTradeRow(row);
       })}
       {canShowMore ? (
         <button
@@ -6500,7 +6583,9 @@ export function App() {
     });
   };
   const handleMarketHeatShare = (rowId: string) => {
-    const row = marketHeatPreview.rows.find((candidate) => candidate.id === rowId);
+    const row = getCopyableMarketHeatRows(marketHeatPreview.rows).find(
+      (candidate) => candidate.id === rowId,
+    );
     if (!row) {
       pushToast({
         kind: "error",
