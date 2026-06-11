@@ -11,10 +11,12 @@ import {
   TradeTicket,
   WalletHeaderControl,
   WalletStatusBar,
+  buildAppViewSearch,
   buildTradeExpiryOptions,
   buildTradeQuoteKey,
   filterMarketHeatRowsByFollowedWallets,
   getAccountSummaryVariant,
+  getInitialAppView,
   getMarketHeatRowsRefreshMs,
   parseStoredStakeAmount,
   resolveSelectedProfileWalletForNav,
@@ -306,6 +308,16 @@ describe("mobile app navigation", () => {
     expect(resolveSelectedProfileWalletForNav("profile", selectedWallet)).toBeNull();
     expect(resolveSelectedProfileWalletForNav("leaderboards", selectedWallet)).toBe(
       selectedWallet,
+    );
+  });
+
+  test("restores active app views from the URL while preserving wallet params", () => {
+    expect(getInitialAppView("?view=trade", null)).toBe("trade");
+    expect(getInitialAppView("?view=leaderboards", null)).toBe("leaderboards");
+    expect(getInitialAppView("?view=not-a-tab", null)).toBe("feed");
+    expect(getInitialAppView("", "0x29b8")).toBe("portfolio");
+    expect(buildAppViewSearch("?devWallet=0xabc", "profile")).toBe(
+      "?devWallet=0xabc&view=profile",
     );
   });
 

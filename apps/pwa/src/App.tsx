@@ -153,12 +153,14 @@ const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
 const STAKE_AMOUNT_STORAGE_KEY = "hot-hands-default-stake-amount";
 const THEME_STORAGE_KEY = "hot-hands-theme-mode";
+const APP_VIEW_QUERY_PARAM = "view";
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "leaderboards" | "portfolio" | "profile";
 export type AccountSummaryVariant = "default" | "portfolio";
 type MarketHeatFeedMode = MarketHeatSortMode | "following";
 type MarketHeatIdentityMode = "wallet" | "market";
 type ThemeMode = "light" | "dark";
+const APP_VIEW_VALUES: AppView[] = ["feed", "trade", "leaderboards", "portfolio", "profile"];
 const MARKET_HEAT_DESCRIPTION =
   "Heat combines recency, copied volume, wallet streak, and trade activity.";
 export type MarketHeatSwipeAction = "none" | "select" | "submit";
@@ -392,6 +394,48 @@ export function resolveSelectedProfileWalletForNav(
   selectedWallet: FollowedWallet | null,
 ): FollowedWallet | null {
   return view === "profile" ? null : selectedWallet;
+}
+
+function isAppView(value: string | null): value is AppView {
+  return APP_VIEW_VALUES.includes(value as AppView);
+}
+
+export function getInitialAppView(
+  search: string | null | undefined,
+  readOnlyWalletAddress: string | null,
+): AppView {
+  const params = new URLSearchParams(search ?? "");
+  const view = params.get(APP_VIEW_QUERY_PARAM);
+
+  if (isAppView(view)) {
+    return view;
+  }
+
+  return readOnlyWalletAddress ? "portfolio" : "feed";
+}
+
+export function buildAppViewSearch(
+  search: string | null | undefined,
+  view: AppView,
+): string {
+  const params = new URLSearchParams(search ?? "");
+  params.set(APP_VIEW_QUERY_PARAM, view);
+
+  return `?${params.toString()}`;
+}
+
+function syncAppViewToUrl(view: AppView): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const nextSearch = buildAppViewSearch(window.location.search, view);
+  const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+  if (nextUrl !== currentUrl) {
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }
 }
 
 const idleWalletTransactionState: WalletTransactionState = {
@@ -4445,7 +4489,10 @@ export function App() {
   );
   const realtimeApiBaseUrl = import.meta.env.VITE_HOT_HANDS_API_URL;
   const [activeView, setActiveView] = useState<AppView>(() =>
-    readOnlyWalletAddress ? "portfolio" : "feed",
+    getInitialAppView(
+      typeof window === "undefined" ? "" : window.location.search,
+      readOnlyWalletAddress,
+    ),
   );
   const [followedWallets, setFollowedWallets] = useState<FollowedWallet[]>(() =>
     readFollowedWallets(),
@@ -4882,6 +4929,10 @@ export function App() {
       setIsWalletChooserOpen(false);
     }
   }, [connectedAccountAddress, wallets.length]);
+
+  useEffect(() => {
+    syncAppViewToUrl(activeView);
+  }, [activeView]);
 
   useEffect(() => {
     setProfilePositionVisibleLimit(MARKET_HEAT_PAGE_SIZE);
