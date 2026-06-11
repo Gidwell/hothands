@@ -19,6 +19,7 @@ import {
   parseStoredStakeAmount,
   resolveSelectedProfileWalletForNav,
   shouldAutoRefreshMarketHeatRows,
+  shouldAutoRefreshWalletLeaderboards,
   shouldShowAccountSummary,
   type ShareCardState,
 } from "../src/App";
@@ -224,6 +225,14 @@ describe("mobile app navigation", () => {
     expect(getMarketHeatRowsRefreshMs("feed")).toBe(3000);
     expect(getMarketHeatRowsRefreshMs("profile")).toBe(3000);
     expect(getMarketHeatRowsRefreshMs("trade")).toBeNull();
+  });
+
+  test("auto-refreshes wallet leaderboards on leaders and profile views", () => {
+    expect(shouldAutoRefreshWalletLeaderboards("leaderboards")).toBe(true);
+    expect(shouldAutoRefreshWalletLeaderboards("profile")).toBe(true);
+    expect(shouldAutoRefreshWalletLeaderboards("feed")).toBe(false);
+    expect(shouldAutoRefreshWalletLeaderboards("trade")).toBe(false);
+    expect(shouldAutoRefreshWalletLeaderboards("portfolio")).toBe(false);
   });
 
   test("groups trade expirations by date with consistent market counts", () => {

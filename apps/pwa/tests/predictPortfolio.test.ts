@@ -312,6 +312,69 @@ describe("Predict portfolio", () => {
     });
   });
 
+  test("orders trade history by realized time instead of opened or late claim time", () => {
+    const snapshot = buildPortfolioSnapshot(
+      [
+        {
+          eventId: "mint-early-redeemed",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xearly-redeemed",
+          expiry: 1_779_300_000,
+          strike: 66_000_000_000,
+          isUp: true,
+          quantity: 3_000_000,
+          cost: 1_500_000,
+          timestampMs: 1_779_100_000_000,
+        },
+        {
+          eventId: "mint-held-to-expiry",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xheld-to-expiry",
+          expiry: 1_779_101_500,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 4_000_000,
+          cost: 2_000_000,
+          timestampMs: 1_779_101_000_000,
+        },
+        {
+          eventId: "early-redeem",
+          eventType: "redeem",
+          managerId: "0xmanager",
+          oracleId: "0xearly-redeemed",
+          expiry: 1_779_300_000,
+          strike: 66_000_000_000,
+          isUp: true,
+          quantity: 3_000_000,
+          payout: 2_250_000,
+          timestampMs: 1_779_102_000_000,
+        },
+        {
+          eventId: "late-claim-held-to-expiry",
+          eventType: "redeem",
+          managerId: "0xmanager",
+          oracleId: "0xheld-to-expiry",
+          expiry: 1_779_101_500,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 4_000_000,
+          payout: 0,
+          timestampMs: 1_779_104_000_000,
+        },
+      ],
+      {
+        nowMs: 1_779_194_000_000,
+      },
+    );
+
+    expect(snapshot.history.map((item) => item.oracleId)).toEqual([
+      "0xearly-redeemed",
+      "0xheld-to-expiry",
+    ]);
+  });
+
   test("filters old or dismissed no-payout expired positions", () => {
     const freshNoPayout = {
       actionLabel: "Dismiss" as const,

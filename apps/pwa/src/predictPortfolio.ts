@@ -396,7 +396,10 @@ function buildPortfolioHistory(
   return [...histories.values()]
     .sort(
       (left, right) =>
+        portfolioHistoryRealizedAtMs(right, nowMs, settlementsByOracleId.get(right.oracleId)) -
+          portfolioHistoryRealizedAtMs(left, nowMs, settlementsByOracleId.get(left.oracleId)) ||
         right.lastTimestampMs - left.lastTimestampMs ||
+        right.firstTimestampMs - left.firstTimestampMs ||
         positionAccumulatorKey(right).localeCompare(positionAccumulatorKey(left)),
     )
     .map((history) =>
@@ -406,6 +409,24 @@ function buildPortfolioHistory(
         settlementsByOracleId.get(history.oracleId),
       ),
     );
+}
+
+function portfolioHistoryRealizedAtMs(
+  history: PortfolioHistoryAccumulator,
+  nowMs: number,
+  settlement?: PredictOracleSettlement,
+): number {
+  const expiryMs = normalizeEpochMs(history.expiry);
+  const settlementMs =
+    typeof settlement?.settledAtMs === "number" && Number.isFinite(settlement.settledAtMs)
+      ? normalizeEpochMs(settlement.settledAtMs)
+      : null;
+
+  if (history.quantity === 0n) {
+    return history.lastTimestampMs < expiryMs ? history.lastTimestampMs : (settlementMs ?? expiryMs);
+  }
+
+  return expiryMs <= nowMs ? (settlementMs ?? expiryMs) : expiryMs;
 }
 
 function buildPortfolioPnlSummary(

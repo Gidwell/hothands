@@ -183,6 +183,10 @@ export function getMarketHeatRowsRefreshMs(view: AppView): number | null {
   return shouldAutoRefreshMarketHeatRows(view) ? MARKET_HEAT_ROWS_REFRESH_MS : null;
 }
 
+export function shouldAutoRefreshWalletLeaderboards(view: AppView): boolean {
+  return view === "leaderboards" || view === "profile";
+}
+
 function getInitialThemeMode(): ThemeMode {
   if (typeof window === "undefined") {
     return "light";
@@ -5330,7 +5334,7 @@ export function App() {
   }, [activeView, marketHeatShowExpired, previewMode, realtimeApiBaseUrl]);
 
   useEffect(() => {
-    if (activeView !== "leaderboards") {
+    if (!shouldAutoRefreshWalletLeaderboards(activeView)) {
       return undefined;
     }
 

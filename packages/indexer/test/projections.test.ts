@@ -414,6 +414,142 @@ describe("Predict durable projections", () => {
       currentStreakLength: 1,
     });
   });
+
+  test("orders current streaks by settlement time instead of later claim time", () => {
+    const positions = [
+      positionSummary({
+        id: "old-claimed-loss",
+        owner: "0xwallet",
+        oracleId: "btc-old-loss",
+        expiryMs: 2_000,
+        cost: 1_000_000,
+        payout: 0,
+        realizedPnl: -1_000_000,
+        status: "closed",
+        lastEventMs: 12_000,
+      }),
+      positionSummary({
+        id: "newer-settled-win",
+        owner: "0xwallet",
+        oracleId: "btc-new-win",
+        expiryMs: 8_000,
+        cost: 1_000_000,
+        payout: 2_000_000,
+        realizedPnl: 1_000_000,
+        status: "closed",
+        lastEventMs: 9_000,
+      }),
+    ];
+
+    const leaderboards = buildWalletPerformanceLeaderboards(positions, {
+      limit: 5,
+      nowMs: 13_000,
+      oracles: [
+        oracleState({
+          oracle_id: "btc-old-loss",
+          settlement_price: 71_000_000_000,
+          settled_at: 2_100,
+          status: "settled",
+        }),
+        oracleState({
+          oracle_id: "btc-new-win",
+          settlement_price: 73_000_000_000,
+          settled_at: 8_100,
+          status: "settled",
+        }),
+      ],
+    });
+
+    expect(leaderboards.currentWinningStreak[0]).toMatchObject({
+      wallet: "0xwallet",
+      currentStreakType: "win",
+      currentStreakLength: 1,
+      longestLosingStreak: 1,
+      totalPnl: 0,
+    });
+    expect(leaderboards.currentLosingStreak).toEqual([]);
+  });
+
+  test("orders streaks by early redeem time and held-to-expiry realization time", () => {
+    const positions = [
+      positionSummary({
+        id: "held-to-expiry-loss",
+        owner: "0xwallet",
+        oracleId: "btc-held-loss",
+        expiryMs: 2_000,
+        cost: 1_000_000,
+        payout: 0,
+        realizedPnl: -1_000_000,
+        status: "closed",
+        lastEventMs: 9_000,
+      }),
+      positionSummary({
+        id: "early-redeemed-win",
+        owner: "0xwallet",
+        oracleId: "btc-early-win",
+        expiryMs: 10_000,
+        cost: 1_000_000,
+        payout: 1_500_000,
+        realizedPnl: 500_000,
+        status: "closed",
+        lastEventMs: 6_000,
+      }),
+    ];
+
+    const leaderboards = buildWalletPerformanceLeaderboards(positions, {
+      limit: 5,
+      nowMs: 11_000,
+      oracles: [
+        oracleState({
+          oracle_id: "btc-held-loss",
+          settlement_price: 71_000_000_000,
+          settled_at: 2.1,
+          status: "settled",
+        }),
+      ],
+    });
+
+    expect(leaderboards.currentWinningStreak[0]).toMatchObject({
+      wallet: "0xwallet",
+      currentStreakType: "win",
+      currentStreakLength: 1,
+      longestWinningStreak: 1,
+      longestLosingStreak: 1,
+      totalPnl: -500_000,
+    });
+  });
+
+  test("does not count break-even positions as losses", () => {
+    const leaderboards = buildWalletPerformanceLeaderboards(
+      [
+        positionSummary({
+          id: "break-even",
+          owner: "0xwallet",
+          cost: 1_000_000,
+          payout: 1_000_000,
+          realizedPnl: 0,
+          status: "closed",
+          lastEventMs: 1_000,
+        }),
+      ],
+      {
+        limit: 5,
+        nowMs: 2_000,
+      },
+    );
+
+    expect(leaderboards.highestPnl[0]).toMatchObject({
+      wallet: "0xwallet",
+      winCount: 0,
+      lossCount: 0,
+      currentStreakType: "none",
+      currentStreakLength: 0,
+      longestWinningStreak: 0,
+      longestLosingStreak: 0,
+    });
+    expect(leaderboards.currentWinningStreak).toEqual([]);
+    expect(leaderboards.currentLosingStreak).toEqual([]);
+  });
 });
 
 function tradeEvent(
