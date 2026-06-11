@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { LineStyle } from "lightweight-charts";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildOraclePriceChartFitResetKey,
+  getOraclePriceChartGridLineOptions,
   getInitialOraclePriceChartView,
   getOraclePriceChartMinBarSpacing,
   OraclePriceChartCard,
@@ -168,6 +170,26 @@ describe("OraclePriceChartModal", () => {
     expect(getOraclePriceChartMinBarSpacing({ compact: true })).toBeLessThanOrEqual(
       0.03,
     );
+  });
+
+  test("uses subtle dotted grid lines for expanded charts", () => {
+    expect(
+      getOraclePriceChartGridLineOptions({
+        color: "rgba(139, 108, 255, 0.12)",
+        compact: false,
+      }),
+    ).toEqual({
+      color: "rgba(139, 108, 255, 0.12)",
+      style: LineStyle.Dotted,
+      visible: true,
+    });
+
+    expect(
+      getOraclePriceChartGridLineOptions({
+        color: "rgba(139, 108, 255, 0.12)",
+        compact: true,
+      }).visible,
+    ).toBe(false);
   });
 
   test("defaults expanded charts to the latest six hours when more history exists", () => {

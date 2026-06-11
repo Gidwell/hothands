@@ -197,6 +197,8 @@ button:disabled {
 }
 
 .oracle-chart-shell {
+  --oracle-chart-grid-color: rgba(102, 112, 133, 0.12);
+
   position: relative;
   width: 100%;
   min-width: 0;
@@ -3228,6 +3230,10 @@ button:disabled {
 .app-shell[data-theme="dark"] .oracle-chart-canvas canvas,
 .app-shell[data-theme="dark"] .oracle-chart-shell canvas {
   filter: saturate(1.06) brightness(0.92);
+}
+
+.app-shell[data-theme="dark"] .oracle-chart-shell {
+  --oracle-chart-grid-color: rgba(139, 108, 255, 0.11);
 }
 
 .app-shell[data-theme="dark"] .oracle-market-chart-summary,

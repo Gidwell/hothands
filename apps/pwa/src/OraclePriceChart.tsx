@@ -17,6 +17,7 @@ import {
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type GridLineOptions,
   type LineData,
   type Time,
   type UTCTimestamp,
@@ -29,6 +30,7 @@ const EXPANDED_CHART_MIN_BAR_SPACING = 0.02;
 const COMPACT_CHART_DEFAULT_WINDOW_SECONDS = 15 * 60;
 const EXPANDED_CHART_DEFAULT_WINDOW_SECONDS = 6 * 60 * 60;
 const EXPIRY_AXIS_PADDING_SECONDS = 15 * 60;
+const DEFAULT_ORACLE_CHART_GRID_COLOR = "rgba(102, 112, 133, 0.12)";
 
 export type OraclePriceChartRangeKey = "1H" | "6H" | "24H";
 
@@ -165,6 +167,16 @@ function getOracleLineColor(compact: boolean, tone: OracleChartTone): string {
   }
 
   return "#8b6cff";
+}
+
+function getOracleChartCssValue(
+  element: HTMLElement,
+  propertyName: string,
+  fallback: string,
+): string {
+  const value = getComputedStyle(element).getPropertyValue(propertyName).trim();
+
+  return value || fallback;
 }
 
 export function OraclePriceChartModal({
@@ -310,6 +322,15 @@ function LightweightOraclePriceChart({
       return;
     }
 
+    const gridColor = getOracleChartCssValue(
+      container,
+      "--oracle-chart-grid-color",
+      DEFAULT_ORACLE_CHART_GRID_COLOR,
+    );
+    const gridLineOptions = getOraclePriceChartGridLineOptions({
+      color: gridColor,
+      compact,
+    });
     const chart = createChart(container, {
       autoSize: true,
       height,
@@ -322,8 +343,8 @@ function LightweightOraclePriceChart({
         timeFormatter: formatCrosshairLocalTime,
       },
       grid: {
-        vertLines: { visible: !compact, color: "#eef3f8" },
-        horzLines: { visible: !compact, color: "#eef3f8" },
+        vertLines: gridLineOptions,
+        horzLines: gridLineOptions,
       },
       crosshair: {
         mode: CrosshairMode.Hidden,
@@ -487,6 +508,20 @@ function LightweightOraclePriceChart({
       <div ref={containerRef} className="oracle-chart-canvas" style={{ height }} />
     </div>
   );
+}
+
+export function getOraclePriceChartGridLineOptions({
+  color,
+  compact,
+}: {
+  color: string;
+  compact: boolean;
+}): GridLineOptions {
+  return {
+    color,
+    style: LineStyle.Dotted,
+    visible: !compact,
+  };
 }
 
 export function shouldAutoFitOraclePriceChart({
