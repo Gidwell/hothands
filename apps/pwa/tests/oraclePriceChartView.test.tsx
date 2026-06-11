@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  buildOraclePriceChartFitResetKey,
   getInitialOraclePriceChartView,
   getOraclePriceChartMinBarSpacing,
   OraclePriceChartCard,
@@ -137,6 +138,26 @@ describe("OraclePriceChartModal", () => {
         pointCount: 3,
       }),
     ).toBe(true);
+  });
+
+  test("resets expanded chart fitting when the range control changes", () => {
+    expect(
+      buildOraclePriceChartFitResetKey({
+        oracleId: "0xoracle",
+        rangeKey: "1H",
+      }),
+    ).not.toBe(
+      buildOraclePriceChartFitResetKey({
+        oracleId: "0xoracle",
+        rangeKey: "6H",
+      }),
+    );
+    expect(
+      buildOraclePriceChartFitResetKey({
+        oracleId: "0xoracle",
+        rangeKey: "24H",
+      }),
+    ).toBe("0xoracle:24H");
   });
 
   test("allows the expanded chart to zoom out across dense one-second oracle history", () => {

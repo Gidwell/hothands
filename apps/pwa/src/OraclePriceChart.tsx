@@ -240,7 +240,10 @@ export function OraclePriceChartModal({
           {hasChart ? (
             <LightweightOraclePriceChart
               points={chart.points}
-              fitResetKey={chart.oracleId}
+              fitResetKey={buildOraclePriceChartFitResetKey({
+                oracleId: chart.oracleId,
+                rangeKey,
+              })}
               height={320}
               marketContext={visibleMarketContext}
               nowMs={nowMs}
@@ -258,6 +261,16 @@ export function OraclePriceChartModal({
       </div>
     </div>
   );
+}
+
+export function buildOraclePriceChartFitResetKey({
+  oracleId,
+  rangeKey,
+}: {
+  oracleId: string;
+  rangeKey?: OraclePriceChartRangeKey;
+}): string {
+  return rangeKey ? `${oracleId}:${rangeKey}` : oracleId;
 }
 
 function LightweightOraclePriceChart({
