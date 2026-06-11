@@ -68,8 +68,7 @@ describe("copy attribution", () => {
 
     expect(summary.count).toBe(1);
     expect(summary.amount).toBe(25);
-    expect(formatCopyAttributionLabel(summary)).toContain("Copied by");
-    expect(formatCopyAttributionLabel(summary)).toContain("copied");
+    expect(formatCopyAttributionLabel(summary)).toBe("1 copier · $25");
   });
 
   test("round-trips receipts through storage", () => {

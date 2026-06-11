@@ -228,6 +228,7 @@ describe("mobile app navigation", () => {
 
   test("groups trade expirations by date with consistent market counts", () => {
     const nowMs = new Date(2026, 5, 9, 12).getTime();
+    const tomorrowMs = new Date(2026, 5, 10, 9).getTime();
     const jun12EarlyMs = new Date(2026, 5, 12, 1).getTime();
     const jun12LaterMs = new Date(2026, 5, 12, 5).getTime();
     const jun19Ms = new Date(2026, 5, 19, 1).getTime();
@@ -235,6 +236,10 @@ describe("mobile app navigation", () => {
     expect(
       buildTradeExpiryOptions(
         [
+          tradeMarketRowFixture({
+            expiryMs: tomorrowMs,
+            intervalLabel: "15m",
+          }),
           tradeMarketRowFixture({
             expiryMs: jun12EarlyMs,
             intervalLabel: "23d",
@@ -251,6 +256,13 @@ describe("mobile app navigation", () => {
         nowMs,
       ),
     ).toEqual([
+      {
+        count: 1,
+        expiryMs: tomorrowMs,
+        label: "Jun 10",
+        sublabel: "1 market",
+        value: "2026-06-10",
+      },
       {
         count: 2,
         expiryMs: jun12EarlyMs,
@@ -661,7 +673,7 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain("portfolio-countdown-live");
-    expect(html).toContain("Live");
+    expect(html).not.toContain(">Live</em>");
     expect(html).toContain("Open · 30m left · Quoted now");
   });
 

@@ -8,6 +8,7 @@ import {
   loadMarketHeatPreview,
   loadMarketHeatPriceSnapshot,
   loadTradeQuote,
+  preserveMarketHeatAvailableMarketStrikes,
   buildTradeMarketLadder,
   buildTradeMarketForMarketHeatRow,
   selectMarketHeatIntent,
@@ -619,7 +620,7 @@ describe("market heat preview model", () => {
     expect(preview.rows[0]?.displayNameSource).toBeUndefined();
   });
 
-  test("keeps parsed trade market ids stable when live strike candidates update", async () => {
+  test("preserves displayed trade market strikes when live candidates update", async () => {
     const expiryMs = 1_779_165_900_000;
     const loadForStrike = (strikeCandidatePrice: number) =>
       loadMarketHeatPreview({
@@ -666,7 +667,7 @@ describe("market heat preview model", () => {
       });
 
     const first = await loadForStrike(71_000);
-    const updated = await loadForStrike(71_050);
+    const updated = preserveMarketHeatAvailableMarketStrikes(await loadForStrike(71_050), first);
 
     expect(first.availableMarkets?.[0]).toMatchObject({
       id: "0xoracle15-1779165900000",
@@ -674,7 +675,7 @@ describe("market heat preview model", () => {
     });
     expect(updated.availableMarkets?.[0]).toMatchObject({
       id: "0xoracle15-1779165900000",
-      strikeLabel: "$71,050",
+      strikeLabel: "$71,000",
     });
   });
 
@@ -1387,6 +1388,78 @@ describe("market heat preview model", () => {
         sortMode: "heat",
       }).map((row) => row.id),
     ).toEqual(["expired-hot", "live-warm"]);
+  });
+
+  test("can diversify visible market heat rows by wallet after sorting", () => {
+    const nowMs = 1_779_165_000_000;
+    const preview = buildMarketHeatPreview(
+      [
+        {
+          id: "same-wallet-newest",
+          wallet: "0x1111222233334444555566667777888899990000",
+          manager: "manager-a",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_000,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs,
+          heatScore: 90,
+          status: "copy_ready",
+        },
+        {
+          id: "same-wallet-second",
+          wallet: "0x1111222233334444555566667777888899990000",
+          manager: "manager-a",
+          market: "BTC-USD",
+          side: "DOWN",
+          strike: 70_100,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs - 1_000,
+          heatScore: 89,
+          status: "copy_ready",
+        },
+        {
+          id: "other-wallet-third",
+          wallet: "0x2222333344445555666677778888999900001111",
+          manager: "manager-b",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_200,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs - 2_000,
+          heatScore: 20,
+          status: "copy_ready",
+        },
+        {
+          id: "third-wallet-fourth",
+          wallet: "0x3333444455556666777788889999000011112222",
+          manager: "manager-c",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_300,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs - 3_000,
+          heatScore: 10,
+          status: "copy_ready",
+        },
+      ],
+      8,
+      { nowMs },
+    );
+
+    expect(
+      selectVisibleMarketHeatRows(preview.rows, {
+        diversifyWallets: true,
+        limit: 3,
+        nowMs,
+        showExpired: false,
+        sortMode: "latest",
+      }).map((row) => row.id),
+    ).toEqual(["same-wallet-newest", "other-wallet-third", "third-wallet-fourth"]);
   });
 
   test("builds and applies market duration filters across feed and trade markets", () => {

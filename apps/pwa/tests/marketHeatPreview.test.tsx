@@ -84,7 +84,6 @@ describe("MarketHeatPreview component", () => {
         rows={[row]}
         sourceLabel="Captured"
         sortMode="latest"
-        subtitle="Every call is onchain. Streaks don't lie. Copy the hot hands."
         selectedRowId={row.id}
         showExpired={false}
         canShowMore={false}
@@ -103,8 +102,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain('title="Captured BTC markets"');
     expect(html).toContain('aria-label="Alpha Feed, Captured BTC markets"');
     expect(html).not.toContain("<span>Captured BTC markets</span>");
-    expect(html).toContain("Every call is onchain");
-    expect(html).toContain("Copy the hot hands");
+    expect(html).not.toContain("Every call is onchain");
+    expect(html).not.toContain("Copy the hot hands");
     expect(html).toContain("Target</small>");
     expect(html).toContain("Below $6,200");
     expect(html).toContain("Next observed mint");
@@ -473,8 +472,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("$7,100");
     expect(html).toContain("3h left");
     expect(html).toContain("market-heat-countdown-live");
-    expect(html).toContain("Live expiry countdown");
-    expect(html).toContain("Live");
+    expect(html).not.toContain("Live expiry countdown");
+    expect(html).not.toContain(">Live</small>");
     expect(html).toContain("Heat");
     expect(html).toContain("Heat combines recency, copied volume, wallet streak, and trade activity.");
     expect(html).toContain("market-heat-info");

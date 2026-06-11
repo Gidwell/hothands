@@ -65,6 +65,7 @@ export type MarketHeatAvailableMarketInput = {
   expiry?: unknown;
   expiryMs?: unknown;
   strike?: unknown;
+  strikeRaw?: unknown;
   strikeCandidate?: unknown;
   strikeCandidatePrice?: unknown;
   latestPrice?: unknown;
@@ -174,6 +175,7 @@ export type BuildMarketHeatPreviewOptions = {
 };
 
 export type SelectVisibleMarketHeatRowsOptions = {
+  diversifyWallets?: boolean;
   intervalLabel?: string | null;
   limit?: number;
   nowMs?: number;
@@ -184,6 +186,7 @@ export type SelectVisibleMarketHeatRowsOptions = {
 export type SelectTradeMarketsOptions = {
   intervalLabel?: string | null;
   nowMs?: number;
+  spotPriceLabel?: string | null;
 };
 
 export type TradeMarketSideSummary = {
@@ -441,8 +444,14 @@ export function selectTradeMarkets(
 
 export function buildTradeMarketLadder(
   preview: MarketHeatPreview,
-  { intervalLabel = null, nowMs = Date.now() }: SelectTradeMarketsOptions = {},
+  {
+    intervalLabel = null,
+    nowMs = Date.now(),
+    spotPriceLabel = null,
+  }: SelectTradeMarketsOptions = {},
 ): TradeMarketLadderRow[] {
+  const spotPrice = parseFormattedUsd(spotPriceLabel ?? preview.marketPrice.priceLabel);
+
   return selectTradeMarkets(preview, { intervalLabel, nowMs })
     .map((market) => {
       const activityRows = preview.rows.filter((row) => isActivityForMarket(row, market));
@@ -475,9 +484,7 @@ export function buildTradeMarketLadder(
         strike: market.strike,
         strikeRaw: market.strikeRaw,
         strikeLabel: market.strikeLabel,
-        moneynessLabel: formatMoneyness(
-          market.strike - parseFormattedUsd(preview.marketPrice.priceLabel),
-        ),
+        moneynessLabel: formatMoneyness(market.strike - spotPrice),
         activityLabel: formatTradeMarketActivity(wallets.size, tradeCount, volumeLabel),
         uniqueWalletCount: wallets.size,
         tradeCount,
@@ -494,8 +501,7 @@ export function buildTradeMarketLadder(
       (left, right) =>
         left.expiryMs - right.expiryMs ||
         right.tradeCount - left.tradeCount ||
-        Math.abs(left.strike - parseFormattedUsd(preview.marketPrice.priceLabel)) -
-          Math.abs(right.strike - parseFormattedUsd(preview.marketPrice.priceLabel)) ||
+        Math.abs(left.strike - spotPrice) - Math.abs(right.strike - spotPrice) ||
         left.id.localeCompare(right.id),
     );
 }
@@ -503,14 +509,17 @@ export function buildTradeMarketLadder(
 export function buildTradeMarketForMarketHeatRow(
   preview: MarketHeatPreview,
   rowId: string,
-  { nowMs = Date.now() }: SelectTradeMarketsOptions = {},
+  {
+    nowMs = Date.now(),
+    spotPriceLabel = null,
+  }: SelectTradeMarketsOptions = {},
 ): MarketHeatCopyTrade | null {
   const row = preview.rows.find((candidate) => candidate.id === rowId);
   if (!row || row.status !== "copy_ready" || row.expiryMs <= nowMs) {
     return null;
   }
 
-  const market = buildTradeMarketLadder(preview, { nowMs }).find((candidate) => {
+  const market = buildTradeMarketLadder(preview, { nowMs, spotPriceLabel }).find((candidate) => {
     if (row.oracleId && candidate.oracleId === row.oracleId) {
       return true;
     }
@@ -534,7 +543,7 @@ export function buildTradeMarketForMarketHeatRow(
       strikeRaw: rowStrikeRaw,
       strikeLabel: formatStrike(row.strike),
     };
-  const spot = parseFormattedUsd(preview.marketPrice.priceLabel);
+  const spot = parseFormattedUsd(spotPriceLabel ?? preview.marketPrice.priceLabel);
   const rowEstimatedPrice = estimateMarketHeatRowPrice(row);
 
   return {
@@ -614,6 +623,7 @@ export function sortMarketHeatRows(
 export function selectVisibleMarketHeatRows(
   rows: MarketHeatPreviewRow[],
   {
+    diversifyWallets = false,
     intervalLabel = null,
     limit = 8,
     nowMs = Date.now(),
@@ -629,7 +639,44 @@ export function selectVisibleMarketHeatRows(
     ? eligibleRows.filter((row) => row.intervalLabel === intervalLabel)
     : eligibleRows;
 
-  return sortMarketHeatRows(durationRows, sortMode).slice(0, limit);
+  const sortedRows = sortMarketHeatRows(durationRows, sortMode);
+
+  return diversifyWallets
+    ? diversifyMarketHeatRowsByWallet(sortedRows, limit)
+    : sortedRows.slice(0, limit);
+}
+
+function diversifyMarketHeatRowsByWallet(
+  rows: MarketHeatPreviewRow[],
+  limit: number,
+): MarketHeatPreviewRow[] {
+  const selectedRows: MarketHeatPreviewRow[] = [];
+  const selectedIds = new Set<string>();
+  const selectedWallets = new Set<string>();
+  const addRow = (row: MarketHeatPreviewRow) => {
+    if (selectedIds.has(row.id) || selectedRows.length >= limit) {
+      return;
+    }
+
+    selectedIds.add(row.id);
+    selectedRows.push(row);
+  };
+
+  for (const row of rows) {
+    const wallet = row.wallet.toLowerCase();
+    if (selectedWallets.has(wallet)) {
+      continue;
+    }
+
+    selectedWallets.add(wallet);
+    addRow(row);
+  }
+
+  for (const row of rows) {
+    addRow(row);
+  }
+
+  return selectedRows;
 }
 
 export function buildMarketDurationOptions(
@@ -819,8 +866,10 @@ export async function loadMarketHeatPriceSnapshot(
       });
     }
 
-    const availableMarkets =
-      parseAvailableMarkets(payload, marketPrice, timeZone) ?? currentPreview.availableMarkets;
+    const availableMarkets = preserveAvailableMarketStrikes(
+      parseAvailableMarkets(payload, marketPrice, timeZone),
+      currentPreview.availableMarkets,
+    ) ?? currentPreview.availableMarkets;
 
     return {
       ...currentPreview,
@@ -837,6 +886,20 @@ export async function loadMarketHeatPriceSnapshot(
       useMainnetSuinsNames,
     });
   }
+}
+
+export function preserveMarketHeatAvailableMarketStrikes(
+  nextPreview: MarketHeatPreview,
+  currentPreview: Pick<MarketHeatPreview, "availableMarkets">,
+): MarketHeatPreview {
+  const availableMarkets = preserveAvailableMarketStrikes(
+    nextPreview.availableMarkets,
+    currentPreview.availableMarkets,
+  );
+
+  return availableMarkets === nextPreview.availableMarkets
+    ? nextPreview
+    : { ...nextPreview, availableMarkets };
 }
 
 export async function loadTradeQuote({
@@ -1590,12 +1653,13 @@ function parseAvailableMarket(
   const expiryMs = expiry === null ? null : normalizeEpochMs(expiry);
   const status = isNonEmptyString(value.status) ? value.status : "active";
   const strike = firstNonNegativeNumber([
-    value.strikeCandidatePrice,
     value.strike,
+    value.strikeCandidatePrice,
     value.latestPrice,
     marketPrice.price,
   ]);
   const strikeRaw = firstNonNegativeNumber([
+    value.strikeRaw,
     value.strikeCandidate,
     value.strike,
     strike,
@@ -1620,6 +1684,39 @@ function parseAvailableMarket(
     status,
     ...(pricingModel === undefined ? {} : { pricingModel }),
   };
+}
+
+function preserveAvailableMarketStrikes(
+  nextMarkets: MarketHeatAvailableMarket[] | undefined,
+  currentMarkets: MarketHeatAvailableMarket[] | undefined,
+): MarketHeatAvailableMarket[] | undefined {
+  if (!nextMarkets || !currentMarkets?.length) {
+    return nextMarkets;
+  }
+
+  const currentByKey = new Map(
+    currentMarkets.map((market) => [availableMarketStableKey(market), market]),
+  );
+
+  return nextMarkets.map((market) => {
+    const currentMarket = currentByKey.get(availableMarketStableKey(market));
+    if (!currentMarket) {
+      return market;
+    }
+
+    return {
+      ...market,
+      strike: currentMarket.strike,
+      strikeRaw: currentMarket.strikeRaw,
+      strikeLabel: currentMarket.strikeLabel,
+    };
+  });
+}
+
+function availableMarketStableKey(
+  market: Pick<MarketHeatAvailableMarket, "expiryMs" | "intervalLabel" | "oracleId">,
+): string {
+  return `${market.oracleId}:${market.expiryMs}:${market.intervalLabel}`;
 }
 
 function parsePricingModel(value: unknown): MarketHeatPricingModel | undefined {

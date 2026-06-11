@@ -65,6 +65,7 @@ import {
   loadTradeQuote,
   loadMarketHeatPreview,
   loadMarketHeatPriceSnapshot,
+  preserveMarketHeatAvailableMarketStrikes,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
   type MarketHeatIntentState,
@@ -138,6 +139,8 @@ const MARKET_HEAT_PRICE_REFRESH_MS = 1_000;
 const MARKET_HEAT_ROWS_REFRESH_MS = 3_000;
 const ORACLE_PRICE_CHART_TICK_REFRESH_MS = 1_000;
 const ORACLE_PRICE_CHART_HISTORY_REFRESH_MS = 60_000;
+const DEFAULT_SHARE_URL = "https://hothands.app/";
+const LOCAL_SHARE_HOSTS = new Set(["127.0.0.1", "0.0.0.0", "::1", "localhost"]);
 const MARKET_HEAT_PAGE_SIZE = 8;
 const WALLET_LEADERBOARDS_REFRESH_MS = 15_000;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
@@ -158,8 +161,6 @@ type MarketHeatIdentityMode = "wallet" | "market";
 type ThemeMode = "light" | "dark";
 const MARKET_HEAT_DESCRIPTION =
   "Heat combines recency, copied volume, wallet streak, and trade activity.";
-const MARKET_HEAT_FEED_SUBTITLE =
-  "Every call is onchain. Streaks don't lie. Copy the hot hands.";
 export type MarketHeatSwipeAction = "none" | "select" | "submit";
 type MarketHeatSwipePreview = {
   action: MarketHeatSwipeAction;
@@ -534,7 +535,7 @@ function formatTradeExpiryHorizon(expiryMs: number, nowMs: number): string {
 
 function formatTradeExpiryLabel(expiryMs: number, nowMs: number): string {
   const horizon = formatTradeExpiryHorizon(expiryMs, nowMs);
-  return horizon === "Today" || horizon === "Tomorrow"
+  return horizon === "Today"
     ? horizon
     : tradeExpiryDateFormatter.format(expiryMs);
 }
@@ -1353,12 +1354,32 @@ function buildCallShareStats(
 }
 
 function currentShareUrl(): string {
+  const configuredShareUrl = normalizeShareUrl(import.meta.env.VITE_HOT_HANDS_SHARE_URL);
+
   if (typeof window === "undefined") {
-    return "http://localhost";
+    return configuredShareUrl ?? DEFAULT_SHARE_URL;
   }
 
   const url = new URL(window.location.href);
+  if (LOCAL_SHARE_HOSTS.has(url.hostname)) {
+    return configuredShareUrl ?? DEFAULT_SHARE_URL;
+  }
+
   return `${url.origin}${url.pathname}`;
+}
+
+function normalizeShareUrl(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value.trim());
+    const pathname = url.pathname === "/" ? "/" : url.pathname.replace(/\/+$/, "");
+    return `${url.origin}${pathname}`;
+  } catch {
+    return null;
+  }
 }
 
 async function renderShareCard(input: HotHandsShareCardInput): Promise<ShareCardState> {
@@ -1949,14 +1970,26 @@ export function ShareCardModal({
   onCopy: () => void;
   onShareToX: () => void;
 }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
     <section
       className="share-card-overlay"
       aria-label="Share card"
       data-testid="share-card-modal"
       role="dialog"
+      onClick={onClose}
     >
-      <article className="share-card-panel">
+      <article className="share-card-panel" onClick={(event) => event.stopPropagation()}>
         <div className="share-card-header">
           <div>
             <span>Share card</span>
@@ -2712,13 +2745,9 @@ export function PortfolioPanel({
                   className={`portfolio-expiry-cell${
                     isLiveCountdown ? " portfolio-countdown-live" : ""
                   }`}
-                  title={isLiveCountdown ? "Live expiry countdown" : undefined}
                 >
                   <strong>{position.expiryTimeLabel}</strong>
-                  <small>
-                    {statusSummary}
-                    {isLiveCountdown ? <em>Live</em> : null}
-                  </small>
+                  <small>{statusSummary}</small>
                 </div>
                 <span className="portfolio-table-cell">{position.costBasisLabel}</span>
                 <span className="portfolio-table-cell">
@@ -2902,7 +2931,6 @@ export function ProfilePanel({
       <div className="profile-stat-header" data-testid="profile-stat-header">
         <div className="profile-stat-header-top">
           <span className="profile-card-label">Track record</span>
-          <small>{profileStats.sourceLabel}</small>
         </div>
         <div className="profile-stat-grid">
           {profileStats.items.map((item) => (
@@ -3264,7 +3292,7 @@ function buildProfileStatSummaryFromHistory(
   }
 
   return {
-    sourceLabel: "Indexed profile history",
+    sourceLabel: "",
     items: [
       {
         label: "Win rate",
@@ -3989,10 +4017,8 @@ export function MarketHeatPreview({
                 className={`market-heat-compact-duration${
                   isLiveCountdown ? " market-heat-countdown-live" : ""
                 }`}
-                title={isLiveCountdown ? "Live expiry countdown" : undefined}
               >
                 <strong>{durationLabel}</strong>
-                {isLiveCountdown ? <small>Live</small> : null}
               </div>
               <div
                 className="market-heat-compact-heat"
@@ -4543,6 +4569,7 @@ export function App() {
   const effectiveMarketHeatSortMode: MarketHeatSortMode =
     marketHeatSortMode === "following" ? "latest" : marketHeatSortMode;
   const allVisibleMarketHeatRows = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
+    diversifyWallets: true,
     intervalLabel: null,
     limit: Number.MAX_SAFE_INTEGER,
     nowMs: marketHeatNowMs,
@@ -4553,9 +4580,13 @@ export function App() {
     marketHeatSortMode === "following"
       ? filterMarketHeatRowsByFollowedWallets(allVisibleMarketHeatRows, followedWallets)
       : allVisibleMarketHeatRows;
+  const liveOraclePriceLabel =
+    oraclePriceChart?.status === "ready" ? oraclePriceChart.latestPriceLabel : null;
+  const tradeMarketPriceLabel = liveOraclePriceLabel ?? marketHeatPreview.marketPrice.priceLabel;
   const allTradeMarketRows = buildTradeMarketLadder(marketHeatPreview, {
     intervalLabel: null,
     nowMs: marketHeatNowMs,
+    spotPriceLabel: tradeMarketPriceLabel,
   });
   const tradeExpiryOptions = buildTradeExpiryOptions(allTradeMarketRows, marketHeatNowMs);
   const activeFeedExpiryDate =
@@ -4589,7 +4620,7 @@ export function App() {
     ? applyCustomStrikeToTradeMarket(
         baseSelectedTradeMarket,
         selectedTradeCustomStrike,
-        marketHeatPreview.marketPrice.priceLabel,
+        tradeMarketPriceLabel,
       )
     : null;
   const activeChartOracleId =
@@ -4624,6 +4655,7 @@ export function App() {
   const activeMarketHeatCopyTrade = marketHeatIntent.selectedRowId
     ? buildTradeMarketForMarketHeatRow(marketHeatPreview, marketHeatIntent.selectedRowId, {
         nowMs: marketHeatNowMs,
+        spotPriceLabel: tradeMarketPriceLabel,
       })
     : null;
   const marketHeatQuoteKey = activeMarketHeatCopyTrade
@@ -5238,7 +5270,12 @@ export function App() {
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
-          setMarketHeatPreview(preview);
+          const stablePreview = preserveMarketHeatAvailableMarketStrikes(
+            preview,
+            marketHeatPreviewRef.current,
+          );
+          marketHeatPreviewRef.current = stablePreview;
+          setMarketHeatPreview(stablePreview);
         }
       } finally {
         isRefreshing = false;
@@ -6336,7 +6373,6 @@ export function App() {
       rows={sortedMarketHeatRows}
       sourceLabel={marketHeatPreview.sourceLabel}
       sortMode={marketHeatSortMode}
-      subtitle={MARKET_HEAT_FEED_SUBTITLE}
       selectedExpiryDate={activeFeedExpiryDate}
       emptyActionLabel={isFollowingFeedMode ? "Find leaders" : undefined}
       emptyDetail={isFollowingFeedMode ? followingFeedEmptyDetail : undefined}
@@ -6372,7 +6408,7 @@ export function App() {
       customStrike={selectedTradeCustomStrike}
       copyAmount={copyState.copyAmount}
       expiryOptions={tradeExpiryOptions}
-      marketPriceLabel={marketHeatPreview.marketPrice.priceLabel}
+      marketPriceLabel={tradeMarketPriceLabel}
       marketRows={displayedTradeMarketRows}
       selectedExpiryDate={activeTradeExpiryDate}
       selectedMarketId={baseSelectedTradeMarket?.id ?? ""}

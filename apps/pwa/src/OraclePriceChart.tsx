@@ -54,6 +54,8 @@ type OracleChartOverlayState = {
   strikeY: number | null;
 };
 
+type OracleChartTone = "positive" | "negative" | "flat";
+
 const ORACLE_PRICE_CHART_RANGES: {
   key: OraclePriceChartRangeKey;
   label: string;
@@ -105,6 +107,7 @@ export function OraclePriceChartCard({
             compact
             fitResetKey={chart.oracleId}
             height={52}
+            lineTone={changeSummary?.tone ?? "flat"}
           />
           {changeSummary ? (
             <span
@@ -125,7 +128,7 @@ export function OraclePriceChartCard({
 
 function buildOracleChangeSummary(points: OraclePriceChartPoint[]): {
   label: string;
-  tone: "positive" | "negative" | "flat";
+  tone: OracleChartTone;
 } | null {
   const latestPoint = points.at(-1);
   if (!latestPoint || latestPoint.price <= 0) {
@@ -146,6 +149,22 @@ function buildOracleChangeSummary(points: OraclePriceChartPoint[]): {
     label: `${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%`,
     tone,
   };
+}
+
+function getOracleLineColor(compact: boolean, tone: OracleChartTone): string {
+  if (!compact) {
+    return "#8b6cff";
+  }
+
+  if (tone === "negative") {
+    return "#ef4444";
+  }
+
+  if (tone === "positive") {
+    return "#16a34a";
+  }
+
+  return "#8b6cff";
 }
 
 export function OraclePriceChartModal({
@@ -189,7 +208,6 @@ export function OraclePriceChartModal({
           </button>
         </div>
         <div className="oracle-chart-modal-meta">
-          <span>{formatOracleSourceBadge(chart?.sourceLabel)}</span>
           <strong>{chart?.latestPriceLabel ?? "No price yet"}</strong>
         </div>
         <div className="oracle-chart-toolbar" aria-label="Oracle chart controls">
@@ -246,6 +264,7 @@ function LightweightOraclePriceChart({
   compact = false,
   fitResetKey,
   height,
+  lineTone = "flat",
   marketContext = null,
   nowMs = Date.now(),
   points,
@@ -254,6 +273,7 @@ function LightweightOraclePriceChart({
   compact?: boolean;
   fitResetKey?: string;
   height: number;
+  lineTone?: OracleChartTone;
   marketContext?: OraclePriceChartMarketContext | null;
   nowMs?: number;
   points: OraclePriceChartPoint[];
@@ -269,6 +289,7 @@ function LightweightOraclePriceChart({
     strikeY: null,
   });
   const data = useMemo(() => buildLineData(points), [points]);
+  const lineColor = getOracleLineColor(compact, lineTone);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -313,8 +334,8 @@ function LightweightOraclePriceChart({
     });
 
     const series = chart.addSeries(LineSeries, {
-      color: compact ? "#16a34a" : "#8b6cff",
-      lineWidth: compact ? 2 : 1,
+      color: lineColor,
+      lineWidth: 1,
       crosshairMarkerVisible: false,
       lastValueVisible: !compact,
       priceLineVisible: !compact,
@@ -323,7 +344,7 @@ function LightweightOraclePriceChart({
         formatter: formatOracleAxisPrice,
         minMove: 1,
       },
-      priceLineColor: compact ? "#16a34a" : "#8b6cff",
+      priceLineColor: lineColor,
       priceLineStyle: LineStyle.Solid,
       priceLineWidth: 1,
     });
@@ -339,7 +360,7 @@ function LightweightOraclePriceChart({
       setOverlayState({ expiryX: null, strikeY: null });
       chart.remove();
     };
-  }, [compact, height]);
+  }, [compact, height, lineColor]);
 
   useEffect(() => {
     hasFitInitialDataRef.current = false;
@@ -435,9 +456,7 @@ function LightweightOraclePriceChart({
         >
           <div className="oracle-market-zone oracle-market-zone-up">UP</div>
           <div className="oracle-market-zone oracle-market-zone-down">DOWN</div>
-          <div className="oracle-expiry-line">
-            <span>{formatOracleExpiryCountdown(marketContext.expiryMs, nowMs)}</span>
-          </div>
+          <div className="oracle-expiry-line" />
         </div>
       ) : null}
       {!compact ? (
@@ -588,18 +607,6 @@ function formatOracleAxisPrice(value: number): string {
   }
 
   return String(rounded);
-}
-
-function formatOracleSourceBadge(sourceLabel: string | null | undefined): string {
-  if (!sourceLabel) {
-    return "DeepBook oracle - testnet";
-  }
-
-  if (sourceLabel.toLowerCase().includes("testnet")) {
-    return "DeepBook oracle - testnet";
-  }
-
-  return sourceLabel;
 }
 
 function syncOracleMarketPriceLines(

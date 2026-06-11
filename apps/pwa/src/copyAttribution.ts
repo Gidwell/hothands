@@ -136,9 +136,8 @@ export function summarizeCopyAttribution(
 }
 
 export function formatCopyAttributionLabel(summary: CopyAttributionSummary): string {
-  return `Copied by ${summary.count.toLocaleString("en-US")} · ${formatCopyAttributionAmount(
-    summary.amount,
-  )} copied`;
+  const countLabel = summary.count === 1 ? "1 copier" : `${summary.count.toLocaleString("en-US")} copiers`;
+  return `${countLabel} · ${formatCopyAttributionAmount(summary.amount)}`;
 }
 
 export function formatCopyAttributionAmount(amount: number): string {
