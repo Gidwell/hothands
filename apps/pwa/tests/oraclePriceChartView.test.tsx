@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { LineStyle } from "lightweight-charts";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  buildOraclePriceChartFitResetKey,
+  getOraclePriceChartGridLineOptions,
   getInitialOraclePriceChartView,
   getOraclePriceChartMinBarSpacing,
   OraclePriceChartCard,
@@ -27,6 +30,23 @@ const readyChart: OraclePriceChart = {
   sourceLabel: "Live Testnet",
   status: "ready",
   title: "DeepBook BTC oracle price",
+};
+
+const marketContext = {
+  expiryLabel: "Jun 11, 5:00 PM",
+  expiryMs: 1_779_200_000_000,
+  selectedSide: "UP" as const,
+  selectedStrikeLabel: "$66,950",
+  selectedStrikePrice: 66_950,
+  strikes: [
+    {
+      id: "strike-66950",
+      label: "$66,950",
+      price: 66_950,
+      selected: true,
+    },
+  ],
+  timeRemainingLabel: "2h left",
 };
 
 describe("OraclePriceChartModal", () => {
@@ -59,6 +79,22 @@ describe("OraclePriceChartModal", () => {
     expect(html.indexOf('data-testid="oracle-expanded-chart"')).toBeLessThan(
       html.indexOf('data-testid="expanded-chart-actions"'),
     );
+  });
+
+  test("renders market settlement controls when chart context is available", () => {
+    const html = renderToStaticMarkup(
+      <OraclePriceChartModal
+        chart={readyChart}
+        marketContext={marketContext}
+        nowMs={1_779_190_000_000}
+        onClose={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("BTC/USD market chart");
+    expect(html).toContain('data-testid="oracle-chart-settlement-toggle"');
+    expect(html).toContain("Settlement");
+    expect(html).toContain("UP $66,950");
   });
 
   test("shows muted TradingView attribution inside the expanded chart", () => {
@@ -106,6 +142,26 @@ describe("OraclePriceChartModal", () => {
     ).toBe(true);
   });
 
+  test("resets expanded chart fitting when the range control changes", () => {
+    expect(
+      buildOraclePriceChartFitResetKey({
+        oracleId: "0xoracle",
+        rangeKey: "1H",
+      }),
+    ).not.toBe(
+      buildOraclePriceChartFitResetKey({
+        oracleId: "0xoracle",
+        rangeKey: "6H",
+      }),
+    );
+    expect(
+      buildOraclePriceChartFitResetKey({
+        oracleId: "0xoracle",
+        rangeKey: "24H",
+      }),
+    ).toBe("0xoracle:24H");
+  });
+
   test("allows the expanded chart to zoom out across dense one-second oracle history", () => {
     expect(getOraclePriceChartMinBarSpacing({ compact: false })).toBeLessThanOrEqual(
       0.03,
@@ -116,16 +172,51 @@ describe("OraclePriceChartModal", () => {
     );
   });
 
-  test("defaults expanded charts to the latest thirty minutes when more history exists", () => {
+  test("uses subtle dotted grid lines for expanded charts", () => {
+    expect(
+      getOraclePriceChartGridLineOptions({
+        color: "rgba(139, 108, 255, 0.12)",
+        compact: false,
+      }),
+    ).toEqual({
+      color: "rgba(139, 108, 255, 0.12)",
+      style: LineStyle.Dotted,
+      visible: true,
+    });
+
+    expect(
+      getOraclePriceChartGridLineOptions({
+        color: "rgba(139, 108, 255, 0.12)",
+        compact: true,
+      }).visible,
+    ).toBe(false);
+  });
+
+  test("defaults expanded charts to the latest six hours when more history exists", () => {
     expect(
       getInitialOraclePriceChartView({
         compact: false,
-        pointTimes: [100, 1_000, 1_900, 2_000],
+        pointTimes: [100, 10_000, 20_000, 30_000],
       }),
     ).toEqual({
       mode: "time-range",
-      from: 200,
-      to: 2_000,
+      from: 8_400,
+      to: 30_000,
+    });
+  });
+
+  test("extends expanded market charts through the settlement time", () => {
+    expect(
+      getInitialOraclePriceChartView({
+        compact: false,
+        expiryTime: 45_000_000,
+        pointTimes: [10_000, 20_000, 30_000],
+        rangeSeconds: 60 * 60,
+      }),
+    ).toEqual({
+      mode: "time-range",
+      from: 26_400,
+      to: 45_900,
     });
   });
 
@@ -142,7 +233,7 @@ describe("OraclePriceChartModal", () => {
     });
   });
 
-  test("fits short-history charts instead of forcing a thirty minute range", () => {
+  test("fits short-history charts instead of forcing an expanded range", () => {
     expect(
       getInitialOraclePriceChartView({
         compact: false,

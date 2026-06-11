@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MarketHeatPreview, resolveMarketHeatSwipeAction } from "../src/App";
-import { buildMarketHeatPreview, type MarketHeatPreviewRowInput } from "../src/marketHeatModel";
+import {
+  buildMarketHeatPreview,
+  type MarketHeatPreviewRowInput,
+  type TradeQuote,
+} from "../src/marketHeatModel";
 
 const watchingOnlyRows: MarketHeatPreviewRowInput[] = [
   {
@@ -43,6 +47,28 @@ const copyReadyRows: MarketHeatPreviewRowInput[] = [
   },
 ];
 
+function quoteFixture(overrides: Partial<TradeQuote> = {}): TradeQuote {
+  return {
+    cost: "375000000",
+    costUsd: 375,
+    effectivePrice: 0.4,
+    expiry: "1779165600000",
+    market: "BTC-USD",
+    maxProfitUsd: 562.5,
+    oracleId: "external-copy",
+    payoutUsd: 937.5,
+    quantity: "937500000",
+    quoteStatus: "ready",
+    redeemPayout: "937500000",
+    redeemPayoutUsd: 937.5,
+    requestedSpendUsd: 375,
+    side: "UP",
+    source: "test",
+    strike: "7100000000",
+    ...overrides,
+  };
+}
+
 describe("MarketHeatPreview component", () => {
   test("resolves compact row right swipes into safe actions", () => {
     expect(resolveMarketHeatSwipeAction(92, 6, "copy_ready")).toBe("submit");
@@ -69,6 +95,7 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
+        onWalletOpen={() => undefined}
       />,
     );
 
@@ -76,6 +103,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain('title="Captured BTC markets"');
     expect(html).toContain('aria-label="Alpha Feed, Captured BTC markets"');
     expect(html).not.toContain("<span>Captured BTC markets</span>");
+    expect(html).not.toContain("Every call is onchain");
+    expect(html).not.toContain("Copy the hot hands");
     expect(html).toContain("Target</small>");
     expect(html).toContain("Below $6,200");
     expect(html).toContain("Next observed mint");
@@ -106,13 +135,17 @@ describe("MarketHeatPreview component", () => {
         showExpired={false}
         canShowMore={false}
         copyAmount={375}
+        quote={quoteFixture()}
+        quoteStatus="ready"
         showMoreLabel="Show more"
+        walletConnected={true}
         onAmountSet={() => undefined}
         onShowExpiredChange={() => undefined}
         onShowMore={() => undefined}
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
+        onWalletOpen={() => undefined}
       />,
     );
 
@@ -129,7 +162,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("No wallet request until you tap Confirm transaction");
   });
 
-  test("estimates copy payout for dust rows whose display cost rounds to zero", () => {
+  test("waits for a live quote instead of estimating dust row payouts", () => {
     const nowMs = 1_779_158_000_000;
     const [row] = buildMarketHeatPreview(
       [
@@ -162,8 +195,42 @@ describe("MarketHeatPreview component", () => {
         showExpired={false}
         canShowMore={false}
         copyAmount={25}
+        quoteStatus="loading"
         showMoreLabel="Show more"
         onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onWalletOpen={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Est. payout</small><strong>Loading quote...");
+    expect(html).toContain("Max profit</small><strong>Loading quote...");
+    expect(html).not.toContain("Est. payout</small><strong>$50");
+    expect(html).not.toContain("Max profit</small><strong>+$25");
+  });
+
+  test("shows a retry state when the live copy quote fails", () => {
+    const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        selectedRowId={row.id}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        quoteStatus="error"
+        showMoreLabel="Show more"
+        walletConnected={true}
+        onAmountSet={() => undefined}
+        onRetryQuote={() => undefined}
         onShowExpiredChange={() => undefined}
         onShowMore={() => undefined}
         onSortModeChange={() => undefined}
@@ -172,9 +239,8 @@ describe("MarketHeatPreview component", () => {
       />,
     );
 
-    expect(html).toContain("Est. payout</small><strong>$50");
-    expect(html).toContain("Max profit</small><strong>+$25");
-    expect(html).not.toContain("Quote needed");
+    expect(html).toContain("Quote unavailable — retry");
+    expect(html).not.toContain("Confirm transaction");
   });
 
   test("keeps feed wallet notifications in the toast layer", () => {
@@ -228,6 +294,37 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("No live positions right now");
     expect(html).toContain("Show expired to review recent testnet activity.");
     expect(html).toContain('data-testid="market-heat-show-expired"');
+  });
+
+  test("renders the following feed segment and leaders empty action", () => {
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[]}
+        sourceLabel="Indexed Testnet"
+        sortMode="following"
+        selectedRowId={null}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        emptyActionLabel="Find leaders"
+        emptyDetail="Find leaders to follow."
+        emptyTitle="You're not following anyone yet"
+        showMoreLabel="Show more"
+        onAmountSet={() => undefined}
+        onEmptyAction={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="market-heat-sort-following"');
+    expect(html).toContain("Following");
+    expect(html).toContain("not following anyone yet");
+    expect(html).toContain("Find leaders");
+    expect(html).toContain('aria-pressed="true"');
   });
 
   test("keeps show-more available in the compact feed", () => {
@@ -336,6 +433,7 @@ describe("MarketHeatPreview component", () => {
         onSortModeChange={() => undefined}
         onWalletSubmit={() => undefined}
         onSelectRow={() => undefined}
+        onWalletOpen={() => undefined}
       />,
     );
 
@@ -347,11 +445,66 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Direction");
     expect(html).toContain("Expiration");
     expect(html).toContain("0xbbbb...0000");
+    expect(html).toContain("wallet-identicon");
     expect(html).toContain("+$22.23 · 12 wins · just now");
+    expect(html).toContain("data-testid=\"market-heat-wallet-profile\"");
+    expect(html).toContain("aria-label=\"Open 0xbbbb...0000 profile\"");
+    const [dedupedRow] = buildMarketHeatPreview(
+      [
+        {
+          ...copyReadyRows[0],
+          id: "fill-a",
+          observedAtMs: 1_779_158_000_000,
+          costUsd: 12.5,
+        },
+        {
+          ...copyReadyRows[0],
+          id: "fill-b",
+          observedAtMs: 1_779_158_030_000,
+          costUsd: 25,
+        },
+      ],
+      8,
+      { nowMs: 1_779_158_030_000 },
+    ).rows;
+    const dedupedHtml = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[dedupedRow]}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        selectedRowId={null}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+      />,
+    );
+    expect(dedupedHtml).not.toContain("2 buys");
+    expect(dedupedHtml).not.toContain("Copyable buys");
+    expect(dedupedHtml).not.toContain("market-heat-fill-group");
+    expect(dedupedHtml).not.toContain("market-heat-fill-child-row");
+    expect(dedupedHtml).toContain("UP");
+    expect(dedupedHtml).toContain("$7,100");
+    expect(dedupedHtml).toContain("3h left");
     expect(html).toContain("UP");
     expect(html).toContain("$7,100");
     expect(html).toContain("3h left");
+    expect(html).toContain("market-heat-countdown-live");
+    expect(html).not.toContain("Live expiry countdown");
+    expect(html).not.toContain(">Live</small>");
     expect(html).toContain("Heat");
+    expect(html).toContain("Heat combines recency, copied volume, wallet streak, and trade activity.");
+    expect(html).toContain("market-heat-info");
+    expect(html).toContain('data-testid="market-heat-info-trigger"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-label="What does Heat mean?"');
+    expect(html).toContain("aria-label=\"Heat 94.");
     expect(html).toContain("94");
     expect(html).not.toContain("Cost</small>");
     expect(html).not.toContain("Expiry</small>");

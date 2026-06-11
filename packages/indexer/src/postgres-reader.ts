@@ -41,6 +41,7 @@ export type ListRecentTradeEventsOptions = {
   limit?: number;
   hideExpiredAtMs?: number;
   managerId?: string;
+  owner?: string;
 };
 
 export type ListPositionSummariesOptions = {
@@ -103,6 +104,7 @@ export function createPostgresPredictIndexerReader({
       limit = DEFAULT_MARKET_LIMIT,
       hideExpiredAtMs,
       managerId,
+      owner,
     } = {}) => {
       const params: SqlValue[] = [];
       const filters: string[] = [];
@@ -110,6 +112,11 @@ export function createPostgresPredictIndexerReader({
       if (managerId) {
         params.push(managerId);
         filters.push(`manager_id = $${params.length}`);
+      }
+
+      if (owner) {
+        params.push(owner);
+        filters.push(`coalesce(trader, actor) = $${params.length}`);
       }
 
       if (kind) {

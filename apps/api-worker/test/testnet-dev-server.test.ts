@@ -396,6 +396,60 @@ describe("testnet API dev server harness", () => {
     });
   });
 
+  test("serves indexed portfolio events for a wallet profile", async () => {
+    const calls: unknown[] = [];
+    const fetchHandler = createTestnetDevServerFetch({
+      indexerReader: createTestIndexerReader({
+        listRecentTradeEvents: async (options) => {
+          calls.push(options);
+          return [
+            {
+              eventId: "redeem:indexed-wallet:2",
+              kind: "redeem",
+              actor: "0xwallet",
+              trader: "0xwallet",
+              managerId: "manager-wallet",
+              oracleId: "btc-indexed",
+              expiryMs: 1_779_158_400_000,
+              strike: 72_000_000_000,
+              isUp: true,
+              quantity: 1,
+              payout: 250_000,
+              timestampMs: 1_779_070_900_000,
+              source: "positions/redeemed",
+            },
+          ];
+        },
+      }),
+    });
+
+    const response = await fetchHandler(
+      new Request(
+        "http://127.0.0.1:8789/testnet/portfolio-events?wallet=0xwallet&eventType=redeem&limit=12"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(calls).toEqual([
+      {
+        kind: "redeem",
+        limit: 12,
+        managerId: undefined,
+        owner: "0xwallet",
+      },
+    ]);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          parsedJson: {
+            manager_id: "manager-wallet",
+            payout: 250_000,
+          },
+        },
+      ],
+    });
+  });
+
   test("requires an indexer reader for indexed portfolio events", async () => {
     const fetchHandler = createTestnetDevServerFetch();
 

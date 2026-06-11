@@ -8,6 +8,7 @@ import {
   loadMarketHeatPreview,
   loadMarketHeatPriceSnapshot,
   loadTradeQuote,
+  preserveMarketHeatAvailableMarketStrikes,
   buildTradeMarketLadder,
   buildTradeMarketForMarketHeatRow,
   selectMarketHeatIntent,
@@ -120,6 +121,75 @@ describe("market heat preview model", () => {
     );
 
     expect(preview.rows[0]?.expiryTimeLabel).toBe("Jun 7, 17:00 UTC+9");
+  });
+
+  test("deduplicates repeated exact-position buys into one normal copyable row", () => {
+    const nowMs = 1_779_158_000_000;
+    const expiryMs = nowMs + 60 * 60_000;
+    const duplicateFillBase = {
+      wallet: "0x5e2a00000000000000000000000000000000efb6",
+      manager: "manager 0xfeed...cafe",
+      oracleId: "oracle-duplicate",
+      market: "BTC-USD",
+      side: "DOWN" as const,
+      strike: 63_187,
+      strikeRaw: 63_187_000_000,
+      expiryMs,
+      intervalLabel: "1h",
+      status: "copy_ready" as const,
+    };
+    const preview = buildMarketHeatPreview(
+      [
+        {
+          ...duplicateFillBase,
+          id: "fill-a",
+          observedAtMs: nowMs - 60_000,
+          heatScore: 56,
+          quantity: 50_000_000,
+          cost: 25_000_000,
+          costUsd: 25,
+        },
+        {
+          ...duplicateFillBase,
+          id: "fill-b",
+          observedAtMs: nowMs - 30_000,
+          heatScore: 61,
+          quantity: 25_000_000,
+          cost: 12_500_000,
+          costUsd: 12.5,
+        },
+      ],
+      8,
+      { nowMs },
+    );
+    const [row] = preview.rows;
+    const [market] = buildTradeMarketLadder(preview, { nowMs });
+    const latestCopyTrade = buildTradeMarketForMarketHeatRow(preview, "fill-b", {
+      nowMs,
+    });
+    const hiddenOlderCopyTrade = buildTradeMarketForMarketHeatRow(preview, "fill-a", {
+      nowMs,
+    });
+    const latestIntent = selectMarketHeatIntent({ selectedRowId: null }, "fill-b", preview.rows);
+    const hiddenOlderIntent = selectMarketHeatIntent({ selectedRowId: null }, "fill-a", preview.rows);
+
+    expect(preview.rows).toHaveLength(1);
+    expect(row?.id).toBe("fill-b");
+    expect("isFillGroup" in (row ?? {})).toBe(false);
+    expect(row?.fillCount).toBe(2);
+    expect("fillSummaryLabel" in (row ?? {})).toBe(false);
+    expect("fillRows" in (row ?? {})).toBe(false);
+    expect(row?.quantity).toBe(75_000_000);
+    expect(row?.cost).toBe(37_500_000);
+    expect(row?.costUsd).toBe(37.5);
+    expect(row?.heatScore).toBe(61);
+    expect(latestCopyTrade?.row.id).toBe("fill-b");
+    expect(hiddenOlderCopyTrade).toBeNull();
+    expect(latestIntent.selectedRowId).toBe("fill-b");
+    expect(hiddenOlderIntent.selectedRowId).toBeNull();
+    expect(market?.tradeCount).toBe(2);
+    expect(market?.down.tradeCount).toBe(2);
+    expect(market?.volumeUsd).toBe(37.5);
   });
 
   test("selects and closes a next-mint row without implying a ready signature", () => {
@@ -514,7 +584,57 @@ describe("market heat preview model", () => {
     });
   });
 
-  test("keeps parsed trade market ids stable when live strike candidates update", async () => {
+  test("keeps wallet addresses when live SuiNS lookup has no name", async () => {
+    const wallet = "0x2222333344445555666677778888999900001111";
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_000_000,
+      useMainnetSuinsNames: true,
+      fetcher: async (url) => {
+        if (String(url).includes("/testnet/mainnet-suins-names")) {
+          return Response.json({
+            source: "mainnet_suins",
+            network: "mainnet",
+            names: [],
+            missing: [wallet],
+          });
+        }
+
+        return Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71234,
+            source: "live_testnet",
+          },
+          rows: [
+            {
+              id: "external-0x1111",
+              wallet,
+              manager: "manager 0xabcd...0001",
+              market: "BTC-USD",
+              side: "UP",
+              strike: 71000,
+              expiryMs: 1_779_165_900_000,
+              intervalLabel: "15m",
+              observedAtMs: 1_779_165_000_000,
+              heatScore: 74,
+              status: "copy_ready",
+            },
+          ],
+        });
+      },
+    });
+
+    expect(preview.rows[0]).toMatchObject({
+      wallet,
+      displayName: "0x2222...1111",
+    });
+    expect(preview.rows[0]?.displayNameSource).toBeUndefined();
+  });
+
+  test("preserves displayed trade market strikes when live candidates update", async () => {
     const expiryMs = 1_779_165_900_000;
     const loadForStrike = (strikeCandidatePrice: number) =>
       loadMarketHeatPreview({
@@ -561,7 +681,7 @@ describe("market heat preview model", () => {
       });
 
     const first = await loadForStrike(71_000);
-    const updated = await loadForStrike(71_050);
+    const updated = preserveMarketHeatAvailableMarketStrikes(await loadForStrike(71_050), first);
 
     expect(first.availableMarkets?.[0]).toMatchObject({
       id: "0xoracle15-1779165900000",
@@ -569,7 +689,7 @@ describe("market heat preview model", () => {
     });
     expect(updated.availableMarkets?.[0]).toMatchObject({
       id: "0xoracle15-1779165900000",
-      strikeLabel: "$71,050",
+      strikeLabel: "$71,000",
     });
   });
 
@@ -1284,6 +1404,78 @@ describe("market heat preview model", () => {
     ).toEqual(["expired-hot", "live-warm"]);
   });
 
+  test("can diversify visible market heat rows by wallet after sorting", () => {
+    const nowMs = 1_779_165_000_000;
+    const preview = buildMarketHeatPreview(
+      [
+        {
+          id: "same-wallet-newest",
+          wallet: "0x1111222233334444555566667777888899990000",
+          manager: "manager-a",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_000,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs,
+          heatScore: 90,
+          status: "copy_ready",
+        },
+        {
+          id: "same-wallet-second",
+          wallet: "0x1111222233334444555566667777888899990000",
+          manager: "manager-a",
+          market: "BTC-USD",
+          side: "DOWN",
+          strike: 70_100,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs - 1_000,
+          heatScore: 89,
+          status: "copy_ready",
+        },
+        {
+          id: "other-wallet-third",
+          wallet: "0x2222333344445555666677778888999900001111",
+          manager: "manager-b",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_200,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs - 2_000,
+          heatScore: 20,
+          status: "copy_ready",
+        },
+        {
+          id: "third-wallet-fourth",
+          wallet: "0x3333444455556666777788889999000011112222",
+          manager: "manager-c",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_300,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs - 3_000,
+          heatScore: 10,
+          status: "copy_ready",
+        },
+      ],
+      8,
+      { nowMs },
+    );
+
+    expect(
+      selectVisibleMarketHeatRows(preview.rows, {
+        diversifyWallets: true,
+        limit: 3,
+        nowMs,
+        showExpired: false,
+        sortMode: "latest",
+      }).map((row) => row.id),
+    ).toEqual(["same-wallet-newest", "other-wallet-third", "third-wallet-fourth"]);
+  });
+
   test("builds and applies market duration filters across feed and trade markets", () => {
     const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
       nowMs: 1_779_150_000_000,
@@ -1462,6 +1654,18 @@ describe("market heat preview model", () => {
       status: "copy_ready",
       statusLabel: "5m ago",
     });
+  });
+
+  test("can seed captured fallback rows with SuiNS-style demo names", async () => {
+    const nowMs = Date.UTC(2026, 5, 1, 12, 0, 0);
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "",
+      nowMs,
+      useDemoDisplayNames: true,
+    });
+
+    expect(preview.rows[0]?.displayName).toMatch(/\.sui$/);
+    expect(preview.rows[0]?.displayNameSource).toBe("demo_seed");
   });
 
   test("falls back to captured rows when the testnet API request fails", async () => {

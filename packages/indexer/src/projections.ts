@@ -352,7 +352,7 @@ function buildWalletPerformanceEntry(
       stats.totalPnl += position.pnl;
       if (position.pnl > 0) {
         stats.winCount += 1;
-      } else {
+      } else if (position.pnl < 0) {
         stats.lossCount += 1;
       }
 
@@ -420,11 +420,12 @@ function buildResolvedWalletPositions(
   oracle?: PredictOracleState,
 ): WalletResolvedPosition[] {
   if (position.status === "closed") {
+    const settlement = settledOraclePrice(oracle);
     return [
       buildResolvedWalletPosition({
         cost: position.cost,
         payout: position.payout,
-        resolvedAtMs: position.lastEventMs,
+        resolvedAtMs: resolvedWalletPositionTime(position, settlement),
       }),
     ];
   }
@@ -442,7 +443,7 @@ function buildResolvedWalletPositions(
       buildResolvedWalletPosition({
         cost: position.cost,
         payout,
-        resolvedAtMs: Math.max(position.lastEventMs, settlement.settledAtMs ?? position.expiryMs),
+        resolvedAtMs: Math.max(position.expiryMs, settlement.settledAtMs ?? position.expiryMs),
       }),
     ];
   }
@@ -479,6 +480,17 @@ function buildResolvedWalletPosition({
     result: pnl > 0 ? "win" : pnl < 0 ? "loss" : "none",
     resolvedAtMs,
   };
+}
+
+function resolvedWalletPositionTime(
+  position: PredictPositionSummary,
+  settlement: { settledAtMs: number | null } | null,
+): number {
+  if (settlement && position.lastEventMs >= position.expiryMs) {
+    return Math.max(position.expiryMs, settlement.settledAtMs ?? position.expiryMs);
+  }
+
+  return position.lastEventMs;
 }
 
 function redeemedCostBasis(position: PredictPositionSummary): number {

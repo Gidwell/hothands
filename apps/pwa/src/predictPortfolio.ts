@@ -57,6 +57,14 @@ export type PredictPortfolioPosition = {
   isExpired: boolean;
 };
 
+export type PredictPortfolioPositionIdInput = {
+  managerId: string;
+  oracleId: string;
+  expiry: number | string;
+  strike: number | string;
+  direction: "UP" | "DOWN";
+};
+
 export type PredictPortfolioPnlSummary = {
   costLabel: string;
   payoutLabel: string;
@@ -72,6 +80,7 @@ export type PredictPortfolioHistoryItem = {
   direction: "UP" | "DOWN";
   strikeLabel: string;
   expiryTimeLabel: string;
+  timeLabel?: string;
   openedAtLabel: string;
   updatedAtLabel: string;
   quantityLabel: string;
@@ -128,7 +137,7 @@ export type LoadPredictPortfolioOptions = {
   client?: PredictPortfolioEventClient;
   closeQuoteClient?: PredictPortfolioCloseQuoteClient;
   limit?: number;
-  managerObjectId: string;
+  managerObjectId?: string | null;
   maxPages?: number;
   nowMs?: number;
   settlementClient?: PredictPortfolioSettlementClient;
@@ -388,7 +397,10 @@ function buildPortfolioHistory(
   return [...histories.values()]
     .sort(
       (left, right) =>
+        portfolioHistoryRealizedAtMs(right, nowMs, settlementsByOracleId.get(right.oracleId)) -
+          portfolioHistoryRealizedAtMs(left, nowMs, settlementsByOracleId.get(left.oracleId)) ||
         right.lastTimestampMs - left.lastTimestampMs ||
+        right.firstTimestampMs - left.firstTimestampMs ||
         positionAccumulatorKey(right).localeCompare(positionAccumulatorKey(left)),
     )
     .map((history) =>
@@ -398,6 +410,24 @@ function buildPortfolioHistory(
         settlementsByOracleId.get(history.oracleId),
       ),
     );
+}
+
+function portfolioHistoryRealizedAtMs(
+  history: PortfolioHistoryAccumulator,
+  nowMs: number,
+  settlement?: PredictOracleSettlement,
+): number {
+  const expiryMs = normalizeEpochMs(history.expiry);
+  const settlementMs =
+    typeof settlement?.settledAtMs === "number" && Number.isFinite(settlement.settledAtMs)
+      ? normalizeEpochMs(settlement.settledAtMs)
+      : null;
+
+  if (history.quantity === 0n) {
+    return history.lastTimestampMs < expiryMs ? history.lastTimestampMs : (settlementMs ?? expiryMs);
+  }
+
+  return expiryMs <= nowMs ? (settlementMs ?? expiryMs) : expiryMs;
 }
 
 function buildPortfolioPnlSummary(
@@ -522,15 +552,18 @@ export function createPredictPortfolioIndexedEventClient({
   fallbackClient = createPredictPortfolioEventClient(),
   fetcher = fetch,
   managerObjectId,
+  walletAddress,
 }: {
   apiBaseUrl?: string | null;
   fallbackClient?: PredictPortfolioEventClient;
   fetcher?: typeof fetch;
   managerObjectId?: string | null;
+  walletAddress?: string | null;
 }): PredictPortfolioEventClient | undefined {
   const normalizedBaseUrl = apiBaseUrl?.trim();
   const normalizedManagerId = managerObjectId?.trim();
-  if (!normalizedBaseUrl || !normalizedManagerId) {
+  const normalizedWalletAddress = walletAddress?.trim();
+  if (!normalizedBaseUrl || (!normalizedManagerId && !normalizedWalletAddress)) {
     return undefined;
   }
 
@@ -542,7 +575,12 @@ export function createPredictPortfolioIndexedEventClient({
       }
 
       const url = new URL(`${normalizedBaseUrl.replace(/\/+$/, "")}/testnet/portfolio-events`);
-      url.searchParams.set("managerId", normalizedManagerId);
+      if (normalizedManagerId) {
+        url.searchParams.set("managerId", normalizedManagerId);
+      }
+      if (normalizedWalletAddress) {
+        url.searchParams.set("wallet", normalizedWalletAddress);
+      }
       url.searchParams.set("eventType", eventType);
       if (input.limit !== undefined) {
         url.searchParams.set("limit", String(input.limit));
@@ -551,12 +589,12 @@ export function createPredictPortfolioIndexedEventClient({
       try {
         const response = await fetcher(url.toString());
         if (!response.ok) {
-          return fallbackClient.queryEvents(input);
+          return normalizedManagerId ? fallbackClient.queryEvents(input) : emptyPaginatedEvents();
         }
 
         return parseIndexedPortfolioEventsPayload(await response.json());
       } catch {
-        return fallbackClient.queryEvents(input);
+        return normalizedManagerId ? fallbackClient.queryEvents(input) : emptyPaginatedEvents();
       }
     },
   };
@@ -651,7 +689,7 @@ async function loadPortfolioEvents({
   client: PredictPortfolioEventClient;
   eventType: PredictPortfolioEventType;
   limit: number;
-  managerObjectId: string;
+  managerObjectId?: string | null;
   maxPages: number;
   moveEventType: string;
 }): Promise<PredictPortfolioEvent[]> {
@@ -670,7 +708,7 @@ async function loadPortfolioEvents({
 
     for (const rawEvent of response.data) {
       const event = parsePortfolioEvent(rawEvent, eventType);
-      if (event?.managerId === managerObjectId) {
+      if (event && (!managerObjectId || event.managerId === managerObjectId)) {
         events.push(event);
       }
     }
@@ -706,7 +744,13 @@ function buildPortfolioPosition(
   const isNoPayout = didWin === false;
 
   return {
-    id: `${position.managerId}:${position.oracleId}:${position.expiry}:${position.strike}:${direction}`,
+    id: buildPredictPortfolioPositionId({
+      managerId: position.managerId,
+      oracleId: position.oracleId,
+      expiry: position.expiry,
+      strike: position.strike,
+      direction,
+    }),
     managerId: position.managerId,
     oracleId: position.oracleId,
     expiry: position.expiry,
@@ -769,7 +813,8 @@ function buildPortfolioHistoryItem(
         : didWin
           ? "Claimable"
           : "No payout";
-  const pendingPayoutLabel = history.payout > 0n ? formatDusdcBalance(history.payout) : "Pending";
+  const pendingPayoutLabel =
+    history.payout > 0n ? formatPortfolioHistoryDusdcBalance(history.payout) : "Pending";
 
   return {
     id: positionAccumulatorKey(history),
@@ -778,14 +823,18 @@ function buildPortfolioHistoryItem(
     direction,
     strikeLabel: formatStrike(history.strike),
     expiryTimeLabel: formatExpiryTime(expiryMs),
+    timeLabel: !isExpired ? formatPortfolioTimeRemaining(expiryMs, nowMs) : undefined,
     openedAtLabel: formatExpiryTime(history.firstTimestampMs),
     updatedAtLabel: formatExpiryTime(history.lastTimestampMs),
     quantityLabel: formatDusdcBalance(history.totalQuantity),
     remainingLabel: formatDusdcBalance(history.quantity),
-    costLabel: formatDusdcBalance(history.totalCost),
-    payoutLabel: isResolved ? formatDusdcBalance(knownPayout) : pendingPayoutLabel,
+    costLabel: formatPortfolioHistoryDusdcBalance(history.totalCost),
+    payoutLabel: isResolved ? formatPortfolioHistoryDusdcBalance(knownPayout) : pendingPayoutLabel,
     pnlAtomic: pnl === null ? undefined : pnl.toString(),
-    pnlLabel: pnl === null ? (statusLabel === "Open" ? "Open" : "Pending") : formatSignedDusdcBalance(pnl),
+    pnlLabel:
+      pnl === null
+        ? (statusLabel === "Open" ? "Open" : "Pending")
+        : formatSignedPortfolioHistoryDusdcBalance(pnl),
     pnlTone: pnl === null ? "flat" : pnl > 0n ? "positive" : pnl < 0n ? "negative" : "flat",
     statusLabel,
     closeLabel: statusLabel,
@@ -888,14 +937,36 @@ function parsePortfolioEvent(
   };
 }
 
+export function buildPredictPortfolioPositionId({
+  managerId,
+  oracleId,
+  expiry,
+  strike,
+  direction,
+}: PredictPortfolioPositionIdInput): string {
+  return `${managerId}:${oracleId}:${expiry}:${strike}:${direction}`;
+}
+
 function positionKey(event: Pick<PredictPortfolioEvent, "managerId" | "oracleId" | "expiry" | "strike" | "isUp">): string {
-  return `${event.managerId}:${event.oracleId}:${event.expiry}:${event.strike}:${event.isUp ? "UP" : "DOWN"}`;
+  return buildPredictPortfolioPositionId({
+    managerId: event.managerId,
+    oracleId: event.oracleId,
+    expiry: event.expiry,
+    strike: event.strike,
+    direction: event.isUp ? "UP" : "DOWN",
+  });
 }
 
 function positionAccumulatorKey(
   position: Pick<PortfolioAccumulator, "managerId" | "oracleId" | "expiry" | "strike" | "isUp">,
 ): string {
-  return `${position.managerId}:${position.oracleId}:${position.expiry}:${position.strike}:${position.isUp ? "UP" : "DOWN"}`;
+  return buildPredictPortfolioPositionId({
+    managerId: position.managerId,
+    oracleId: position.oracleId,
+    expiry: position.expiry,
+    strike: position.strike,
+    direction: position.isUp ? "UP" : "DOWN",
+  });
 }
 
 function compareEventsByTime(left: PredictPortfolioEvent, right: PredictPortfolioEvent): number {
@@ -1012,6 +1083,28 @@ function formatSignedDusdcBalance(value: bigint): string {
 
   const prefix = value > 0n ? "+" : "-";
   return `${prefix}${formatDusdcBalance(value > 0n ? value : -value)}`;
+}
+
+function formatPortfolioHistoryDusdcBalance(value: bigint): string {
+  if (value === 0n) {
+    return "$0";
+  }
+
+  if (value > 0n && value < 10_000n) {
+    return "<$0.01";
+  }
+
+  return formatDusdcBalance(value);
+}
+
+function formatSignedPortfolioHistoryDusdcBalance(value: bigint): string {
+  if (value === 0n) {
+    return "$0";
+  }
+
+  const prefix = value > 0n ? "+" : "-";
+  const absoluteValue = value > 0n ? value : -value;
+  return `${prefix}${formatPortfolioHistoryDusdcBalance(absoluteValue)}`;
 }
 
 function closeQuoteKey(quote: PredictPortfolioCloseQuote): string {

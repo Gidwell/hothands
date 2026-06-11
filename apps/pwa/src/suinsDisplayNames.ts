@@ -1,4 +1,4 @@
-export type WalletDisplayNameSource = "mainnet_suins";
+export type WalletDisplayNameSource = "mainnet_suins" | "demo_seed";
 
 export type WalletDisplayName = {
   name: string;
@@ -30,6 +30,20 @@ const MAINNET_SUINS_LOOKUP_LIMIT = 50;
 const MAINNET_SUINS_CACHE_TTL_MS = 15 * 60_000;
 const MAINNET_SUINS_FAILURE_CACHE_TTL_MS = 60_000;
 const MAINNET_SUINS_REQUEST_TIMEOUT_MS = 500;
+const DEMO_SUINS_NAMES = [
+  "alpha.sui",
+  "breakout.sui",
+  "signal.sui",
+  "conviction.sui",
+  "momentum.sui",
+  "oracle.sui",
+  "strike.sui",
+  "tempo.sui",
+  "volatility.sui",
+  "uponly.sui",
+  "countertrade.sui",
+  "deepbook.sui",
+];
 
 const mainnetSuinsDisplayNameCache = new Map<string, CachedWalletDisplayName>();
 
@@ -82,6 +96,35 @@ export function resolveWalletDisplayName(
   displayNames: WalletDisplayNamesByAddress = {},
 ): WalletDisplayName | null {
   return displayNames[walletLookupKey(wallet)] ?? null;
+}
+
+export function mergeDemoWalletDisplayNames(
+  wallets: string[],
+  displayNames: WalletDisplayNamesByAddress = {},
+): WalletDisplayNamesByAddress {
+  const merged: WalletDisplayNamesByAddress = { ...displayNames };
+  const usedNames = new Set(
+    Object.values(merged).map((displayName) => displayName.name.toLowerCase()),
+  );
+
+  for (const wallet of uniqueWallets(wallets)) {
+    const key = walletLookupKey(wallet);
+    if (merged[key]) {
+      continue;
+    }
+
+    const baseName = DEMO_SUINS_NAMES[walletNameSeed(wallet) % DEMO_SUINS_NAMES.length];
+    const name = usedNames.has(baseName.toLowerCase())
+      ? `${baseName.replace(/\.sui$/, "")}${(walletNameSeed(`${wallet}:suffix`) % 89) + 10}.sui`
+      : baseName;
+    usedNames.add(name.toLowerCase());
+    merged[key] = {
+      name,
+      source: "demo_seed",
+    };
+  }
+
+  return merged;
 }
 
 export function parseMainnetSuinsNames(
@@ -151,6 +194,17 @@ function uniqueWallets(wallets: string[]): string[] {
 
 function walletLookupKey(wallet: string): string {
   return wallet.trim().toLowerCase();
+}
+
+function walletNameSeed(value: string): number {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
 }
 
 function readCachedDisplayNames(

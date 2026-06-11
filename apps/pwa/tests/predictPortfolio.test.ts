@@ -312,6 +312,69 @@ describe("Predict portfolio", () => {
     });
   });
 
+  test("orders trade history by realized time instead of opened or late claim time", () => {
+    const snapshot = buildPortfolioSnapshot(
+      [
+        {
+          eventId: "mint-early-redeemed",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xearly-redeemed",
+          expiry: 1_779_300_000,
+          strike: 66_000_000_000,
+          isUp: true,
+          quantity: 3_000_000,
+          cost: 1_500_000,
+          timestampMs: 1_779_100_000_000,
+        },
+        {
+          eventId: "mint-held-to-expiry",
+          eventType: "mint",
+          managerId: "0xmanager",
+          oracleId: "0xheld-to-expiry",
+          expiry: 1_779_101_500,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 4_000_000,
+          cost: 2_000_000,
+          timestampMs: 1_779_101_000_000,
+        },
+        {
+          eventId: "early-redeem",
+          eventType: "redeem",
+          managerId: "0xmanager",
+          oracleId: "0xearly-redeemed",
+          expiry: 1_779_300_000,
+          strike: 66_000_000_000,
+          isUp: true,
+          quantity: 3_000_000,
+          payout: 2_250_000,
+          timestampMs: 1_779_102_000_000,
+        },
+        {
+          eventId: "late-claim-held-to-expiry",
+          eventType: "redeem",
+          managerId: "0xmanager",
+          oracleId: "0xheld-to-expiry",
+          expiry: 1_779_101_500,
+          strike: 65_000_000_000,
+          isUp: true,
+          quantity: 4_000_000,
+          payout: 0,
+          timestampMs: 1_779_104_000_000,
+        },
+      ],
+      {
+        nowMs: 1_779_194_000_000,
+      },
+    );
+
+    expect(snapshot.history.map((item) => item.oracleId)).toEqual([
+      "0xearly-redeemed",
+      "0xheld-to-expiry",
+    ]);
+  });
+
   test("filters old or dismissed no-payout expired positions", () => {
     const freshNoPayout = {
       actionLabel: "Dismiss" as const,
@@ -599,6 +662,66 @@ describe("Predict portfolio", () => {
     expect(positions).toHaveLength(1);
     expect(positions[0]?.managerId).toBe("0xmanager");
     expect(positions[0]?.quantity).toBe("5000000");
+  });
+
+  test("loads indexed portfolio events by wallet for profile history", async () => {
+    const calls: string[] = [];
+    const fallbackQueries: unknown[] = [];
+    const client = createPredictPortfolioIndexedEventClient({
+      apiBaseUrl: "https://api.hot-hands.test",
+      fallbackClient: {
+        queryEvents: async (input) => {
+          fallbackQueries.push(input.query);
+
+          return {
+            data: [],
+            hasNextPage: false,
+            nextCursor: null,
+          };
+        },
+      },
+      walletAddress: "0xwallet",
+      fetcher: async (input) => {
+        calls.push(String(input));
+
+        return Response.json({
+          data: [
+            {
+              id: {
+                txDigest: "mint-wallet-digest",
+                eventSeq: "0",
+              },
+              timestampMs: "1779100000000",
+              parsedJson: {
+                manager_id: "0xmanager",
+                oracle_id: "0xoracle",
+                expiry: "1779193600",
+                strike: "65000000000",
+                is_up: true,
+                quantity: "5000000",
+                cost: "2250000",
+              },
+            },
+          ],
+          hasNextPage: false,
+          nextCursor: null,
+        });
+      },
+    });
+
+    const result = await client?.queryEvents({
+      query: {
+        MoveEventType: POSITION_MINTED_EVENT_TYPE,
+      },
+      limit: 20,
+      order: "descending",
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/portfolio-events?wallet=0xwallet&eventType=mint&limit=20",
+    ]);
+    expect(fallbackQueries).toEqual([]);
+    expect(result?.data).toHaveLength(1);
   });
 
   test("falls back to a direct event client when indexed portfolio API is unavailable", async () => {

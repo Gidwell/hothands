@@ -31,6 +31,7 @@ export type PredictIndexerStore = PredictIndexerWriter & {
     limit?: number;
     hideExpiredAtMs?: number;
     managerId?: string;
+    owner?: string;
   }): Promise<PredictNormalizedTradeEvent[]>;
   listPositionSummaries(options?: {
     owner?: string;
@@ -199,15 +200,18 @@ class InMemoryPredictIndexerStore implements PredictIndexerStore {
     limit = Number.POSITIVE_INFINITY,
     hideExpiredAtMs,
     managerId,
+    owner,
   }: {
     kind?: "mint" | "redeem";
     limit?: number;
     hideExpiredAtMs?: number;
     managerId?: string;
+    owner?: string;
   } = {}): Promise<PredictNormalizedTradeEvent[]> {
     return [...this.tradeEvents.values()]
       .filter((event) => (kind ? event.kind === kind : true))
       .filter((event) => (managerId ? event.managerId === managerId : true))
+      .filter((event) => (owner ? (event.trader ?? event.actor) === owner : true))
       .filter((event) => (hideExpiredAtMs === undefined ? true : event.expiryMs > hideExpiredAtMs))
       .sort((left, right) => right.timestampMs - left.timestampMs || left.eventId.localeCompare(right.eventId))
       .slice(0, limit);

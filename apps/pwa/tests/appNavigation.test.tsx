@@ -7,17 +7,23 @@ import {
   MarketHeader,
   PortfolioPanel,
   ProfilePanel,
+  ShareCardModal,
   TradeTicket,
   WalletHeaderControl,
   WalletStatusBar,
+  buildAppViewSearch,
   buildTradeExpiryOptions,
   buildTradeQuoteKey,
+  filterMarketHeatRowsByFollowedWallets,
   getAccountSummaryVariant,
+  getInitialAppView,
   getMarketHeatRowsRefreshMs,
   parseStoredStakeAmount,
   resolveSelectedProfileWalletForNav,
   shouldAutoRefreshMarketHeatRows,
+  shouldAutoRefreshWalletLeaderboards,
   shouldShowAccountSummary,
+  type ShareCardState,
 } from "../src/App";
 import {
   buildMarketHeatPreview,
@@ -223,8 +229,17 @@ describe("mobile app navigation", () => {
     expect(getMarketHeatRowsRefreshMs("trade")).toBeNull();
   });
 
+  test("auto-refreshes wallet leaderboards on leaders and profile views", () => {
+    expect(shouldAutoRefreshWalletLeaderboards("leaderboards")).toBe(true);
+    expect(shouldAutoRefreshWalletLeaderboards("profile")).toBe(true);
+    expect(shouldAutoRefreshWalletLeaderboards("feed")).toBe(false);
+    expect(shouldAutoRefreshWalletLeaderboards("trade")).toBe(false);
+    expect(shouldAutoRefreshWalletLeaderboards("portfolio")).toBe(false);
+  });
+
   test("groups trade expirations by date with consistent market counts", () => {
     const nowMs = new Date(2026, 5, 9, 12).getTime();
+    const tomorrowMs = new Date(2026, 5, 10, 9).getTime();
     const jun12EarlyMs = new Date(2026, 5, 12, 1).getTime();
     const jun12LaterMs = new Date(2026, 5, 12, 5).getTime();
     const jun19Ms = new Date(2026, 5, 19, 1).getTime();
@@ -232,6 +247,10 @@ describe("mobile app navigation", () => {
     expect(
       buildTradeExpiryOptions(
         [
+          tradeMarketRowFixture({
+            expiryMs: tomorrowMs,
+            intervalLabel: "15m",
+          }),
           tradeMarketRowFixture({
             expiryMs: jun12EarlyMs,
             intervalLabel: "23d",
@@ -248,6 +267,13 @@ describe("mobile app navigation", () => {
         nowMs,
       ),
     ).toEqual([
+      {
+        count: 1,
+        expiryMs: tomorrowMs,
+        label: "Jun 10",
+        sublabel: "1 market",
+        value: "2026-06-10",
+      },
       {
         count: 2,
         expiryMs: jun12EarlyMs,
@@ -282,6 +308,16 @@ describe("mobile app navigation", () => {
     expect(resolveSelectedProfileWalletForNav("profile", selectedWallet)).toBeNull();
     expect(resolveSelectedProfileWalletForNav("leaderboards", selectedWallet)).toBe(
       selectedWallet,
+    );
+  });
+
+  test("restores active app views from the URL while preserving wallet params", () => {
+    expect(getInitialAppView("?view=trade", null)).toBe("trade");
+    expect(getInitialAppView("?view=leaderboards", null)).toBe("leaderboards");
+    expect(getInitialAppView("?view=not-a-tab", null)).toBe("feed");
+    expect(getInitialAppView("", "0x29b8")).toBe("portfolio");
+    expect(buildAppViewSearch("?devWallet=0xabc", "profile")).toBe(
+      "?devWallet=0xabc&view=profile",
     );
   });
 
@@ -362,10 +398,10 @@ describe("mobile app navigation", () => {
     expect(depositClicked).toBe(false);
     expect(html).toContain('aria-label="Account summary"');
     expect(html).toContain("All-time PNL");
-    expect(html).toContain("Available");
+    expect(html).toContain("Wallet balance");
     expect(html).toContain('data-testid="available-wallet-balance"');
     expect(html).toContain("$42");
-    expect(html).toContain("Bankroll");
+    expect(html).toContain("Deposited");
     expect(html).toContain('data-testid="predict-bankroll-balance"');
     expect(html).toContain("$12.50");
     expect(html).toContain('aria-label="Deposit amount"');
@@ -536,7 +572,51 @@ describe("mobile app navigation", () => {
     const html = renderToStaticMarkup(
       <ProfilePanel
         currentWalletAddress={null}
+        copyAttributionLabels={{
+          "profile-copy-row": "Copied by 9 · $225 copied",
+        }}
         followedWallets={[]}
+        profileCopyAttributionLabel="Copied by 14 · $420 copied"
+        profileHistoryItems={[
+          {
+            closeLabel: "Redeemed",
+            costLabel: "$1",
+            direction: "UP",
+            expiryTimeLabel: "Jun 12, 2026, 5:00 PM",
+            id: "profile-history-new",
+            managerId: "0xmanager",
+            openedAtLabel: "Jun 12, 2026",
+            oracleId: "0xoracle",
+            payoutLabel: "$2.50",
+            pnlAtomic: "1500000",
+            pnlLabel: "+$1.50",
+            pnlTone: "positive",
+            quantityLabel: "$2.50",
+            remainingLabel: "$0",
+            statusLabel: "Redeemed",
+            strikeLabel: "$62,500",
+            updatedAtLabel: "Jun 12, 2026",
+          },
+          {
+            closeLabel: "Redeemed",
+            costLabel: "$1",
+            direction: "DOWN",
+            expiryTimeLabel: "Jun 11, 2026, 5:00 PM",
+            id: "profile-history-old",
+            managerId: "0xmanager",
+            openedAtLabel: "Jun 11, 2026",
+            oracleId: "0xoracle-old",
+            payoutLabel: "$0",
+            pnlAtomic: "-1000000",
+            pnlLabel: "-$1",
+            pnlTone: "negative",
+            quantityLabel: "$2",
+            remainingLabel: "$0",
+            statusLabel: "Redeemed",
+            strikeLabel: "$61,500",
+            updatedAtLabel: "Jun 11, 2026",
+          },
+        ]}
         profileWallet={{
           displayName: "0xaaaa...6666",
           wallet: profileWallet,
@@ -547,6 +627,8 @@ describe("mobile app navigation", () => {
         onFollowWallet={() => undefined}
         onProfilePositionSelect={() => undefined}
         onProfilePositionWalletSubmit={() => undefined}
+        onShareProfile={() => undefined}
+        onShareRow={() => undefined}
         onSelectWallet={() => undefined}
         onUnfollowWallet={() => undefined}
       />,
@@ -556,12 +638,112 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Positions");
     expect(html).toContain('data-testid="market-heat-row"');
     expect(html).toContain("0xaaaa...6666");
+    expect(html).toContain("Copied by 14");
+    expect(html).toContain("Copied by 9");
+    expect(html).toContain('data-testid="profile-share"');
+    expect(html).toContain('data-testid="market-heat-share"');
+    expect(html).toContain("wallet-identicon");
+    expect(html).toContain('data-testid="profile-pnl-sparkline"');
+    expect(html).toContain("PNL path");
+    expect(html).toContain("+$0.50");
     expect(html).toContain("UP");
     expect(html).toContain("$62,500");
     expect(html).toContain('data-testid="market-heat-intent-panel"');
-    expect(html).toContain("Confirm transaction");
+    expect(html).toContain("Connect wallet first");
+    expect(html).toContain('data-testid="market-heat-wallet-submit" disabled=""');
     expect(html).not.toContain('data-testid="market-heat-sort-latest"');
     expect(html).not.toContain('data-testid="market-heat-show-expired"');
+    const positionsStart = html.indexOf('data-testid="profile-positions"');
+    const profileFormStart = html.indexOf('data-testid="profile-follow-wallet-input"');
+    const positionsHtml = html.slice(positionsStart, profileFormStart);
+    expect(positionsHtml).toContain("Market");
+    expect(positionsHtml).toContain("BTC/USD");
+    expect(positionsHtml).toContain("Share BTC/USD UP call");
+    expect(positionsHtml).not.toContain("0xaaaa...6666");
+  });
+
+  test("renders portfolio positions with a live countdown cue under 24h", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        nowMs={1_779_158_000_000}
+        positions={[
+          {
+            actionLabel: "Redeem",
+            closeValueLabel: "$2.41",
+            closeValueStatusLabel: "Quoted now",
+            costBasisLabel: "$1.80",
+            direction: "UP",
+            expiry: 1_779_159_800,
+            expiryMs: 1_779_159_800_000,
+            expiryTimeLabel: "Jun 12, 2026, 5:30 PM",
+            id: "position-live-countdown",
+            isExpired: false,
+            managerId: "0xmanager",
+            maxPayoutAtomic: "4000000",
+            maxPayoutLabel: "$4",
+            oracleId: "0xoracle",
+            quantity: "4000000",
+            statusLabel: "Open",
+            strike: "65000000000",
+            strikeLabel: "$65,000.00",
+            timeLabel: "30m left",
+          },
+        ]}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("portfolio-countdown-live");
+    expect(html).not.toContain(">Live</em>");
+    expect(html).toContain("<strong>30m left</strong><small>Open · Quoted now</small>");
+    expect(html).not.toContain("<strong>Jun 12, 2026, 5:30 PM</strong>");
+  });
+
+  test("filters market heat rows to followed wallets", () => {
+    const rows = buildMarketHeatPreview(
+      [
+        {
+          id: "followed-row",
+          wallet: "0xaaaa222233334444555566667777888899990000",
+          manager: "manager 0xaaaa...0000",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 62_500,
+          expiryMs: 1_779_165_600_000,
+          intervalLabel: "2h",
+          observedAtMs: 1_779_158_000_000,
+          heatScore: 37,
+          status: "copy_ready",
+        },
+        {
+          id: "other-row",
+          wallet: "0xbbbb222233334444555566667777888899990000",
+          manager: "manager 0xbbbb...0000",
+          market: "BTC-USD",
+          side: "DOWN",
+          strike: 62_250,
+          expiryMs: 1_779_165_600_000,
+          intervalLabel: "2h",
+          observedAtMs: 1_779_158_000_000,
+          heatScore: 29,
+          status: "copy_ready",
+        },
+      ],
+      8,
+      {
+        nowMs: 1_779_158_000_000,
+      },
+    ).rows;
+
+    expect(
+      filterMarketHeatRowsByFollowedWallets(rows, [
+        {
+          displayName: "Followed",
+          wallet: "0xAAAA222233334444555566667777888899990000",
+        },
+      ]).map((row) => row.id),
+    ).toEqual(["followed-row"]);
+    expect(filterMarketHeatRowsByFollowedWallets(rows, [])).toEqual([]);
   });
 
   test("renders portfolio positions with redeem and claim actions", () => {
@@ -574,6 +756,7 @@ describe("mobile app navigation", () => {
             closeValueStatusLabel: "Quoted now",
             costBasisLabel: "$1.80",
             direction: "UP",
+            copiedFromLabel: "Copied from 0xfeed...cafe",
             expiry: 1_779_193_600,
             expiryMs: 1_779_193_600_000,
             expiryTimeLabel: "May 18, 2026, 9:46 PM",
@@ -623,10 +806,46 @@ describe("mobile app navigation", () => {
     expect(html).toContain("$65,000.00");
     expect(html).toContain("Est. close");
     expect(html).toContain("Quoted now");
+    expect(html).toContain("Copied from 0xfeed...cafe");
     expect(html).toContain("$2.41");
     expect(html).toContain("$4");
     expect(html).toContain("No payout");
     expect(html).toContain("$65,100.00");
+  });
+
+  test("renders share card modal actions", () => {
+    const card: ShareCardState = {
+      blob: null,
+      imageUrl: "data:image/png;base64,AAAA",
+      input: {
+        kind: "profile",
+        title: "0x4a2c...9b9e",
+        subtitle: "Verifiable DeepBook Predict record",
+        walletLabel: "0x4a2c...9b9e",
+        walletAddress: "0x4a2cc121769d36c23dad6bb2b5382eb9aeb870fcf4022746b1aacb25948e9b9e",
+        stats: [
+          { label: "Win rate", value: "94%" },
+          { label: "PnL", value: "+$24.69" },
+        ],
+        url: "http://127.0.0.1:5176",
+      },
+      text: "share text",
+      xUrl: "https://twitter.com/intent/tweet?text=share",
+    };
+    const html = renderToStaticMarkup(
+      <ShareCardModal
+        card={card}
+        onClose={() => undefined}
+        onCopy={() => undefined}
+        onShareToX={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="share-card-modal"');
+    expect(html).toContain('data-testid="share-card-x"');
+    expect(html).toContain('data-testid="share-card-copy"');
+    expect(html).toContain("Profile ready for X");
+    expect(html).toContain("Generated Hot Hands share card");
   });
 
   test("keeps empty portfolio copy sparse", () => {
@@ -726,6 +945,43 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("$123.45");
   });
 
+  test("renders open portfolio history rows with a live countdown", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        historyItems={[
+          {
+            closeLabel: "Open",
+            costLabel: "$4.97",
+            direction: "UP",
+            expiryTimeLabel: "Jun 12, 2026, 1:00 AM",
+            id: "history-open",
+            managerId: "0xmanager",
+            openedAtLabel: "Jun 11, 2026, 1:00 PM",
+            oracleId: "0xoracle",
+            payoutLabel: "Pending",
+            pnlLabel: "Open",
+            pnlTone: "flat",
+            quantityLabel: "$10.45",
+            remainingLabel: "$10.45",
+            statusLabel: "Open",
+            strikeLabel: "$62,000.00",
+            timeLabel: "8h left",
+            updatedAtLabel: "Jun 11, 2026, 1:00 PM",
+          },
+        ]}
+        initialTab="history"
+        positions={[]}
+        walletActionPending={false}
+        walletSubmittedPositionId={null}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("portfolio-countdown-live");
+    expect(html).toContain("<strong>8h left</strong><small>Open</small>");
+    expect(html).not.toContain("<strong>Jun 12, 2026, 1:00 AM</strong>");
+  });
+
   test("renders portfolio time remaining from the current clock", () => {
     const html = renderToStaticMarkup(
       <PortfolioPanel
@@ -757,7 +1013,9 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("Open · 2m left");
+    expect(html).toContain("portfolio-countdown-live");
+    expect(html).toContain("<strong>2m left</strong><small>Open</small>");
+    expect(html).not.toContain("<strong>May 18, 2026, 9:46 PM</strong>");
     expect(html).not.toContain("1d left");
   });
 
@@ -1083,6 +1341,62 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("Est. payout</small>$250");
     expect(html).not.toContain('data-testid="trade-strike-select"');
     expect(html).not.toContain('data-testid="trade-custom-strike"');
+  });
+
+  test("renders same-day trade markets as separate expiry cards", () => {
+    const earlyMarket = tradeMarketRowFixture({
+      id: "btc-jun12-0100",
+      expiryMs: new Date(2026, 5, 12, 1).getTime(),
+      expiryTimeLabel: "Jun 12, 01:00 PDT",
+      intervalLabel: "23d",
+      timeRemainingLabel: "8h left",
+      strike: 62_000,
+      strikeLabel: "$62,000",
+      strikeRaw: 62_000_000_000,
+      strikeOptions: [
+        {
+          strike: 62_000,
+          strikeLabel: "$62,000",
+          strikeRaw: 62_000_000_000,
+        },
+      ],
+    });
+    const laterMarket = tradeMarketRowFixture({
+      id: "btc-jun12-0500",
+      expiryMs: new Date(2026, 5, 12, 5).getTime(),
+      expiryTimeLabel: "Jun 12, 05:00 PDT",
+      intervalLabel: "23d",
+      timeRemainingLabel: "12h left",
+      strike: 63_000,
+      strikeLabel: "$63,000",
+      strikeRaw: 63_000_000_000,
+      strikeOptions: [
+        {
+          strike: 63_000,
+          strikeLabel: "$63,000",
+          strikeRaw: 63_000_000_000,
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[laterMarket, earlyMarket]}
+        copyAmount={25}
+        selectedMarketId={earlyMarket.id}
+        selectedSide="UP"
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html.match(/data-testid="trade-market-card"/g) ?? []).toHaveLength(2);
+    expect(html.indexOf("Jun 12, 01:00 PDT")).toBeLessThan(
+      html.indexOf("Jun 12, 05:00 PDT"),
+    );
+    expect(html).toContain('aria-label="Trade UP $62,000"');
+    expect(html).toContain('aria-label="Trade UP $63,000"');
   });
 
   test("limits the trade ladder to four prices around the active strike", () => {

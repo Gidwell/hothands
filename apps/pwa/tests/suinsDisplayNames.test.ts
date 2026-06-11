@@ -2,9 +2,29 @@ import { describe, expect, test } from "bun:test";
 import {
   clearMainnetSuinsDisplayNameCacheForTest,
   loadMainnetSuinsNames,
+  mergeDemoWalletDisplayNames,
 } from "../src/suinsDisplayNames";
 
 describe("SuiNS display names", () => {
+  test("fills unresolved demo wallets with deterministic SuiNS-style names", () => {
+    const walletA = "0xaaaa222233334444555566667777888899990001";
+    const walletB = "0xbbbb222233334444555566667777888899990002";
+    const names = mergeDemoWalletDisplayNames([walletA, walletB, walletA], {
+      [walletA]: {
+        name: "alice.sui",
+        source: "mainnet_suins",
+      },
+    });
+
+    expect(names[walletA]).toEqual({
+      name: "alice.sui",
+      source: "mainnet_suins",
+    });
+    expect(names[walletB]?.name).toMatch(/\.sui$/);
+    expect(names[walletB]?.source).toBe("demo_seed");
+    expect(mergeDemoWalletDisplayNames([walletB])[walletB]).toEqual(names[walletB]);
+  });
+
   test("caches mainnet SuiNS names between live feed refreshes", async () => {
     clearMainnetSuinsDisplayNameCacheForTest();
 
