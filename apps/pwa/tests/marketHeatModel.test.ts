@@ -569,6 +569,56 @@ describe("market heat preview model", () => {
     });
   });
 
+  test("keeps wallet addresses when live SuiNS lookup has no name", async () => {
+    const wallet = "0x2222333344445555666677778888999900001111";
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_000_000,
+      useMainnetSuinsNames: true,
+      fetcher: async (url) => {
+        if (String(url).includes("/testnet/mainnet-suins-names")) {
+          return Response.json({
+            source: "mainnet_suins",
+            network: "mainnet",
+            names: [],
+            missing: [wallet],
+          });
+        }
+
+        return Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71234,
+            source: "live_testnet",
+          },
+          rows: [
+            {
+              id: "external-0x1111",
+              wallet,
+              manager: "manager 0xabcd...0001",
+              market: "BTC-USD",
+              side: "UP",
+              strike: 71000,
+              expiryMs: 1_779_165_900_000,
+              intervalLabel: "15m",
+              observedAtMs: 1_779_165_000_000,
+              heatScore: 74,
+              status: "copy_ready",
+            },
+          ],
+        });
+      },
+    });
+
+    expect(preview.rows[0]).toMatchObject({
+      wallet,
+      displayName: "0x2222...1111",
+    });
+    expect(preview.rows[0]?.displayNameSource).toBeUndefined();
+  });
+
   test("keeps parsed trade market ids stable when live strike candidates update", async () => {
     const expiryMs = 1_779_165_900_000;
     const loadForStrike = (strikeCandidatePrice: number) =>

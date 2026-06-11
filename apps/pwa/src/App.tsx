@@ -5235,7 +5235,6 @@ export function App() {
         const preview = await loadMarketHeatPreview({
           apiBaseUrl: realtimeApiBaseUrl,
           includeExpired: marketHeatShowExpired,
-          useDemoDisplayNames: true,
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
@@ -5315,7 +5314,6 @@ export function App() {
       try {
         const snapshot = await loadWalletLeaderboards({
           apiBaseUrl: realtimeApiBaseUrl,
-          useDemoDisplayNames: true,
           useMainnetSuinsNames: true,
         });
 
