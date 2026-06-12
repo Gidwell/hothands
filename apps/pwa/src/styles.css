@@ -2041,13 +2041,25 @@ button:disabled {
     color 120ms ease;
 }
 
+.market-heat-swipe-action-fade {
+  right: 8px;
+  left: auto;
+  color: #b42318;
+  background: #fee4e2;
+}
+
 .market-heat-row-swiping .market-heat-swipe-action {
   transform: scale(1);
 }
 
-.market-heat-row-swipe-confirming .market-heat-swipe-action {
+.market-heat-row-swipe-copying .market-heat-swipe-action-copy {
   color: #064e3b;
   background: #bbf7d0;
+}
+
+.market-heat-row-swipe-fading .market-heat-swipe-action-fade {
+  color: #7a271a;
+  background: #fecdca;
 }
 
 .market-heat-compact-row {
@@ -3814,6 +3826,46 @@ button:disabled {
   inset: 0 auto 0 0;
   width: 76px;
   border-radius: 8px 0 0 8px;
+}
+
+.market-heat-swipe-action-fade {
+  inset: 0 0 0 auto;
+  border-radius: 0 8px 8px 0;
+  color: var(--hh-down);
+  background: var(--hh-down-soft);
+}
+
+.market-heat-row-swipe-fading .market-heat-swipe-action-fade {
+  color: var(--hh-down);
+  background: color-mix(in srgb, var(--hh-down-soft) 82%, var(--hh-down-line));
+}
+
+.market-heat-intent-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--hh-line);
+}
+
+.market-heat-intent-mode strong {
+  font-size: 0.95rem;
+  font-weight: 950;
+}
+
+.market-heat-intent-mode span {
+  color: var(--hh-muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.market-heat-intent-mode-copy strong {
+  color: var(--hh-up);
+}
+
+.market-heat-intent-mode-fade strong {
+  color: var(--hh-down);
 }
 
 .inline-watch-panel {

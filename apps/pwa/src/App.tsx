@@ -69,6 +69,7 @@ import {
   preserveMarketHeatAvailableMarketStrikes,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
+  type MarketHeatIntentMode,
   type MarketHeatIntentState,
   type MarketHeatPreview as MarketHeatPreviewModel,
   type MarketHeatPreviewRow,
@@ -164,7 +165,7 @@ type ThemeMode = "light" | "dark";
 const APP_VIEW_VALUES: AppView[] = ["feed", "trade", "leaderboards", "portfolio", "profile"];
 const MARKET_HEAT_DESCRIPTION =
   "Heat combines recency, copied volume, wallet streak, and trade activity.";
-export type MarketHeatSwipeAction = "none" | "select" | "submit";
+export type MarketHeatSwipeAction = "none" | "select" | "copy" | "fade";
 type MarketHeatSwipePreview = {
   action: MarketHeatSwipeAction;
   deltaX: number;
@@ -511,19 +512,38 @@ const MARKET_HEAT_SWIPE_CONFIRM_THRESHOLD = 86;
 const MARKET_HEAT_SWIPE_VERTICAL_TOLERANCE = 38;
 const MARKET_HEAT_SWIPE_MAX_OFFSET = 118;
 
+function oppositeTradeSide(side: TradeSide): TradeSide {
+  return side === "UP" ? "DOWN" : "UP";
+}
+
+function marketHeatIntentModeLabel(mode: MarketHeatIntentMode): "Copy" | "Fade" {
+  return mode === "fade" ? "Fade" : "Copy";
+}
+
+export function resolveMarketHeatIntentSide(
+  rowSide: TradeSide,
+  mode: MarketHeatIntentMode,
+): TradeSide {
+  return mode === "fade" ? oppositeTradeSide(rowSide) : rowSide;
+}
+
 export function resolveMarketHeatSwipeAction(
   deltaX: number,
   deltaY: number,
   rowStatus: MarketHeatPreviewRow["status"],
 ): MarketHeatSwipeAction {
   if (
-    deltaX < MARKET_HEAT_SWIPE_CONFIRM_THRESHOLD ||
+    Math.abs(deltaX) < MARKET_HEAT_SWIPE_CONFIRM_THRESHOLD ||
     Math.abs(deltaY) > MARKET_HEAT_SWIPE_VERTICAL_TOLERANCE
   ) {
     return "none";
   }
 
-  return rowStatus === "copy_ready" ? "submit" : "select";
+  if (rowStatus !== "copy_ready") {
+    return "select";
+  }
+
+  return deltaX < 0 ? "fade" : "copy";
 }
 
 const TRADE_EXPIRY_DAY_MS = 24 * 60 * 60_000;
@@ -2970,6 +2990,7 @@ export function ProfilePanel({
   profilePositionsShowMoreLabel = "Show more",
   quote = null,
   quoteStatus = "idle",
+  selectedProfilePositionMode = "copy",
   selectedProfilePositionRowId = null,
   walletConnected = false,
   onAmountSet = () => undefined,
@@ -2997,13 +3018,14 @@ export function ProfilePanel({
   profilePositionsShowMoreLabel?: string;
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
+  selectedProfilePositionMode?: MarketHeatIntentMode;
   selectedProfilePositionRowId?: string | null;
   walletConnected?: boolean;
   onAmountSet?: (amount: number) => void;
   onFollowWallet: (wallet: FollowedWallet) => void;
-  onProfilePositionSelect?: (rowId: string) => void;
+  onProfilePositionSelect?: (rowId: string, mode?: MarketHeatIntentMode) => void;
   onProfilePositionsShowMore?: () => void;
-  onProfilePositionWalletSubmit?: (rowId: string) => void;
+  onProfilePositionWalletSubmit?: (rowId: string, mode?: MarketHeatIntentMode) => void;
   onProfileQuoteRetry?: () => void;
   onShareProfile?: () => void;
   onShareRow?: (rowId: string) => void;
@@ -3118,6 +3140,7 @@ export function ProfilePanel({
           emptyDetail="This wallet has no active positions to copy right now."
           emptyTitle="No open positions"
           rows={profilePositionRows}
+          selectedMode={selectedProfilePositionMode}
           selectedRowId={selectedProfilePositionRowId}
           showControls={false}
           showEmptyAction={false}
@@ -3717,6 +3740,7 @@ export function MarketHeatPreview({
   emptyActionLabel,
   canShowMore,
   selectedRowId,
+  selectedMode = "copy",
   copyAmount,
   copyAttributionLabels = {},
   expiryOptions = [],
@@ -3754,6 +3778,7 @@ export function MarketHeatPreview({
   emptyActionLabel?: string;
   canShowMore: boolean;
   selectedRowId: string | null;
+  selectedMode?: MarketHeatIntentMode;
   copyAmount: number;
   copyAttributionLabels?: Record<string, string>;
   expiryOptions?: TradeExpiryOption[];
@@ -3769,10 +3794,10 @@ export function MarketHeatPreview({
   onShowExpiredChange: (showExpired: boolean) => void;
   onShowMore: () => void;
   onSortModeChange: (sortMode: MarketHeatFeedMode) => void;
-  onWalletSubmit: (rowId: string) => void;
+  onWalletSubmit: (rowId: string, mode?: MarketHeatIntentMode) => void;
   onRetryQuote?: () => void;
   onShareRow?: (rowId: string) => void;
-  onSelectRow: (rowId: string) => void;
+  onSelectRow: (rowId: string, mode?: MarketHeatIntentMode) => void;
   onWalletOpen?: (wallet: FollowedWallet) => void;
 }) {
   const swipeStartRef = useRef<{ rowId: string; x: number; y: number } | null>(null);
@@ -3809,14 +3834,17 @@ export function MarketHeatPreview({
     const deltaX = event.clientX - swipeStart.x;
     const deltaY = event.clientY - swipeStart.y;
 
-    if (deltaX <= 8 || Math.abs(deltaY) > MARKET_HEAT_SWIPE_VERTICAL_TOLERANCE) {
+    if (Math.abs(deltaX) <= 8 || Math.abs(deltaY) > MARKET_HEAT_SWIPE_VERTICAL_TOLERANCE) {
       setSwipePreview((current) => (current?.rowId === row.id ? null : current));
       return;
     }
 
     setSwipePreview({
       action: resolveMarketHeatSwipeAction(deltaX, deltaY, row.status),
-      deltaX: Math.min(deltaX, MARKET_HEAT_SWIPE_MAX_OFFSET),
+      deltaX: Math.max(
+        -MARKET_HEAT_SWIPE_MAX_OFFSET,
+        Math.min(deltaX, MARKET_HEAT_SWIPE_MAX_OFFSET),
+      ),
       rowId: row.id,
     });
   };
@@ -3842,18 +3870,19 @@ export function MarketHeatPreview({
 
     swipedRowRef.current = row.id;
 
-    if (action === "submit") {
-      const rowQuoteStatus = row.id === selectedRowId ? quoteStatus : "idle";
+    if (action === "copy" || action === "fade") {
+      const rowQuoteStatus =
+        row.id === selectedRowId && selectedMode === action ? quoteStatus : "idle";
       if (!walletConnected || rowQuoteStatus !== "ready") {
-        onSelectRow(row.id);
+        onSelectRow(row.id, action);
         return;
       }
 
-      onWalletSubmit(row.id);
+      onWalletSubmit(row.id, action);
       return;
     }
 
-    onSelectRow(row.id);
+    onSelectRow(row.id, "copy");
   };
 
   const resolvedEmptyTitle =
@@ -3865,7 +3894,10 @@ export function MarketHeatPreview({
   const headingTitle = sourceLabel ? `${sourceLabel} BTC markets` : title;
   const renderMarketHeatTradeRow = (row: MarketHeatPreviewRow) => {
     const isSelected = row.id === selectedRowId;
-    const intentPanel = isSelected ? buildMarketHeatIntentPanel(row) : null;
+    const rowIntentMode = isSelected ? selectedMode : "copy";
+    const rowIntentLabel = marketHeatIntentModeLabel(rowIntentMode);
+    const rowIntentSide = resolveMarketHeatIntentSide(row.side, rowIntentMode);
+    const intentPanel = isSelected ? buildMarketHeatIntentPanel(row, rowIntentMode) : null;
     const sideClass = row.side.toLowerCase();
     const isWalletSubmitReady = row.status === "copy_ready";
     const rowQuote = isSelected ? quote : null;
@@ -3882,11 +3914,21 @@ export function MarketHeatPreview({
       : isQuoteError
         ? "Quote unavailable — retry"
         : isQuoteReady
-          ? "Confirm transaction"
-          : "Loading quote...";
+          ? rowIntentLabel
+          : `Loading ${rowIntentLabel.toLowerCase()} quote...`;
     const copyAttributionLabel = copyAttributionLabels[row.id];
     const swipePreviewForRow = swipePreview?.rowId === row.id ? swipePreview : null;
-    const isSwipeConfirming = swipePreviewForRow?.action === "submit";
+    const swipeDirectionMode =
+      swipePreviewForRow && row.status === "copy_ready"
+        ? swipePreviewForRow.deltaX < 0
+          ? "fade"
+          : "copy"
+        : null;
+    const swipeMode =
+      swipePreviewForRow?.action === "fade" || swipePreviewForRow?.action === "copy"
+        ? swipePreviewForRow.action
+        : swipeDirectionMode;
+    const swipeLabel = swipeMode ? marketHeatIntentModeLabel(swipeMode) : "Open";
     const returnPreview = rowQuote ? buildReturnPreviewFromQuote(rowQuote) : null;
     const rowIdentityTitle = identityMode === "market" ? row.pairLabel : row.displayName;
     const rowIdentityDetail =
@@ -3917,11 +3959,15 @@ export function MarketHeatPreview({
         className={`inline-watch-panel inline-watch-panel-${row.status}`}
         data-testid="market-heat-intent-panel"
       >
+        <div className={`market-heat-intent-mode market-heat-intent-mode-${rowIntentMode}`}>
+          <strong>{rowIntentLabel}</strong>
+          <span>{rowIntentMode === "fade" ? "Opposite side" : "Same side"}</span>
+        </div>
         <div className="market-heat-intent-targets" aria-label={`${rowIdentityTitle} intent`}>
           <span>
-            <small>Target</small>
+            <small>{rowIntentMode === "fade" ? "Fade target" : "Target"}</small>
             <strong>
-              {row.side === "UP" ? "Above" : "Below"}{" "}
+              {rowIntentSide === "UP" ? "Above" : "Below"}{" "}
               {row.strikeLabel.replace(/^Strike\s+/, "")}
             </strong>
             <em>at expiry</em>
@@ -4000,7 +4046,9 @@ export function MarketHeatPreview({
         className={`market-heat-row market-heat-row-compact market-heat-row-${row.status} market-heat-row-${sideClass} ${
           isSelected ? "market-heat-row-selected" : ""
         } ${swipePreviewForRow ? "market-heat-row-swiping" : ""} ${
-          isSwipeConfirming ? "market-heat-row-swipe-confirming" : ""
+          swipeMode === "copy" ? "market-heat-row-swipe-copying" : ""
+        } ${swipeMode === "fade" ? "market-heat-row-swipe-fading" : ""} ${
+          isSelected ? `market-heat-row-intent-${rowIntentMode}` : ""
         }`}
         data-testid="market-heat-row"
         key={row.id}
@@ -4010,7 +4058,7 @@ export function MarketHeatPreview({
             return;
           }
 
-          onSelectRow(row.id);
+          onSelectRow(row.id, rowIntentMode);
         }}
         onPointerCancel={() => {
           swipeStartRef.current = null;
@@ -4020,8 +4068,13 @@ export function MarketHeatPreview({
         onPointerUp={(event) => finishMarketHeatSwipe(row, event)}
       >
         {swipePreviewForRow ? (
-          <div className="market-heat-swipe-action" aria-hidden="true">
-            {isSwipeConfirming ? "Confirm" : "Open"}
+          <div
+            className={`market-heat-swipe-action market-heat-swipe-action-${
+              swipePreviewForRow.deltaX < 0 ? "fade" : "copy"
+            }`}
+            aria-hidden="true"
+          >
+            {swipeLabel}
           </div>
         ) : null}
         <div
@@ -4847,10 +4900,14 @@ export function App() {
         spotPriceLabel: tradeMarketPriceLabel,
       })
     : null;
+  const activeMarketHeatIntentMode = marketHeatIntent.mode ?? "copy";
+  const activeMarketHeatQuoteSide = activeMarketHeatCopyTrade
+    ? resolveMarketHeatIntentSide(activeMarketHeatCopyTrade.row.side, activeMarketHeatIntentMode)
+    : null;
   const marketHeatQuoteKey = activeMarketHeatCopyTrade
     ? buildTradeQuoteKey(
         activeMarketHeatCopyTrade.market,
-        activeMarketHeatCopyTrade.row.side,
+        activeMarketHeatQuoteSide ?? activeMarketHeatCopyTrade.row.side,
         copyState.copyAmount,
       )
     : null;
@@ -5766,7 +5823,7 @@ export function App() {
     void loadTradeQuote({
       apiBaseUrl: realtimeApiBaseUrl,
       market: activeMarketHeatCopyTrade.market,
-      side: activeMarketHeatCopyTrade.row.side,
+      side: activeMarketHeatQuoteSide ?? activeMarketHeatCopyTrade.row.side,
       spendUsd: copyState.copyAmount,
     })
       .then((quote) => {
@@ -5800,7 +5857,7 @@ export function App() {
     activeMarketHeatCopyTrade?.market.id,
     activeMarketHeatCopyTrade?.market.oracleId,
     activeMarketHeatCopyTrade?.market.strikeRaw,
-    activeMarketHeatCopyTrade?.row.side,
+    activeMarketHeatQuoteSide,
     activeView,
     copyState.copyAmount,
     marketHeatQuoteKey,
@@ -5902,17 +5959,20 @@ export function App() {
     });
   };
 
-  const handleMarketHeatSelect = (rowId: string) => {
+  const handleMarketHeatSelect = (rowId: string, mode: MarketHeatIntentMode = "copy") => {
     setMarketHeatIntent((state) =>
-      state.selectedRowId === rowId
+      state.selectedRowId === rowId && (state.mode ?? "copy") === mode
         ? closeMarketHeatIntent(state)
-        : selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
+        : selectMarketHeatIntent(state, rowId, marketHeatPreview.rows, mode),
     );
   };
 
-  const handleMarketHeatWalletSubmit = async (rowId: string) => {
+  const handleMarketHeatWalletSubmit = async (
+    rowId: string,
+    mode: MarketHeatIntentMode = marketHeatIntent.mode ?? "copy",
+  ) => {
     setMarketHeatIntent((state) =>
-      selectMarketHeatIntent(state, rowId, marketHeatPreview.rows),
+      selectMarketHeatIntent(state, rowId, marketHeatPreview.rows, mode),
     );
 
     if (!currentAccount) {
@@ -5944,10 +6004,12 @@ export function App() {
       });
       return;
     }
+    const copyTradeSide = resolveMarketHeatIntentSide(copyTrade.row.side, mode);
+    const copyTradeLabel = marketHeatIntentModeLabel(mode);
 
     setWalletTxState({
       status: "pending",
-      label: "Preparing copy quote...",
+      label: `Preparing ${copyTradeLabel.toLowerCase()} quote...`,
       digest: null,
     });
 
@@ -5955,7 +6017,7 @@ export function App() {
       const quote = await loadTradeQuote({
         apiBaseUrl: realtimeApiBaseUrl,
         market: copyTrade.market,
-        side: copyTrade.row.side,
+        side: copyTradeSide,
         spendUsd: copyState.copyAmount,
       });
 
@@ -5986,7 +6048,7 @@ export function App() {
 
       setWalletTxState({
         status: "pending",
-        label: "Sending copy to wallet...",
+        label: `Sending ${copyTradeLabel.toLowerCase()} to wallet...`,
         digest: null,
       });
 
@@ -6009,7 +6071,7 @@ export function App() {
       const digest = walletResultDigest(result);
       setWalletTxState({
         status: "success",
-        label: "Copy transaction sent.",
+        label: `${copyTradeLabel} transaction sent.`,
         digest,
       });
       recordCopyAttribution({
@@ -6022,7 +6084,7 @@ export function App() {
           oracleId: copyTrade.market.oracleId,
           expiry: copyTrade.market.expiry,
           strike: copyTrade.market.strikeRaw,
-          direction: copyTrade.row.side,
+          direction: copyTradeSide,
         }),
         copier: currentAccount.address,
         position_id: copyAttributionTargetForMarketHeatRow(copyTrade.row).positionId,
@@ -6576,6 +6638,7 @@ export function App() {
       showExpired={marketHeatShowExpired}
       showEmptyAction={isFollowingFeedMode ? true : undefined}
       canShowMore={marketHeatRemainingCount > 0}
+      selectedMode={activeMarketHeatIntentMode}
       selectedRowId={marketHeatIntent.selectedRowId}
       copyAmount={copyState.copyAmount}
       copyAttributionLabels={copyAttributionLabelsByRowId}
@@ -6747,6 +6810,7 @@ export function App() {
               profilePositionRows={profilePositionRows}
               profilePositionsCanShowMore={profilePositionRemainingCount > 0}
               profilePositionsShowMoreLabel={profilePositionShowMoreLabel}
+              selectedProfilePositionMode={activeMarketHeatIntentMode}
               selectedProfilePositionRowId={marketHeatIntent.selectedRowId}
               quote={activeMarketHeatQuote}
               quoteStatus={activeMarketHeatQuoteStatus}

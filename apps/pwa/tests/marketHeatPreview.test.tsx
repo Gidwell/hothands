@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { MarketHeatPreview, resolveMarketHeatSwipeAction } from "../src/App";
+import {
+  MarketHeatPreview,
+  resolveMarketHeatIntentSide,
+  resolveMarketHeatSwipeAction,
+} from "../src/App";
 import {
   buildMarketHeatPreview,
   type MarketHeatPreviewRowInput,
@@ -70,11 +74,17 @@ function quoteFixture(overrides: Partial<TradeQuote> = {}): TradeQuote {
 }
 
 describe("MarketHeatPreview component", () => {
-  test("resolves compact row right swipes into safe actions", () => {
-    expect(resolveMarketHeatSwipeAction(92, 6, "copy_ready")).toBe("submit");
+  test("resolves compact row swipes into copy and fade actions", () => {
+    expect(resolveMarketHeatSwipeAction(92, 6, "copy_ready")).toBe("copy");
+    expect(resolveMarketHeatSwipeAction(-92, 6, "copy_ready")).toBe("fade");
     expect(resolveMarketHeatSwipeAction(92, 6, "watching")).toBe("select");
+    expect(resolveMarketHeatSwipeAction(-92, 6, "watching")).toBe("select");
     expect(resolveMarketHeatSwipeAction(42, 6, "copy_ready")).toBe("none");
+    expect(resolveMarketHeatSwipeAction(-42, 6, "copy_ready")).toBe("none");
     expect(resolveMarketHeatSwipeAction(92, 44, "copy_ready")).toBe("none");
+    expect(resolveMarketHeatIntentSide("UP", "copy")).toBe("UP");
+    expect(resolveMarketHeatIntentSide("UP", "fade")).toBe("DOWN");
+    expect(resolveMarketHeatIntentSide("DOWN", "fade")).toBe("UP");
   });
 
   test("renders a compact inline watch panel for the selected row", () => {
@@ -157,9 +167,46 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Est. payout</small><strong>$937.50");
     expect(html).toContain("Max profit</small><strong>+$562.50");
     expect(html).toContain('data-testid="market-heat-wallet-submit"');
-    expect(html).toContain("Confirm transaction");
+    expect(html).toContain(">Copy</button>");
     expect(html).not.toContain("Manager 0xbbbb...0000");
     expect(html).not.toContain("No wallet request until you tap Confirm transaction");
+  });
+
+  test("renders fade intent as the opposite side of a feed row", () => {
+    const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        selectedMode="fade"
+        selectedRowId={row.id}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        quote={quoteFixture({ side: "DOWN" })}
+        quoteStatus="ready"
+        showMoreLabel="Show more"
+        walletConnected={true}
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onWalletOpen={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Fade");
+    expect(html).toContain("Opposite side");
+    expect(html).toContain("Fade target</small>");
+    expect(html).toContain("Below $7,100");
+    expect(html).toContain("Max profit</small><strong>+$562.50");
+    expect(html).not.toContain("Above $7,100");
+    expect(html).not.toContain("Confirm transaction");
   });
 
   test("waits for a live quote instead of estimating dust row payouts", () => {

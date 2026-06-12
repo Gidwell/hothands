@@ -128,12 +128,15 @@ export type MarketHeatPreviewRow = {
   statusLabel: string;
 };
 
+export type MarketHeatIntentMode = "copy" | "fade";
+
 export type MarketHeatIntentState = {
+  mode?: MarketHeatIntentMode;
   selectedRowId: string | null;
 };
 
 export type MarketHeatIntentPanel = {
-  actionLabel: "Copy now";
+  actionLabel: "Copy now" | "Fade now";
   closeLabel: "Cancel";
   detailLabel: "Next observed mint" | "Recent mint";
   signatureLabel:
@@ -745,12 +748,14 @@ export function selectMarketHeatIntent(
   state: MarketHeatIntentState,
   rowId: string,
   rows: MarketHeatPreviewRow[],
+  mode: MarketHeatIntentMode = "copy",
 ): MarketHeatIntentState {
   if (!findMarketHeatPreviewRow(rows, rowId)) {
     return state;
   }
 
   return {
+    mode,
     selectedRowId: rowId,
   };
 }
@@ -763,22 +768,24 @@ export function closeMarketHeatIntent(_state: MarketHeatIntentState): MarketHeat
 
 export function buildMarketHeatIntentPanel(
   row: MarketHeatPreviewRow | null | undefined,
+  mode: MarketHeatIntentMode = "copy",
 ): MarketHeatIntentPanel | null {
   if (!row) {
     return null;
   }
 
   const isCopyReady = row.status === "copy_ready";
+  const isFade = mode === "fade";
 
   return {
-    actionLabel: row.actionLabel,
+    actionLabel: isFade ? "Fade now" : row.actionLabel,
     closeLabel: "Cancel",
     detailLabel: isCopyReady ? "Recent mint" : "Next observed mint",
     signatureLabel: isCopyReady
       ? "Ready for your wallet signature"
       : "We'll watch this wallet and prepare the next mint for your signature",
     statusLabel: row.statusLabel,
-    title: `Copy ${row.displayName}`,
+    title: `${isFade ? "Fade" : "Copy"} ${row.displayName}`,
   };
 }
 

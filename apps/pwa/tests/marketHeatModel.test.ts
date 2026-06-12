@@ -204,6 +204,7 @@ describe("market heat preview model", () => {
     const watchingRow = preview.rows.find((row) => row.id === selected.selectedRowId);
 
     expect(selected.selectedRowId).toBe("external-0x28b7");
+    expect(selected.mode).toBe("copy");
     expect(buildMarketHeatIntentPanel(watchingRow)).toEqual({
       actionLabel: "Copy now",
       closeLabel: "Cancel",
@@ -213,6 +214,31 @@ describe("market heat preview model", () => {
       title: "Copy 0x28b7...4c10",
     });
     expect(closeMarketHeatIntent(selected)).toEqual({ selectedRowId: null });
+  });
+
+  test("can select fade intent for a copy-ready row", () => {
+    const [copyReadyRow] = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 8, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const selected = selectMarketHeatIntent(
+      { selectedRowId: null },
+      copyReadyRow!.id,
+      [copyReadyRow!],
+      "fade",
+    );
+
+    expect(selected).toEqual({
+      mode: "fade",
+      selectedRowId: copyReadyRow!.id,
+    });
+    expect(buildMarketHeatIntentPanel(copyReadyRow, selected.mode)).toEqual({
+      actionLabel: "Fade now",
+      closeLabel: "Cancel",
+      detailLabel: "Recent mint",
+      signatureLabel: "Ready for your wallet signature",
+      statusLabel: "just now",
+      title: "Fade 0x84d2...91af",
+    });
   });
 
   test("labels copy intent as wallet-ready when an observed mint is available", () => {
