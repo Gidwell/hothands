@@ -7,6 +7,19 @@ Hot Hands deploys as three production pieces:
 - Railway runs the live indexer worker.
 - Railway Postgres stores indexed Predict data and app-owned state.
 
+## Current Production
+
+- PWA: `https://hothands.pages.dev`
+- API: `https://hothands-api-production.up.railway.app`
+
+The first production deployment was created from the CLI. GitHub auto-deploys
+still need provider dashboard access to `Gidwell/hothands`:
+
+- Railway: connect `hothands-api` and `hothands-indexer` to `Gidwell/hothands`
+  on `main`.
+- Cloudflare Pages: connect the `hothands` Pages project to `Gidwell/hothands`
+  on `main` and set the production build variables below.
+
 ## Railway
 
 The Railway project should contain:
