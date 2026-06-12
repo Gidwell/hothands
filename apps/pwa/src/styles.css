@@ -2025,9 +2025,9 @@ button:disabled {
   position: absolute;
   top: 7px;
   bottom: 7px;
-  left: 8px;
+  left: 2px;
   display: grid;
-  width: 86px;
+  width: 62px;
   place-items: center;
   border-radius: 8px;
   color: #047857;
@@ -2042,7 +2042,7 @@ button:disabled {
 }
 
 .market-heat-swipe-action-fade {
-  right: 8px;
+  right: 2px;
   left: auto;
   color: #b42318;
   background: #fee4e2;
@@ -2206,15 +2206,15 @@ button:disabled {
 
 .market-heat-swipe-action.market-heat-swipe-hint-label {
   opacity: 0;
-  width: 46px;
+  width: 50px;
 }
 
 .market-heat-swipe-action.market-heat-swipe-hint-label-copy {
-  inset: 0 auto 0 -6px;
+  inset: 0 auto 0 -2px;
 }
 
 .market-heat-swipe-action.market-heat-swipe-hint-label-fade {
-  inset: 0 -6px 0 auto;
+  inset: 0 -2px 0 auto;
 }
 
 .market-heat-row-swipe-hint-copy .market-heat-compact-row {
@@ -3981,13 +3981,13 @@ button:disabled {
 }
 
 .market-heat-swipe-action {
-  inset: 0 auto 0 0;
-  width: 76px;
+  inset: 0 auto 0 -4px;
+  width: 54px;
   border-radius: 8px 0 0 8px;
 }
 
 .market-heat-swipe-action-fade {
-  inset: 0 0 0 auto;
+  inset: 0 -4px 0 auto;
   border-radius: 0 8px 8px 0;
   color: var(--hh-down);
   background: var(--hh-down-soft);
