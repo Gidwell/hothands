@@ -10,8 +10,9 @@ stay reserved for wallet-adjacent flows and transaction confirmation.
 The first foundation slice is DB-backed but still public-server first: run
 bounded, high-limit backfills for oracles, mints, redeems, trades, prices, and
 SVI into raw tables, then derive projections for market heat, recent activity,
-settlement views, and PWA feeds. No cursor paging has been found on the public
-Predict endpoints yet, so every job should be idempotent and freshness-aware.
+settlement views, and PWA feeds. The public Predict oracle price endpoint
+supports millisecond `start_time` and `end_time` windows, so historical chart
+backfills should use bounded windows and stay idempotent/freshness-aware.
 
 ## Local Durable Setup
 
@@ -60,6 +61,28 @@ serves them behind a narrow local setup:
    Start with small limits locally, then replay with wider limits. The CLI reads
    `DATABASE_URL` in write mode, fetches from the public Predict server, and upserts
    raw oracles, mints, redeems, trades, prices, and SVI.
+
+   To backfill only historical oracle prices for chart depth, use a price-only
+   windowed run. This reads `/oracles/:oracle_id/prices?start_time=...&end_time=...`
+   in bounded chunks:
+
+   ```bash
+   bun run --cwd packages/indexer backfill:predict -- --dry-run --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 60000
+   bun run --cwd packages/indexer backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 60000
+   ```
+
+   Keep `--price-window-concurrency` low, usually `2`, if the public Predict
+   server starts returning rate limits. The default oracle set is the current
+   active BTC trade markets; use explicit `--oracle-id` values for targeted
+   debugging.
+
+   In production, Railway Postgres uses the private
+   `postgres.railway.internal` host. A local `railway run ... backfill` command
+   receives that private URL but cannot connect to it from your laptop. For
+   production chart history, either run the command inside Railway with
+   `railway ssh --service hothands-indexer -- ...`, or set the indexer startup
+   bootstrap env vars described below and redeploy `hothands-indexer`.
+
 5. If you skipped the launcher in step 2, start the local app with the same
    `DATABASE_URL`:
 
@@ -109,6 +132,17 @@ serves them behind a narrow local setup:
    The chart endpoint requests downsampled full-range history from
    `predict_oracle_prices`, preserving the first and latest indexed points while
    returning at most the requested point budget.
+
+   To have the live indexer backfill chart depth before it begins normal polling,
+   set `HOT_HANDS_INDEXER_STARTUP_PRICE_BACKFILL_DAYS` to the desired bounded
+   history window. Optional tuning knobs are
+   `HOT_HANDS_INDEXER_STARTUP_PRICE_SAMPLE_MS`,
+   `HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_MS`, and
+   `HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_CONCURRENCY`. For example, production
+   can set `HOT_HANDS_INDEXER_STARTUP_PRICE_BACKFILL_DAYS=3` and
+   `HOT_HANDS_INDEXER_STARTUP_PRICE_SAMPLE_MS=60000` to keep one historical
+   chart point per minute while live polling continues at one latest tick per
+   second.
 6. Build projections from the raw tables before serving product flows:
 
    ```text

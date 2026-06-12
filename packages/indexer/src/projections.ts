@@ -80,6 +80,7 @@ export type WalletPerformanceEntry = {
   closedCount: number;
   winCount: number;
   lossCount: number;
+  heatScore: number;
   longestWinningStreak: number;
   longestLosingStreak: number;
   currentStreakType: WalletStreakType;
@@ -337,6 +338,12 @@ export function buildWalletPerformanceEntries(
 ): WalletPerformanceEntry[] {
   const groups = new Map<string, PredictPositionSummary[]>();
   const settlementsByOracleId = buildSettlementMap(oracles);
+  const heatByWallet = new Map(
+    buildTraderHeatProjection([], positions, { nowMs }).map((entry) => [
+      entry.trader,
+      entry.hotScore,
+    ]),
+  );
 
   for (const position of positions) {
     groups.set(position.owner, [...(groups.get(position.owner) ?? []), position]);
@@ -345,6 +352,7 @@ export function buildWalletPerformanceEntries(
   return [...groups.entries()]
     .map(([wallet, walletPositions]) =>
       buildWalletPerformanceEntry(wallet, walletPositions, {
+        heatScore: heatByWallet.get(wallet) ?? 0,
         nowMs,
         settlementsByOracleId,
       }),
@@ -357,9 +365,10 @@ function buildWalletPerformanceEntry(
   wallet: string,
   positions: PredictPositionSummary[],
   {
+    heatScore,
     nowMs,
     settlementsByOracleId,
-  }: { nowMs: number; settlementsByOracleId: Map<string, PredictOracleState> },
+  }: { heatScore: number; nowMs: number; settlementsByOracleId: Map<string, PredictOracleState> },
 ): WalletPerformanceEntry {
   const resolvedPositions = positions
     .flatMap((position) =>
@@ -430,6 +439,7 @@ function buildWalletPerformanceEntry(
     closedCount: resolvedPositions.length,
     winCount: totals.winCount,
     lossCount: totals.lossCount,
+    heatScore,
     longestWinningStreak,
     longestLosingStreak,
     currentStreakType,

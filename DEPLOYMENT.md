@@ -11,6 +11,9 @@ Hot Hands deploys as three production pieces:
 
 - PWA: `https://hothands.pages.dev`
 - API: `https://hothands-api-production.up.railway.app`
+- Railway project: `capable-expression`
+- Railway services: `Postgres`, `hothands-api`, `hothands-indexer`
+- Cloudflare Pages project: `hothands`
 
 The first production deployment was created from the CLI. GitHub auto-deploys
 still need provider dashboard access to `Gidwell/hothands`:
@@ -65,6 +68,70 @@ DATABASE_URL=${{Postgres.DATABASE_URL}}
 The indexer has no public domain. Use logs and `/testnet/indexer-status` on the
 API to confirm it is writing fresh data.
 
+Optional chart-history bootstrap variables:
+
+```text
+HOT_HANDS_INDEXER_STARTUP_PRICE_BACKFILL_DAYS=3
+HOT_HANDS_INDEXER_STARTUP_PRICE_SAMPLE_MS=60000
+HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_MS=3600000
+HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_CONCURRENCY=2
+```
+
+Set these on `hothands-indexer` when production charts need deeper history. The
+worker runs a price-only backfill from inside Railway before live polling starts,
+then resumes the normal latest-price indexer. Writes are idempotent by price
+event ID, so reruns fill missing points without duplicating existing rows.
+
+### Manual Railway Deploys
+
+Until Railway GitHub auto-deploys are connected, deploy from the repository
+root with the Railway CLI:
+
+```bash
+railway up --service hothands-api --detach --message "<deploy message>"
+railway up --service hothands-indexer --detach --message "<deploy message>"
+```
+
+Use `railway logs --service hothands-api` or
+`railway logs --service hothands-indexer` to watch startup and ingestion health.
+
+### Production Backfills
+
+Run migrations first when schema files change:
+
+```bash
+railway run --service hothands-api -- bun run indexer:migrate
+```
+
+`railway run` executes locally with Railway variables. Production Postgres uses
+the internal host `postgres.railway.internal`, so local one-off backfills cannot
+connect unless a public TCP proxy is configured. Prefer the indexer startup
+bootstrap variables above for chart history backfills.
+
+For local or public-DB manual runs, the regular bounded Predict backfill is:
+
+```bash
+railway run --service hothands-api -- bun run indexer:backfill:predict -- --write --trade-limit 5000 --price-limit 10000
+```
+
+For deeper chart history, use a price-only windowed backfill. The public Predict
+price endpoint supports millisecond `start_time` and `end_time` windows:
+
+```bash
+railway run --service hothands-api -- bun run indexer:backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 60000
+```
+
+Keep `--price-window-concurrency` low, usually `2`, if the public Predict server
+starts returning rate limits. By default this covers the current active BTC
+trade markets; use explicit `--oracle-id` values for targeted diagnostics.
+
+If Railway SSH is configured for the machine, the same command can run inside the
+private network:
+
+```bash
+railway ssh --service hothands-indexer -- bun run indexer:backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 60000
+```
+
 ## Cloudflare Pages
 
 Production branch:
@@ -90,6 +157,16 @@ Variables:
 ```text
 VITE_HOT_HANDS_API_URL=https://<railway-api-domain>
 VITE_HOT_HANDS_SHARE_URL=https://<cloudflare-pages-domain>
+```
+
+### Manual Cloudflare Pages Deploys
+
+Until Cloudflare GitHub auto-deploys are connected, build the PWA with the
+production API URL and deploy the static bundle:
+
+```bash
+VITE_HOT_HANDS_API_URL=https://hothands-api-production.up.railway.app VITE_HOT_HANDS_SHARE_URL=https://hothands.pages.dev bun run build:pwa
+wrangler pages deploy apps/pwa/dist --project-name hothands --branch main --commit-hash <git-sha> --commit-message "<deploy message>"
 ```
 
 ## First Deploy Checklist

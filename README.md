@@ -186,6 +186,8 @@ Keep the local shape simple and explicit:
 - for manual debugging, run migrations with `bun run indexer:migrate`, then run
   the bounded Predict backfill CLI with
   `bun run indexer:backfill:predict -- --dry-run` first, then with `--write`
+- for deeper BTC chart history, run the price-only historical backfill:
+  `bun run indexer:backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 60000`
 - run the live indexer directly with `bun run indexer:live` when you want only
   ingestion, or let `bun run dev:testnet` start it automatically when
   `DATABASE_URL` is set
@@ -256,8 +258,9 @@ What is still in progress:
 - Copy/fade receipts are persisted when the PWA records a submitted wallet
   transaction, but full verification against the follower mint and source trade
   is still in progress.
-- Production hosting still needs a deployed indexer/API topology; the local
-  testnet app already has the indexed read-path hooks behind `DATABASE_URL`.
+- Production runs on Cloudflare Pages plus Railway API/indexer/Postgres. See
+  `DEPLOYMENT.md` for the current URLs, service names, and manual deploy
+  commands.
 - X account linking, profile avatars, shadow profiles for every observed
   manager, copy counts, fade counts, and settled social leaderboards are not
   fully wired yet.

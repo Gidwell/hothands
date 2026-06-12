@@ -165,6 +165,7 @@ describe("DeepBook Predict backfill runner", () => {
       oraclePriceCount: 1,
       oracleSviCount: 1,
       positionSummaryCount: 1,
+      selectedPriceOracleIds: ["btc-15m"],
       selectedOracleIds: ["btc-15m"],
     });
     expect(store.snapshot()).toMatchObject({
@@ -202,6 +203,112 @@ describe("DeepBook Predict backfill runner", () => {
     );
     expect(requests).toContain(
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-15m/prices?limit=10000`,
+    );
+  });
+
+  test("loads oracle price history through chunked time windows", async () => {
+    const store = createInMemoryPredictIndexerStore();
+    const requests: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requests.push(url);
+
+      if (url.endsWith("/status")) {
+        return jsonResponse({ status: "OK" });
+      }
+
+      if (url.endsWith("/state")) {
+        return jsonResponse({
+          predict_id: DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId,
+          quote_assets: [DEEPBOOK_PREDICT_TESTNET_CONFIG.quoteAssetType],
+        });
+      }
+
+      if (url.endsWith("/oracles")) {
+        return jsonResponse([
+          btcOracle({ oracle_id: "btc-15m", expiry: 1_779_158_400, status: "active" }),
+        ]);
+      }
+
+      if (url.endsWith("/oracles/btc-15m/prices/latest")) {
+        return jsonResponse({
+          oracle_id: "btc-15m",
+          spot: 72_000_000_000,
+          checkpoint: 100,
+        });
+      }
+
+      if (
+        url.endsWith(
+          "/oracles/btc-15m/prices?start_time=1779070800000&end_time=1779070860000",
+        )
+      ) {
+        return jsonResponse([
+          {
+            event_digest: "0xprice-window-1",
+            event_index: 1,
+            oracle_id: "btc-15m",
+            spot: "72000000000",
+            checkpoint_timestamp_ms: "1779070801000",
+          },
+          {
+            event_digest: "0xprice-window-1b",
+            event_index: 2,
+            oracle_id: "btc-15m",
+            spot: "72005000000",
+            checkpoint_timestamp_ms: "1779070820000",
+          },
+        ]);
+      }
+
+      if (
+        url.endsWith(
+          "/oracles/btc-15m/prices?start_time=1779070860001&end_time=1779070920000",
+        )
+      ) {
+        return jsonResponse([
+          {
+            event_digest: "0xprice-window-2",
+            event_index: 1,
+            oracle_id: "btc-15m",
+            spot: "72010000000",
+            checkpoint_timestamp_ms: "1779070861000",
+          },
+        ]);
+      }
+
+      return jsonResponse({ error: "not_found" }, 404);
+    };
+
+    const summary = await runDeepBookPredictBackfill({
+      store,
+      fetchImpl,
+      oracleIds: ["btc-15m"],
+      includePositions: false,
+      includeOracleTrades: false,
+      priceRangeStartMs: 1_779_070_800_000,
+      priceRangeEndMs: 1_779_070_920_000,
+      priceSampleMs: 60_000,
+      priceWindowMs: 60_000,
+    });
+
+    expect(summary).toMatchObject({
+      oracleCount: 1,
+      tradeEventCount: 0,
+      oraclePriceCount: 2,
+      positionSummaryCount: 0,
+      selectedOracleIds: ["btc-15m"],
+      selectedPriceOracleIds: ["btc-15m"],
+    });
+    expect(store.snapshot().oraclePrices.map((price) => price.eventId)).toEqual([
+      "price:0xprice-window-1:1",
+      "price:0xprice-window-2:1",
+    ]);
+    expect(requests).toContain(
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-15m/prices?start_time=1779070800000&end_time=1779070860000`,
+    );
+    expect(requests).toContain(
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-15m/prices?start_time=1779070860001&end_time=1779070920000`,
     );
   });
 });

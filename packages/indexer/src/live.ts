@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { parsePredictCanaryConfig } from "./deepbook-predict";
+import { runDeepBookPredictBackfill } from "./backfill";
 import {
   parseLiveIndexerCliOptions,
   runDeepBookPredictLiveIndexerOnce,
@@ -34,6 +35,43 @@ async function main() {
   const client = createPostgresSqlClient({ databaseUrl: cli.databaseUrl });
   const reader = createPostgresPredictIndexerReader({ execute: client.execute });
   const writer = createPostgresPredictIndexerStore({ execute: client.execute });
+
+  if (cli.startupPriceBackfill) {
+    const rangeEndMs = Date.now();
+    const rangeStartMs = Math.max(
+      1,
+      Math.floor(rangeEndMs - cli.startupPriceBackfill.priceWindowDays * 24 * 60 * 60_000),
+    );
+    process.stdout.write(
+      [
+        "DeepBook Predict startup price backfill started.",
+        `Days: ${cli.startupPriceBackfill.priceWindowDays}`,
+        `Sample: ${cli.startupPriceBackfill.priceSampleMs}ms`,
+        "",
+      ].join("\n"),
+    );
+    const summary = await runDeepBookPredictBackfill({
+      config,
+      includeOracleTrades: false,
+      includePositions: false,
+      includePrices: true,
+      includeSvi: false,
+      priceRangeEndMs: rangeEndMs,
+      priceRangeStartMs: rangeStartMs,
+      priceSampleMs: cli.startupPriceBackfill.priceSampleMs,
+      priceWindowConcurrency: cli.startupPriceBackfill.priceWindowConcurrency,
+      priceWindowMs: cli.startupPriceBackfill.priceWindowMs,
+      store: writer,
+    });
+    process.stdout.write(
+      [
+        "DeepBook Predict startup price backfill complete.",
+        `Price oracles: ${summary.selectedPriceOracleIds.length}`,
+        `Oracle prices written: ${summary.oraclePriceCount}`,
+        "",
+      ].join("\n"),
+    );
+  }
 
   if (cli.once) {
     try {

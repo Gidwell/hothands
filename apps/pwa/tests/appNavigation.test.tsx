@@ -637,6 +637,11 @@ describe("mobile app navigation", () => {
       tone: "flat",
       value: "--",
     });
+    expect(buildProfileHeatStat([], { heatScore: 64 })).toEqual({
+      label: "Heat",
+      tone: "flat",
+      value: "64",
+    });
   });
 
   test("renders selected wallet positions on the profile page", () => {

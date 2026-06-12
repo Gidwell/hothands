@@ -423,6 +423,50 @@ describe("DeepBook Predict trade-history normalization", () => {
     ]);
   });
 
+  test("reads oracle price history with server time windows", async () => {
+    const requests: string[] = [];
+    const client = createPredictOraclePriceClient({
+      fetchImpl: async (input: RequestInfo | URL) => {
+        const url = String(input);
+        requests.push(url);
+
+        if (
+          url.endsWith(
+            "/oracles/btc-2026-05-19/prices?start_time=1779070800000&end_time=1779070860000",
+          )
+        ) {
+          return jsonResponse([
+            {
+              oracle_id: "btc-2026-05-19",
+              spot: "72000000000",
+              checkpoint_timestamp_ms: "1779070801000",
+            },
+          ]);
+        }
+
+        return jsonResponse({ error: "not_found" }, 404);
+      },
+    });
+
+    await expect(
+      client.listOraclePrices("btc-2026-05-19", {
+        startTime: 1_779_070_800_000,
+        endTime: 1_779_070_860_000,
+      }),
+    ).resolves.toEqual([
+      {
+        oracleId: "btc-2026-05-19",
+        spot: 72_000_000_000,
+        timestampMs: 1_779_070_801_000,
+        source: "oracles/prices",
+      },
+    ]);
+
+    expect(requests).toEqual([
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-2026-05-19/prices?start_time=1779070800000&end_time=1779070860000`,
+    ]);
+  });
+
   test("reads and normalizes oracle SVI history through injected fetch", async () => {
     const requests: string[] = [];
     const client = createPredictOracleSviClient({

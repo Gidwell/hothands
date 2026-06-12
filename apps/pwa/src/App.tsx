@@ -3441,12 +3441,24 @@ function findWalletLeaderboardEntry(
   return null;
 }
 
-export function buildProfileHeatStat(rows: MarketHeatPreviewRow[]): ProfileStatItem {
+export function buildProfileHeatStat(
+  rows: MarketHeatPreviewRow[],
+  leaderboardEntry?: Pick<WalletLeaderboardEntry, "heatScore"> | null,
+): ProfileStatItem {
   const ratedRows = rows.filter(
     (row) => row.heatScoreLabel !== "-" && Number.isFinite(row.heatScore),
   );
 
   if (!ratedRows.length) {
+    const heatScore = leaderboardEntry?.heatScore;
+    if (heatScore !== undefined && Number.isFinite(heatScore) && heatScore > 0) {
+      return {
+        label: "Heat",
+        tone: heatScore >= 70 ? "positive" : heatScore <= 25 ? "negative" : "flat",
+        value: String(Math.round(heatScore)),
+      };
+    }
+
     return {
       label: "Heat",
       tone: "flat",
@@ -5527,7 +5539,10 @@ export function App() {
       : activeProfileWalletAddress
         ? "loading"
         : "idle";
-  const activeProfileHeatStat = buildProfileHeatStat(allProfilePositionRows);
+  const activeProfileHeatStat = buildProfileHeatStat(
+    allProfilePositionRows,
+    activeProfileLeaderboardEntry,
+  );
   const activeProfileStats = activeProfileLeaderboardEntry
     ? buildProfileStatSummary(activeProfileLeaderboardEntry, activeProfileHeatStat)
     : buildProfileStatSummaryFromHistory(

@@ -25,6 +25,7 @@ describe("DeepBook Predict live indexer", () => {
     ).toMatchObject({
       databaseUrl: "postgres://example",
       once: true,
+      startupPriceBackfill: undefined,
       tradeLimit: 25,
       oracleTradeLimit: 12,
       intervals: {
@@ -33,6 +34,28 @@ describe("DeepBook Predict live indexer", () => {
         svi: 1_000,
         positions: 1_500,
         oracleTrades: 2_000,
+      },
+    });
+  });
+
+  test("parses optional startup price history backfill config", () => {
+    expect(
+      parseLiveIndexerCliOptions({
+        argv: [],
+        env: {
+          DATABASE_URL: "postgres://example",
+          HOT_HANDS_INDEXER_STARTUP_PRICE_BACKFILL_DAYS: "3",
+          HOT_HANDS_INDEXER_STARTUP_PRICE_SAMPLE_MS: "60000",
+          HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_CONCURRENCY: "3",
+          HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_MS: "1800000",
+        },
+      }),
+    ).toMatchObject({
+      startupPriceBackfill: {
+        priceSampleMs: 60_000,
+        priceWindowConcurrency: 3,
+        priceWindowDays: 3,
+        priceWindowMs: 1_800_000,
       },
     });
   });

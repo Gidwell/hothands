@@ -259,7 +259,9 @@ export type PredictOracleSviClientOptions = {
 };
 
 export type PredictHistoryRequestOptions = {
+  endTime?: number;
   limit?: number;
+  startTime?: number;
 };
 
 type PredictServerStatus = {
@@ -713,6 +715,12 @@ export function buildPredictServerUrl(
   url.hash = "";
   if (query.limit !== undefined) {
     url.searchParams.set("limit", String(query.limit));
+  }
+  if (query.startTime !== undefined) {
+    url.searchParams.set("start_time", String(query.startTime));
+  }
+  if (query.endTime !== undefined) {
+    url.searchParams.set("end_time", String(query.endTime));
   }
 
   return url.toString();

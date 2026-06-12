@@ -4936,7 +4936,8 @@ button:disabled {
 
   .bottom-nav {
     margin-top: 8px;
-    padding-bottom: calc(7px + env(safe-area-inset-bottom));
+    margin-bottom: 8px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   .account-summary {

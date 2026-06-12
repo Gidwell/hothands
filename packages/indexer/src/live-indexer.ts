@@ -27,8 +27,16 @@ export type DeepBookPredictLiveIndexerCliOptions = {
   intervals: DeepBookPredictLiveIndexerIntervals;
   once: boolean;
   oracleTradeLimit: number;
+  startupPriceBackfill?: DeepBookPredictStartupPriceBackfillOptions;
   sviLimit: number;
   tradeLimit: number;
+};
+
+export type DeepBookPredictStartupPriceBackfillOptions = {
+  priceSampleMs: number;
+  priceWindowConcurrency: number;
+  priceWindowDays: number;
+  priceWindowMs: number;
 };
 
 export type DeepBookPredictLiveIndexerOnceOptions = {
@@ -78,6 +86,9 @@ const DEFAULT_ORACLES_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_TRADE_LIMIT = 5_000;
 const DEFAULT_ORACLE_TRADE_LIMIT = 500;
 const DEFAULT_SVI_LIMIT = 1;
+const DEFAULT_STARTUP_PRICE_BACKFILL_SAMPLE_MS = 60_000;
+const DEFAULT_STARTUP_PRICE_BACKFILL_WINDOW_MS = 60 * 60_000;
+const DEFAULT_STARTUP_PRICE_BACKFILL_CONCURRENCY = 2;
 
 export const DEFAULT_LIVE_INDEXER_INTERVALS: DeepBookPredictLiveIndexerIntervals = {
   oracles: DEFAULT_ORACLES_POLL_INTERVAL_MS,
@@ -125,6 +136,7 @@ export function parseLiveIndexerCliOptions({
       lastValue(parsed, "oracle-trade-limit") ?? env.HOT_HANDS_INDEXER_ORACLE_TRADE_LIMIT,
       DEFAULT_ORACLE_TRADE_LIMIT,
     ),
+    startupPriceBackfill: parseStartupPriceBackfillOptions(env),
     sviLimit: positiveInt(
       lastValue(parsed, "svi-limit") ?? env.HOT_HANDS_INDEXER_SVI_LIMIT,
       DEFAULT_SVI_LIMIT,
@@ -556,4 +568,40 @@ function positiveInt(value: string | undefined, fallback: number): number {
 
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseStartupPriceBackfillOptions(
+  env: Record<string, string | undefined>,
+): DeepBookPredictStartupPriceBackfillOptions | undefined {
+  const priceWindowDays = optionalPositiveNumber(
+    env.HOT_HANDS_INDEXER_STARTUP_PRICE_BACKFILL_DAYS,
+  );
+  if (priceWindowDays === undefined) {
+    return undefined;
+  }
+
+  return {
+    priceSampleMs: positiveInt(
+      env.HOT_HANDS_INDEXER_STARTUP_PRICE_SAMPLE_MS,
+      DEFAULT_STARTUP_PRICE_BACKFILL_SAMPLE_MS,
+    ),
+    priceWindowConcurrency: positiveInt(
+      env.HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_CONCURRENCY,
+      DEFAULT_STARTUP_PRICE_BACKFILL_CONCURRENCY,
+    ),
+    priceWindowDays,
+    priceWindowMs: positiveInt(
+      env.HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_MS,
+      DEFAULT_STARTUP_PRICE_BACKFILL_WINDOW_MS,
+    ),
+  };
+}
+
+function optionalPositiveNumber(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }

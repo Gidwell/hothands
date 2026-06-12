@@ -19,8 +19,16 @@ export type BackfillCliOptions = {
   oracleIds?: string[];
   tradeLimit: number;
   priceLimit: number;
+  priceEndTimeMs?: number;
+  priceSampleMs?: number;
+  priceStartTimeMs?: number;
+  priceWindowConcurrency: number;
+  priceWindowDays?: number;
+  priceWindowMs: number;
   sviLimit: number;
+  includeAllBtcOraclePrices: boolean;
   includeOracleTrades: boolean;
+  includePositions: boolean;
   includePrices: boolean;
   includeSvi: boolean;
 };
@@ -56,13 +64,42 @@ export function parseBackfillCliOptions({
       lastValue(parsed, "price-limit") ?? env.HOT_HANDS_INDEXER_PRICE_LIMIT,
       10_000,
     ),
+    priceEndTimeMs: optionalPositiveInt(
+      lastValue(parsed, "price-end-ms") ?? env.HOT_HANDS_INDEXER_PRICE_END_MS,
+    ),
+    priceSampleMs: optionalPositiveInt(
+      lastValue(parsed, "price-sample-ms") ?? env.HOT_HANDS_INDEXER_PRICE_SAMPLE_MS,
+    ),
+    priceStartTimeMs: optionalPositiveInt(
+      lastValue(parsed, "price-start-ms") ?? env.HOT_HANDS_INDEXER_PRICE_START_MS,
+    ),
+    priceWindowConcurrency: positiveInt(
+      lastValue(parsed, "price-window-concurrency") ??
+        env.HOT_HANDS_INDEXER_PRICE_WINDOW_CONCURRENCY,
+      2,
+    ),
+    priceWindowDays: optionalPositiveNumber(
+      lastValue(parsed, "price-window-days") ?? env.HOT_HANDS_INDEXER_PRICE_WINDOW_DAYS,
+    ),
+    priceWindowMs: positiveInt(
+      lastValue(parsed, "price-window-ms") ?? env.HOT_HANDS_INDEXER_PRICE_WINDOW_MS,
+      60 * 60_000,
+    ),
     sviLimit: positiveInt(
       lastValue(parsed, "svi-limit") ?? env.HOT_HANDS_INDEXER_SVI_LIMIT,
       1_000,
     ),
+    includeAllBtcOraclePrices:
+      parsed.flags.has("all-btc-oracle-prices") ||
+      env.HOT_HANDS_INDEXER_ALL_BTC_ORACLE_PRICES === "true",
     includeOracleTrades:
+      !parsed.flags.has("prices-only") &&
       !parsed.flags.has("skip-oracle-trades") &&
       env.HOT_HANDS_INDEXER_SKIP_ORACLE_TRADES !== "true",
+    includePositions:
+      !parsed.flags.has("prices-only") &&
+      !parsed.flags.has("skip-positions") &&
+      env.HOT_HANDS_INDEXER_SKIP_POSITIONS !== "true",
     includePrices:
       !parsed.flags.has("skip-prices") &&
       env.HOT_HANDS_INDEXER_SKIP_PRICES !== "true",
@@ -83,6 +120,7 @@ async function main() {
   }
 
   const config = parsePredictCanaryConfig(process.env);
+  const priceRange = resolvePriceRange(cli, Date.now());
   const { store, close } = cli.dryRun
     ? {
         store: createInMemoryPredictIndexerStore(),
@@ -97,8 +135,15 @@ async function main() {
       oracleIds: cli.oracleIds,
       tradeLimit: cli.tradeLimit,
       priceLimit: cli.priceLimit,
+      priceRangeEndMs: priceRange.endMs,
+      priceRangeStartMs: priceRange.startMs,
+      priceSampleMs: cli.priceSampleMs,
+      priceWindowConcurrency: cli.priceWindowConcurrency,
+      priceWindowMs: cli.priceWindowMs,
       sviLimit: cli.sviLimit,
+      includeAllBtcOraclePrices: cli.includeAllBtcOraclePrices,
       includeOracleTrades: cli.includeOracleTrades,
+      includePositions: cli.includePositions,
       includePrices: cli.includePrices,
       includeSvi: cli.includeSvi,
     });
@@ -132,6 +177,7 @@ function formatBackfillSummary(
     `Mode: ${cli.dryRun ? "dry-run" : "postgres"}`,
     `Server: ${serverUrl}`,
     `Selected oracles: ${summary.selectedOracleIds.length}`,
+    `Price oracles: ${summary.selectedPriceOracleIds.length}`,
     `Oracles: ${summary.oracleCount}`,
     `Trade events: ${summary.tradeEventCount}`,
     `Position summaries: ${summary.positionSummaryCount}`,
@@ -178,8 +224,14 @@ function expectsValue(key: string): boolean {
   return [
     "oracle-id",
     "oracle-ids",
+    "price-end-ms",
+    "price-sample-ms",
     "trade-limit",
     "price-limit",
+    "price-start-ms",
+    "price-window-concurrency",
+    "price-window-days",
+    "price-window-ms",
     "svi-limit",
   ].includes(key);
 }
@@ -209,6 +261,46 @@ function positiveInt(value: string | undefined, fallback: number): number {
 
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function optionalPositiveInt(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function optionalPositiveNumber(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function resolvePriceRange(
+  cli: Pick<BackfillCliOptions, "priceEndTimeMs" | "priceStartTimeMs" | "priceWindowDays">,
+  nowMs: number,
+): { endMs?: number; startMs?: number } {
+  if (cli.priceStartTimeMs !== undefined && cli.priceEndTimeMs !== undefined) {
+    return {
+      endMs: cli.priceEndTimeMs,
+      startMs: cli.priceStartTimeMs,
+    };
+  }
+
+  if (cli.priceWindowDays !== undefined) {
+    const endMs = cli.priceEndTimeMs ?? nowMs;
+    return {
+      endMs,
+      startMs: Math.max(1, Math.floor(endMs - cli.priceWindowDays * 24 * 60 * 60_000)),
+    };
+  }
+
+  return {};
 }
 
 if ((import.meta as ImportMeta & { main?: boolean }).main) {

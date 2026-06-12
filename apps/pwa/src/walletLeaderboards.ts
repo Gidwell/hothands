@@ -38,6 +38,7 @@ export type WalletLeaderboardApiEntry = {
   closedCount?: unknown;
   winCount?: unknown;
   lossCount?: unknown;
+  heatScore?: unknown;
   longestWinningStreak?: unknown;
   longestLosingStreak?: unknown;
   currentStreakType?: unknown;
@@ -65,6 +66,7 @@ export type WalletLeaderboardEntry = {
   closedCount: number;
   winCount: number;
   lossCount: number;
+  heatScore: number;
   longestWinningStreak: number;
   longestWinningStreakLabel: string;
   longestLosingStreak: number;
@@ -234,6 +236,7 @@ function buildEntry(
 
   const walletDisplayName = resolveWalletDisplayName(wallet, walletDisplayNames);
   const totalPnl = readNumber(entry.totalPnl);
+  const heatScore = readInteger(entry.heatScore);
   const longestWinningStreak = readInteger(entry.longestWinningStreak);
   const longestLosingStreak = readInteger(entry.longestLosingStreak);
   const currentStreakType = readStreakType(entry.currentStreakType);
@@ -256,6 +259,7 @@ function buildEntry(
     closedCount: readInteger(entry.closedCount),
     winCount: readInteger(entry.winCount),
     lossCount: readInteger(entry.lossCount),
+    heatScore,
     longestWinningStreak,
     longestWinningStreakLabel: formatStreakCount(longestWinningStreak, "win"),
     longestLosingStreak,
