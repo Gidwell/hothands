@@ -4840,8 +4840,8 @@ button:disabled {
   .portfolio-history-table-head,
   .portfolio-history-row {
     grid-template-columns:
-      minmax(96px, 1.45fr) minmax(58px, 0.85fr) minmax(36px, 0.52fr)
-      minmax(24px, 0.36fr) minmax(24px, 0.36fr);
+      minmax(88px, 1.18fr) minmax(56px, 0.75fr) minmax(38px, 0.5fr)
+      minmax(42px, 0.56fr) minmax(36px, 0.48fr);
     gap: 4px;
   }
 
@@ -4863,7 +4863,7 @@ button:disabled {
   }
 
   .portfolio-history-table-head span:nth-child(4)::after {
-    content: "Pay";
+    content: "Return";
   }
 
   .portfolio-history-table-head span:nth-child(5)::after {

@@ -31,11 +31,11 @@ describe("mobile shell CSS", () => {
   test("keeps mobile portfolio history rows inside the viewport", async () => {
     const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
 
-    expect(css).toContain("minmax(96px, 1.45fr) minmax(58px, 0.85fr) minmax(36px, 0.52fr)");
-    expect(css).toContain("minmax(24px, 0.36fr) minmax(24px, 0.36fr)");
+    expect(css).toContain("minmax(88px, 1.18fr) minmax(56px, 0.75fr) minmax(38px, 0.5fr)");
+    expect(css).toContain("minmax(42px, 0.56fr) minmax(36px, 0.48fr)");
     expect(css).toContain(".portfolio-history-pnl {\n    min-width: 0;");
     expect(css).toContain(".portfolio-history-table-head span:nth-child(4)::after");
-    expect(css).toContain('content: "Pay";');
+    expect(css).toContain('content: "Return";');
     expect(css).toContain('content: "P/L";');
   });
 });
