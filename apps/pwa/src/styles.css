@@ -4851,3 +4851,47 @@ button:disabled {
     grid-template-columns: 26px minmax(70px, 1.18fr) 48px 52px 48px 28px 40px 32px;
   }
 }
+
+@media (max-width: 600px) {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  .app-shell {
+    min-height: 100dvh;
+    place-items: stretch;
+    padding: 0;
+    background: var(--hh-shell);
+  }
+
+  .app-shell[data-theme="dark"] {
+    background: var(--hh-shell);
+  }
+
+  .phone-frame {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    min-height: 100dvh;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .app-shell[data-theme="dark"] .phone-frame {
+    background: var(--hh-shell);
+  }
+
+  .app-scroll {
+    padding: 8px 8px 14px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .bottom-nav {
+    margin-top: 8px;
+    padding-bottom: calc(7px + env(safe-area-inset-bottom));
+  }
+}
