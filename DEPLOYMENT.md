@@ -72,15 +72,17 @@ Optional chart-history bootstrap variables:
 
 ```text
 HOT_HANDS_INDEXER_STARTUP_PRICE_BACKFILL_DAYS=3
-HOT_HANDS_INDEXER_STARTUP_PRICE_SAMPLE_MS=60000
+HOT_HANDS_INDEXER_STARTUP_PRICE_SAMPLE_MS=1000
 HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_MS=3600000
 HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_CONCURRENCY=2
 ```
 
 Set these on `hothands-indexer` when production charts need deeper history. The
 worker runs a price-only backfill from inside Railway before live polling starts,
-then resumes the normal latest-price indexer. Writes are idempotent by price
-event ID, so reruns fill missing points without duplicating existing rows.
+then resumes the normal latest-price indexer. `1000` keeps one historical point
+per second, matching the live chart cadence closely enough for smooth graphs.
+Writes are idempotent by price event ID, so reruns fill missing points without
+duplicating existing rows.
 
 ### Manual Railway Deploys
 
@@ -118,7 +120,7 @@ For deeper chart history, use a price-only windowed backfill. The public Predict
 price endpoint supports millisecond `start_time` and `end_time` windows:
 
 ```bash
-railway run --service hothands-api -- bun run indexer:backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 60000
+railway run --service hothands-api -- bun run indexer:backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 1000
 ```
 
 Keep `--price-window-concurrency` low, usually `2`, if the public Predict server
@@ -129,7 +131,7 @@ If Railway SSH is configured for the machine, the same command can run inside th
 private network:
 
 ```bash
-railway ssh --service hothands-indexer -- bun run indexer:backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 60000
+railway ssh --service hothands-indexer -- bun run indexer:backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 1000
 ```
 
 ## Cloudflare Pages

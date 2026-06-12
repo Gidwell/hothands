@@ -60,6 +60,25 @@ describe("DeepBook Predict live indexer", () => {
     });
   });
 
+  test("uses one-second startup chart backfill buckets by default", () => {
+    expect(
+      parseLiveIndexerCliOptions({
+        argv: [],
+        env: {
+          DATABASE_URL: "postgres://example",
+          HOT_HANDS_INDEXER_STARTUP_PRICE_BACKFILL_DAYS: "3",
+        },
+      }),
+    ).toMatchObject({
+      startupPriceBackfill: {
+        priceSampleMs: 1_000,
+        priceWindowConcurrency: 2,
+        priceWindowDays: 3,
+        priceWindowMs: 60 * 60_000,
+      },
+    });
+  });
+
   test("runs every live ingestion job once and records freshness", async () => {
     const requests: string[] = [];
     const statuses: PredictIndexerJobStatus[] = [];

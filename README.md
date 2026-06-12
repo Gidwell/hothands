@@ -187,7 +187,7 @@ Keep the local shape simple and explicit:
   the bounded Predict backfill CLI with
   `bun run indexer:backfill:predict -- --dry-run` first, then with `--write`
 - for deeper BTC chart history, run the price-only historical backfill:
-  `bun run indexer:backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 60000`
+  `bun run indexer:backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 1000`
 - run the live indexer directly with `bun run indexer:live` when you want only
   ingestion, or let `bun run dev:testnet` start it automatically when
   `DATABASE_URL` is set

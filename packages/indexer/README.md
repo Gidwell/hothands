@@ -67,8 +67,8 @@ serves them behind a narrow local setup:
    in bounded chunks:
 
    ```bash
-   bun run --cwd packages/indexer backfill:predict -- --dry-run --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 60000
-   bun run --cwd packages/indexer backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 60000
+   bun run --cwd packages/indexer backfill:predict -- --dry-run --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 1000
+   bun run --cwd packages/indexer backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 1000
    ```
 
    Keep `--price-window-concurrency` low, usually `2`, if the public Predict
@@ -140,8 +140,8 @@ serves them behind a narrow local setup:
    `HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_MS`, and
    `HOT_HANDS_INDEXER_STARTUP_PRICE_WINDOW_CONCURRENCY`. For example, production
    can set `HOT_HANDS_INDEXER_STARTUP_PRICE_BACKFILL_DAYS=3` and
-   `HOT_HANDS_INDEXER_STARTUP_PRICE_SAMPLE_MS=60000` to keep one historical
-   chart point per minute while live polling continues at one latest tick per
+   `HOT_HANDS_INDEXER_STARTUP_PRICE_SAMPLE_MS=1000` to keep one historical
+   chart point per second while live polling continues at one latest tick per
    second.
 6. Build projections from the raw tables before serving product flows:
 
