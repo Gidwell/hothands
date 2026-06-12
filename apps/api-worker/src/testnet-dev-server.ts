@@ -155,6 +155,7 @@ export function createTestnetDevServerFetch({
               getTestnetMarketHeat({
                 fetchImpl,
                 includeExpired,
+                nowMs: nowMs(),
                 reader: indexerReader
               })
           })
@@ -174,7 +175,7 @@ export function createTestnetDevServerFetch({
             key: "testnet:price-snapshot",
             ttlMs: TESTNET_SNAPSHOT_CACHE_TTL_MS,
             nowMs,
-            load: () => getTestnetPriceSnapshot({ fetchImpl, reader: indexerReader })
+            load: () => getTestnetPriceSnapshot({ fetchImpl, nowMs: nowMs(), reader: indexerReader })
           })
         ).value
       );

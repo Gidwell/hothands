@@ -180,7 +180,7 @@ async function getIndexedTestnetMarketHeat(
     ),
     reader.listPositionSummaries({ limit: WALLET_STATS_POSITION_LIMIT })
   ]);
-  const activeOracles = selectIndexedActiveBtcOracles(oracles);
+  const activeOracles = selectIndexedActiveBtcOracles(oracles, nowMs);
   const oraclesById = new Map(oracles.map((oracle) => [oracle.oracle_id, oracle]));
   const latestPricesByOracleId = await loadLatestIndexedPricesByOracleId(
     reader,
@@ -422,9 +422,17 @@ function compareMarketHeatRowsByLatest(left: MarketHeatRow, right: MarketHeatRow
   );
 }
 
-function selectIndexedActiveBtcOracles(oracles: PredictOracleState[]): PredictOracleState[] {
+function selectIndexedActiveBtcOracles(
+  oracles: PredictOracleState[],
+  nowMs: number
+): PredictOracleState[] {
   return oracles
-    .filter((oracle) => oracle.underlying_asset === "BTC" && oracle.status === "active")
+    .filter(
+      (oracle) =>
+        oracle.underlying_asset === "BTC" &&
+        oracle.status === "active" &&
+        normalizeEpochMs(oracle.expiry) > nowMs
+    )
     .sort(
       (left, right) =>
         normalizeEpochMs(left.expiry) - normalizeEpochMs(right.expiry) ||

@@ -115,6 +115,7 @@ export default {
               getTestnetMarketHeat({
                 fetchImpl: env.fetch ?? fetch,
                 includeExpired,
+                nowMs: Date.now(),
                 reader: env.indexerReader
               })
           })
@@ -136,6 +137,7 @@ export default {
             load: () =>
               getTestnetPriceSnapshot({
                 fetchImpl: env.fetch ?? fetch,
+                nowMs: Date.now(),
                 reader: env.indexerReader
               })
           })

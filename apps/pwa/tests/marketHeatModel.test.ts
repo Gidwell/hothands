@@ -374,6 +374,72 @@ describe("market heat preview model", () => {
     });
   });
 
+  test("excludes expired active-status API markets from trade choices", async () => {
+    const nowMs = 1_779_165_000_000;
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs,
+      fetcher: async () =>
+        Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71_234,
+            source: "indexed_testnet",
+          },
+          markets: [
+            {
+              oracleId: "expired-but-active",
+              market: "BTC-USD",
+              intervalLabel: "1h",
+              expiryMs: nowMs - 60_000,
+              strikeCandidatePrice: 71_000,
+              status: "active",
+            },
+            {
+              oracleId: "future-active",
+              market: "BTC-USD",
+              intervalLabel: "1h",
+              expiryMs: nowMs + 60 * 60_000,
+              strikeCandidatePrice: 72_000,
+              status: "active",
+            },
+            {
+              oracleId: "future-settled",
+              market: "BTC-USD",
+              intervalLabel: "1h",
+              expiryMs: nowMs + 2 * 60 * 60_000,
+              strikeCandidatePrice: 73_000,
+              status: "settled",
+            },
+          ],
+          rows: [
+            {
+              id: "external-0x1111",
+              wallet: "0x1111222233334444555566667777888899990000",
+              manager: "manager 0xabcd...0001",
+              market: "BTC-USD",
+              side: "DOWN",
+              strike: 72_000,
+              expiryMs: nowMs + 60 * 60_000,
+              intervalLabel: "1h",
+              observedAtMs: nowMs,
+              heatScore: 74,
+              status: "copy_ready",
+            },
+          ],
+        }),
+    });
+
+    expect(preview.availableMarkets?.map((market) => market.oracleId)).toEqual([
+      "future-active",
+    ]);
+    expect(buildTradeMarketLadder(preview, { nowMs }).map((row) => row.oracleId)).toEqual([
+      "future-active",
+    ]);
+  });
+
   test("requests expired market heat rows when the feed includes expired positions", async () => {
     const calls: string[] = [];
 

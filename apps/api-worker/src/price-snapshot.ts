@@ -26,6 +26,7 @@ export interface PriceSnapshotProjection {
 export interface TestnetPriceSnapshotOptions {
   fetchImpl?: typeof fetch;
   mode?: "live" | "captured";
+  nowMs?: number;
   reader?: PredictIndexerReader;
 }
 
@@ -34,6 +35,7 @@ const PRICE_SNAPSHOT_ORACLE_LIMIT = 128;
 export async function getTestnetPriceSnapshot({
   fetchImpl = fetch,
   mode = "live",
+  nowMs = Date.now(),
   reader
 }: TestnetPriceSnapshotOptions = {}): Promise<PriceSnapshotProjection> {
   if (mode === "captured") {
@@ -42,7 +44,7 @@ export async function getTestnetPriceSnapshot({
 
   if (reader) {
     try {
-      const indexed = await getIndexedPriceSnapshot(reader);
+      const indexed = await getIndexedPriceSnapshot(reader, nowMs);
       if (indexed.markets.length > 0 || indexed.marketPrice.price > 0) {
         return indexed;
       }
@@ -59,12 +61,13 @@ export async function getTestnetPriceSnapshot({
 }
 
 async function getIndexedPriceSnapshot(
-  reader: PredictIndexerReader
+  reader: PredictIndexerReader,
+  nowMs: number
 ): Promise<PriceSnapshotProjection> {
   const oracles = (await reader.listBtcOracles({
     includeSettled: false,
     limit: PRICE_SNAPSHOT_ORACLE_LIMIT
-  })).filter((oracle) => oracle.status === "active");
+  })).filter((oracle) => isActiveIndexedBtcOracle(oracle, nowMs));
   const latestPricesByOracleId = await loadLatestIndexedPricesByOracleId(reader, oracles);
   const latestSviByOracleId = await loadLatestIndexedSviByOracleId(reader, oracles);
   const markets = oracles.map((oracle) =>
@@ -87,6 +90,10 @@ async function getIndexedPriceSnapshot(
     },
     markets
   };
+}
+
+function isActiveIndexedBtcOracle(oracle: PredictOracleState, nowMs: number): boolean {
+  return oracle.status === "active" && normalizeEpochMs(oracle.expiry) > nowMs;
 }
 
 async function getLivePriceSnapshot(fetchImpl: typeof fetch): Promise<PriceSnapshotProjection> {

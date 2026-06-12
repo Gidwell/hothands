@@ -6,6 +6,7 @@ import {
 import worker, { type Env } from "../src/index";
 import { getTestnetMarketHeat } from "../src/market-heat";
 import { getTestnetOraclePrices } from "../src/oracle-prices";
+import { getTestnetPriceSnapshot } from "../src/price-snapshot";
 
 describe("testnet market heat endpoint", () => {
   test("returns live testnet market heat from injected Predict reads", async () => {
@@ -116,6 +117,7 @@ describe("testnet market heat endpoint", () => {
     let publicPredictFetchCount = 0;
     const projection = await getTestnetMarketHeat({
       reader: createIndexedMarketHeatReader(),
+      nowMs: 1_779_071_500_000,
       fetchImpl: async () => {
         publicPredictFetchCount += 1;
         throw new Error("public Predict should not be read when indexed market heat exists");
@@ -209,6 +211,26 @@ describe("testnet market heat endpoint", () => {
     ).toBeGreaterThan(projection.rows[0].heatScore);
   });
 
+  test("excludes expired active-status indexed oracles from trade markets", async () => {
+    const projection = await getTestnetMarketHeat({
+      reader: createIndexedMarketHeatReader(),
+      nowMs: 1_779_158_200_000,
+      fetchImpl: async () => {
+        throw new Error("public Predict should not be read when indexed market heat exists");
+      }
+    });
+
+    expect(projection.source).toBe("indexed_testnet");
+    expect(projection.markets.map((market) => market.oracleId)).toEqual([
+      "btc-indexed-long"
+    ]);
+    expect(projection.marketPrice).toEqual({
+      market: "BTC-USD",
+      price: 72125,
+      source: "indexed_testnet"
+    });
+  });
+
   test("worker serves lightweight indexed price snapshots without loading feed rows", async () => {
     const baseReader = createIndexedMarketHeatReader();
     let tradeEventReads = 0;
@@ -218,6 +240,20 @@ describe("testnet market heat endpoint", () => {
       {
         indexerReader: {
           ...baseReader,
+          listBtcOracles: async (options) => [
+            btcIndexedOracle({
+              oracle_id: "btc-indexed-long",
+              expiry: Date.now() + 2 * 60 * 60_000,
+              activated_at: Date.now() - 60 * 60_000,
+              status: "active"
+            }),
+            btcIndexedOracle({
+              oracle_id: "btc-indexed-short",
+              expiry: Date.now() + 60 * 60_000,
+              activated_at: Date.now() - 60 * 60_000,
+              status: "active"
+            })
+          ],
           listRecentTradeEvents: async () => {
             tradeEventReads += 1;
             return [];
@@ -248,6 +284,26 @@ describe("testnet market heat endpoint", () => {
     ]);
     expect(tradeEventReads).toBe(0);
     expect(positionSummaryReads).toBe(0);
+  });
+
+  test("price snapshots exclude expired active-status indexed oracles", async () => {
+    const snapshot = await getTestnetPriceSnapshot({
+      reader: createIndexedMarketHeatReader(),
+      nowMs: 1_779_158_200_000,
+      fetchImpl: async () => {
+        throw new Error("public Predict should not be read when indexed prices exist");
+      }
+    });
+
+    expect(snapshot.source).toBe("indexed_testnet");
+    expect(snapshot.markets.map((market) => market.oracleId)).toEqual([
+      "btc-indexed-long"
+    ]);
+    expect(snapshot.marketPrice).toEqual({
+      market: "BTC-USD",
+      price: 72125,
+      source: "indexed_testnet"
+    });
   });
 
   test("requests non-expired indexed activity for the default feed", async () => {

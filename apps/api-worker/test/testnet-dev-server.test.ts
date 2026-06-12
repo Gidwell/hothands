@@ -460,7 +460,8 @@ describe("testnet API dev server harness", () => {
         publicPredictFetchCount += 1;
         throw new Error("public Predict should not be used when indexer has rows");
       },
-      indexerReader: createTestIndexerReader()
+      indexerReader: createTestIndexerReader(),
+      nowMs: () => 1_779_070_802_000
     });
 
     const response = await fetchHandler(
@@ -573,7 +574,8 @@ describe("testnet API dev server harness", () => {
           positionSummaryReads += 1;
           return [];
         }
-      })
+      }),
+      nowMs: () => 1_779_070_802_000
     });
 
     const response = await fetchHandler(

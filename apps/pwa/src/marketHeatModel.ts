@@ -433,7 +433,9 @@ export function selectTradeMarkets(
     !intervalLabel || market.intervalLabel === intervalLabel;
 
   if (preview.availableMarkets !== undefined) {
-    return preview.availableMarkets.filter(matchesDuration);
+    return preview.availableMarkets.filter(
+      (market) => isTradeableAvailableMarket(market, nowMs) && matchesDuration(market),
+    );
   }
 
   const seen = new Set<string>();
@@ -827,7 +829,7 @@ export async function loadMarketHeatPreview({
     const previewRows =
       sourceLabel === "Captured" ? refreshCapturedRows(rows, nowMs) : rows;
     const marketPrice = parseMarketHeatPrice(payload) ?? CAPTURED_MARKET_PRICE;
-    const availableMarkets = parseAvailableMarkets(payload, marketPrice, timeZone);
+    const availableMarkets = parseAvailableMarkets(payload, marketPrice, nowMs, timeZone);
     const rowWallets = previewRows.map((row) => row.wallet);
     const hotHandsProfileDisplayNames = useHotHandsProfileNames
       ? await loadHotHandsProfileNames({
@@ -926,7 +928,7 @@ export async function loadMarketHeatPriceSnapshot(
     }
 
     const availableMarkets = preserveAvailableMarketStrikes(
-      parseAvailableMarkets(payload, marketPrice, timeZone),
+      parseAvailableMarkets(payload, marketPrice, nowMs, timeZone),
       currentPreview.availableMarkets,
     ) ?? currentPreview.availableMarkets;
 
@@ -1612,6 +1614,7 @@ function parseMarketHeatPrice(payload: unknown): MarketHeatPriceInput | null {
 function parseAvailableMarkets(
   payload: unknown,
   marketPrice: MarketHeatPriceInput,
+  nowMs: number,
   timeZone?: string,
 ): MarketHeatAvailableMarket[] | undefined {
   if (!isRecord(payload)) {
@@ -1631,6 +1634,7 @@ function parseAvailableMarkets(
   const markets = rawMarkets
     .map((market) => parseAvailableMarket(market, marketPrice, timeZone))
     .filter((market): market is MarketHeatAvailableMarket => market !== null)
+    .filter((market) => isTradeableAvailableMarket(market, nowMs))
     .sort(
       (left, right) =>
         left.expiryMs - right.expiryMs ||
@@ -1639,6 +1643,13 @@ function parseAvailableMarkets(
     );
 
   return markets;
+}
+
+function isTradeableAvailableMarket(
+  market: Pick<MarketHeatAvailableMarket, "expiryMs" | "status">,
+  nowMs: number,
+): boolean {
+  return market.expiryMs > nowMs && market.status.toLowerCase() === "active";
 }
 
 function isMarketHeatRowInput(value: unknown): value is MarketHeatPreviewRowInput {
