@@ -6,8 +6,6 @@ import type {
 import type { PredictPositionSummary } from "./store";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1_000;
-const PNL_SCORE_UNIT = 100_000;
-const VOLUME_SCORE_UNIT = 100_000;
 
 export type LatestTradeFeedProjectionOptions = {
   hideExpiredAtMs?: number;
@@ -21,25 +19,32 @@ export type TraderHeatProjectionOptions = {
 };
 
 export type TraderHeatComponents = {
-  recentActivity: number;
-  realizedPnl: number;
-  winRedeem: number;
-  observedVolume: number;
+  edge: number;
+  profit: number;
+  consistency: number;
+  confidence: number;
+  freshness: number;
+  lossPenalty: number;
+  skill: number;
 };
 
 export type TraderHeatProjection = {
   trader: string;
   hotScore: number;
+  skillScore: number;
   eventCount: number;
   mintCount: number;
   redeemCount: number;
   recentEventCount: number;
+  decisionCount: number;
   observedVolume: number;
   realizedPnl: number;
   openCount: number;
   closedCount: number;
   winCount: number;
   lossCount: number;
+  currentStreakType: WalletStreakType;
+  currentStreakLength: number;
   lastSeenMs: number;
   components: TraderHeatComponents;
 };
@@ -107,6 +112,7 @@ type TraderHeatAccumulator = {
   winCount: number;
   lossCount: number;
   lastSeenMs: number;
+  decisions: Map<string, TraderHeatDecisionAccumulator>;
 };
 
 type WalletResolvedPosition = {
@@ -115,6 +121,26 @@ type WalletResolvedPosition = {
   pnl: number;
   result: WalletStreakType;
   resolvedAtMs: number;
+};
+
+type TraderHeatResolvedPosition = {
+  cost: number;
+  payout: number;
+  quantity: number;
+  resolvedAtMs: number;
+};
+
+type TraderHeatDecisionAccumulator = TraderHeatResolvedPosition & {
+  count: number;
+};
+
+type TraderHeatDecision = TraderHeatDecisionAccumulator & {
+  pnl: number;
+  impliedProbability: number;
+  outcome: number;
+  roi: number;
+  weight: number;
+  result: WalletStreakType;
 };
 
 export function buildLatestTradeFeedProjection(
@@ -168,11 +194,13 @@ export function buildTraderHeatProjection(
 
     if (position.status === "open") {
       group.openCount += 1;
+      addTraderHeatDecision(group, position);
       continue;
     }
 
     group.closedCount += 1;
     group.realizedPnl += position.realizedPnl;
+    addTraderHeatDecision(group, position);
 
     if (position.realizedPnl > 0) {
       group.winCount += 1;
@@ -183,7 +211,7 @@ export function buildTraderHeatProjection(
 
   return applyLimit(
     [...groups.values()]
-      .map(projectTraderHeat)
+      .map((group) => projectTraderHeat(group, nowMs))
       .sort(compareTraderHeatDescending),
     limit,
   );
@@ -534,40 +562,324 @@ function settledOraclePrice(
   };
 }
 
-function projectTraderHeat(group: TraderHeatAccumulator): TraderHeatProjection {
+function projectTraderHeat(
+  group: TraderHeatAccumulator,
+  nowMs: number,
+): TraderHeatProjection {
   const observedVolume =
     group.positionCount > 0
       ? group.positionObservedVolume
       : group.eventObservedVolume;
+  const decisions = [...group.decisions.values()]
+    .map((decision) => projectTraderHeatDecision(decision, nowMs))
+    .sort(compareTraderHeatDecisionsOldestFirst);
+  const decisionCount = decisions.length;
+  const wins = decisions.filter((decision) => decision.result === "win").length;
+  const totalWeight = decisions.reduce(
+    (sum, decision) => sum + decision.weight,
+    0,
+  );
+  const totalWeightSquared = decisions.reduce(
+    (sum, decision) => sum + decision.weight * decision.weight,
+    0,
+  );
+  const edgeNumerator = decisions.reduce(
+    (sum, decision) =>
+      sum +
+      decision.weight * (decision.outcome - decision.impliedProbability),
+    0,
+  );
+  const edgeVariance = decisions.reduce(
+    (sum, decision) =>
+      sum +
+      decision.weight *
+        decision.weight *
+        decision.impliedProbability *
+        (1 - decision.impliedProbability),
+    0,
+  );
+  const edgeZ =
+    edgeVariance > 0 ? edgeNumerator / Math.sqrt(edgeVariance) : 0;
+  const edgeScore = sigmoid(edgeZ / 2.25);
+  const meanRoi =
+    totalWeight > 0
+      ? decisions.reduce(
+          (sum, decision) => sum + decision.weight * decision.roi,
+          0,
+        ) / totalWeight
+      : 0;
+  const downsideDeviation =
+    totalWeight > 0
+      ? Math.sqrt(
+          decisions.reduce(
+            (sum, decision) =>
+              sum + decision.weight * Math.min(0, decision.roi) ** 2,
+            0,
+          ) / totalWeight,
+        )
+      : 0;
+  const sortino = meanRoi / (downsideDeviation + 0.2);
+  const profitScore = sigmoid(sortino / 1.25);
+  const consistencyScore = wilsonLowerBound(wins, decisionCount);
+  const effectiveSampleSize =
+    totalWeightSquared > 0 ? (totalWeight * totalWeight) / totalWeightSquared : 0;
+  const confidence =
+    effectiveSampleSize > 0
+      ? Math.sqrt(effectiveSampleSize / (effectiveSampleSize + 8))
+      : 0;
+  const lastResolvedAtMs = decisions.at(-1)?.resolvedAtMs;
+  const daysSinceLastResolved =
+    lastResolvedAtMs === undefined
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, (nowMs - lastResolvedAtMs) / ONE_DAY_MS);
+  const freshness =
+    lastResolvedAtMs === undefined
+      ? 0.35
+      : 0.35 + 0.65 * 2 ** (-daysSinceLastResolved / 7);
+  const streak = traderHeatCurrentStreak(decisions);
+  const currentLossStreak =
+    streak.currentStreakType === "loss" ? streak.currentStreakLength : 0;
+  const lossPenalty = 0.75 ** currentLossStreak;
+  const baseSkill =
+    0.5 * edgeScore + 0.3 * profitScore + 0.2 * consistencyScore;
+  const recentPnl = decisions
+    .filter(
+      (decision) => (nowMs - decision.resolvedAtMs) / ONE_DAY_MS <= 7,
+    )
+    .reduce((sum, decision) => sum + decision.pnl, 0);
+  const skillScore = applyHeatSkillGuardrails({
+    skillScore: Math.round(
+      100 * baseSkill * confidence * freshness * lossPenalty,
+    ),
+    currentLossStreak,
+    recentPnl,
+    edgeZ,
+    decisionCount,
+  });
+  const hotScore = calibrateHeatScore(skillScore, {
+    currentLossStreak,
+    recentPnl,
+    edgeZ,
+  });
   const components = {
-    recentActivity: Math.min(40, group.recentEventCount * 8),
-    realizedPnl: clampScore(Math.round(group.realizedPnl / PNL_SCORE_UNIT), -30, 40),
-    winRedeem: group.winCount * 12 + group.redeemCount * 4 - group.lossCount * 8,
-    observedVolume: Math.min(25, Math.floor(observedVolume / VOLUME_SCORE_UNIT)),
+    edge: Math.round(edgeScore * 100),
+    profit: Math.round(profitScore * 100),
+    consistency: Math.round(consistencyScore * 100),
+    confidence: Math.round(confidence * 100),
+    freshness: Math.round(freshness * 100),
+    lossPenalty: Math.round(lossPenalty * 100),
+    skill: skillScore,
   };
 
   return {
     trader: group.trader,
-    hotScore: Math.max(
-      0,
-      components.recentActivity +
-        components.realizedPnl +
-        components.winRedeem +
-        components.observedVolume,
-    ),
+    hotScore,
+    skillScore,
     eventCount: group.eventCount,
     mintCount: group.mintCount,
     redeemCount: group.redeemCount,
     recentEventCount: group.recentEventCount,
+    decisionCount,
     observedVolume,
     realizedPnl: group.realizedPnl,
     openCount: group.openCount,
     closedCount: group.closedCount,
     winCount: group.winCount,
     lossCount: group.lossCount,
+    currentStreakType: streak.currentStreakType,
+    currentStreakLength: streak.currentStreakLength,
     lastSeenMs: group.lastSeenMs,
     components,
   };
+}
+
+function addTraderHeatDecision(
+  group: TraderHeatAccumulator,
+  position: PredictPositionSummary,
+): void {
+  const resolved = resolveTraderHeatPosition(position);
+  if (!resolved || resolved.cost <= 0 || resolved.quantity <= 0) {
+    return;
+  }
+
+  const key = [
+    position.owner,
+    position.oracleId,
+    position.expiryMs,
+    position.strike,
+    position.isUp ? "UP" : "DOWN",
+  ].join(":");
+  const decision =
+    group.decisions.get(key) ?? {
+      cost: 0,
+      payout: 0,
+      quantity: 0,
+      resolvedAtMs: 0,
+      count: 0,
+    };
+
+  decision.cost += resolved.cost;
+  decision.payout += resolved.payout;
+  decision.quantity += resolved.quantity;
+  decision.resolvedAtMs = Math.max(decision.resolvedAtMs, resolved.resolvedAtMs);
+  decision.count += 1;
+  group.decisions.set(key, decision);
+}
+
+function resolveTraderHeatPosition(
+  position: PredictPositionSummary,
+): TraderHeatResolvedPosition | null {
+  if (position.status === "closed") {
+    return {
+      cost: position.cost,
+      payout: position.payout,
+      quantity: traderHeatPositionQuantity(position),
+      resolvedAtMs: position.lastEventMs,
+    };
+  }
+
+  const redeemedCost = redeemedCostBasis(position);
+  if (redeemedCost <= 0 && position.payout <= 0) {
+    return null;
+  }
+
+  return {
+    cost: redeemedCost,
+    payout: position.payout,
+    quantity: Math.max(
+      1,
+      Math.min(
+        position.redeemedQuantity,
+        position.mintedQuantity || position.redeemedQuantity,
+      ),
+    ),
+    resolvedAtMs: position.lastEventMs,
+  };
+}
+
+function traderHeatPositionQuantity(position: PredictPositionSummary): number {
+  return Math.max(
+    position.mintedQuantity,
+    position.redeemedQuantity,
+    position.payout,
+    1,
+  );
+}
+
+function projectTraderHeatDecision(
+  decision: TraderHeatDecisionAccumulator,
+  nowMs: number,
+): TraderHeatDecision {
+  const pnl = decision.payout - decision.cost;
+  const impliedProbability = clampRatio(decision.cost / decision.quantity, 0.02, 0.98);
+  const result: WalletStreakType =
+    pnl > 0 ? "win" : pnl < 0 ? "loss" : "none";
+  const outcome = result === "win" ? 1 : result === "loss" ? 0 : impliedProbability;
+  const roi = clampScore(pnl / decision.cost, -1, 5);
+
+  return {
+    ...decision,
+    pnl,
+    impliedProbability,
+    outcome,
+    roi,
+    weight: traderHeatDecisionWeight(decision, nowMs),
+    result,
+  };
+}
+
+function traderHeatDecisionWeight(
+  decision: TraderHeatDecisionAccumulator,
+  nowMs: number,
+): number {
+  const ageDays = Math.max(
+    0,
+    (nowMs - decision.resolvedAtMs) / ONE_DAY_MS,
+  );
+  const timeDecay = 2 ** (-ageDays / 7);
+  const costUsd = decision.cost / 1_000_000;
+  const logWeight = Math.log1p(costUsd) / Math.log1p(25);
+  const meaningfulSmallStakeFloor =
+    costUsd >= 1 ? 0.45 : costUsd >= 0.25 ? 0.25 : costUsd * 0.25;
+  const stakeWeight = Math.min(
+    1.5,
+    Math.max(meaningfulSmallStakeFloor, logWeight),
+  );
+
+  return timeDecay * stakeWeight;
+}
+
+function traderHeatCurrentStreak(decisions: TraderHeatDecision[]): {
+  currentStreakType: WalletStreakType;
+  currentStreakLength: number;
+} {
+  let currentStreakType: WalletStreakType = "none";
+  let currentStreakLength = 0;
+
+  for (const decision of decisions) {
+    if (decision.result === "none") {
+      currentStreakType = "none";
+      currentStreakLength = 0;
+      continue;
+    }
+
+    if (decision.result === currentStreakType) {
+      currentStreakLength += 1;
+    } else {
+      currentStreakType = decision.result;
+      currentStreakLength = 1;
+    }
+  }
+
+  return { currentStreakType, currentStreakLength };
+}
+
+function applyHeatSkillGuardrails({
+  skillScore,
+  currentLossStreak,
+  recentPnl,
+  edgeZ,
+  decisionCount,
+}: {
+  skillScore: number;
+  currentLossStreak: number;
+  recentPnl: number;
+  edgeZ: number;
+  decisionCount: number;
+}): number {
+  let nextScore = clampScore(skillScore, 0, 99);
+
+  if (decisionCount === 0) {
+    nextScore = Math.min(nextScore, 15);
+  }
+  if (currentLossStreak >= 4 && recentPnl < 0) {
+    nextScore = Math.min(nextScore, 20);
+  }
+  if (recentPnl < 0 && edgeZ < 0) {
+    nextScore = Math.min(nextScore, 35);
+  }
+
+  return nextScore;
+}
+
+function calibrateHeatScore(
+  skillScore: number,
+  {
+    currentLossStreak,
+    recentPnl,
+    edgeZ,
+  }: { currentLossStreak: number; recentPnl: number; edgeZ: number },
+): number {
+  let heatScore = Math.round(100 / (1 + Math.exp(-(skillScore - 28) / 9)));
+
+  if (currentLossStreak >= 4 && recentPnl < 0) {
+    heatScore = Math.min(heatScore, 20);
+  }
+  if (recentPnl < 0 && edgeZ < 0) {
+    heatScore = Math.min(heatScore, 35);
+  }
+
+  return clampScore(heatScore, 0, 99);
 }
 
 function getTraderHeatAccumulator(
@@ -594,6 +906,7 @@ function getTraderHeatAccumulator(
     winCount: 0,
     lossCount: 0,
     lastSeenMs: 0,
+    decisions: new Map<string, TraderHeatDecisionAccumulator>(),
   };
   groups.set(trader, group);
 
@@ -628,6 +941,40 @@ function applyLimit<T>(values: T[], limit?: number): T[] {
   }
 
   return values.slice(0, normalizedLimit);
+}
+
+function compareTraderHeatDecisionsOldestFirst(
+  left: TraderHeatDecision,
+  right: TraderHeatDecision,
+): number {
+  return left.resolvedAtMs - right.resolvedAtMs || left.pnl - right.pnl;
+}
+
+function sigmoid(value: number): number {
+  return 1 / (1 + Math.exp(-value));
+}
+
+function wilsonLowerBound(wins: number, count: number, z = 1.28): number {
+  if (count <= 0) {
+    return 0;
+  }
+
+  const phat = wins / count;
+  const zSquared = z * z;
+
+  return (
+    phat +
+    zSquared / (2 * count) -
+    z * Math.sqrt((phat * (1 - phat) + zSquared / (4 * count)) / count)
+  ) / (1 + zSquared / count);
+}
+
+function clampRatio(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.max(min, Math.min(max, value));
 }
 
 function clampScore(value: number, min: number, max: number): number {

@@ -191,18 +191,20 @@ async function getIndexedTestnetMarketHeat(
     activeOracles
   );
   const events = dedupeEvents(tradeEvents);
-  const heatPositionSummaries = mergePositionSummaries([
-    ...positionSummaries,
+  const performancePositionSummaries = mergePositionSummaries([
+    ...walletStatsPositionSummaries,
     ...openPositionSummaries
   ]);
+  const heatPositionSummaries = mergePositionSummaries([
+    ...positionSummaries,
+    ...performancePositionSummaries
+  ]);
   const walletStatsByWallet = buildWalletStatsByWallet(
-    mergePositionSummaries([...walletStatsPositionSummaries, ...openPositionSummaries]),
+    performancePositionSummaries,
     walletStatsOracles,
     nowMs
   );
-  const heat = buildTraderHeatProjection(events, heatPositionSummaries, {
-    limit: HEAT_ACCOUNT_ROW_LIMIT
-  });
+  const heat = buildTraderHeatProjection(events, heatPositionSummaries);
   const heatByTrader = new Map(heat.map((trader) => [trader.trader, trader]));
   const latestRows = buildLatestTradeFeedProjection(events, {
     limit: LATEST_ACTIVITY_ROW_LIMIT
@@ -214,6 +216,7 @@ async function getIndexedTestnetMarketHeat(
     )
     .map((position) => mapIndexedOpenPositionToRow(position, heatByTrader, oraclesById));
   const heatRows = heat
+    .slice(0, HEAT_ACCOUNT_ROW_LIMIT)
     .map((trader, index) => mapIndexedHeatTraderToRow(trader, events, oraclesById, index))
     .filter((row): row is MarketHeatRow => row !== null);
   const rows = attachWalletStatsToRows(

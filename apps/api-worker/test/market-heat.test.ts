@@ -537,6 +537,75 @@ describe("testnet market heat endpoint", () => {
     ]);
   });
 
+  test("scores feed rows from the deep wallet history window", async () => {
+    const nowMs = 1_779_071_500_000;
+    const wallet = "0xtrader-deep-hot";
+    const openPosition = {
+      id: "manager-deep:btc-indexed-long:1779158400000:72125000000:UP",
+      owner: wallet,
+      managerId: "manager-deep",
+      oracleId: "btc-indexed-long",
+      expiryMs: 1_779_158_400_000,
+      strike: 72_125_000_000,
+      isUp: true,
+      mintedQuantity: 1_000_000,
+      redeemedQuantity: 0,
+      openQuantity: 1_000_000,
+      cost: 500_000,
+      payout: 0,
+      realizedPnl: 0,
+      lastEventMs: 1_779_071_000_000,
+      status: "open" as const
+    };
+    const closedWins = Array.from({ length: 8 }, (_, index) => ({
+      id: `manager-deep:btc-indexed-settled:${index}`,
+      owner: wallet,
+      managerId: "manager-deep",
+      oracleId: "btc-indexed-settled",
+      expiryMs: 1_779_060_000_000 + index * 60_000,
+      strike: 72_000_000_000,
+      isUp: true,
+      mintedQuantity: 1_000_000,
+      redeemedQuantity: 1_000_000,
+      openQuantity: 0,
+      cost: 400_000,
+      payout: 1_000_000,
+      realizedPnl: 600_000,
+      lastEventMs: 1_779_060_500_000 + index * 60_000,
+      status: "closed" as const
+    }));
+    const projection = await getTestnetMarketHeat({
+      reader: {
+        ...createIndexedMarketHeatReader(),
+        listRecentTradeEvents: async () => [],
+        listPositionSummaries: async (options) => {
+          if (options?.status === "open") {
+            return [openPosition];
+          }
+
+          if (options?.limit === 10_000) {
+            return [openPosition, ...closedWins];
+          }
+
+          return [openPosition];
+        }
+      },
+      nowMs
+    });
+    const row = projection.rows.find((candidate) => candidate.wallet === wallet);
+
+    expect(row).toMatchObject({
+      wallet,
+      status: "copy_ready",
+      walletStats: expect.objectContaining({
+        totalPnl: 4_800_000,
+        currentStreakType: "win",
+        currentStreakLength: 8
+      })
+    });
+    expect(row?.heatScore).toBeGreaterThan(60);
+  });
+
   test("returns indexed wallet leaderboards from an injected reader", async () => {
     const response = await worker.fetch(
       new Request("https://api.hot-hands.test/testnet/wallet-leaderboards?limit=5"),
