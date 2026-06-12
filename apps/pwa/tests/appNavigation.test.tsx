@@ -100,6 +100,28 @@ function tradeMarketRowFixture(
   };
 }
 
+function portfolioHistoryItemFixture(index: number) {
+  return {
+    closeLabel: "Redeemed",
+    costLabel: "$1",
+    direction: index % 2 === 0 ? ("UP" as const) : ("DOWN" as const),
+    expiryTimeLabel: `Jun ${index}, 2026, 5:00 PM`,
+    id: `history-${index}`,
+    managerId: "0xmanager",
+    openedAtLabel: `Jun ${index}, 2026`,
+    oracleId: `0xoracle-${index}`,
+    payoutLabel: "$2",
+    pnlAtomic: "1000000",
+    pnlLabel: "+$1",
+    pnlTone: "positive" as const,
+    quantityLabel: "$2",
+    remainingLabel: "$0",
+    statusLabel: "Redeemed",
+    strikeLabel: `$60,00${index}`,
+    updatedAtLabel: `Jun ${index}, 2026`,
+  };
+}
+
 describe("mobile app navigation", () => {
   test("places wallet connection in the market header action slot", () => {
     const html = renderToStaticMarkup(
@@ -733,6 +755,33 @@ describe("mobile app navigation", () => {
     expect(positionsHtml).not.toContain("0xaaaa...6666");
   });
 
+  test("limits profile trade history with a show-more control", () => {
+    const profileWallet = "0xaaaa222233334444555566667777888899990000111122223333444455556666";
+    const html = renderToStaticMarkup(
+      <ProfilePanel
+        currentWalletAddress={null}
+        followedWallets={[]}
+        profileHistoryItems={Array.from({ length: 10 }, (_, index) =>
+          portfolioHistoryItemFixture(index + 1),
+        )}
+        profileWallet={{
+          displayName: "0xaaaa...6666",
+          wallet: profileWallet,
+        }}
+        onFollowWallet={() => undefined}
+        onSelectWallet={() => undefined}
+        onUnfollowWallet={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="profile-trade-history"');
+    expect(html).toContain("$60,001");
+    expect(html).toContain("$60,008");
+    expect(html).not.toContain("$60,009");
+    expect(html).toContain('data-testid="profile-trade-history-show-more"');
+    expect(html).toContain(">Show more</button>");
+  });
+
   test("renders portfolio positions with a live countdown cue under 24h", () => {
     const html = renderToStaticMarkup(
       <PortfolioPanel
@@ -1012,8 +1061,32 @@ describe("mobile app navigation", () => {
     expect(html).toContain("$2");
     expect(html).toContain("Payout</span>");
     expect(html).toContain("$3.25");
-    expect(html).toContain("PNL</small><strong>+$1.25");
+    expect(html).toContain("PNL</span>");
+    expect(html).toContain('<strong>+$1.25</strong>');
+    expect(html).not.toContain("PNL</small>");
     expect(html).not.toContain("$123.45");
+  });
+
+  test("limits portfolio trade history with a show-more control", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        historyItems={Array.from({ length: 10 }, (_, index) =>
+          portfolioHistoryItemFixture(index + 1),
+        )}
+        initialTab="history"
+        positions={[]}
+        walletActionPending={false}
+        walletSubmittedPositionId={null}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="portfolio-history"');
+    expect(html).toContain("$60,001");
+    expect(html).toContain("$60,008");
+    expect(html).not.toContain("$60,009");
+    expect(html).toContain('data-testid="portfolio-history-show-more"');
+    expect(html).toContain(">Show more</button>");
   });
 
   test("renders open portfolio history rows with a live countdown", () => {
@@ -1050,6 +1123,10 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain("portfolio-countdown-live");
     expect(html).toContain("<strong>8h left</strong><small>Open</small>");
+    expect(html).toContain('<span class="portfolio-table-cell">-</span>');
+    expect(html).toContain('<div class="portfolio-history-pnl portfolio-history-pnl-flat"><strong>-</strong></div>');
+    expect(html).not.toContain(">Pending<");
+    expect(html).not.toContain("<strong>Open</strong>");
     expect(html).not.toContain("<strong>Jun 12, 2026, 1:00 AM</strong>");
   });
 

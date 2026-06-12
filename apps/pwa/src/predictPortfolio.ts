@@ -813,6 +813,7 @@ function buildPortfolioHistoryItem(
         : didWin
           ? "Claimable"
           : "No payout";
+  const isOpen = statusLabel === "Open";
   const pendingPayoutLabel =
     history.payout > 0n ? formatPortfolioHistoryDusdcBalance(history.payout) : "Pending";
 
@@ -829,11 +830,15 @@ function buildPortfolioHistoryItem(
     quantityLabel: formatDusdcBalance(history.totalQuantity),
     remainingLabel: formatDusdcBalance(history.quantity),
     costLabel: formatPortfolioHistoryDusdcBalance(history.totalCost),
-    payoutLabel: isResolved ? formatPortfolioHistoryDusdcBalance(knownPayout) : pendingPayoutLabel,
+    payoutLabel: isResolved
+      ? formatPortfolioHistoryDusdcBalance(knownPayout)
+      : isOpen
+        ? "-"
+        : pendingPayoutLabel,
     pnlAtomic: pnl === null ? undefined : pnl.toString(),
     pnlLabel:
       pnl === null
-        ? (statusLabel === "Open" ? "Open" : "Pending")
+        ? (isOpen ? "-" : "Pending")
         : formatSignedPortfolioHistoryDusdcBalance(pnl),
     pnlTone: pnl === null ? "flat" : pnl > 0n ? "positive" : pnl < 0n ? "negative" : "flat",
     statusLabel,

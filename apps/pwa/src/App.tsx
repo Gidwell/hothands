@@ -160,6 +160,7 @@ const MARKET_HEAT_PAGE_SIZE = 8;
 const WALLET_LEADERBOARDS_REFRESH_MS = 15_000;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
 const PORTFOLIO_TIME_REFRESH_MS = 15_000;
+const PORTFOLIO_HISTORY_PAGE_SIZE = 8;
 const TRADE_LADDER_VISIBLE_STRIKE_COUNT = 4;
 const TRADE_LADDER_BELOW_TARGET_COUNT = 2;
 const DEPOSIT_AMOUNT_DEFAULT = 25;
@@ -2765,9 +2766,14 @@ function PortfolioHistoryList({
   testId?: string;
   title?: string;
 }) {
+  const [visibleCount, setVisibleCount] = useState(PORTFOLIO_HISTORY_PAGE_SIZE);
+
   if (!items.length) {
     return <div className="portfolio-empty">{emptyLabel}</div>;
   }
+
+  const visibleItems = items.slice(0, visibleCount);
+  const canShowMore = visibleItems.length < items.length;
 
   return (
     <div className="portfolio-history" data-testid={testId}>
@@ -2779,10 +2785,12 @@ function PortfolioHistoryList({
         <span>Payout</span>
         <span>PNL</span>
       </div>
-      {items.map((item) => {
+      {visibleItems.map((item) => {
         const isOpen = item.statusLabel === "Open";
         const timeLabel = isOpen && item.timeLabel ? item.timeLabel : item.expiryTimeLabel;
         const isLiveCountdown = isOpen && isLiveCountdownLabel(timeLabel);
+        const payoutLabel = isOpen ? "-" : item.payoutLabel;
+        const pnlLabel = isOpen ? "-" : item.pnlLabel;
 
         return (
           <article
@@ -2807,14 +2815,27 @@ function PortfolioHistoryList({
               <small>{item.statusLabel}</small>
             </div>
             <span className="portfolio-table-cell">{item.costLabel}</span>
-            <span className="portfolio-table-cell">{item.payoutLabel}</span>
+            <span className="portfolio-table-cell">{payoutLabel}</span>
             <div className={`portfolio-history-pnl portfolio-history-pnl-${item.pnlTone}`}>
-              <small>PNL</small>
-              <strong>{item.pnlLabel}</strong>
+              <strong>{pnlLabel}</strong>
             </div>
           </article>
         );
       })}
+      {canShowMore ? (
+        <button
+          type="button"
+          className="market-heat-show-more portfolio-history-show-more"
+          data-testid={`${testId}-show-more`}
+          onClick={() =>
+            setVisibleCount((count) =>
+              Math.min(items.length, count + PORTFOLIO_HISTORY_PAGE_SIZE),
+            )
+          }
+        >
+          Show more
+        </button>
+      ) : null}
     </div>
   );
 }
