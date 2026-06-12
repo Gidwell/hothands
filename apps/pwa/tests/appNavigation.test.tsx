@@ -12,6 +12,7 @@ import {
   WalletHeaderControl,
   WalletStatusBar,
   buildAppViewSearch,
+  buildProfileHeatStat,
   buildTradeExpiryOptions,
   buildTradeQuoteKey,
   filterMarketHeatRowsByFollowedWallets,
@@ -567,6 +568,54 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="profile-display-name-input"');
     expect(html).toContain('value="Signal Mom 2"');
     expect(html).toContain('data-testid="profile-display-name-save"');
+  });
+
+  test("builds profile heat from the wallet's hottest active row", () => {
+    const rows = buildMarketHeatPreview(
+      [
+        {
+          id: "warm-row",
+          wallet: "0xaaaa222233334444555566667777888899990000111122223333444455556666",
+          manager: "manager 0xaaaa...6666",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 62_500,
+          expiryMs: 1_779_165_600_000,
+          intervalLabel: "2h",
+          observedAtMs: 1_779_158_000_000,
+          heatScore: 42,
+          status: "copy_ready",
+        },
+        {
+          id: "hot-row",
+          wallet: "0xaaaa222233334444555566667777888899990000111122223333444455556666",
+          manager: "manager 0xaaaa...6666",
+          market: "BTC-USD",
+          side: "DOWN",
+          strike: 63_000,
+          expiryMs: 1_779_165_600_000,
+          intervalLabel: "2h",
+          observedAtMs: 1_779_158_500_000,
+          heatScore: 83,
+          status: "copy_ready",
+        },
+      ],
+      8,
+      {
+        nowMs: 1_779_158_000_000,
+      },
+    ).rows;
+
+    expect(buildProfileHeatStat(rows)).toEqual({
+      label: "Heat",
+      tone: "positive",
+      value: "83",
+    });
+    expect(buildProfileHeatStat([])).toEqual({
+      label: "Heat",
+      tone: "flat",
+      value: "--",
+    });
   });
 
   test("renders selected wallet positions on the profile page", () => {

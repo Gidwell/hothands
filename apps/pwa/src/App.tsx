@@ -3406,13 +3406,6 @@ const PROFILE_LEADERBOARD_SEARCH_ORDER: WalletLeaderboardBoardKey[] = [
   "longestLosingStreak",
 ];
 
-const profileLastActiveFormatter = new Intl.DateTimeFormat("en-US", {
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  month: "short",
-});
-
 function findWalletLeaderboardEntry(
   snapshot: WalletLeaderboardsSnapshot,
   wallet: string | null,
@@ -3434,26 +3427,49 @@ function findWalletLeaderboardEntry(
   return null;
 }
 
-function formatProfileLastActive(entry: WalletLeaderboardEntry): string {
-  const timestampMs = entry.lastSeenMs ?? entry.lastSettledAtMs;
-  if (!timestampMs) {
-    return "--";
+export function buildProfileHeatStat(rows: MarketHeatPreviewRow[]): ProfileStatItem {
+  const ratedRows = rows.filter(
+    (row) => row.heatScoreLabel !== "-" && Number.isFinite(row.heatScore),
+  );
+
+  if (!ratedRows.length) {
+    return {
+      label: "Heat",
+      tone: "flat",
+      value: "--",
+    };
   }
 
-  return profileLastActiveFormatter.format(new Date(timestampMs));
+  const hottestRow = ratedRows.reduce((bestRow, row) =>
+    row.heatScore > bestRow.heatScore ? row : bestRow,
+  );
+
+  return {
+    label: "Heat",
+    tone:
+      hottestRow.heatScore >= 70
+        ? "positive"
+        : hottestRow.heatScore <= 25
+          ? "negative"
+          : "flat",
+    value: hottestRow.heatScoreLabel || String(Math.round(hottestRow.heatScore)),
+  };
 }
 
-function buildProfileStatSummary(entry: WalletLeaderboardEntry | null): ProfileStatSummary {
+function buildProfileStatSummary(
+  entry: WalletLeaderboardEntry | null,
+  heatStat: ProfileStatItem = buildProfileHeatStat([]),
+): ProfileStatSummary {
   if (!entry) {
     return {
       sourceLabel: "Waiting for settled leaderboard data",
       items: [
+        heatStat,
         { label: "Win rate", value: "--" },
         { label: "All-time PNL", value: "--" },
         { label: "Current streak", value: "--" },
         { label: "Best streak", value: "--" },
         { label: "Total calls", value: "--" },
-        { label: "Last active", value: "--" },
       ],
     };
   }
@@ -3463,6 +3479,7 @@ function buildProfileStatSummary(entry: WalletLeaderboardEntry | null): ProfileS
   return {
     sourceLabel: "Indexed DeepBook Predict record",
     items: [
+      heatStat,
       { label: "Win rate", value: formatWalletLeaderboardWinRate(entry) },
       { label: "All-time PNL", value: entry.totalPnlLabel, tone: entry.totalPnlTone },
       {
@@ -3481,7 +3498,6 @@ function buildProfileStatSummary(entry: WalletLeaderboardEntry | null): ProfileS
         tone: entry.longestWinningStreak > 0 ? "positive" : "flat",
       },
       { label: "Total calls", value: totalCalls.toLocaleString() },
-      { label: "Last active", value: formatProfileLastActive(entry) },
     ],
   };
 }
@@ -3506,6 +3522,7 @@ function formatSignedProfileDusdc(value: bigint): string {
 function buildProfileStatSummaryFromHistory(
   historyItems: PredictPortfolioHistoryItem[],
   status: ProfileHistoryStatus,
+  heatStat: ProfileStatItem = buildProfileHeatStat([]),
 ): ProfileStatSummary {
   const settledResults = historyItems
     .map((item) => parseProfilePnlAtomic(item.pnlAtomic))
@@ -3520,12 +3537,12 @@ function buildProfileStatSummaryFromHistory(
             ? "Profile record unavailable"
             : "Waiting for settled leaderboard data",
       items: [
+        heatStat,
         { label: "Win rate", value: "--" },
         { label: "All-time PNL", value: "--" },
         { label: "Current streak", value: "--" },
         { label: "Best streak", value: "--" },
         { label: "Total calls", value: "--" },
-        { label: "Last active", value: "--" },
       ],
     };
   }
@@ -3561,6 +3578,7 @@ function buildProfileStatSummaryFromHistory(
   return {
     sourceLabel: "",
     items: [
+      heatStat,
       {
         label: "Win rate",
         value: settledCount > 0 ? `${Math.round((wins / settledCount) * 100)}%` : "--",
@@ -3589,7 +3607,6 @@ function buildProfileStatSummaryFromHistory(
         tone: bestWinningStreak > 0 ? "positive" : "flat",
       },
       { label: "Total calls", value: historyItems.length.toLocaleString() },
-      { label: "Last active", value: historyItems[0]?.updatedAtLabel ?? "--" },
     ],
   };
 }
@@ -5523,11 +5540,13 @@ export function App() {
       : activeProfileWalletAddress
         ? "loading"
         : "idle";
+  const activeProfileHeatStat = buildProfileHeatStat(allProfilePositionRows);
   const activeProfileStats = activeProfileLeaderboardEntry
-    ? buildProfileStatSummary(activeProfileLeaderboardEntry)
+    ? buildProfileStatSummary(activeProfileLeaderboardEntry, activeProfileHeatStat)
     : buildProfileStatSummaryFromHistory(
         activeProfileHistoryItems,
         activeProfileHistoryStatus,
+        activeProfileHeatStat,
       );
   const visiblePortfolioPnl =
     activePredictManagerObjectId && isPredictPortfolioStateCurrent
