@@ -28,11 +28,11 @@ import { formatUtcTimeZoneText } from "./timeZoneLabels";
 const COMPACT_CHART_MIN_BAR_SPACING = 0.02;
 const EXPANDED_CHART_MIN_BAR_SPACING = 0.02;
 const COMPACT_CHART_DEFAULT_WINDOW_SECONDS = 15 * 60;
-const EXPANDED_CHART_DEFAULT_WINDOW_SECONDS = 6 * 60 * 60;
+const EXPANDED_CHART_DEFAULT_WINDOW_SECONDS = 4 * 60 * 60;
 const EXPIRY_AXIS_PADDING_SECONDS = 15 * 60;
 const DEFAULT_ORACLE_CHART_GRID_COLOR = "rgba(102, 112, 133, 0.12)";
 
-export type OraclePriceChartRangeKey = "1H" | "6H" | "24H";
+export type OraclePriceChartRangeKey = "1H" | "4H" | "24H";
 
 export type OraclePriceChartMarketContext = {
   expiryLabel: string;
@@ -63,9 +63,9 @@ const ORACLE_PRICE_CHART_RANGES: {
   label: string;
   seconds: number;
 }[] = [
-  { key: "1H", label: "1H", seconds: 60 * 60 },
-  { key: "6H", label: "6H", seconds: EXPANDED_CHART_DEFAULT_WINDOW_SECONDS },
-  { key: "24H", label: "24H", seconds: 24 * 60 * 60 },
+  { key: "1H", label: "1h", seconds: 60 * 60 },
+  { key: "4H", label: "4h", seconds: EXPANDED_CHART_DEFAULT_WINDOW_SECONDS },
+  { key: "24H", label: "24h", seconds: 24 * 60 * 60 },
 ];
 
 type OraclePriceChartInitialView =
@@ -192,7 +192,7 @@ export function OraclePriceChartModal({
   nowMs?: number;
   onClose: () => void;
 }) {
-  const [rangeKey, setRangeKey] = useState<OraclePriceChartRangeKey>("6H");
+  const [rangeKey, setRangeKey] = useState<OraclePriceChartRangeKey>("4H");
   const [showSettlementLines, setShowSettlementLines] = useState(true);
   const hasChart = chart?.status === "ready" && chart.points.length >= 2;
   const visibleMarketContext = showSettlementLines ? marketContext : null;
@@ -203,7 +203,7 @@ export function OraclePriceChartModal({
     ? `${chart?.marketLabel ?? "BTC/USD"} market chart`
     : chart?.title ?? "DeepBook BTC oracle price";
   const detail = marketContext
-    ? `${marketContext.selectedSide} ${marketContext.selectedStrikeLabel} settles ${marketContext.expiryLabel}.`
+    ? `${marketContext.selectedSide} ${marketContext.selectedStrikeLabel} resolves ${marketContext.expiryLabel}.`
     : "DeepBook oracle settlement feed.";
 
   return (
@@ -700,18 +700,18 @@ function formatOracleExpiryCountdown(expiryMs: number, nowMs: number): string {
   const minutes = totalMinutes % 60;
 
   if (days > 0) {
-    return `settles in ${days}d ${hours}h`;
+    return `resolves in ${days}d ${hours}h`;
   }
 
   if (hours > 0) {
-    return `settles in ${hours}h ${minutes}m`;
+    return `resolves in ${hours}h ${minutes}m`;
   }
 
   if (minutes > 0) {
-    return `settles in ${minutes}m`;
+    return `resolves in ${minutes}m`;
   }
 
-  return "settlement due";
+  return "resolved";
 }
 
 function getOracleTimeCoordinate(
