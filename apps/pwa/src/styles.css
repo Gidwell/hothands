@@ -2057,7 +2057,19 @@ button:disabled {
   background: #bbf7d0;
 }
 
+.market-heat-row-swipe-hint-copy .market-heat-swipe-action-copy,
+.market-heat-row-swipe-hint-both .market-heat-swipe-action-copy {
+  color: #064e3b;
+  background: #bbf7d0;
+}
+
 .market-heat-row-swipe-fading .market-heat-swipe-action-fade {
+  color: #7a271a;
+  background: #fecdca;
+}
+
+.market-heat-row-swipe-hint-fade .market-heat-swipe-action-fade,
+.market-heat-row-swipe-hint-both .market-heat-swipe-action-fade {
   color: #7a271a;
   background: #fecdca;
 }
@@ -2085,6 +2097,152 @@ button:disabled {
   background: #ecfdf3;
   font-size: 0.82rem;
   font-weight: 950;
+}
+
+@keyframes market-heat-copy-peek {
+  0%,
+  12%,
+  88%,
+  100% {
+    transform: translateX(0);
+  }
+
+  28%,
+  68% {
+    transform: translateX(46px);
+  }
+}
+
+@keyframes market-heat-fade-peek {
+  0%,
+  12%,
+  88%,
+  100% {
+    transform: translateX(0);
+  }
+
+  28%,
+  68% {
+    transform: translateX(-46px);
+  }
+}
+
+@keyframes market-heat-both-peek {
+  0%,
+  8%,
+  42%,
+  54%,
+  88%,
+  100% {
+    transform: translateX(0);
+  }
+
+  16%,
+  32% {
+    transform: translateX(46px);
+  }
+
+  66%,
+  82% {
+    transform: translateX(-46px);
+  }
+}
+
+@keyframes market-heat-copy-label-peek {
+  0%,
+  18%,
+  78%,
+  100% {
+    opacity: 0;
+  }
+
+  30%,
+  68% {
+    opacity: 1;
+  }
+}
+
+@keyframes market-heat-fade-label-peek {
+  0%,
+  18%,
+  78%,
+  100% {
+    opacity: 0;
+  }
+
+  30%,
+  68% {
+    opacity: 1;
+  }
+}
+
+@keyframes market-heat-both-copy-label-peek {
+  0%,
+  9%,
+  40%,
+  100% {
+    opacity: 0;
+  }
+
+  16%,
+  32% {
+    opacity: 1;
+  }
+}
+
+@keyframes market-heat-both-fade-label-peek {
+  0%,
+  58%,
+  90%,
+  100% {
+    opacity: 0;
+  }
+
+  66%,
+  82% {
+    opacity: 1;
+  }
+}
+
+.market-heat-swipe-action.market-heat-swipe-hint-label {
+  opacity: 0;
+  width: 46px;
+}
+
+.market-heat-swipe-action.market-heat-swipe-hint-label-copy {
+  inset: 0 auto 0 -6px;
+}
+
+.market-heat-swipe-action.market-heat-swipe-hint-label-fade {
+  inset: 0 -6px 0 auto;
+}
+
+.market-heat-row-swipe-hint-copy .market-heat-compact-row {
+  animation: market-heat-copy-peek 3.6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-fade .market-heat-compact-row {
+  animation: market-heat-fade-peek 3.6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-both .market-heat-compact-row {
+  animation: market-heat-both-peek 6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-copy .market-heat-swipe-hint-label-copy {
+  animation: market-heat-copy-label-peek 3.6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-fade .market-heat-swipe-hint-label-fade {
+  animation: market-heat-fade-label-peek 3.6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-both .market-heat-swipe-hint-label-copy {
+  animation: market-heat-both-copy-label-peek 6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-both .market-heat-swipe-hint-label-fade {
+  animation: market-heat-both-fade-label-peek 6s ease-in-out 2.45s 1;
 }
 
 .wallet-avatar-compact {
@@ -4030,6 +4188,17 @@ button:disabled {
   .theme-toggle {
     width: 42px;
     padding: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-heat-row-swipe-hint .market-heat-compact-row,
+  .market-heat-row-swipe-hint .market-heat-swipe-hint-label {
+    animation: none;
+  }
+
+  .market-heat-row-swipe-hint .market-heat-swipe-hint-label {
+    opacity: 0;
   }
 }
 

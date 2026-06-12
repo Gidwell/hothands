@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   MarketHeatPreview,
   resolveMarketHeatIntentSide,
+  resolveMarketHeatSwipeHintMode,
   resolveMarketHeatSwipeAction,
 } from "../src/App";
 import {
@@ -85,6 +86,42 @@ describe("MarketHeatPreview component", () => {
     expect(resolveMarketHeatIntentSide("UP", "copy")).toBe("UP");
     expect(resolveMarketHeatIntentSide("UP", "fade")).toBe("DOWN");
     expect(resolveMarketHeatIntentSide("DOWN", "fade")).toBe("UP");
+    expect(resolveMarketHeatSwipeHintMode({ copy: false, fade: false })).toBe("both");
+    expect(resolveMarketHeatSwipeHintMode({ copy: false, fade: true })).toBe("copy");
+    expect(resolveMarketHeatSwipeHintMode({ copy: true, fade: false })).toBe("fade");
+    expect(resolveMarketHeatSwipeHintMode({ copy: true, fade: true })).toBeNull();
+  });
+
+  test("renders the swipe discovery peek on the first copy-ready row", () => {
+    const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        selectedRowId={null}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        swipeHintMode="both"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onWalletOpen={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("market-heat-row-swipe-hint-both");
+    expect(html).toContain("market-heat-swipe-hint-label-copy");
+    expect(html).toContain("market-heat-swipe-hint-label-fade");
+    expect(html).toContain(">Copy</div>");
+    expect(html).toContain(">Fade</div>");
   });
 
   test("renders a compact inline watch panel for the selected row", () => {
