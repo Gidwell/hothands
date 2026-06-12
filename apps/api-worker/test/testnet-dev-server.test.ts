@@ -57,7 +57,16 @@ describe("testnet API dev server harness", () => {
       nonce: "test-random-id",
       expiresAtMs: 301_000,
     });
-    expect(challengeBody.message).toContain("Sign in to Hot Hands");
+    expect(challengeBody.message).toBe(
+      [
+        "Sign in to Hot Hands",
+        "",
+        `Wallet: ${wallet}`,
+        "Nonce: test-random-id",
+        "Issued: 1970-01-01T00:00:01.000Z",
+      ].join("\n"),
+    );
+    expect(challengeBody.message).not.toContain("This signature only authenticates");
 
     const sessionResponse = await fetchHandler(
       new Request("http://127.0.0.1:8789/app/auth/session", {

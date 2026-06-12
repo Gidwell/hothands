@@ -4659,6 +4659,7 @@ export function App() {
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const toastCounterRef = useRef(0);
   const toastTimeoutsRef = useRef<number[]>([]);
+  const walletAuthAttemptedAddressRef = useRef<string | null>(null);
   const [shareCard, setShareCard] = useState<ShareCardState | null>(null);
   const [copyAttributions, setCopyAttributions] = useState<CopyAttributionRecord[]>(() =>
     readStoredCopyAttributions(),
@@ -5115,33 +5116,63 @@ export function App() {
 
   useEffect(() => {
     if (!currentAccount || !realtimeApiBaseUrl || typeof window === "undefined") {
-      return undefined;
-    }
-
-    const session = readStoredWalletAuthSession(
-      window.localStorage,
-      currentAccount.address,
-      Date.now(),
-    );
-    if (!session) {
+      walletAuthAttemptedAddressRef.current = null;
       return undefined;
     }
 
     let isCurrent = true;
-    void loadFollowedWalletsFromApi({
-      apiBaseUrl: realtimeApiBaseUrl,
-      session,
-    })
-      .then((wallets) => {
-        if (isCurrent) {
-          replaceFollowedWallets(followedWalletRecordsToUi(wallets));
-        }
-      })
-      .catch(() => {
+    const walletAddress = currentAccount.address;
+    const session = readStoredWalletAuthSession(window.localStorage, walletAddress, Date.now());
+    const loadFollows = async (walletSession: WalletAuthSession) => {
+      const wallets = await loadFollowedWalletsFromApi({
+        apiBaseUrl: realtimeApiBaseUrl,
+        session: walletSession,
+      });
+
+      if (isCurrent) {
+        replaceFollowedWallets(followedWalletRecordsToUi(wallets));
+      }
+    };
+
+    if (session) {
+      void loadFollows(session).catch(() => {
         if (isCurrent) {
           clearStoredWalletAuthSession(window.localStorage);
         }
       });
+    } else if (walletAuthAttemptedAddressRef.current !== walletAddress.toLowerCase()) {
+      walletAuthAttemptedAddressRef.current = walletAddress.toLowerCase();
+      setWalletTxState({
+        status: "pending",
+        label: "Sign in to Hot Hands",
+        digest: null,
+      });
+      void requestWalletAuthSession({
+        apiBaseUrl: realtimeApiBaseUrl,
+        wallet: walletAddress,
+        storage: window.localStorage,
+        signPersonalMessage: (message) => dAppKit.signPersonalMessage({ message }),
+      })
+        .then((walletSession) => {
+          if (isCurrent) {
+            setWalletTxState(idleWalletTransactionState);
+          }
+          void loadFollows(walletSession).catch(() => {
+            if (isCurrent) {
+              clearStoredWalletAuthSession(window.localStorage);
+            }
+          });
+        })
+        .catch((error) => {
+          if (isCurrent) {
+            setWalletTxState({
+              status: "error",
+              label: walletErrorMessage(error),
+              digest: null,
+            });
+          }
+        });
+    }
 
     return () => {
       isCurrent = false;

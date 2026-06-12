@@ -257,8 +257,6 @@ export function buildWalletAuthMessage({
     `Wallet: ${wallet}`,
     `Nonce: ${nonce}`,
     `Issued: ${new Date(issuedAtMs).toISOString()}`,
-    "",
-    "This signature only authenticates your Hot Hands session. It does not submit a transaction.",
   ].join("\n");
 }
 
