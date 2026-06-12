@@ -155,7 +155,6 @@ const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
 const STAKE_AMOUNT_STORAGE_KEY = "hot-hands-default-stake-amount";
 const THEME_STORAGE_KEY = "hot-hands-theme-mode";
-const SWIPE_DISCOVERY_STORAGE_KEY = "hot-hands-feed-swipe-discovery-v2";
 const APP_VIEW_QUERY_PARAM = "view";
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "leaderboards" | "portfolio" | "profile";
@@ -166,14 +165,8 @@ type ThemeMode = "light" | "dark";
 const APP_VIEW_VALUES: AppView[] = ["feed", "trade", "leaderboards", "portfolio", "profile"];
 const MARKET_HEAT_DESCRIPTION =
   "Heat combines recency, copied volume, wallet streak, and trade activity.";
-const SWIPE_HINT_SINGLE_COMPLETE_MS = 6_100;
-const SWIPE_HINT_BOTH_COMPLETE_MS = 8_500;
 export type MarketHeatSwipeAction = "none" | "select" | "copy" | "fade";
 export type MarketHeatSwipeHintMode = "both" | "copy" | "fade";
-type MarketHeatSwipeDiscoveryState = {
-  copy: boolean;
-  fade: boolean;
-};
 type MarketHeatSwipePreview = {
   action: MarketHeatSwipeAction;
   deltaX: number;
@@ -218,58 +211,6 @@ function writeThemeMode(themeMode: ThemeMode): void {
   }
 
   window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
-}
-
-export function resolveMarketHeatSwipeHintMode(
-  discovery: MarketHeatSwipeDiscoveryState,
-): MarketHeatSwipeHintMode | null {
-  if (!discovery.copy && !discovery.fade) {
-    return "both";
-  }
-
-  if (!discovery.copy) {
-    return "copy";
-  }
-
-  if (!discovery.fade) {
-    return "fade";
-  }
-
-  return null;
-}
-
-function parseStoredSwipeDiscovery(
-  storedDiscovery: string | null,
-): MarketHeatSwipeDiscoveryState {
-  if (!storedDiscovery) {
-    return { copy: false, fade: false };
-  }
-
-  try {
-    const parsed = JSON.parse(storedDiscovery) as Partial<MarketHeatSwipeDiscoveryState>;
-    return {
-      copy: parsed.copy === true,
-      fade: parsed.fade === true,
-    };
-  } catch {
-    return { copy: false, fade: false };
-  }
-}
-
-function readStoredSwipeDiscovery(): MarketHeatSwipeDiscoveryState {
-  if (typeof window === "undefined") {
-    return { copy: false, fade: false };
-  }
-
-  return parseStoredSwipeDiscovery(window.localStorage.getItem(SWIPE_DISCOVERY_STORAGE_KEY));
-}
-
-function writeStoredSwipeDiscovery(discovery: MarketHeatSwipeDiscoveryState): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(SWIPE_DISCOVERY_STORAGE_KEY, JSON.stringify(discovery));
 }
 
 export function parseStoredStakeAmount(storedAmount: string | null): number {
@@ -3821,7 +3762,6 @@ export function MarketHeatPreview({
   onRetryQuote,
   onShareRow,
   onSelectRow,
-  onSwipeHintSeen,
   onWalletOpen,
 }: {
   rows: MarketHeatPreviewRow[];
@@ -3861,7 +3801,6 @@ export function MarketHeatPreview({
   onRetryQuote?: () => void;
   onShareRow?: (rowId: string) => void;
   onSelectRow: (rowId: string, mode?: MarketHeatIntentMode) => void;
-  onSwipeHintSeen?: (mode: MarketHeatIntentMode) => void;
   onWalletOpen?: (wallet: FollowedWallet) => void;
 }) {
   const swipeStartRef = useRef<{ rowId: string; x: number; y: number } | null>(null);
@@ -3869,40 +3808,11 @@ export function MarketHeatPreview({
   const heatDescriptionId = `${testId}-heat-description`;
   const [isHeatDescriptionOpen, setIsHeatDescriptionOpen] = useState(false);
   const [swipePreview, setSwipePreview] = useState<MarketHeatSwipePreview | null>(null);
-  const [playedSwipeHint, setPlayedSwipeHint] = useState<MarketHeatSwipeDiscoveryState>({
-    copy: false,
-    fade: false,
-  });
-  const hintCopyRequested = swipeHintMode === "both" || swipeHintMode === "copy";
-  const hintFadeRequested = swipeHintMode === "both" || swipeHintMode === "fade";
-  const activeHintCopy = hintCopyRequested && !playedSwipeHint.copy;
-  const activeHintFade = hintFadeRequested && !playedSwipeHint.fade;
-  const activeSwipeHintMode: MarketHeatSwipeHintMode | null =
-    activeHintCopy && activeHintFade
-      ? "both"
-      : activeHintCopy
-        ? "copy"
-        : activeHintFade
-          ? "fade"
-          : null;
+  const activeSwipeHintMode = swipeHintMode;
   const swipeHintRowId =
     activeSwipeHintMode && !selectedRowId && rows[0]?.status === "copy_ready"
       ? rows[0].id
       : null;
-  useEffect(() => {
-    if (!activeSwipeHintMode || !swipeHintRowId) {
-      return undefined;
-    }
-
-    const timer = window.setTimeout(() => {
-      setPlayedSwipeHint((currentHint) => ({
-        copy: currentHint.copy || activeSwipeHintMode === "both" || activeSwipeHintMode === "copy",
-        fade: currentHint.fade || activeSwipeHintMode === "both" || activeSwipeHintMode === "fade",
-      }));
-    }, activeSwipeHintMode === "both" ? SWIPE_HINT_BOTH_COMPLETE_MS : SWIPE_HINT_SINGLE_COMPLETE_MS);
-
-    return () => window.clearTimeout(timer);
-  }, [activeSwipeHintMode, swipeHintRowId]);
   const startMarketHeatSwipe = (
     rowId: string,
     event: PointerEvent<HTMLElement>,
@@ -3974,11 +3884,6 @@ export function MarketHeatPreview({
     swipedRowRef.current = row.id;
 
     if (action === "copy" || action === "fade") {
-      onSwipeHintSeen?.(action);
-      setPlayedSwipeHint((currentHint) => ({
-        ...currentHint,
-        [action]: true,
-      }));
       const rowQuoteStatus =
         row.id === selectedRowId && selectedMode === action ? quoteStatus : "idle";
       if (!walletConnected || rowQuoteStatus !== "ready") {
@@ -4834,8 +4739,6 @@ export function App() {
   const [marketHeatIntent, setMarketHeatIntent] = useState<MarketHeatIntentState>({
     selectedRowId: null,
   });
-  const [marketHeatSwipeDiscovery, setMarketHeatSwipeDiscovery] =
-    useState<MarketHeatSwipeDiscoveryState>(() => readStoredSwipeDiscovery());
   const [expandedTraderId, setExpandedTraderId] = useState<string | null>(null);
   const [frozenTraderOrder, setFrozenTraderOrder] = useState<string[] | null>(null);
   const dismissToast = (toastId: string) => {
@@ -5101,7 +5004,7 @@ export function App() {
   );
   const marketHeatShowMoreLabel =
     marketHeatShowMoreCount === 1 ? "Show 1 more" : `Show ${marketHeatShowMoreCount} more`;
-  const marketHeatSwipeHintMode = resolveMarketHeatSwipeHintMode(marketHeatSwipeDiscovery);
+  const marketHeatSwipeHintMode: MarketHeatSwipeHintMode = "both";
   const frame = useMemo(
     () => getReplayFrame(replayState, scenario, market),
     [replayState, scenario],
@@ -6111,21 +6014,6 @@ export function App() {
         : selectMarketHeatIntent(state, rowId, marketHeatPreview.rows, mode),
     );
   };
-  const handleMarketHeatSwipeHintSeen = (mode: MarketHeatIntentMode) => {
-    setMarketHeatSwipeDiscovery((currentDiscovery) => {
-      if (currentDiscovery[mode]) {
-        return currentDiscovery;
-      }
-
-      const nextDiscovery = {
-        ...currentDiscovery,
-        [mode]: true,
-      };
-      writeStoredSwipeDiscovery(nextDiscovery);
-      return nextDiscovery;
-    });
-  };
-
   const handleMarketHeatWalletSubmit = async (
     rowId: string,
     mode: MarketHeatIntentMode = marketHeatIntent.mode ?? "copy",
@@ -6818,7 +6706,6 @@ export function App() {
       onRetryQuote={() => setMarketHeatQuoteRefreshKey((key) => key + 1)}
       onShareRow={handleMarketHeatShare}
       onSelectRow={handleMarketHeatSelect}
-      onSwipeHintSeen={handleMarketHeatSwipeHintSeen}
       onWalletOpen={handleProfileWalletOpen}
     />
   );

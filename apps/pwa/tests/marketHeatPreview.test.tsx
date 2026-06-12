@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   MarketHeatPreview,
   resolveMarketHeatIntentSide,
-  resolveMarketHeatSwipeHintMode,
   resolveMarketHeatSwipeAction,
 } from "../src/App";
 import {
@@ -86,13 +85,9 @@ describe("MarketHeatPreview component", () => {
     expect(resolveMarketHeatIntentSide("UP", "copy")).toBe("UP");
     expect(resolveMarketHeatIntentSide("UP", "fade")).toBe("DOWN");
     expect(resolveMarketHeatIntentSide("DOWN", "fade")).toBe("UP");
-    expect(resolveMarketHeatSwipeHintMode({ copy: false, fade: false })).toBe("both");
-    expect(resolveMarketHeatSwipeHintMode({ copy: false, fade: true })).toBe("copy");
-    expect(resolveMarketHeatSwipeHintMode({ copy: true, fade: false })).toBe("fade");
-    expect(resolveMarketHeatSwipeHintMode({ copy: true, fade: true })).toBeNull();
   });
 
-  test("renders the swipe discovery peek on the first copy-ready row", () => {
+  test("renders the swipe peek on the first copy-ready row", () => {
     const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
       nowMs: 1_779_158_000_000,
     }).rows;
