@@ -33,6 +33,7 @@
     "verify:perf": "echo \"TODO: run spectator heartbeat simulation\"",
     "verify:testnet": "bun run --cwd packages/indexer verify:testnet && bun run --cwd packages/contracts verify:testnet",
     "verify:visual": "echo \"TODO: run screenshot checks\"",
-    "indexer:live": "bun run --cwd packages/indexer live"
+    "indexer:live": "bun run --cwd packages/indexer live",
+    "railway:start": "bun scripts/railway-start.ts"
   }
 }
