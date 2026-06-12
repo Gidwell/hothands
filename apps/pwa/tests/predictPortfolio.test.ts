@@ -290,8 +290,8 @@ describe("Predict portfolio", () => {
     expect(snapshot.history.find((item) => item.oracleId === "0xoracle-open")).toMatchObject({
       costLabel: "$0.90",
       direction: "UP",
-      payoutLabel: "Pending",
-      pnlLabel: "Open",
+      payoutLabel: "-",
+      pnlLabel: "-",
       remainingLabel: "$2",
       statusLabel: "Open",
       strikeLabel: "$65,000.00",

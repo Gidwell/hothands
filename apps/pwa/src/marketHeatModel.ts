@@ -1,4 +1,5 @@
 import {
+  loadHotHandsProfileNames,
   loadMainnetSuinsNames,
   mergeDemoWalletDisplayNames,
   resolveWalletDisplayName,
@@ -171,6 +172,7 @@ export type LoadMarketHeatPreviewOptions = {
   nowMs?: number;
   timeZone?: string;
   useDemoDisplayNames?: boolean;
+  useHotHandsProfileNames?: boolean;
   useMainnetSuinsNames?: boolean;
 };
 
@@ -798,6 +800,7 @@ export async function loadMarketHeatPreview({
   nowMs = Date.now(),
   timeZone,
   useDemoDisplayNames = false,
+  useHotHandsProfileNames = false,
   useMainnetSuinsNames = false,
 }: LoadMarketHeatPreviewOptions = {}): Promise<MarketHeatPreview> {
   const normalizedBaseUrl = apiBaseUrl?.trim();
@@ -825,19 +828,31 @@ export async function loadMarketHeatPreview({
       sourceLabel === "Captured" ? refreshCapturedRows(rows, nowMs) : rows;
     const marketPrice = parseMarketHeatPrice(payload) ?? CAPTURED_MARKET_PRICE;
     const availableMarkets = parseAvailableMarkets(payload, marketPrice, timeZone);
+    const rowWallets = previewRows.map((row) => row.wallet);
+    const hotHandsProfileDisplayNames = useHotHandsProfileNames
+      ? await loadHotHandsProfileNames({
+          apiBaseUrl: normalizedBaseUrl,
+          fetcher,
+          wallets: rowWallets,
+        }).catch(() => ({}))
+      : {};
     const mainnetWalletDisplayNames = useMainnetSuinsNames
       ? await loadMainnetSuinsNames({
           apiBaseUrl: normalizedBaseUrl,
           fetcher,
-          wallets: previewRows.map((row) => row.wallet),
+          wallets: rowWallets,
         }).catch(() => ({}))
       : {};
+    const liveWalletDisplayNames = {
+      ...mainnetWalletDisplayNames,
+      ...hotHandsProfileDisplayNames,
+    };
     const walletDisplayNames = useDemoDisplayNames
       ? mergeDemoWalletDisplayNames(
-          previewRows.map((row) => row.wallet),
-          mainnetWalletDisplayNames,
+          rowWallets,
+          liveWalletDisplayNames,
         )
-      : mainnetWalletDisplayNames;
+      : liveWalletDisplayNames;
 
     return {
       ...buildMarketHeatPreview(previewRows, MARKET_HEAT_CANDIDATE_LIMIT, {
@@ -862,6 +877,7 @@ export async function loadMarketHeatPriceSnapshot(
     includeExpired = false,
     nowMs = Date.now(),
     timeZone,
+    useHotHandsProfileNames = false,
     useMainnetSuinsNames = false,
   }: LoadMarketHeatPriceSnapshotOptions = {},
 ): Promise<MarketHeatPreview> {
@@ -874,6 +890,7 @@ export async function loadMarketHeatPriceSnapshot(
         includeExpired,
         nowMs,
         timeZone,
+        useHotHandsProfileNames,
         useMainnetSuinsNames,
       });
   }
@@ -888,6 +905,7 @@ export async function loadMarketHeatPriceSnapshot(
         includeExpired,
         nowMs,
         timeZone,
+        useHotHandsProfileNames,
         useMainnetSuinsNames,
       });
     }
@@ -902,6 +920,7 @@ export async function loadMarketHeatPriceSnapshot(
         includeExpired,
         nowMs,
         timeZone,
+        useHotHandsProfileNames,
         useMainnetSuinsNames,
       });
     }
@@ -923,6 +942,7 @@ export async function loadMarketHeatPriceSnapshot(
       includeExpired,
       nowMs,
       timeZone,
+      useHotHandsProfileNames,
       useMainnetSuinsNames,
     });
   }

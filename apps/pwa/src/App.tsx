@@ -109,11 +109,24 @@ import {
   type WalletLeaderboardTone,
   type WalletLeaderboardsSnapshot,
 } from "./walletLeaderboards";
+import {
+  clearStoredWalletAuthSession,
+  deleteFollowedWalletFromApi,
+  loadAuthenticatedWalletProfileFromApi,
+  loadFollowedWalletsFromApi,
+  readStoredWalletAuthSession,
+  recordCopyReceiptToApi,
+  requestWalletAuthSession,
+  saveWalletProfileToApi,
+  saveFollowedWalletToApi,
+  type FollowedWalletRecord,
+  type WalletAuthSession,
+  type WalletProfileRecord,
+} from "./walletAuth";
 import { buildTradeMintTransaction } from "./walletTransactions";
 import { buildPortfolioRedeemTransaction } from "./walletTransactions";
 import {
   formatDusdcBalance,
-  loadDusdcBalanceLabel,
   loadPredictManagerBankrollAtomic,
   selectDusdcDepositCoin,
   usdToDusdcAtomic,
@@ -147,6 +160,7 @@ const MARKET_HEAT_PAGE_SIZE = 8;
 const WALLET_LEADERBOARDS_REFRESH_MS = 15_000;
 const PORTFOLIO_DATA_REFRESH_MS = 15_000;
 const PORTFOLIO_TIME_REFRESH_MS = 15_000;
+const PORTFOLIO_HISTORY_PAGE_SIZE = 8;
 const TRADE_LADDER_VISIBLE_STRIKE_COUNT = 4;
 const TRADE_LADDER_BELOW_TARGET_COUNT = 2;
 const DEPOSIT_AMOUNT_DEFAULT = 25;
@@ -164,7 +178,7 @@ type MarketHeatIdentityMode = "wallet" | "market";
 type ThemeMode = "light" | "dark";
 const APP_VIEW_VALUES: AppView[] = ["feed", "trade", "leaderboards", "portfolio", "profile"];
 const MARKET_HEAT_DESCRIPTION =
-  "Heat combines recency, copied volume, wallet streak, and trade activity.";
+  "How hot this wallet has been lately, based on ROI, streaks, and activity.";
 export type MarketHeatSwipeAction = "none" | "select" | "copy" | "fade";
 export type MarketHeatSwipeHintMode = "both" | "copy" | "fade";
 type MarketHeatSwipePreview = {
@@ -333,12 +347,6 @@ export type ShareCardState = {
   text: string;
   xUrl: string;
 };
-type DusdcBalanceState = {
-  accountAddress: string | null;
-  refreshKey: number;
-  status: "idle" | "loading" | "ready" | "error";
-  label: string | null;
-};
 type PredictManagerBankrollState = {
   accountAddress: string | null;
   managerObjectId: string | null;
@@ -373,6 +381,11 @@ type ProfileHistoryState = {
   status: ProfileHistoryStatus;
   wallet: string | null;
 };
+type WalletProfileState = {
+  profile: WalletProfileRecord | null;
+  status: "idle" | "loading" | "ready" | "saving" | "error";
+  wallet: string | null;
+};
 type ProfileStatTone = "positive" | "negative" | "flat";
 type ProfileStatItem = {
   label: string;
@@ -391,6 +404,13 @@ export type FollowedWallet = {
   displayName: string;
   wallet: string;
 };
+
+function followedWalletRecordsToUi(records: FollowedWalletRecord[]): FollowedWallet[] {
+  return records.map((record) => ({
+    displayName: record.displayName || formatWalletAddress(record.wallet),
+    wallet: record.wallet,
+  }));
+}
 
 export function resolveSelectedProfileWalletForNav(
   view: AppView,
@@ -1736,6 +1756,7 @@ export function filterMarketHeatRowsByFollowedWallets(
 type WalletHeaderControlProps = {
   accountAddress: string | null;
   connectionStatus: string;
+  displayName?: string | null;
   readOnly?: boolean;
   walletChoices?: WalletChoice[];
   walletChooserOpen?: boolean;
@@ -1759,6 +1780,7 @@ type WalletStatusBarProps = WalletHeaderControlProps & {
 export function WalletHeaderControl({
   accountAddress,
   connectionStatus,
+  displayName = null,
   readOnly = false,
   walletChoices = [],
   walletChooserOpen = false,
@@ -1788,7 +1810,9 @@ export function WalletHeaderControl({
         disabled={readOnly}
         onClick={readOnly ? undefined : onDisconnect}
       >
-        <strong data-testid="wallet-address">{formatWalletAddress(accountAddress)}</strong>
+        <strong data-testid="wallet-address">
+          {displayName?.trim() || formatWalletAddress(accountAddress)}
+        </strong>
         <span>{readOnly ? "Read-only" : "Connected"}</span>
       </button>
     );
@@ -2742,9 +2766,14 @@ function PortfolioHistoryList({
   testId?: string;
   title?: string;
 }) {
+  const [visibleCount, setVisibleCount] = useState(PORTFOLIO_HISTORY_PAGE_SIZE);
+
   if (!items.length) {
     return <div className="portfolio-empty">{emptyLabel}</div>;
   }
+
+  const visibleItems = items.slice(0, visibleCount);
+  const canShowMore = visibleItems.length < items.length;
 
   return (
     <div className="portfolio-history" data-testid={testId}>
@@ -2756,10 +2785,12 @@ function PortfolioHistoryList({
         <span>Payout</span>
         <span>PNL</span>
       </div>
-      {items.map((item) => {
+      {visibleItems.map((item) => {
         const isOpen = item.statusLabel === "Open";
         const timeLabel = isOpen && item.timeLabel ? item.timeLabel : item.expiryTimeLabel;
         const isLiveCountdown = isOpen && isLiveCountdownLabel(timeLabel);
+        const payoutLabel = isOpen ? "-" : item.payoutLabel;
+        const pnlLabel = isOpen ? "-" : item.pnlLabel;
 
         return (
           <article
@@ -2784,14 +2815,27 @@ function PortfolioHistoryList({
               <small>{item.statusLabel}</small>
             </div>
             <span className="portfolio-table-cell">{item.costLabel}</span>
-            <span className="portfolio-table-cell">{item.payoutLabel}</span>
+            <span className="portfolio-table-cell">{payoutLabel}</span>
             <div className={`portfolio-history-pnl portfolio-history-pnl-${item.pnlTone}`}>
-              <small>PNL</small>
-              <strong>{item.pnlLabel}</strong>
+              <strong>{pnlLabel}</strong>
             </div>
           </article>
         );
       })}
+      {canShowMore ? (
+        <button
+          type="button"
+          className="market-heat-show-more portfolio-history-show-more"
+          data-testid={`${testId}-show-more`}
+          onClick={() =>
+            setVisibleCount((count) =>
+              Math.min(items.length, count + PORTFOLIO_HISTORY_PAGE_SIZE),
+            )
+          }
+        >
+          Show more
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -2981,6 +3025,9 @@ export function ProfilePanel({
   copyAmount = COPY_AMOUNT_DEFAULT,
   copyAttributionLabels = {},
   followedWallets,
+  ownProfileDisplayName = "Your wallet",
+  profileDisplayNameDraft = "",
+  profileDisplayNameSaveStatus = "idle",
   profileCopyAttributionLabel = null,
   profileHistoryItems = [],
   profileHistoryStatus = "idle",
@@ -2996,6 +3043,8 @@ export function ProfilePanel({
   walletConnected = false,
   onAmountSet = () => undefined,
   onFollowWallet,
+  onProfileDisplayNameDraftChange = () => undefined,
+  onProfileDisplayNameSave,
   onProfilePositionSelect = () => undefined,
   onProfilePositionsShowMore = () => undefined,
   onProfilePositionWalletSubmit = () => undefined,
@@ -3009,6 +3058,9 @@ export function ProfilePanel({
   copyAmount?: number;
   copyAttributionLabels?: Record<string, string>;
   followedWallets: FollowedWallet[];
+  ownProfileDisplayName?: string;
+  profileDisplayNameDraft?: string;
+  profileDisplayNameSaveStatus?: WalletProfileState["status"];
   profileCopyAttributionLabel?: string | null;
   profileHistoryItems?: PredictPortfolioHistoryItem[];
   profileHistoryStatus?: ProfileHistoryStatus;
@@ -3024,6 +3076,8 @@ export function ProfilePanel({
   walletConnected?: boolean;
   onAmountSet?: (amount: number) => void;
   onFollowWallet: (wallet: FollowedWallet) => void;
+  onProfileDisplayNameDraftChange?: (displayName: string) => void;
+  onProfileDisplayNameSave?: () => void;
   onProfilePositionSelect?: (rowId: string, mode?: MarketHeatIntentMode) => void;
   onProfilePositionsShowMore?: () => void;
   onProfilePositionWalletSubmit?: (rowId: string, mode?: MarketHeatIntentMode) => void;
@@ -3037,7 +3091,7 @@ export function ProfilePanel({
   const activeWallet =
     profileWallet ??
     (currentWalletAddress
-      ? { displayName: "Your wallet", wallet: currentWalletAddress }
+      ? { displayName: ownProfileDisplayName, wallet: currentWalletAddress }
       : null);
   const isOwnActiveWallet =
     Boolean(activeWallet && currentWalletAddress) &&
@@ -3055,6 +3109,14 @@ export function ProfilePanel({
       : profileHistoryStatus === "error"
         ? "Could not load trade history"
         : "No trade history yet";
+  const trimmedProfileDisplayNameDraft = profileDisplayNameDraft.trim();
+  const canSaveProfileDisplayName =
+    Boolean(onProfileDisplayNameSave) &&
+    walletConnected &&
+    isOwnActiveWallet &&
+    trimmedProfileDisplayNameDraft.length > 0 &&
+    trimmedProfileDisplayNameDraft !== activeWallet?.displayName &&
+    profileDisplayNameSaveStatus !== "saving";
 
   return (
     <section className="profile-panel" aria-label="Profile" data-testid="profile-view">
@@ -3106,6 +3168,38 @@ export function ProfilePanel({
                 </button>
               ) : null}
             </div>
+            {isOwnActiveWallet && walletConnected && onProfileDisplayNameSave ? (
+              <form
+                className="profile-settings-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (canSaveProfileDisplayName) {
+                    onProfileDisplayNameSave();
+                  }
+                }}
+              >
+                <label>
+                  <span>Display name</span>
+                  <input
+                    aria-label="Profile display name"
+                    data-testid="profile-display-name-input"
+                    maxLength={40}
+                    placeholder={formatWalletAddress(activeWallet.wallet)}
+                    value={profileDisplayNameDraft}
+                    onChange={(event) =>
+                      onProfileDisplayNameDraftChange(event.currentTarget.value)
+                    }
+                  />
+                </label>
+                <button
+                  type="submit"
+                  data-testid="profile-display-name-save"
+                  disabled={!canSaveProfileDisplayName}
+                >
+                  {profileDisplayNameSaveStatus === "saving" ? "Saving" : "Save"}
+                </button>
+              </form>
+            ) : null}
           </>
         ) : (
           <>
@@ -3326,13 +3420,6 @@ const PROFILE_LEADERBOARD_SEARCH_ORDER: WalletLeaderboardBoardKey[] = [
   "longestLosingStreak",
 ];
 
-const profileLastActiveFormatter = new Intl.DateTimeFormat("en-US", {
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-  month: "short",
-});
-
 function findWalletLeaderboardEntry(
   snapshot: WalletLeaderboardsSnapshot,
   wallet: string | null,
@@ -3354,26 +3441,49 @@ function findWalletLeaderboardEntry(
   return null;
 }
 
-function formatProfileLastActive(entry: WalletLeaderboardEntry): string {
-  const timestampMs = entry.lastSeenMs ?? entry.lastSettledAtMs;
-  if (!timestampMs) {
-    return "--";
+export function buildProfileHeatStat(rows: MarketHeatPreviewRow[]): ProfileStatItem {
+  const ratedRows = rows.filter(
+    (row) => row.heatScoreLabel !== "-" && Number.isFinite(row.heatScore),
+  );
+
+  if (!ratedRows.length) {
+    return {
+      label: "Heat",
+      tone: "flat",
+      value: "--",
+    };
   }
 
-  return profileLastActiveFormatter.format(new Date(timestampMs));
+  const hottestRow = ratedRows.reduce((bestRow, row) =>
+    row.heatScore > bestRow.heatScore ? row : bestRow,
+  );
+
+  return {
+    label: "Heat",
+    tone:
+      hottestRow.heatScore >= 70
+        ? "positive"
+        : hottestRow.heatScore <= 25
+          ? "negative"
+          : "flat",
+    value: hottestRow.heatScoreLabel || String(Math.round(hottestRow.heatScore)),
+  };
 }
 
-function buildProfileStatSummary(entry: WalletLeaderboardEntry | null): ProfileStatSummary {
+function buildProfileStatSummary(
+  entry: WalletLeaderboardEntry | null,
+  heatStat: ProfileStatItem = buildProfileHeatStat([]),
+): ProfileStatSummary {
   if (!entry) {
     return {
       sourceLabel: "Waiting for settled leaderboard data",
       items: [
+        heatStat,
         { label: "Win rate", value: "--" },
         { label: "All-time PNL", value: "--" },
         { label: "Current streak", value: "--" },
         { label: "Best streak", value: "--" },
         { label: "Total calls", value: "--" },
-        { label: "Last active", value: "--" },
       ],
     };
   }
@@ -3383,6 +3493,7 @@ function buildProfileStatSummary(entry: WalletLeaderboardEntry | null): ProfileS
   return {
     sourceLabel: "Indexed DeepBook Predict record",
     items: [
+      heatStat,
       { label: "Win rate", value: formatWalletLeaderboardWinRate(entry) },
       { label: "All-time PNL", value: entry.totalPnlLabel, tone: entry.totalPnlTone },
       {
@@ -3401,7 +3512,6 @@ function buildProfileStatSummary(entry: WalletLeaderboardEntry | null): ProfileS
         tone: entry.longestWinningStreak > 0 ? "positive" : "flat",
       },
       { label: "Total calls", value: totalCalls.toLocaleString() },
-      { label: "Last active", value: formatProfileLastActive(entry) },
     ],
   };
 }
@@ -3426,6 +3536,7 @@ function formatSignedProfileDusdc(value: bigint): string {
 function buildProfileStatSummaryFromHistory(
   historyItems: PredictPortfolioHistoryItem[],
   status: ProfileHistoryStatus,
+  heatStat: ProfileStatItem = buildProfileHeatStat([]),
 ): ProfileStatSummary {
   const settledResults = historyItems
     .map((item) => parseProfilePnlAtomic(item.pnlAtomic))
@@ -3440,12 +3551,12 @@ function buildProfileStatSummaryFromHistory(
             ? "Profile record unavailable"
             : "Waiting for settled leaderboard data",
       items: [
+        heatStat,
         { label: "Win rate", value: "--" },
         { label: "All-time PNL", value: "--" },
         { label: "Current streak", value: "--" },
         { label: "Best streak", value: "--" },
         { label: "Total calls", value: "--" },
-        { label: "Last active", value: "--" },
       ],
     };
   }
@@ -3481,6 +3592,7 @@ function buildProfileStatSummaryFromHistory(
   return {
     sourceLabel: "",
     items: [
+      heatStat,
       {
         label: "Win rate",
         value: settledCount > 0 ? `${Math.round((wins / settledCount) * 100)}%` : "--",
@@ -3509,7 +3621,6 @@ function buildProfileStatSummaryFromHistory(
         tone: bestWinningStreak > 0 ? "positive" : "flat",
       },
       { label: "Total calls", value: historyItems.length.toLocaleString() },
-      { label: "Last active", value: historyItems[0]?.updatedAtLabel ?? "--" },
     ],
   };
 }
@@ -4408,7 +4519,6 @@ export function MarketHeader({
 }
 
 export function AccountSummary({
-  availableLabel = null,
   bankrollLabel = null,
   depositAmount = DEPOSIT_AMOUNT_DEFAULT,
   onDeposit,
@@ -4421,7 +4531,6 @@ export function AccountSummary({
   summary,
   variant = "default",
 }: {
-  availableLabel?: string | null;
   bankrollLabel?: string | null;
   depositAmount?: number;
   onDeposit?: () => void;
@@ -4458,7 +4567,7 @@ export function AccountSummary({
           <strong data-testid="predict-bankroll-balance">
             {bankrollLabel ?? summary.accountValue}
           </strong>
-          {onDeposit ? (
+          {onDeposit && !isPortfolioSummary ? (
             <div className="account-deposit-control">
               <label className="account-deposit-amount">
                 <span aria-hidden="true">$</span>
@@ -4486,12 +4595,6 @@ export function AccountSummary({
         </div>
       </div>
       <div className="account-summary-stats">
-        <div>
-          <span title="dUSDC available in the connected wallet">Wallet balance</span>
-          <strong data-testid="available-wallet-balance">
-            {availableLabel ?? summary.available}
-          </strong>
-        </div>
         {isPortfolioSummary ? (
           <>
             <div className="account-stake-cell">
@@ -4511,16 +4614,18 @@ export function AccountSummary({
                 />
               </label>
             </div>
-            <div className="account-deposit-cell">
-              <button
-                type="button"
-                className="account-summary-deposit-button"
-                data-testid="portfolio-deposit-bankroll"
-                onClick={onDeposit}
-              >
-                Deposit
-              </button>
-            </div>
+            {onDeposit ? (
+              <div className="account-deposit-cell">
+                <button
+                  type="button"
+                  className="account-summary-deposit-button"
+                  data-testid="portfolio-deposit-bankroll"
+                  onClick={onDeposit}
+                >
+                  Deposit
+                </button>
+              </div>
+            ) : null}
           </>
         ) : (
           <>
@@ -4641,17 +4746,12 @@ export function App() {
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const toastCounterRef = useRef(0);
   const toastTimeoutsRef = useRef<number[]>([]);
+  const walletAuthAttemptedAddressRef = useRef<string | null>(null);
+  const walletProfileSettingsLoadedAddressRef = useRef<string | null>(null);
   const [shareCard, setShareCard] = useState<ShareCardState | null>(null);
   const [copyAttributions, setCopyAttributions] = useState<CopyAttributionRecord[]>(() =>
     readStoredCopyAttributions(),
   );
-  const [dusdcBalanceRefreshKey, setDusdcBalanceRefreshKey] = useState(0);
-  const [dusdcBalanceState, setDusdcBalanceState] = useState<DusdcBalanceState>({
-    accountAddress: null,
-    refreshKey: 0,
-    status: "idle",
-    label: null,
-  });
   const [predictManagerBankrollRefreshKey, setPredictManagerBankrollRefreshKey] =
     useState(0);
   const [predictManagerBankrollState, setPredictManagerBankrollState] =
@@ -4684,6 +4784,12 @@ export function App() {
     status: "idle",
     wallet: null,
   });
+  const [walletProfileState, setWalletProfileState] = useState<WalletProfileState>({
+    profile: null,
+    status: "idle",
+    wallet: null,
+  });
+  const [walletProfileDisplayNameDraft, setWalletProfileDisplayNameDraft] = useState("");
   const [walletLeaderboardsState, setWalletLeaderboardsState] =
     useState<WalletLeaderboardsState>(() => ({
       snapshot: buildWalletLeaderboards(),
@@ -4773,6 +4879,40 @@ export function App() {
       return nextRecords;
     });
   };
+  const requestPersistentWalletSession = async (): Promise<WalletAuthSession> => {
+    if (!currentAccount) {
+      throw new Error("Connect a Sui testnet wallet first.");
+    }
+
+    return await requestWalletAuthSession({
+      apiBaseUrl: realtimeApiBaseUrl,
+      wallet: currentAccount.address,
+      storage: typeof window === "undefined" ? null : window.localStorage,
+      signPersonalMessage: (message) => dAppKit.signPersonalMessage({ message }),
+    });
+  };
+  const replaceFollowedWallets = (wallets: FollowedWallet[]) => {
+    setFollowedWallets(wallets);
+    writeFollowedWallets(wallets);
+  };
+  const persistFollowedWallet = async (wallet: FollowedWallet) => {
+    const session = await requestPersistentWalletSession();
+    const savedWallets = await saveFollowedWalletToApi({
+      apiBaseUrl: realtimeApiBaseUrl,
+      session,
+      wallet,
+    });
+    replaceFollowedWallets(followedWalletRecordsToUi(savedWallets));
+  };
+  const persistUnfollowedWallet = async (leaderWallet: string) => {
+    const session = await requestPersistentWalletSession();
+    const savedWallets = await deleteFollowedWalletFromApi({
+      apiBaseUrl: realtimeApiBaseUrl,
+      leaderWallet,
+      session,
+    });
+    replaceFollowedWallets(followedWalletRecordsToUi(savedWallets));
+  };
   const openShareCard = async (input: HotHandsShareCardInput) => {
     try {
       const card = await renderShareCard(input);
@@ -4833,7 +4973,52 @@ export function App() {
   const copyState = replayState.copy;
   useEffect(() => {
     writeStoredStakeAmount(copyState.copyAmount);
-  }, [copyState.copyAmount]);
+
+    if (!currentAccount || !realtimeApiBaseUrl || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const walletAddress = currentAccount.address;
+    const walletKey = walletAddress.toLowerCase();
+    if (walletProfileSettingsLoadedAddressRef.current !== walletKey) {
+      return undefined;
+    }
+
+    const session = readStoredWalletAuthSession(
+      window.localStorage,
+      walletAddress,
+      Date.now(),
+    );
+    if (!session) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void saveWalletProfileToApi({
+        apiBaseUrl: realtimeApiBaseUrl,
+        session,
+        profile: { defaultStakeAmountUsd: copyState.copyAmount },
+      })
+        .then((profile) => {
+          setWalletProfileState((state) => {
+            if (state.wallet?.toLowerCase() !== walletKey) {
+              return state;
+            }
+
+            return {
+              profile,
+              status: "ready",
+              wallet: profile.wallet,
+            };
+          });
+        })
+        .catch(() => undefined);
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [copyState.copyAmount, currentAccount?.address, realtimeApiBaseUrl]);
   const replayTraders = useMemo(
     () => getReplayTraders(replayState, scenario),
     [replayState, scenario],
@@ -5017,6 +5202,13 @@ export function App() {
   const isWalletActionPending = walletTxState.status === "pending";
   const isReadOnlyWalletView = !currentAccount && Boolean(readOnlyWalletAddress);
   const connectedAccountAddress = currentAccount?.address ?? readOnlyWalletAddress;
+  const connectedWalletProfile =
+    connectedAccountAddress &&
+    walletProfileState.wallet?.toLowerCase() === connectedAccountAddress.toLowerCase()
+      ? walletProfileState.profile
+      : null;
+  const connectedWalletDisplayName =
+    connectedWalletProfile?.displayName?.trim() || formatWalletAddress(connectedAccountAddress);
   const activeProfileWalletAddress =
     selectedProfileWallet?.wallet ?? connectedAccountAddress ?? null;
   const isOwnActiveProfileWallet =
@@ -5060,6 +5252,121 @@ export function App() {
       setIsWalletChooserOpen(false);
     }
   }, [connectedAccountAddress, wallets.length]);
+
+  useEffect(() => {
+    if (!currentAccount || !realtimeApiBaseUrl || typeof window === "undefined") {
+      walletAuthAttemptedAddressRef.current = null;
+      walletProfileSettingsLoadedAddressRef.current = null;
+      setWalletProfileState({
+        profile: null,
+        status: "idle",
+        wallet: null,
+      });
+      setWalletProfileDisplayNameDraft("");
+      return undefined;
+    }
+
+    let isCurrent = true;
+    const walletAddress = currentAccount.address;
+    const walletKey = walletAddress.toLowerCase();
+    const session = readStoredWalletAuthSession(window.localStorage, walletAddress, Date.now());
+    const loadWalletAppState = async (walletSession: WalletAuthSession) => {
+      const [wallets, profile] = await Promise.all([
+        loadFollowedWalletsFromApi({
+          apiBaseUrl: realtimeApiBaseUrl,
+          session: walletSession,
+        }),
+        loadAuthenticatedWalletProfileFromApi({
+          apiBaseUrl: realtimeApiBaseUrl,
+          session: walletSession,
+        }),
+      ]);
+
+      if (!isCurrent) {
+        return;
+      }
+
+      replaceFollowedWallets(followedWalletRecordsToUi(wallets));
+      setWalletProfileState({
+        profile,
+        status: "ready",
+        wallet: profile.wallet,
+      });
+      setWalletProfileDisplayNameDraft(profile.displayName ?? "");
+      walletProfileSettingsLoadedAddressRef.current = walletKey;
+
+      if (profile.defaultStakeAmountUsd !== undefined) {
+        setReplayState((state) =>
+          updateReplayCopy(state, (copy) =>
+            setCopyAmount(copy, profile.defaultStakeAmountUsd ?? copy.copyAmount),
+          ),
+        );
+      }
+    };
+    const markProfileLoading = () => {
+      setWalletProfileState((state) => ({
+        profile: state.wallet?.toLowerCase() === walletKey ? state.profile : null,
+        status: "loading",
+        wallet: walletAddress,
+      }));
+    };
+    const handleLoadFailure = () => {
+      if (!isCurrent) {
+        return;
+      }
+
+      clearStoredWalletAuthSession(window.localStorage);
+      walletProfileSettingsLoadedAddressRef.current = null;
+      setWalletProfileState({
+        profile: null,
+        status: "error",
+        wallet: walletAddress,
+      });
+    };
+
+    if (session) {
+      markProfileLoading();
+      void loadWalletAppState(session).catch(handleLoadFailure);
+    } else if (walletAuthAttemptedAddressRef.current !== walletKey) {
+      walletAuthAttemptedAddressRef.current = walletKey;
+      markProfileLoading();
+      setWalletTxState({
+        status: "pending",
+        label: "Sign in to Hot Hands",
+        digest: null,
+      });
+      void requestWalletAuthSession({
+        apiBaseUrl: realtimeApiBaseUrl,
+        wallet: walletAddress,
+        storage: window.localStorage,
+        signPersonalMessage: (message) => dAppKit.signPersonalMessage({ message }),
+      })
+        .then((walletSession) => {
+          if (isCurrent) {
+            setWalletTxState(idleWalletTransactionState);
+          }
+          void loadWalletAppState(walletSession).catch(handleLoadFailure);
+        })
+        .catch((error) => {
+          if (isCurrent) {
+            setWalletTxState({
+              status: "error",
+              label: walletErrorMessage(error),
+              digest: null,
+            });
+            setWalletProfileState({
+              profile: null,
+              status: "error",
+              wallet: walletAddress,
+            });
+          }
+        });
+    }
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentAccount?.address, realtimeApiBaseUrl]);
 
   useEffect(() => {
     syncAppViewToUrl(activeView);
@@ -5134,20 +5441,6 @@ export function App() {
     };
   }, [activeProfileWalletAddress, activeView, isOwnActiveProfileWallet, realtimeApiBaseUrl]);
 
-  const liveDusdcBalanceLabel =
-    connectedAccountAddress &&
-    dusdcBalanceState.accountAddress === connectedAccountAddress &&
-    dusdcBalanceState.refreshKey === dusdcBalanceRefreshKey
-      ? dusdcBalanceState.status === "ready"
-        ? dusdcBalanceState.label
-        : dusdcBalanceState.status === "loading"
-          ? "Loading..."
-          : dusdcBalanceState.status === "error"
-            ? "$--"
-            : null
-      : connectedAccountAddress
-        ? "Loading..."
-        : null;
   const isPredictManagerStateCurrent =
     connectedAccountAddress &&
     predictManagerState.accountAddress === connectedAccountAddress &&
@@ -5234,11 +5527,13 @@ export function App() {
       : activeProfileWalletAddress
         ? "loading"
         : "idle";
+  const activeProfileHeatStat = buildProfileHeatStat(allProfilePositionRows);
   const activeProfileStats = activeProfileLeaderboardEntry
-    ? buildProfileStatSummary(activeProfileLeaderboardEntry)
+    ? buildProfileStatSummary(activeProfileLeaderboardEntry, activeProfileHeatStat)
     : buildProfileStatSummaryFromHistory(
         activeProfileHistoryItems,
         activeProfileHistoryStatus,
+        activeProfileHeatStat,
       );
   const visiblePortfolioPnl =
     activePredictManagerObjectId && isPredictPortfolioStateCurrent
@@ -5352,59 +5647,6 @@ export function App() {
       readDismissedPortfolioPositionIds(activePredictManagerObjectId || null),
     );
   }, [activePredictManagerObjectId]);
-
-  useEffect(() => {
-    if (!connectedAccountAddress) {
-      setDusdcBalanceState({
-        accountAddress: null,
-        refreshKey: dusdcBalanceRefreshKey,
-        status: "idle",
-        label: null,
-      });
-      return undefined;
-    }
-
-    let isCurrent = true;
-    setDusdcBalanceState({
-      accountAddress: connectedAccountAddress,
-      refreshKey: dusdcBalanceRefreshKey,
-      status: "loading",
-      label: null,
-    });
-
-    void loadDusdcBalanceLabel({
-      client: currentClient,
-      owner: connectedAccountAddress,
-    })
-      .then((label) => {
-        if (!isCurrent) {
-          return;
-        }
-
-        setDusdcBalanceState({
-          accountAddress: connectedAccountAddress,
-          refreshKey: dusdcBalanceRefreshKey,
-          status: "ready",
-          label,
-        });
-      })
-      .catch(() => {
-        if (!isCurrent) {
-          return;
-        }
-
-        setDusdcBalanceState({
-          accountAddress: connectedAccountAddress,
-          refreshKey: dusdcBalanceRefreshKey,
-          status: "error",
-          label: null,
-        });
-      });
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [connectedAccountAddress, currentClient, dusdcBalanceRefreshKey]);
 
   useEffect(() => {
     if (!connectedAccountAddress || !activePredictManagerObjectId) {
@@ -5567,6 +5809,7 @@ export function App() {
         const preview = await loadMarketHeatPreview({
           apiBaseUrl: realtimeApiBaseUrl,
           includeExpired: marketHeatShowExpired,
+          useHotHandsProfileNames: true,
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
@@ -5592,6 +5835,7 @@ export function App() {
         const preview = await loadMarketHeatPriceSnapshot(marketHeatPreviewRef.current, {
           apiBaseUrl: realtimeApiBaseUrl,
           includeExpired: marketHeatShowExpired,
+          useHotHandsProfileNames: true,
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
@@ -5651,6 +5895,7 @@ export function App() {
       try {
         const snapshot = await loadWalletLeaderboards({
           apiBaseUrl: realtimeApiBaseUrl,
+          useHotHandsProfileNames: true,
           useMainnetSuinsNames: true,
         });
 
@@ -6123,23 +6368,63 @@ export function App() {
         label: `${copyTradeLabel} transaction sent.`,
         digest,
       });
+      const copiedPositionId = buildPredictPortfolioPositionId({
+        managerId: activePredictManagerObjectId,
+        oracleId: copyTrade.market.oracleId,
+        expiry: copyTrade.market.expiry,
+        strike: copyTrade.market.strikeRaw,
+        direction: copyTradeSide,
+      });
+      const sourcePositionId = copyAttributionTargetForMarketHeatRow(copyTrade.row).positionId;
+      const copiedAmount =
+        Number.isFinite(quote.costUsd) && quote.costUsd > 0
+          ? quote.costUsd
+          : copyState.copyAmount;
       recordCopyAttribution({
-        amount:
-          Number.isFinite(quote.costUsd) && quote.costUsd > 0
-            ? quote.costUsd
-            : copyState.copyAmount,
-        copied_position_id: buildPredictPortfolioPositionId({
-          managerId: activePredictManagerObjectId,
-          oracleId: copyTrade.market.oracleId,
-          expiry: copyTrade.market.expiry,
-          strike: copyTrade.market.strikeRaw,
-          direction: copyTradeSide,
-        }),
+        amount: copiedAmount,
+        copied_position_id: copiedPositionId,
         copier: currentAccount.address,
-        position_id: copyAttributionTargetForMarketHeatRow(copyTrade.row).positionId,
+        position_id: sourcePositionId,
         source_wallet: copyTrade.row.wallet,
         timestamp: Date.now(),
       });
+      if (realtimeApiBaseUrl) {
+        void requestPersistentWalletSession()
+          .then((session) =>
+            recordCopyReceiptToApi({
+              apiBaseUrl: realtimeApiBaseUrl,
+              session,
+              receipt: {
+                receiptId: `${mode}-${digest ?? Date.now()}-${copyTrade.row.id}`,
+                sourceWallet: copyTrade.row.wallet,
+                sourcePositionId,
+                copiedPositionId,
+                mode,
+                status: "submitted",
+                oracleId: copyTrade.market.oracleId,
+                expiryMs: copyTrade.market.expiryMs,
+                strike: copyTrade.market.strikeRaw,
+                sourceSide: copyTrade.row.side,
+                executionSide: copyTradeSide,
+                amountUsd: copiedAmount,
+                quoteCost: quote.costUsd,
+                ...(digest ? { transactionDigest: digest } : {}),
+                raw: {
+                  feedRowId: copyTrade.row.id,
+                  marketId: copyTrade.market.id,
+                },
+              },
+            }),
+          )
+          .catch((receiptError) => {
+            pushToast({
+              kind: "warning",
+              title: "Copy saved locally",
+              message: walletErrorMessage(receiptError),
+              groupKey: "copy-receipt",
+            });
+          });
+      }
       refreshAfterWalletTransaction(digest);
     } catch (error) {
       setWalletTxState({
@@ -6229,6 +6514,20 @@ export function App() {
       message: wallet.displayName || formatWalletAddress(normalizedWallet),
       groupKey: "follow-wallet",
     });
+
+    if (currentAccount && realtimeApiBaseUrl) {
+      void persistFollowedWallet({
+        displayName: wallet.displayName || formatWalletAddress(normalizedWallet),
+        wallet: normalizedWallet,
+      }).catch((error) => {
+        pushToast({
+          kind: "warning",
+          title: "Saved locally",
+          message: walletErrorMessage(error),
+          groupKey: "follow-wallet",
+        });
+      });
+    }
   };
   const handleUnfollowWallet = (wallet: string) => {
     const normalizedWallet = normalizeProfileWalletAddress(wallet);
@@ -6256,6 +6555,81 @@ export function App() {
       message: formatWalletAddress(normalizedWallet),
       groupKey: "follow-wallet",
     });
+
+    if (currentAccount && realtimeApiBaseUrl) {
+      void persistUnfollowedWallet(normalizedWallet).catch((error) => {
+        pushToast({
+          kind: "warning",
+          title: "Saved locally",
+          message: walletErrorMessage(error),
+          groupKey: "follow-wallet",
+        });
+      });
+    }
+  };
+  const handleSaveWalletProfileDisplayName = async () => {
+    if (!currentAccount || !realtimeApiBaseUrl) {
+      pushToast({
+        kind: "error",
+        title: "Connect wallet",
+        message: "Connect a wallet before saving a profile name.",
+        groupKey: "profile-name",
+      });
+      return;
+    }
+
+    const displayName = walletProfileDisplayNameDraft.trim();
+    if (!displayName) {
+      pushToast({
+        kind: "error",
+        title: "Name required",
+        message: "Choose a display name before saving.",
+        groupKey: "profile-name",
+      });
+      return;
+    }
+
+    const walletAddress = currentAccount.address;
+    setWalletProfileState((state) => ({
+      ...state,
+      status: "saving",
+      wallet: walletAddress,
+    }));
+
+    try {
+      const session = await requestPersistentWalletSession();
+      const profile = await saveWalletProfileToApi({
+        apiBaseUrl: realtimeApiBaseUrl,
+        session,
+        profile: { displayName },
+      });
+
+      setWalletProfileState({
+        profile,
+        status: "ready",
+        wallet: profile.wallet,
+      });
+      setWalletProfileDisplayNameDraft(profile.displayName ?? "");
+      walletProfileSettingsLoadedAddressRef.current = walletAddress.toLowerCase();
+      pushToast({
+        kind: "success",
+        title: "Profile saved",
+        message: profile.displayName ?? formatWalletAddress(profile.wallet),
+        groupKey: "profile-name",
+      });
+    } catch (error) {
+      setWalletProfileState((state) => ({
+        ...state,
+        status: "error",
+        wallet: walletAddress,
+      }));
+      pushToast({
+        kind: "error",
+        title: "Profile save failed",
+        message: walletErrorMessage(error),
+        groupKey: "profile-name",
+      });
+    }
   };
   const handleDepositAmountChange = (amount: number) => {
     setDepositAmount(clampDepositAmount(amount));
@@ -6328,6 +6702,7 @@ export function App() {
   const handleWalletDisconnect = async () => {
     try {
       await dAppKit.disconnectWallet();
+      clearStoredWalletAuthSession(typeof window === "undefined" ? null : window.localStorage);
       setWalletTxState(idleWalletTransactionState);
       setPortfolioWalletSubmitPositionId(null);
       pushToast({
@@ -6344,7 +6719,6 @@ export function App() {
     }
   };
   const refreshPredictWalletSurfaces = () => {
-    setDusdcBalanceRefreshKey((key) => key + 1);
     setPredictManagerRefreshKey((key) => key + 1);
     setPredictManagerBankrollRefreshKey((key) => key + 1);
     setPredictPortfolioRefreshKey((key) => key + 1);
@@ -6767,6 +7141,7 @@ export function App() {
               <WalletHeaderControl
                 accountAddress={connectedAccountAddress}
                 connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
+                displayName={connectedWalletDisplayName}
                 readOnly={isReadOnlyWalletView}
                 walletChoices={wallets}
                 walletChooserOpen={isWalletChooserOpen}
@@ -6799,7 +7174,6 @@ export function App() {
           />
           {shouldShowAccountSummary(activeView) ? (
             <AccountSummary
-              availableLabel={liveDusdcBalanceLabel}
               bankrollLabel={livePredictManagerBankrollLabel}
               depositAmount={depositAmount}
               onDeposit={handleDepositBankroll}
@@ -6852,6 +7226,9 @@ export function App() {
               copyAmount={copyState.copyAmount}
               copyAttributionLabels={copyAttributionLabelsByRowId}
               followedWallets={followedWallets}
+              ownProfileDisplayName={connectedWalletDisplayName}
+              profileDisplayNameDraft={walletProfileDisplayNameDraft}
+              profileDisplayNameSaveStatus={walletProfileState.status}
               profileCopyAttributionLabel={activeProfileCopyAttributionLabel}
               profileHistoryItems={activeProfileHistoryItems}
               profileHistoryStatus={activeProfileHistoryStatus}
@@ -6867,6 +7244,8 @@ export function App() {
               walletConnected={Boolean(currentAccount)}
               onAmountSet={handleAmountSet}
               onFollowWallet={handleFollowWallet}
+              onProfileDisplayNameDraftChange={setWalletProfileDisplayNameDraft}
+              onProfileDisplayNameSave={handleSaveWalletProfileDisplayName}
               onProfilePositionSelect={handleMarketHeatSelect}
               onProfilePositionsShowMore={handleProfilePositionsShowMore}
               onProfilePositionWalletSubmit={handleMarketHeatWalletSubmit}

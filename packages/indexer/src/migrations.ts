@@ -5,7 +5,10 @@ export type IndexerMigration = {
   sql: string;
 };
 
-const INDEXER_MIGRATION_FILES = ["0001_indexer_foundation.sql"];
+const INDEXER_MIGRATION_FILES = [
+  "0001_indexer_foundation.sql",
+  "0002_app_social.sql",
+];
 
 declare const Bun: {
   file: (path: string) => {

@@ -676,7 +676,9 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Live expiry countdown");
     expect(html).not.toContain(">Live</small>");
     expect(html).toContain("Heat");
-    expect(html).toContain("Heat combines recency, copied volume, wallet streak, and trade activity.");
+    expect(html).toContain(
+      "How hot this wallet has been lately, based on ROI, streaks, and activity.",
+    );
     expect(html).toContain("market-heat-info");
     expect(html).toContain('data-testid="market-heat-info-trigger"');
     expect(html).toContain('aria-expanded="false"');

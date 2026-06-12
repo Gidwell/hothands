@@ -209,6 +209,12 @@ button:disabled {
   min-width: 0;
 }
 
+.oracle-mini-chart .oracle-chart-shell,
+.oracle-mini-chart .oracle-chart-canvas,
+.oracle-mini-chart .oracle-chart-canvas canvas {
+  pointer-events: none;
+}
+
 .oracle-mini-chart-visual {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -3603,7 +3609,7 @@ button:disabled {
 
 .account-summary {
   display: grid;
-  grid-template-columns: minmax(104px, 1.08fr) repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(104px, 1.08fr) repeat(3, minmax(0, 1fr));
 }
 
 .account-summary-main,
@@ -3682,11 +3688,13 @@ button:disabled {
 .account-summary-deposit-button {
   min-height: 28px;
   width: 100%;
+  max-width: 100%;
   border-radius: 7px;
   color: #ffffff;
   background: var(--hh-accent);
   font-size: 0.68rem;
   font-weight: 950;
+  padding: 0 9px;
 }
 
 .section-heading {
@@ -4415,6 +4423,7 @@ button:disabled {
 
 .profile-card,
 .profile-stat-header,
+.profile-settings-form,
 .profile-follow-form,
 .profile-following-list {
   display: grid;
@@ -4426,6 +4435,7 @@ button:disabled {
 }
 
 .profile-card-label,
+.profile-settings-form label span,
 .profile-follow-form label span {
   color: var(--hh-muted);
   font-size: 0.58rem;
@@ -4634,6 +4644,7 @@ button:disabled {
 }
 
 .profile-follow-button,
+.profile-settings-form button,
 .profile-follow-form button,
 .profile-following-row > button:last-child {
   min-height: 34px;
@@ -4649,12 +4660,27 @@ button:disabled {
   align-items: end;
 }
 
+.profile-settings-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.profile-settings-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .profile-follow-form label {
   display: grid;
   gap: 6px;
   min-width: 0;
 }
 
+.profile-settings-form input,
 .profile-follow-form input {
   min-width: 0;
   min-height: 36px;
@@ -4669,6 +4695,7 @@ button:disabled {
   outline: none;
 }
 
+.profile-settings-form button:disabled,
 .profile-follow-form button:disabled {
   color: var(--hh-muted);
   background: var(--hh-surface-2);
@@ -4812,7 +4839,43 @@ button:disabled {
 
   .portfolio-history-table-head,
   .portfolio-history-row {
-    grid-template-columns: minmax(116px, 1.8fr) 70px 52px 64px 66px;
+    grid-template-columns:
+      minmax(88px, 1.18fr) minmax(56px, 0.75fr) minmax(38px, 0.5fr)
+      minmax(42px, 0.56fr) minmax(36px, 0.48fr);
+    gap: 4px;
+  }
+
+  .portfolio-history-table-head span {
+    overflow: hidden;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  .portfolio-history-table-head span:nth-child(4),
+  .portfolio-history-table-head span:nth-child(5) {
+    font-size: 0;
+    text-align: right;
+  }
+
+  .portfolio-history-table-head span:nth-child(4)::after,
+  .portfolio-history-table-head span:nth-child(5)::after {
+    font-size: 0.56rem;
+  }
+
+  .portfolio-history-table-head span:nth-child(4)::after {
+    content: "Return";
+  }
+
+  .portfolio-history-table-head span:nth-child(5)::after {
+    content: "P/L";
+  }
+
+  .portfolio-history-pnl {
+    min-width: 0;
+  }
+
+  .portfolio-history-pnl strong {
+    font-size: 0.68rem;
   }
 
   .wallet-leaderboard-table-head,
@@ -4830,5 +4893,71 @@ button:disabled {
   .wallet-leaderboard-table-head-streaks,
   .wallet-leaderboard-row-streaks {
     grid-template-columns: 26px minmax(70px, 1.18fr) 48px 52px 48px 28px 40px 32px;
+  }
+}
+
+@media (max-width: 600px) {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  .app-shell {
+    min-height: 100dvh;
+    place-items: stretch;
+    padding: 0;
+    background: var(--hh-shell);
+  }
+
+  .app-shell[data-theme="dark"] {
+    background: var(--hh-shell);
+  }
+
+  .phone-frame {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    min-height: 100dvh;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .app-shell[data-theme="dark"] .phone-frame {
+    background: var(--hh-shell);
+  }
+
+  .app-scroll {
+    padding: 8px 8px 14px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .bottom-nav {
+    margin-top: 8px;
+    padding-bottom: calc(7px + env(safe-area-inset-bottom));
+  }
+
+  .account-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .account-pnl {
+    grid-column: auto;
+  }
+
+  .account-pnl,
+  .account-value,
+  .account-summary-stats div {
+    min-height: 46px;
+    padding: 8px 9px;
+    border-right: 0;
+    border-bottom: 1px solid var(--hh-line);
+  }
+
+  .account-summary-stats div:last-child {
+    border-bottom: 0;
   }
 }

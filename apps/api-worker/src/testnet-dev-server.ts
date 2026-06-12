@@ -1,5 +1,10 @@
 import { getTestnetMarketHeat } from "./market-heat";
 import {
+  handleHotHandsAppRequest,
+  type VerifyWalletSignature
+} from "./app-auth";
+import type { HotHandsAppStore } from "./app-storage";
+import {
   getTestnetOraclePrices,
   type IndexedOraclePriceHistoryLoader
 } from "./oracle-prices";
@@ -42,10 +47,14 @@ declare const Bun: BunRuntime;
 
 export interface TestnetDevServerFetchOptions {
   fetchImpl?: typeof fetch;
+  appStore?: HotHandsAppStore;
+  createSessionToken?: () => string;
   indexerReader?: PredictIndexerReader;
   indexedOraclePriceHistoryLoader?: IndexedOraclePriceHistoryLoader;
   inspectPredictQuoteQuantity?: InspectPredictQuoteQuantity;
   nowMs?: () => number;
+  randomId?: () => string;
+  verifyWalletSignature?: VerifyWalletSignature;
 }
 
 export interface TestnetDevServerOptions extends TestnetDevServerFetchOptions {
@@ -57,6 +66,13 @@ const DEFAULT_HOSTNAME = "127.0.0.1";
 const DEFAULT_PORT = 8789;
 const TESTNET_DEV_SERVER_ROUTES = [
   "/health",
+  "/app/auth/challenge",
+  "/app/auth/session",
+  "/app/me",
+  "/app/me/profile",
+  "/app/profiles",
+  "/app/follows",
+  "/app/copy-receipts",
   "/testnet/indexer-status",
   "/testnet/market-heat",
   "/testnet/price-snapshot",
@@ -71,8 +87,8 @@ const TESTNET_DEV_SERVER_ROUTES = [
 
 const JSON_HEADERS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, OPTIONS",
-  "access-control-allow-headers": "content-type",
+  "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
+  "access-control-allow-headers": "authorization, content-type",
   "content-type": "application/json; charset=utf-8"
 };
 
@@ -85,11 +101,15 @@ const CORS_HEADERS = {
 const TESTNET_SNAPSHOT_CACHE_TTL_MS = 1_000;
 
 export function createTestnetDevServerFetch({
+  appStore,
+  createSessionToken,
   fetchImpl = fetch,
   indexerReader,
   indexedOraclePriceHistoryLoader,
   inspectPredictQuoteQuantity,
-  nowMs = Date.now
+  nowMs = Date.now,
+  randomId,
+  verifyWalletSignature
 }: TestnetDevServerFetchOptions = {}): (request: Request) => Promise<Response> {
   const responseCache: ResponseCache = new Map();
 
@@ -105,6 +125,17 @@ export function createTestnetDevServerFetch({
 
     if (url.pathname === "/health" && request.method === "GET") {
       return json({ ok: true, service: "api-worker-testnet-dev", stage: 3 });
+    }
+
+    const appResponse = await handleHotHandsAppRequest(request, {
+      appStore,
+      createSessionToken,
+      nowMs,
+      randomId,
+      verifyWalletSignature
+    });
+    if (appResponse) {
+      return appResponse;
     }
 
     if (url.pathname === "/testnet/market-heat") {
@@ -368,21 +399,29 @@ function isIndexerJobStale(job: PredictIndexerJobStatus): boolean {
 export function createTestnetDevServer({
   hostname = DEFAULT_HOSTNAME,
   port = DEFAULT_PORT,
+  appStore,
+  createSessionToken,
   fetchImpl = fetch,
   indexerReader,
   indexedOraclePriceHistoryLoader,
   inspectPredictQuoteQuantity,
-  nowMs
+  nowMs,
+  randomId,
+  verifyWalletSignature
 }: TestnetDevServerOptions = {}): BunServer {
   return Bun.serve({
     hostname,
     port,
     fetch: createTestnetDevServerFetch({
+      appStore,
+      createSessionToken,
       fetchImpl,
       indexerReader,
       indexedOraclePriceHistoryLoader,
       inspectPredictQuoteQuantity,
-      nowMs
+      nowMs,
+      randomId,
+      verifyWalletSignature
     })
   });
 }
@@ -530,6 +569,7 @@ if ((import.meta as { main?: boolean }).main) {
     ? createIndexerReadersFromDatabaseUrl(Bun.env.DATABASE_URL)
     : undefined;
   const server = createTestnetDevServer({
+    appStore: indexerReaders?.appStore,
     hostname: Bun.env.HOST ?? DEFAULT_HOSTNAME,
     indexerReader: indexerReaders?.reader,
     indexedOraclePriceHistoryLoader: indexerReaders?.indexedOraclePriceHistoryLoader,

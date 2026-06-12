@@ -613,6 +613,75 @@ describe("market heat preview model", () => {
     });
   });
 
+  test("uses Hot Hands profile names before mainnet SuiNS on market heat rows", async () => {
+    const wallet = "0x1111222233334444555566667777888899990000";
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_000_000,
+      useHotHandsProfileNames: true,
+      useMainnetSuinsNames: true,
+      fetcher: async (url) => {
+        const requestUrl = String(url);
+
+        if (requestUrl.includes("/app/profiles")) {
+          return Response.json({
+            profiles: [
+              {
+                wallet,
+                displayName: "Alice",
+              },
+            ],
+          });
+        }
+
+        if (requestUrl.includes("/testnet/mainnet-suins-names")) {
+          return Response.json({
+            source: "mainnet_suins",
+            network: "mainnet",
+            names: [
+              {
+                wallet,
+                name: "alice.sui",
+                source: "mainnet_suins",
+              },
+            ],
+          });
+        }
+
+        return Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71234,
+            source: "live_testnet",
+          },
+          rows: [
+            {
+              id: "external-0x1111",
+              wallet,
+              manager: "manager 0xabcd...0001",
+              market: "BTC-USD",
+              side: "UP",
+              strike: 71000,
+              expiryMs: 1_779_165_900_000,
+              intervalLabel: "15m",
+              observedAtMs: 1_779_165_000_000,
+              heatScore: 74,
+              status: "copy_ready",
+            },
+          ],
+        });
+      },
+    });
+
+    expect(preview.rows[0]).toMatchObject({
+      wallet,
+      displayName: "Alice",
+      displayNameSource: "hot_hands_profile",
+    });
+  });
+
   test("keeps wallet addresses when live SuiNS lookup has no name", async () => {
     const wallet = "0x2222333344445555666677778888999900001111";
     const preview = await loadMarketHeatPreview({

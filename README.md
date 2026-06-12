@@ -52,12 +52,24 @@ The launcher starts:
 - Market heat API: `http://127.0.0.1:8789/testnet/market-heat`
 - Indexer status API: `http://127.0.0.1:8789/testnet/indexer-status`
 - Open-position close quote API: `http://127.0.0.1:8789/testnet/redeem-quote`
+- App auth/social API: `http://127.0.0.1:8789/app/auth/challenge`,
+  `/app/auth/session`, `/app/me`, `/app/me/profile`, `/app/profiles`,
+  `/app/follows`, and `/app/copy-receipts`
 
 `dev:testnet` is the recommended teammate/agent loop. It applies indexer
 migrations, runs an idempotent bounded write backfill, starts the local API,
 starts the PWA pointed at that API, then starts the live indexer. The PWA opens
 directly in testnet mode and should read indexed data for Feed, Trade,
 Portfolio, Leaderboards, and the BTC chart.
+
+The same local Postgres database now also stores Hot Hands-owned app data:
+wallet auth challenges/sessions, wallet profiles, saved default stake amounts,
+followed wallets, submitted copy/fade receipts, and wallet heat snapshots.
+Authenticated profile records are created when a real connected wallet signs a
+Hot Hands personal-message challenge. Public display identity resolves in this
+order: Hot Hands profile display name, then SuiNS, then shortened wallet
+address. `devWallet` remains read-only and cannot create an authenticated app
+session.
 
 Quick health checks:
 
@@ -180,6 +192,12 @@ Keep the local shape simple and explicit:
 - keep the data path as: public DeepBook Predict server -> Postgres raw tables
   -> compact projections -> API worker endpoints -> PWA Feed, Trade,
   Portfolio, and chart views
+- keep app-owned state in the same local Postgres database but outside Predict
+  raw tables: `/app/auth/*` issues wallet signature sessions, `/app/me` and
+  `/app/me/profile` persist claimed wallet profile settings, `/app/profiles`
+  serves public display-name overlays, `/app/follows` persists followed
+  wallets, and `/app/copy-receipts` persists copy/fade attribution after
+  submitted wallet transactions
 - keep 1-second UI ticks cheap: `/testnet/market-heat` is cached server-side
   for a short read-through window, and the PWA uses the lightweight
   `/testnet/price-snapshot` endpoint for price/market model refreshes after the
@@ -227,14 +245,22 @@ What is live today:
   instead of only the current public Predict response window.
 - Open positions show an estimated close value from the local testnet redeem
   quote before sending the wallet action.
+- Wallet signature auth persists follows, submitted copy/fade receipts, claimed
+  profile display names, and the user's default stake amount in local Postgres.
+- Feed, Leaders, Profile, and wallet identity surfaces prefer a Hot Hands
+  custom profile name over SuiNS, and SuiNS over a shortened wallet address.
 
 What is still in progress:
 
 - `Heat` is a provisional activity/performance score, not the final settled reputation model.
-- Feed copy/fade attribution is not yet backed by a Hot Hands database.
+- Copy/fade receipts are persisted when the PWA records a submitted wallet
+  transaction, but full verification against the follower mint and source trade
+  is still in progress.
 - Production hosting still needs a deployed indexer/API topology; the local
   testnet app already has the indexed read-path hooks behind `DATABASE_URL`.
-- Profiles, X linking, SuiNS-backed display names, follows, copy counts, fade counts, and durable leaderboards are not wired in yet.
+- X account linking, profile avatars, shadow profiles for every observed
+  manager, copy counts, fade counts, and settled social leaderboards are not
+  fully wired yet.
 
 ## Product Loop
 

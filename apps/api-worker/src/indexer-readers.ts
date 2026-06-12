@@ -8,12 +8,17 @@ import {
   createPostgresSqlClient,
   type PostgresSqlClient,
 } from "@hot-hands/indexer/src/postgres-client";
+import {
+  createPostgresHotHandsAppStore,
+  type HotHandsAppStore,
+} from "./app-storage";
 import type {
   IndexedOraclePriceHistory,
   IndexedOraclePriceHistoryLoader,
 } from "./oracle-prices";
 
 export type IndexerReaders = {
+  appStore: HotHandsAppStore;
   indexedOraclePriceHistoryLoader: IndexedOraclePriceHistoryLoader;
   reader: PredictIndexerReader;
   close(): Promise<void>;
@@ -28,6 +33,7 @@ export function createIndexerReadersFromSqlClient(client: PostgresSqlClient): In
   const reader = createPostgresPredictIndexerReader({ execute: client.execute });
 
   return {
+    appStore: createPostgresHotHandsAppStore({ execute: client.execute }),
     reader,
     indexedOraclePriceHistoryLoader: async ({ oracleId, maxPoints }) => {
       const points = await reader.listOraclePrices({
