@@ -340,6 +340,56 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Max profit</small><strong>+$25");
   });
 
+  test("renders floor-score wallets without history as unrated heat", () => {
+    const nowMs = 1_779_158_000_000;
+    const [row] = buildMarketHeatPreview(
+      [
+        {
+          id: "external-unrated-copy",
+          wallet: "0xeeee222233334444555566667777888899990000",
+          manager: "manager-unrated",
+          market: "BTC-USD",
+          side: "DOWN",
+          strike: 61_882,
+          expiryMs: nowMs + 24 * 60 * 60_000,
+          intervalLabel: "23d",
+          quantity: 1_000_000,
+          cost: 500_000,
+          observedAtMs: nowMs - 60_000,
+          heatScore: 4,
+          status: "copy_ready",
+        },
+      ],
+      1,
+      { nowMs },
+    ).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Indexed Testnet"
+        sortMode="latest"
+        selectedRowId={null}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onWalletOpen={() => undefined}
+      />,
+    );
+
+    expect(row.heatScore).toBe(4);
+    expect(row.heatScoreLabel).toBe("-");
+    expect(html).toContain("aria-label=\"Heat unrated.");
+    expect(html).toContain('<strong>-</strong>');
+    expect(html).not.toContain("Heat 4.");
+  });
+
   test("shows a retry state when the live copy quote fails", () => {
     const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
       nowMs: 1_779_158_000_000,

@@ -1418,7 +1418,7 @@ function buildCallShareStats(
   copiedLabel: string | undefined,
 ): HotHandsShareStat[] {
   return [
-    { label: "Heat", value: String(row.heatScore) },
+    { label: "Heat", value: row.heatScoreLabel },
     { label: "Copied", value: copiedLabel?.replace(/^Copied by\s+/i, "") ?? "On-chain" },
   ];
 }
@@ -4043,7 +4043,7 @@ export function MarketHeatPreview({
           </span>
           <span>
             <small>Heat</small>
-            <strong>{row.heatScore}</strong>
+            <strong>{row.heatScoreLabel}</strong>
           </span>
           {isWalletSubmitReady ? (
             <button
@@ -4181,10 +4181,12 @@ export function MarketHeatPreview({
           </div>
           <div
             className="market-heat-compact-heat"
-            aria-label={`Heat ${row.heatScore}. ${MARKET_HEAT_DESCRIPTION}`}
+            aria-label={`Heat ${
+              row.heatScoreLabel === "-" ? "unrated" : row.heatScoreLabel
+            }. ${MARKET_HEAT_DESCRIPTION}`}
             title={MARKET_HEAT_DESCRIPTION}
           >
-            <strong>{row.heatScore}</strong>
+            <strong>{row.heatScoreLabel}</strong>
           </div>
           {onShareRow ? (
             <button

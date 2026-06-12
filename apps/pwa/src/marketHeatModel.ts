@@ -120,6 +120,7 @@ export type MarketHeatPreviewRow = {
   timeRemainingLabel?: string;
   observedAtMs: number;
   heatScore: number;
+  heatScoreLabel: string;
   walletStats?: MarketHeatWalletStats;
   walletStatsLabel?: string;
   fillCount?: number;
@@ -391,6 +392,7 @@ function buildMarketHeatPreviewRowFromInput(
     timeRemainingLabel: formatTimeRemaining(row.expiryMs, nowMs),
     observedAtMs: row.observedAtMs,
     heatScore: row.heatScore,
+    heatScoreLabel: formatHeatScoreLabel(row),
     ...(fillCount > 1 ? { fillCount } : {}),
     ...(row.walletStats === undefined
       ? {}
@@ -1236,6 +1238,14 @@ function formatWalletStatsLabel(
     formatCurrentWalletStreak(stats.currentStreakType, stats.currentStreakLength),
     formatTradeTime(observedAtMs, nowMs),
   ].join(" · ");
+}
+
+function formatHeatScoreLabel(
+  row: Pick<MarketHeatPreviewRowInput, "heatScore" | "walletStats">,
+): string {
+  return row.walletStats === undefined && row.heatScore <= 4
+    ? "-"
+    : String(Math.round(row.heatScore));
 }
 
 function formatSignedDusdc(value: number): string {
