@@ -372,11 +372,10 @@ describe("mobile app navigation", () => {
     );
   });
 
-  test("renders available wallet balance separately from Predict bankroll with a deposit action", () => {
+  test("renders bankroll funding controls without a wallet balance metric", () => {
     let depositClicked = false;
     const html = renderToStaticMarkup(
       <AccountSummary
-        availableLabel="$42"
         bankrollLabel="$12.50"
         depositAmount={75}
         summary={{
@@ -399,9 +398,9 @@ describe("mobile app navigation", () => {
     expect(depositClicked).toBe(false);
     expect(html).toContain('aria-label="Account summary"');
     expect(html).toContain("All-time PNL");
-    expect(html).toContain("Wallet balance");
-    expect(html).toContain('data-testid="available-wallet-balance"');
-    expect(html).toContain("$42");
+    expect(html).not.toContain(">Balance</span>");
+    expect(html).not.toContain(">Wallet balance</span>");
+    expect(html).not.toContain('data-testid="available-wallet-balance"');
     expect(html).toContain("Deposited");
     expect(html).toContain('data-testid="predict-bankroll-balance"');
     expect(html).toContain("$12.50");
@@ -444,10 +443,9 @@ describe("mobile app navigation", () => {
     expect(changedAmount).toBe(12.34);
   });
 
-  test("renders portfolio stake budget and deposit action in the account strip", () => {
+  test("renders portfolio stake budget and deposit action without wallet balance", () => {
     let stakeAmount = 0;
     const tree = AccountSummary({
-      availableLabel: "$42",
       bankrollLabel: "$12.50",
       stakeAmount: 25,
       summary: {
@@ -471,6 +469,7 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain("Stake");
     expect(html).toContain('data-testid="portfolio-deposit-bankroll"');
+    expect(html).not.toContain('data-testid="available-wallet-balance"');
     expect(html).not.toContain("Position");
     expect(input).not.toBeNull();
     (input?.props as { onChange?: (event: { currentTarget: { value: string } }) => void })

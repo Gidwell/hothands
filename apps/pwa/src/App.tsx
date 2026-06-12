@@ -127,7 +127,6 @@ import { buildTradeMintTransaction } from "./walletTransactions";
 import { buildPortfolioRedeemTransaction } from "./walletTransactions";
 import {
   formatDusdcBalance,
-  loadDusdcBalanceLabel,
   loadPredictManagerBankrollAtomic,
   selectDusdcDepositCoin,
   usdToDusdcAtomic,
@@ -178,7 +177,7 @@ type MarketHeatIdentityMode = "wallet" | "market";
 type ThemeMode = "light" | "dark";
 const APP_VIEW_VALUES: AppView[] = ["feed", "trade", "leaderboards", "portfolio", "profile"];
 const MARKET_HEAT_DESCRIPTION =
-  "Heat combines recency, copied volume, wallet streak, and trade activity.";
+  "How hot this wallet has been lately, based on ROI, streaks, and activity.";
 export type MarketHeatSwipeAction = "none" | "select" | "copy" | "fade";
 export type MarketHeatSwipeHintMode = "both" | "copy" | "fade";
 type MarketHeatSwipePreview = {
@@ -346,12 +345,6 @@ export type ShareCardState = {
   input: HotHandsShareCardInput;
   text: string;
   xUrl: string;
-};
-type DusdcBalanceState = {
-  accountAddress: string | null;
-  refreshKey: number;
-  status: "idle" | "loading" | "ready" | "error";
-  label: string | null;
 };
 type PredictManagerBankrollState = {
   accountAddress: string | null;
@@ -4505,7 +4498,6 @@ export function MarketHeader({
 }
 
 export function AccountSummary({
-  availableLabel = null,
   bankrollLabel = null,
   depositAmount = DEPOSIT_AMOUNT_DEFAULT,
   onDeposit,
@@ -4518,7 +4510,6 @@ export function AccountSummary({
   summary,
   variant = "default",
 }: {
-  availableLabel?: string | null;
   bankrollLabel?: string | null;
   depositAmount?: number;
   onDeposit?: () => void;
@@ -4555,7 +4546,7 @@ export function AccountSummary({
           <strong data-testid="predict-bankroll-balance">
             {bankrollLabel ?? summary.accountValue}
           </strong>
-          {onDeposit ? (
+          {onDeposit && !isPortfolioSummary ? (
             <div className="account-deposit-control">
               <label className="account-deposit-amount">
                 <span aria-hidden="true">$</span>
@@ -4583,12 +4574,6 @@ export function AccountSummary({
         </div>
       </div>
       <div className="account-summary-stats">
-        <div>
-          <span title="dUSDC available in the connected wallet">Wallet balance</span>
-          <strong data-testid="available-wallet-balance">
-            {availableLabel ?? summary.available}
-          </strong>
-        </div>
         {isPortfolioSummary ? (
           <>
             <div className="account-stake-cell">
@@ -4608,16 +4593,18 @@ export function AccountSummary({
                 />
               </label>
             </div>
-            <div className="account-deposit-cell">
-              <button
-                type="button"
-                className="account-summary-deposit-button"
-                data-testid="portfolio-deposit-bankroll"
-                onClick={onDeposit}
-              >
-                Deposit
-              </button>
-            </div>
+            {onDeposit ? (
+              <div className="account-deposit-cell">
+                <button
+                  type="button"
+                  className="account-summary-deposit-button"
+                  data-testid="portfolio-deposit-bankroll"
+                  onClick={onDeposit}
+                >
+                  Deposit
+                </button>
+              </div>
+            ) : null}
           </>
         ) : (
           <>
@@ -4744,13 +4731,6 @@ export function App() {
   const [copyAttributions, setCopyAttributions] = useState<CopyAttributionRecord[]>(() =>
     readStoredCopyAttributions(),
   );
-  const [dusdcBalanceRefreshKey, setDusdcBalanceRefreshKey] = useState(0);
-  const [dusdcBalanceState, setDusdcBalanceState] = useState<DusdcBalanceState>({
-    accountAddress: null,
-    refreshKey: 0,
-    status: "idle",
-    label: null,
-  });
   const [predictManagerBankrollRefreshKey, setPredictManagerBankrollRefreshKey] =
     useState(0);
   const [predictManagerBankrollState, setPredictManagerBankrollState] =
@@ -5440,20 +5420,6 @@ export function App() {
     };
   }, [activeProfileWalletAddress, activeView, isOwnActiveProfileWallet, realtimeApiBaseUrl]);
 
-  const liveDusdcBalanceLabel =
-    connectedAccountAddress &&
-    dusdcBalanceState.accountAddress === connectedAccountAddress &&
-    dusdcBalanceState.refreshKey === dusdcBalanceRefreshKey
-      ? dusdcBalanceState.status === "ready"
-        ? dusdcBalanceState.label
-        : dusdcBalanceState.status === "loading"
-          ? "Loading..."
-          : dusdcBalanceState.status === "error"
-            ? "$--"
-            : null
-      : connectedAccountAddress
-        ? "Loading..."
-        : null;
   const isPredictManagerStateCurrent =
     connectedAccountAddress &&
     predictManagerState.accountAddress === connectedAccountAddress &&
@@ -5660,59 +5626,6 @@ export function App() {
       readDismissedPortfolioPositionIds(activePredictManagerObjectId || null),
     );
   }, [activePredictManagerObjectId]);
-
-  useEffect(() => {
-    if (!connectedAccountAddress) {
-      setDusdcBalanceState({
-        accountAddress: null,
-        refreshKey: dusdcBalanceRefreshKey,
-        status: "idle",
-        label: null,
-      });
-      return undefined;
-    }
-
-    let isCurrent = true;
-    setDusdcBalanceState({
-      accountAddress: connectedAccountAddress,
-      refreshKey: dusdcBalanceRefreshKey,
-      status: "loading",
-      label: null,
-    });
-
-    void loadDusdcBalanceLabel({
-      client: currentClient,
-      owner: connectedAccountAddress,
-    })
-      .then((label) => {
-        if (!isCurrent) {
-          return;
-        }
-
-        setDusdcBalanceState({
-          accountAddress: connectedAccountAddress,
-          refreshKey: dusdcBalanceRefreshKey,
-          status: "ready",
-          label,
-        });
-      })
-      .catch(() => {
-        if (!isCurrent) {
-          return;
-        }
-
-        setDusdcBalanceState({
-          accountAddress: connectedAccountAddress,
-          refreshKey: dusdcBalanceRefreshKey,
-          status: "error",
-          label: null,
-        });
-      });
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [connectedAccountAddress, currentClient, dusdcBalanceRefreshKey]);
 
   useEffect(() => {
     if (!connectedAccountAddress || !activePredictManagerObjectId) {
@@ -6785,7 +6698,6 @@ export function App() {
     }
   };
   const refreshPredictWalletSurfaces = () => {
-    setDusdcBalanceRefreshKey((key) => key + 1);
     setPredictManagerRefreshKey((key) => key + 1);
     setPredictManagerBankrollRefreshKey((key) => key + 1);
     setPredictPortfolioRefreshKey((key) => key + 1);
@@ -7241,7 +7153,6 @@ export function App() {
           />
           {shouldShowAccountSummary(activeView) ? (
             <AccountSummary
-              availableLabel={liveDusdcBalanceLabel}
               bankrollLabel={livePredictManagerBankrollLabel}
               depositAmount={depositAmount}
               onDeposit={handleDepositBankroll}

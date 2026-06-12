@@ -11,4 +11,12 @@ describe("mobile shell CSS", () => {
     expect(css).toContain("border-radius: 0");
     expect(css).toContain("box-shadow: none");
   });
+
+  test("uses a compact two-column account summary on mobile", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+
+    expect(css).toContain(".account-summary {");
+    expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));");
+    expect(css).toContain("grid-column: auto;");
+  });
 });

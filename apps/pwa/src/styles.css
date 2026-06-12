@@ -3603,7 +3603,7 @@ button:disabled {
 
 .account-summary {
   display: grid;
-  grid-template-columns: minmax(104px, 1.08fr) repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(104px, 1.08fr) repeat(3, minmax(0, 1fr));
 }
 
 .account-summary-main,
@@ -3682,11 +3682,13 @@ button:disabled {
 .account-summary-deposit-button {
   min-height: 28px;
   width: 100%;
+  max-width: 100%;
   border-radius: 7px;
   color: #ffffff;
   background: var(--hh-accent);
   font-size: 0.68rem;
   font-weight: 950;
+  padding: 0 9px;
 }
 
 .section-heading {
@@ -4893,5 +4895,27 @@ button:disabled {
   .bottom-nav {
     margin-top: 8px;
     padding-bottom: calc(7px + env(safe-area-inset-bottom));
+  }
+
+  .account-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .account-pnl {
+    grid-column: auto;
+  }
+
+  .account-pnl,
+  .account-value,
+  .account-summary-stats div {
+    min-height: 46px;
+    padding: 8px 9px;
+    border-right: 0;
+    border-bottom: 1px solid var(--hh-line);
+  }
+
+  .account-summary-stats div:last-child {
+    border-bottom: 0;
   }
 }
