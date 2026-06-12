@@ -1,4 +1,5 @@
 import {
+  loadHotHandsProfileNames,
   loadMainnetSuinsNames,
   mergeDemoWalletDisplayNames,
   resolveWalletDisplayName,
@@ -91,6 +92,7 @@ export type LoadWalletLeaderboardsOptions = BuildWalletLeaderboardsOptions & {
   fetcher?: typeof fetch;
   nowMs?: number;
   useDemoDisplayNames?: boolean;
+  useHotHandsProfileNames?: boolean;
   useMainnetSuinsNames?: boolean;
 };
 
@@ -119,6 +121,7 @@ export async function loadWalletLeaderboards({
   fetcher = fetch,
   timeZone,
   useDemoDisplayNames = false,
+  useHotHandsProfileNames = false,
   useMainnetSuinsNames = false,
 }: LoadWalletLeaderboardsOptions = {}): Promise<WalletLeaderboardsSnapshot> {
   if (!apiBaseUrl) {
@@ -132,6 +135,13 @@ export async function loadWalletLeaderboards({
 
   const payload = await response.json();
   const wallets = collectLeaderboardWallets(payload);
+  const hotHandsProfileDisplayNames = useHotHandsProfileNames
+    ? await loadHotHandsProfileNames({
+        apiBaseUrl,
+        fetcher,
+        wallets,
+      }).catch(() => ({}))
+    : {};
   const mainnetWalletDisplayNames = useMainnetSuinsNames
     ? await loadMainnetSuinsNames({
         apiBaseUrl,
@@ -139,9 +149,13 @@ export async function loadWalletLeaderboards({
         wallets,
       }).catch(() => ({}))
     : {};
+  const liveWalletDisplayNames = {
+    ...mainnetWalletDisplayNames,
+    ...hotHandsProfileDisplayNames,
+  };
   const walletDisplayNames = useDemoDisplayNames
-    ? mergeDemoWalletDisplayNames(wallets, mainnetWalletDisplayNames)
-    : mainnetWalletDisplayNames;
+    ? mergeDemoWalletDisplayNames(wallets, liveWalletDisplayNames)
+    : liveWalletDisplayNames;
 
   return buildWalletLeaderboards(payload, { timeZone, walletDisplayNames });
 }

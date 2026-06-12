@@ -103,7 +103,15 @@ DeepBook Predict projections:
 - `POST /app/auth/challenge`: creates a short-lived Sui wallet personal-message
   challenge.
 - `POST /app/auth/session`: verifies the signed challenge and returns a bearer
-  session token.
+  session token. The session creation path also claims or refreshes a wallet
+  profile row for the connected wallet.
+- `GET /app/me`: returns the authenticated wallet profile, including private
+  app settings such as `defaultStakeAmountUsd`.
+- `PATCH /app/me/profile`: updates authenticated profile settings such as
+  display name, bio, avatar URL, X handle, and saved default stake amount.
+- `GET /app/profiles?wallet=...`: returns public profile display fields for
+  feed, leaderboard, and profile overlays. It intentionally excludes private
+  settings such as saved stake.
 - `GET /app/follows`: lists followed wallets for the authenticated wallet.
 - `POST /app/follows`: follows a leader wallet for the authenticated wallet.
 - `DELETE /app/follows?leaderWallet=...`: removes a follow edge.
@@ -112,7 +120,9 @@ DeepBook Predict projections:
   authenticated wallet after a wallet transaction is sent.
 
 The PWA uses local storage as a fallback for read-only/dev-wallet mode, but
-server persistence requires a real connected wallet signature.
+server persistence requires a real connected wallet signature. Display identity
+should resolve as Hot Hands profile display name, then SuiNS, then shortened
+wallet address.
 
 ### Local Commands
 

@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   clearStoredWalletAuthSession,
   deleteFollowedWalletFromApi,
+  loadAuthenticatedWalletProfileFromApi,
   loadFollowedWalletsFromApi,
   readStoredWalletAuthSession,
   recordCopyReceiptToApi,
   requestWalletAuthSession,
+  saveWalletProfileToApi,
   saveFollowedWalletToApi,
   writeStoredWalletAuthSession,
   type WalletAuthStorage,
@@ -193,6 +195,97 @@ describe("wallet auth client", () => {
         executionSide: "DOWN",
         amountUsd: 25,
         transactionDigest: "0xdigest",
+      },
+    ]);
+  });
+
+  test("loads and saves authenticated wallet profile settings", async () => {
+    const requests: Array<{
+      url: string;
+      authorization: string | null;
+      method: string;
+      body?: unknown;
+    }> = [];
+    const session = {
+      wallet: "0xwallet",
+      token: "session-token",
+      expiresAtMs: 10_000,
+    };
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      requests.push({
+        url: String(input),
+        authorization: new Headers(init?.headers).get("authorization"),
+        method: init?.method ?? "GET",
+        ...(body === undefined ? {} : { body }),
+      });
+
+      if ((init?.method ?? "GET") === "PATCH") {
+        return Response.json({
+          wallet: "0xwallet",
+          profile: {
+            wallet: "0xwallet",
+            displayName: "Signal Mom",
+            defaultStakeAmountUsd: 37.5,
+            createdAtMs: 1_000,
+            updatedAtMs: 2_000,
+          },
+        });
+      }
+
+      return Response.json({
+        wallet: "0xwallet",
+        profile: {
+          wallet: "0xwallet",
+          displayName: "Signal Mom",
+          defaultStakeAmountUsd: 25,
+          createdAtMs: 1_000,
+          updatedAtMs: 1_500,
+        },
+      });
+    };
+
+    await expect(
+      loadAuthenticatedWalletProfileFromApi({ apiBaseUrl: "http://api", session, fetchImpl }),
+    ).resolves.toEqual({
+      wallet: "0xwallet",
+      displayName: "Signal Mom",
+      defaultStakeAmountUsd: 25,
+      createdAtMs: 1_000,
+      updatedAtMs: 1_500,
+    });
+    await expect(
+      saveWalletProfileToApi({
+        apiBaseUrl: "http://api",
+        session,
+        profile: {
+          displayName: "Signal Mom",
+          defaultStakeAmountUsd: 37.5,
+        },
+        fetchImpl,
+      }),
+    ).resolves.toEqual({
+      wallet: "0xwallet",
+      displayName: "Signal Mom",
+      defaultStakeAmountUsd: 37.5,
+      createdAtMs: 1_000,
+      updatedAtMs: 2_000,
+    });
+
+    expect(requests).toEqual([
+      {
+        url: "http://api/app/me",
+        authorization: "Bearer session-token",
+        method: "GET",
+      },
+      {
+        url: "http://api/app/me/profile",
+        authorization: "Bearer session-token",
+        method: "PATCH",
+        body: {
+          displayName: "Signal Mom",
+          defaultStakeAmountUsd: 37.5,
+        },
       },
     ]);
   });

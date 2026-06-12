@@ -17,6 +17,25 @@ export type FollowedWalletRecord = {
   displayName?: string;
 };
 
+export type WalletProfileRecord = {
+  wallet: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  xHandle?: string;
+  defaultStakeAmountUsd?: number;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type WalletProfilePatch = {
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  xHandle?: string;
+  defaultStakeAmountUsd?: number;
+};
+
 export type CopyReceiptApiInput = {
   receiptId: string;
   sourceWallet: string;
@@ -144,6 +163,48 @@ export async function loadFollowedWalletsFromApi({
   }));
 }
 
+export async function loadAuthenticatedWalletProfileFromApi({
+  apiBaseUrl,
+  fetchImpl = fetch,
+  session,
+}: {
+  apiBaseUrl: string | undefined;
+  fetchImpl?: typeof fetch;
+  session: WalletAuthSession;
+}): Promise<WalletProfileRecord> {
+  const response = await fetchJson<WalletProfileResponse>({
+    apiBaseUrl,
+    fetchImpl,
+    path: "/app/me",
+    headers: authHeaders(session),
+  });
+
+  return response.profile;
+}
+
+export async function saveWalletProfileToApi({
+  apiBaseUrl,
+  fetchImpl = fetch,
+  profile,
+  session,
+}: {
+  apiBaseUrl: string | undefined;
+  fetchImpl?: typeof fetch;
+  profile: WalletProfilePatch;
+  session: WalletAuthSession;
+}): Promise<WalletProfileRecord> {
+  const response = await fetchJson<WalletProfileResponse>({
+    apiBaseUrl,
+    fetchImpl,
+    path: "/app/me/profile",
+    method: "PATCH",
+    headers: authHeaders(session),
+    body: profile,
+  });
+
+  return response.profile;
+}
+
 export async function saveFollowedWalletToApi({
   apiBaseUrl,
   fetchImpl = fetch,
@@ -236,6 +297,11 @@ type WalletFollowApiRecord = {
 type FollowedWalletsResponse = {
   wallet: string;
   follows: WalletFollowApiRecord[];
+};
+
+type WalletProfileResponse = {
+  wallet: string;
+  profile: WalletProfileRecord;
 };
 
 async function postJson<T = unknown>({

@@ -4,8 +4,10 @@ import type {
   CopyReceipt,
   HotHandsAppStore,
   UpsertWalletFollowInput,
+  UpsertWalletProfileInput,
   WalletAuthChallenge,
   WalletFollow,
+  WalletProfile,
   WalletSession,
 } from "../src/app-storage";
 import { createTestnetDevServerFetch } from "../src/testnet-dev-server";
@@ -196,6 +198,87 @@ describe("testnet API dev server harness", () => {
       createdAtMs: 2_000,
       updatedAtMs: 2_000,
     });
+  });
+
+  test("claims and updates wallet profiles behind wallet auth", async () => {
+    const wallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000a1";
+    const profiles: WalletProfile[] = [];
+    const profileWrites: UpsertWalletProfileInput[] = [];
+    const fetchHandler = createTestnetDevServerFetch({
+      appStore: createTestAppStore({
+        profiles,
+        profileWrites,
+        session: {
+          sessionId: "session-1",
+          wallet,
+          tokenHash: "hash",
+          issuedAtMs: 1_000,
+          expiresAtMs: 10_000,
+        },
+      }),
+      nowMs: () => 2_000,
+    });
+
+    const meResponse = await fetchHandler(
+      new Request("http://127.0.0.1:8789/app/me", {
+        headers: { authorization: "Bearer session-token" },
+      }),
+    );
+
+    expect(meResponse.status).toBe(200);
+    await expect(meResponse.json()).resolves.toMatchObject({
+      wallet,
+      profile: {
+        wallet,
+        createdAtMs: 2_000,
+        updatedAtMs: 2_000,
+      },
+    });
+
+    const updateResponse = await fetchHandler(
+      new Request("http://127.0.0.1:8789/app/me/profile", {
+        method: "PATCH",
+        headers: { authorization: "Bearer session-token" },
+        body: JSON.stringify({
+          displayName: "Alice",
+          defaultStakeAmountUsd: 42.5,
+        }),
+      }),
+    );
+
+    expect(updateResponse.status).toBe(200);
+    await expect(updateResponse.json()).resolves.toMatchObject({
+      profile: {
+        wallet,
+        displayName: "Alice",
+        defaultStakeAmountUsd: 42.5,
+        updatedAtMs: 2_000,
+      },
+    });
+    expect(profileWrites.at(-1)).toMatchObject({
+      wallet,
+      displayName: "Alice",
+      defaultStakeAmountUsd: 42.5,
+      nowMs: 2_000,
+    });
+
+    const publicResponse = await fetchHandler(
+      new Request(`http://127.0.0.1:8789/app/profiles?wallet=${wallet}&wallet=not-a-wallet`),
+    );
+
+    expect(publicResponse.status).toBe(200);
+    const publicPayload = await publicResponse.json();
+    expect(publicPayload).toMatchObject({
+      profiles: [
+        {
+          wallet,
+          displayName: "Alice",
+        },
+      ],
+      skipped: ["not-a-wallet"],
+    });
+    expect(publicPayload.profiles[0]).not.toHaveProperty("defaultStakeAmountUsd");
   });
 
   test("rejects app social writes without an active wallet session", async () => {
@@ -893,6 +976,8 @@ function createTestAppStore({
   challenges = [],
   follows = [],
   followWrites = [],
+  profiles = [],
+  profileWrites = [],
   receipts = [],
   session,
   sessions = [],
@@ -900,6 +985,8 @@ function createTestAppStore({
   challenges?: WalletAuthChallenge[];
   follows?: WalletFollow[];
   followWrites?: UpsertWalletFollowInput[];
+  profiles?: WalletProfile[];
+  profileWrites?: UpsertWalletProfileInput[];
   receipts?: CopyReceipt[];
   session?: WalletSession | null;
   sessions?: WalletSession[];
@@ -928,6 +1015,43 @@ function createTestAppStore({
     },
     getWalletSessionByTokenHash: async () => session ?? null,
     revokeWalletSession: async () => 1,
+    upsertWalletProfile: async (profile) => {
+      profileWrites.push(profile);
+      const existingIndex = profiles.findIndex(
+        (candidate) => candidate.wallet === profile.wallet,
+      );
+      const existing = existingIndex >= 0 ? profiles[existingIndex] : null;
+      const nextProfile: WalletProfile = {
+        wallet: profile.wallet,
+        ...(existing?.displayName || profile.displayName
+          ? { displayName: profile.displayName ?? existing?.displayName }
+          : {}),
+        ...(existing?.bio || profile.bio ? { bio: profile.bio ?? existing?.bio } : {}),
+        ...(existing?.avatarUrl || profile.avatarUrl
+          ? { avatarUrl: profile.avatarUrl ?? existing?.avatarUrl }
+          : {}),
+        ...(existing?.xHandle || profile.xHandle
+          ? { xHandle: profile.xHandle ?? existing?.xHandle }
+          : {}),
+        ...(existing?.defaultStakeAmountUsd || profile.defaultStakeAmountUsd
+          ? {
+              defaultStakeAmountUsd:
+                profile.defaultStakeAmountUsd ?? existing?.defaultStakeAmountUsd,
+            }
+          : {}),
+        createdAtMs: existing?.createdAtMs ?? profile.nowMs,
+        updatedAtMs: profile.nowMs,
+      };
+
+      if (existingIndex >= 0) {
+        profiles.splice(existingIndex, 1, nextProfile);
+      } else {
+        profiles.push(nextProfile);
+      }
+      return 1;
+    },
+    getWalletProfile: async (wallet) =>
+      profiles.find((profile) => profile.wallet === wallet) ?? null,
     upsertWalletFollow: async (follow) => {
       followWrites.push(follow);
       follows.splice(0, follows.length, {

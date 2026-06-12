@@ -4415,6 +4415,7 @@ button:disabled {
 
 .profile-card,
 .profile-stat-header,
+.profile-settings-form,
 .profile-follow-form,
 .profile-following-list {
   display: grid;
@@ -4426,6 +4427,7 @@ button:disabled {
 }
 
 .profile-card-label,
+.profile-settings-form label span,
 .profile-follow-form label span {
   color: var(--hh-muted);
   font-size: 0.58rem;
@@ -4634,6 +4636,7 @@ button:disabled {
 }
 
 .profile-follow-button,
+.profile-settings-form button,
 .profile-follow-form button,
 .profile-following-row > button:last-child {
   min-height: 34px;
@@ -4649,12 +4652,27 @@ button:disabled {
   align-items: end;
 }
 
+.profile-settings-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.profile-settings-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .profile-follow-form label {
   display: grid;
   gap: 6px;
   min-width: 0;
 }
 
+.profile-settings-form input,
 .profile-follow-form input {
   min-width: 0;
   min-height: 36px;
@@ -4669,6 +4687,7 @@ button:disabled {
   outline: none;
 }
 
+.profile-settings-form button:disabled,
 .profile-follow-form button:disabled {
   color: var(--hh-muted);
   background: var(--hh-surface-2);

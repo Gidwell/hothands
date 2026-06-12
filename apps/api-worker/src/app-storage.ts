@@ -37,6 +37,27 @@ export type WalletFollow = {
   updatedAtMs: number;
 };
 
+export type WalletProfile = {
+  wallet: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  xHandle?: string;
+  defaultStakeAmountUsd?: number;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+export type UpsertWalletProfileInput = {
+  wallet: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  xHandle?: string;
+  defaultStakeAmountUsd?: number;
+  nowMs: number;
+};
+
 export type UpsertWalletFollowInput = {
   followerWallet: string;
   leaderWallet: string;
@@ -105,6 +126,8 @@ export type HotHandsAppStore = {
     sessionId: string;
     revokedAtMs: number;
   }): Promise<number>;
+  upsertWalletProfile(input: UpsertWalletProfileInput): Promise<number>;
+  getWalletProfile(wallet: string): Promise<WalletProfile | null>;
   upsertWalletFollow(input: UpsertWalletFollowInput): Promise<number>;
   deleteWalletFollow(input: {
     followerWallet: string;
@@ -214,6 +237,45 @@ export function createPostgresHotHandsAppStore({
         ].join("\n"),
         [sessionId, revokedAtMs],
       )),
+    upsertWalletProfile: async (input) =>
+      rowsAffected(await execute(
+        [
+          "insert into app_profiles (",
+          "  wallet, display_name, bio, avatar_url, x_handle, default_stake_amount_usd, created_at_ms, updated_at_ms",
+          ")",
+          "values ($1, $2, $3, $4, $5, $6, $7, $7)",
+          "on conflict (wallet) do update set",
+          "  display_name = coalesce(excluded.display_name, app_profiles.display_name),",
+          "  bio = coalesce(excluded.bio, app_profiles.bio),",
+          "  avatar_url = coalesce(excluded.avatar_url, app_profiles.avatar_url),",
+          "  x_handle = coalesce(excluded.x_handle, app_profiles.x_handle),",
+          "  default_stake_amount_usd = coalesce(excluded.default_stake_amount_usd, app_profiles.default_stake_amount_usd),",
+          "  updated_at_ms = excluded.updated_at_ms",
+          "returning 1",
+        ].join("\n"),
+        [
+          input.wallet,
+          input.displayName ?? null,
+          input.bio ?? null,
+          input.avatarUrl ?? null,
+          input.xHandle ?? null,
+          input.defaultStakeAmountUsd ?? null,
+          input.nowMs,
+        ],
+      )),
+    getWalletProfile: async (wallet) => {
+      const result = await execute(
+        [
+          "select wallet, display_name, bio, avatar_url, x_handle, default_stake_amount_usd, created_at_ms, updated_at_ms",
+          "from app_profiles",
+          "where wallet = $1",
+          "limit 1",
+        ].join("\n"),
+        [wallet],
+      );
+
+      return mapWalletProfileRow(firstRow(result));
+    },
     upsertWalletFollow: async (input) =>
       rowsAffected(await execute(
         [
@@ -475,6 +537,36 @@ function mapWalletFollowRow(row: Record<string, unknown>): WalletFollow | null {
     followerWallet,
     leaderWallet,
     ...(leaderDisplayName ? { leaderDisplayName } : {}),
+    createdAtMs,
+    updatedAtMs,
+  };
+}
+
+function mapWalletProfileRow(row: Record<string, unknown> | null): WalletProfile | null {
+  if (!row) {
+    return null;
+  }
+
+  const wallet = stringValue(row.wallet);
+  const displayName = stringValue(row.display_name);
+  const bio = stringValue(row.bio);
+  const avatarUrl = stringValue(row.avatar_url);
+  const xHandle = stringValue(row.x_handle);
+  const defaultStakeAmountUsd = optionalNumberValue(row.default_stake_amount_usd);
+  const createdAtMs = numberValue(row.created_at_ms);
+  const updatedAtMs = numberValue(row.updated_at_ms);
+
+  if (!wallet || createdAtMs === null || updatedAtMs === null) {
+    return null;
+  }
+
+  return {
+    wallet,
+    ...(displayName ? { displayName } : {}),
+    ...(bio ? { bio } : {}),
+    ...(avatarUrl ? { avatarUrl } : {}),
+    ...(xHandle ? { xHandle } : {}),
+    ...(defaultStakeAmountUsd === undefined ? {} : { defaultStakeAmountUsd }),
     createdAtMs,
     updatedAtMs,
   };

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   clearMainnetSuinsDisplayNameCacheForTest,
+  loadHotHandsProfileNames,
   loadMainnetSuinsNames,
   mergeDemoWalletDisplayNames,
 } from "../src/suinsDisplayNames";
@@ -71,6 +72,38 @@ describe("SuiNS display names", () => {
 
     expect(calls).toEqual([
       `https://api.hot-hands.test/testnet/mainnet-suins-names?wallet=${wallet}`,
+    ]);
+  });
+
+  test("loads Hot Hands profile names for display overlays", async () => {
+    const wallet = "0xaaaa222233334444555566667777888899990001";
+    const calls: string[] = [];
+
+    await expect(
+      loadHotHandsProfileNames({
+        apiBaseUrl: "https://api.hot-hands.test/",
+        wallets: [wallet],
+        fetcher: async (url) => {
+          calls.push(String(url));
+          return Response.json({
+            profiles: [
+              {
+                wallet,
+                displayName: "Alice",
+              },
+            ],
+          });
+        },
+      }),
+    ).resolves.toEqual({
+      [wallet]: {
+        name: "Alice",
+        source: "hot_hands_profile",
+      },
+    });
+
+    expect(calls).toEqual([
+      `https://api.hot-hands.test/app/profiles?wallet=${wallet}`,
     ]);
   });
 

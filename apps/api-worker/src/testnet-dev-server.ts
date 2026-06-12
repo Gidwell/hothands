@@ -68,6 +68,9 @@ const TESTNET_DEV_SERVER_ROUTES = [
   "/health",
   "/app/auth/challenge",
   "/app/auth/session",
+  "/app/me",
+  "/app/me/profile",
+  "/app/profiles",
   "/app/follows",
   "/app/copy-receipts",
   "/testnet/indexer-status",
@@ -84,7 +87,7 @@ const TESTNET_DEV_SERVER_ROUTES = [
 
 const JSON_HEADERS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+  "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "access-control-allow-headers": "authorization, content-type",
   "content-type": "application/json; charset=utf-8"
 };

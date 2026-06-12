@@ -112,13 +112,16 @@ import {
 import {
   clearStoredWalletAuthSession,
   deleteFollowedWalletFromApi,
+  loadAuthenticatedWalletProfileFromApi,
   loadFollowedWalletsFromApi,
   readStoredWalletAuthSession,
   recordCopyReceiptToApi,
   requestWalletAuthSession,
+  saveWalletProfileToApi,
   saveFollowedWalletToApi,
   type FollowedWalletRecord,
   type WalletAuthSession,
+  type WalletProfileRecord,
 } from "./walletAuth";
 import { buildTradeMintTransaction } from "./walletTransactions";
 import { buildPortfolioRedeemTransaction } from "./walletTransactions";
@@ -382,6 +385,11 @@ type ProfileHistoryStatus = "idle" | "loading" | "ready" | "error";
 type ProfileHistoryState = {
   history: PredictPortfolioHistoryItem[];
   status: ProfileHistoryStatus;
+  wallet: string | null;
+};
+type WalletProfileState = {
+  profile: WalletProfileRecord | null;
+  status: "idle" | "loading" | "ready" | "saving" | "error";
   wallet: string | null;
 };
 type ProfileStatTone = "positive" | "negative" | "flat";
@@ -1754,6 +1762,7 @@ export function filterMarketHeatRowsByFollowedWallets(
 type WalletHeaderControlProps = {
   accountAddress: string | null;
   connectionStatus: string;
+  displayName?: string | null;
   readOnly?: boolean;
   walletChoices?: WalletChoice[];
   walletChooserOpen?: boolean;
@@ -1777,6 +1786,7 @@ type WalletStatusBarProps = WalletHeaderControlProps & {
 export function WalletHeaderControl({
   accountAddress,
   connectionStatus,
+  displayName = null,
   readOnly = false,
   walletChoices = [],
   walletChooserOpen = false,
@@ -1806,7 +1816,9 @@ export function WalletHeaderControl({
         disabled={readOnly}
         onClick={readOnly ? undefined : onDisconnect}
       >
-        <strong data-testid="wallet-address">{formatWalletAddress(accountAddress)}</strong>
+        <strong data-testid="wallet-address">
+          {displayName?.trim() || formatWalletAddress(accountAddress)}
+        </strong>
         <span>{readOnly ? "Read-only" : "Connected"}</span>
       </button>
     );
@@ -2999,6 +3011,9 @@ export function ProfilePanel({
   copyAmount = COPY_AMOUNT_DEFAULT,
   copyAttributionLabels = {},
   followedWallets,
+  ownProfileDisplayName = "Your wallet",
+  profileDisplayNameDraft = "",
+  profileDisplayNameSaveStatus = "idle",
   profileCopyAttributionLabel = null,
   profileHistoryItems = [],
   profileHistoryStatus = "idle",
@@ -3014,6 +3029,8 @@ export function ProfilePanel({
   walletConnected = false,
   onAmountSet = () => undefined,
   onFollowWallet,
+  onProfileDisplayNameDraftChange = () => undefined,
+  onProfileDisplayNameSave,
   onProfilePositionSelect = () => undefined,
   onProfilePositionsShowMore = () => undefined,
   onProfilePositionWalletSubmit = () => undefined,
@@ -3027,6 +3044,9 @@ export function ProfilePanel({
   copyAmount?: number;
   copyAttributionLabels?: Record<string, string>;
   followedWallets: FollowedWallet[];
+  ownProfileDisplayName?: string;
+  profileDisplayNameDraft?: string;
+  profileDisplayNameSaveStatus?: WalletProfileState["status"];
   profileCopyAttributionLabel?: string | null;
   profileHistoryItems?: PredictPortfolioHistoryItem[];
   profileHistoryStatus?: ProfileHistoryStatus;
@@ -3042,6 +3062,8 @@ export function ProfilePanel({
   walletConnected?: boolean;
   onAmountSet?: (amount: number) => void;
   onFollowWallet: (wallet: FollowedWallet) => void;
+  onProfileDisplayNameDraftChange?: (displayName: string) => void;
+  onProfileDisplayNameSave?: () => void;
   onProfilePositionSelect?: (rowId: string, mode?: MarketHeatIntentMode) => void;
   onProfilePositionsShowMore?: () => void;
   onProfilePositionWalletSubmit?: (rowId: string, mode?: MarketHeatIntentMode) => void;
@@ -3055,7 +3077,7 @@ export function ProfilePanel({
   const activeWallet =
     profileWallet ??
     (currentWalletAddress
-      ? { displayName: "Your wallet", wallet: currentWalletAddress }
+      ? { displayName: ownProfileDisplayName, wallet: currentWalletAddress }
       : null);
   const isOwnActiveWallet =
     Boolean(activeWallet && currentWalletAddress) &&
@@ -3073,6 +3095,14 @@ export function ProfilePanel({
       : profileHistoryStatus === "error"
         ? "Could not load trade history"
         : "No trade history yet";
+  const trimmedProfileDisplayNameDraft = profileDisplayNameDraft.trim();
+  const canSaveProfileDisplayName =
+    Boolean(onProfileDisplayNameSave) &&
+    walletConnected &&
+    isOwnActiveWallet &&
+    trimmedProfileDisplayNameDraft.length > 0 &&
+    trimmedProfileDisplayNameDraft !== activeWallet?.displayName &&
+    profileDisplayNameSaveStatus !== "saving";
 
   return (
     <section className="profile-panel" aria-label="Profile" data-testid="profile-view">
@@ -3124,6 +3154,38 @@ export function ProfilePanel({
                 </button>
               ) : null}
             </div>
+            {isOwnActiveWallet && walletConnected && onProfileDisplayNameSave ? (
+              <form
+                className="profile-settings-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (canSaveProfileDisplayName) {
+                    onProfileDisplayNameSave();
+                  }
+                }}
+              >
+                <label>
+                  <span>Display name</span>
+                  <input
+                    aria-label="Profile display name"
+                    data-testid="profile-display-name-input"
+                    maxLength={40}
+                    placeholder={formatWalletAddress(activeWallet.wallet)}
+                    value={profileDisplayNameDraft}
+                    onChange={(event) =>
+                      onProfileDisplayNameDraftChange(event.currentTarget.value)
+                    }
+                  />
+                </label>
+                <button
+                  type="submit"
+                  data-testid="profile-display-name-save"
+                  disabled={!canSaveProfileDisplayName}
+                >
+                  {profileDisplayNameSaveStatus === "saving" ? "Saving" : "Save"}
+                </button>
+              </form>
+            ) : null}
           </>
         ) : (
           <>
@@ -4660,6 +4722,7 @@ export function App() {
   const toastCounterRef = useRef(0);
   const toastTimeoutsRef = useRef<number[]>([]);
   const walletAuthAttemptedAddressRef = useRef<string | null>(null);
+  const walletProfileSettingsLoadedAddressRef = useRef<string | null>(null);
   const [shareCard, setShareCard] = useState<ShareCardState | null>(null);
   const [copyAttributions, setCopyAttributions] = useState<CopyAttributionRecord[]>(() =>
     readStoredCopyAttributions(),
@@ -4703,6 +4766,12 @@ export function App() {
     status: "idle",
     wallet: null,
   });
+  const [walletProfileState, setWalletProfileState] = useState<WalletProfileState>({
+    profile: null,
+    status: "idle",
+    wallet: null,
+  });
+  const [walletProfileDisplayNameDraft, setWalletProfileDisplayNameDraft] = useState("");
   const [walletLeaderboardsState, setWalletLeaderboardsState] =
     useState<WalletLeaderboardsState>(() => ({
       snapshot: buildWalletLeaderboards(),
@@ -4886,7 +4955,52 @@ export function App() {
   const copyState = replayState.copy;
   useEffect(() => {
     writeStoredStakeAmount(copyState.copyAmount);
-  }, [copyState.copyAmount]);
+
+    if (!currentAccount || !realtimeApiBaseUrl || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const walletAddress = currentAccount.address;
+    const walletKey = walletAddress.toLowerCase();
+    if (walletProfileSettingsLoadedAddressRef.current !== walletKey) {
+      return undefined;
+    }
+
+    const session = readStoredWalletAuthSession(
+      window.localStorage,
+      walletAddress,
+      Date.now(),
+    );
+    if (!session) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void saveWalletProfileToApi({
+        apiBaseUrl: realtimeApiBaseUrl,
+        session,
+        profile: { defaultStakeAmountUsd: copyState.copyAmount },
+      })
+        .then((profile) => {
+          setWalletProfileState((state) => {
+            if (state.wallet?.toLowerCase() !== walletKey) {
+              return state;
+            }
+
+            return {
+              profile,
+              status: "ready",
+              wallet: profile.wallet,
+            };
+          });
+        })
+        .catch(() => undefined);
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [copyState.copyAmount, currentAccount?.address, realtimeApiBaseUrl]);
   const replayTraders = useMemo(
     () => getReplayTraders(replayState, scenario),
     [replayState, scenario],
@@ -5070,6 +5184,13 @@ export function App() {
   const isWalletActionPending = walletTxState.status === "pending";
   const isReadOnlyWalletView = !currentAccount && Boolean(readOnlyWalletAddress);
   const connectedAccountAddress = currentAccount?.address ?? readOnlyWalletAddress;
+  const connectedWalletProfile =
+    connectedAccountAddress &&
+    walletProfileState.wallet?.toLowerCase() === connectedAccountAddress.toLowerCase()
+      ? walletProfileState.profile
+      : null;
+  const connectedWalletDisplayName =
+    connectedWalletProfile?.displayName?.trim() || formatWalletAddress(connectedAccountAddress);
   const activeProfileWalletAddress =
     selectedProfileWallet?.wallet ?? connectedAccountAddress ?? null;
   const isOwnActiveProfileWallet =
@@ -5117,31 +5238,80 @@ export function App() {
   useEffect(() => {
     if (!currentAccount || !realtimeApiBaseUrl || typeof window === "undefined") {
       walletAuthAttemptedAddressRef.current = null;
+      walletProfileSettingsLoadedAddressRef.current = null;
+      setWalletProfileState({
+        profile: null,
+        status: "idle",
+        wallet: null,
+      });
+      setWalletProfileDisplayNameDraft("");
       return undefined;
     }
 
     let isCurrent = true;
     const walletAddress = currentAccount.address;
+    const walletKey = walletAddress.toLowerCase();
     const session = readStoredWalletAuthSession(window.localStorage, walletAddress, Date.now());
-    const loadFollows = async (walletSession: WalletAuthSession) => {
-      const wallets = await loadFollowedWalletsFromApi({
-        apiBaseUrl: realtimeApiBaseUrl,
-        session: walletSession,
-      });
+    const loadWalletAppState = async (walletSession: WalletAuthSession) => {
+      const [wallets, profile] = await Promise.all([
+        loadFollowedWalletsFromApi({
+          apiBaseUrl: realtimeApiBaseUrl,
+          session: walletSession,
+        }),
+        loadAuthenticatedWalletProfileFromApi({
+          apiBaseUrl: realtimeApiBaseUrl,
+          session: walletSession,
+        }),
+      ]);
 
-      if (isCurrent) {
-        replaceFollowedWallets(followedWalletRecordsToUi(wallets));
+      if (!isCurrent) {
+        return;
       }
+
+      replaceFollowedWallets(followedWalletRecordsToUi(wallets));
+      setWalletProfileState({
+        profile,
+        status: "ready",
+        wallet: profile.wallet,
+      });
+      setWalletProfileDisplayNameDraft(profile.displayName ?? "");
+      walletProfileSettingsLoadedAddressRef.current = walletKey;
+
+      if (profile.defaultStakeAmountUsd !== undefined) {
+        setReplayState((state) =>
+          updateReplayCopy(state, (copy) =>
+            setCopyAmount(copy, profile.defaultStakeAmountUsd ?? copy.copyAmount),
+          ),
+        );
+      }
+    };
+    const markProfileLoading = () => {
+      setWalletProfileState((state) => ({
+        profile: state.wallet?.toLowerCase() === walletKey ? state.profile : null,
+        status: "loading",
+        wallet: walletAddress,
+      }));
+    };
+    const handleLoadFailure = () => {
+      if (!isCurrent) {
+        return;
+      }
+
+      clearStoredWalletAuthSession(window.localStorage);
+      walletProfileSettingsLoadedAddressRef.current = null;
+      setWalletProfileState({
+        profile: null,
+        status: "error",
+        wallet: walletAddress,
+      });
     };
 
     if (session) {
-      void loadFollows(session).catch(() => {
-        if (isCurrent) {
-          clearStoredWalletAuthSession(window.localStorage);
-        }
-      });
-    } else if (walletAuthAttemptedAddressRef.current !== walletAddress.toLowerCase()) {
-      walletAuthAttemptedAddressRef.current = walletAddress.toLowerCase();
+      markProfileLoading();
+      void loadWalletAppState(session).catch(handleLoadFailure);
+    } else if (walletAuthAttemptedAddressRef.current !== walletKey) {
+      walletAuthAttemptedAddressRef.current = walletKey;
+      markProfileLoading();
       setWalletTxState({
         status: "pending",
         label: "Sign in to Hot Hands",
@@ -5157,11 +5327,7 @@ export function App() {
           if (isCurrent) {
             setWalletTxState(idleWalletTransactionState);
           }
-          void loadFollows(walletSession).catch(() => {
-            if (isCurrent) {
-              clearStoredWalletAuthSession(window.localStorage);
-            }
-          });
+          void loadWalletAppState(walletSession).catch(handleLoadFailure);
         })
         .catch((error) => {
           if (isCurrent) {
@@ -5169,6 +5335,11 @@ export function App() {
               status: "error",
               label: walletErrorMessage(error),
               digest: null,
+            });
+            setWalletProfileState({
+              profile: null,
+              status: "error",
+              wallet: walletAddress,
             });
           }
         });
@@ -5685,6 +5856,7 @@ export function App() {
         const preview = await loadMarketHeatPreview({
           apiBaseUrl: realtimeApiBaseUrl,
           includeExpired: marketHeatShowExpired,
+          useHotHandsProfileNames: true,
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
@@ -5710,6 +5882,7 @@ export function App() {
         const preview = await loadMarketHeatPriceSnapshot(marketHeatPreviewRef.current, {
           apiBaseUrl: realtimeApiBaseUrl,
           includeExpired: marketHeatShowExpired,
+          useHotHandsProfileNames: true,
           useMainnetSuinsNames: true,
         });
         if (isCurrent) {
@@ -5769,6 +5942,7 @@ export function App() {
       try {
         const snapshot = await loadWalletLeaderboards({
           apiBaseUrl: realtimeApiBaseUrl,
+          useHotHandsProfileNames: true,
           useMainnetSuinsNames: true,
         });
 
@@ -6440,6 +6614,70 @@ export function App() {
       });
     }
   };
+  const handleSaveWalletProfileDisplayName = async () => {
+    if (!currentAccount || !realtimeApiBaseUrl) {
+      pushToast({
+        kind: "error",
+        title: "Connect wallet",
+        message: "Connect a wallet before saving a profile name.",
+        groupKey: "profile-name",
+      });
+      return;
+    }
+
+    const displayName = walletProfileDisplayNameDraft.trim();
+    if (!displayName) {
+      pushToast({
+        kind: "error",
+        title: "Name required",
+        message: "Choose a display name before saving.",
+        groupKey: "profile-name",
+      });
+      return;
+    }
+
+    const walletAddress = currentAccount.address;
+    setWalletProfileState((state) => ({
+      ...state,
+      status: "saving",
+      wallet: walletAddress,
+    }));
+
+    try {
+      const session = await requestPersistentWalletSession();
+      const profile = await saveWalletProfileToApi({
+        apiBaseUrl: realtimeApiBaseUrl,
+        session,
+        profile: { displayName },
+      });
+
+      setWalletProfileState({
+        profile,
+        status: "ready",
+        wallet: profile.wallet,
+      });
+      setWalletProfileDisplayNameDraft(profile.displayName ?? "");
+      walletProfileSettingsLoadedAddressRef.current = walletAddress.toLowerCase();
+      pushToast({
+        kind: "success",
+        title: "Profile saved",
+        message: profile.displayName ?? formatWalletAddress(profile.wallet),
+        groupKey: "profile-name",
+      });
+    } catch (error) {
+      setWalletProfileState((state) => ({
+        ...state,
+        status: "error",
+        wallet: walletAddress,
+      }));
+      pushToast({
+        kind: "error",
+        title: "Profile save failed",
+        message: walletErrorMessage(error),
+        groupKey: "profile-name",
+      });
+    }
+  };
   const handleDepositAmountChange = (amount: number) => {
     setDepositAmount(clampDepositAmount(amount));
   };
@@ -6951,6 +7189,7 @@ export function App() {
               <WalletHeaderControl
                 accountAddress={connectedAccountAddress}
                 connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
+                displayName={connectedWalletDisplayName}
                 readOnly={isReadOnlyWalletView}
                 walletChoices={wallets}
                 walletChooserOpen={isWalletChooserOpen}
@@ -7036,6 +7275,9 @@ export function App() {
               copyAmount={copyState.copyAmount}
               copyAttributionLabels={copyAttributionLabelsByRowId}
               followedWallets={followedWallets}
+              ownProfileDisplayName={connectedWalletDisplayName}
+              profileDisplayNameDraft={walletProfileDisplayNameDraft}
+              profileDisplayNameSaveStatus={walletProfileState.status}
               profileCopyAttributionLabel={activeProfileCopyAttributionLabel}
               profileHistoryItems={activeProfileHistoryItems}
               profileHistoryStatus={activeProfileHistoryStatus}
@@ -7051,6 +7293,8 @@ export function App() {
               walletConnected={Boolean(currentAccount)}
               onAmountSet={handleAmountSet}
               onFollowWallet={handleFollowWallet}
+              onProfileDisplayNameDraftChange={setWalletProfileDisplayNameDraft}
+              onProfileDisplayNameSave={handleSaveWalletProfileDisplayName}
               onProfilePositionSelect={handleMarketHeatSelect}
               onProfilePositionsShowMore={handleProfilePositionsShowMore}
               onProfilePositionWalletSubmit={handleMarketHeatWalletSubmit}

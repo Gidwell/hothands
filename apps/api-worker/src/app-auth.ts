@@ -6,6 +6,8 @@ import type {
   CopyReceiptSide,
   CopyReceiptStatus,
   HotHandsAppStore,
+  UpsertWalletProfileInput,
+  WalletProfile,
   WalletSession,
 } from "./app-storage";
 
@@ -30,7 +32,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60_000;
 
 const JSON_HEADERS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+  "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "access-control-allow-headers": "authorization, content-type",
   "content-type": "application/json; charset=utf-8",
 };
@@ -140,11 +142,75 @@ export async function handleHotHandsAppRequest(
       expiresAtMs: now + SESSION_TTL_MS,
     };
     await appStore.upsertWalletSession(session);
+    await appStore.upsertWalletProfile({
+      wallet,
+      nowMs: now,
+    });
 
     return json({
       wallet,
       token,
       expiresAtMs: session.expiresAtMs,
+    });
+  }
+
+  if (url.pathname === "/app/me") {
+    const auth = await requireWalletSession(request, appStore, nowMs());
+    if (auth instanceof Response) {
+      return auth;
+    }
+
+    if (request.method !== "GET") {
+      return json({ error: "method_not_allowed" }, 405);
+    }
+
+    const profile = await ensureWalletProfile(appStore, auth.wallet, nowMs());
+    return json({
+      wallet: auth.wallet,
+      profile,
+    });
+  }
+
+  if (url.pathname === "/app/me/profile") {
+    const auth = await requireWalletSession(request, appStore, nowMs());
+    if (auth instanceof Response) {
+      return auth;
+    }
+
+    if (request.method !== "PATCH") {
+      return json({ error: "method_not_allowed" }, 405);
+    }
+
+    const input = parseWalletProfilePatch(await readJsonObject(request), {
+      nowMs: nowMs(),
+      wallet: auth.wallet,
+    });
+    if (!input) {
+      return json({ error: "invalid_profile" }, 400);
+    }
+
+    await appStore.upsertWalletProfile(input);
+    return json({
+      wallet: auth.wallet,
+      profile: await ensureWalletProfile(appStore, auth.wallet, nowMs()),
+    });
+  }
+
+  if (url.pathname === "/app/profiles") {
+    if (request.method !== "GET") {
+      return json({ error: "method_not_allowed" }, 405);
+    }
+
+    const parsedWallets = parseWalletQuery(url);
+    const profiles = await Promise.all(
+      parsedWallets.wallets.map((wallet) => appStore.getWalletProfile(wallet)),
+    );
+
+    return json({
+      profiles: profiles
+        .filter((profile) => profile !== null)
+        .map((profile) => toPublicWalletProfile(profile)),
+      skipped: parsedWallets.skipped,
     });
   }
 
@@ -282,6 +348,100 @@ async function requireWalletSession(
   return session;
 }
 
+async function ensureWalletProfile(
+  appStore: HotHandsAppStore,
+  wallet: string,
+  nowMs: number,
+) {
+  const existing = await appStore.getWalletProfile(wallet);
+  if (existing) {
+    return existing;
+  }
+
+  await appStore.upsertWalletProfile({
+    wallet,
+    nowMs,
+  });
+  return await appStore.getWalletProfile(wallet) ?? {
+    wallet,
+    createdAtMs: nowMs,
+    updatedAtMs: nowMs,
+  };
+}
+
+function parseWalletQuery(url: URL): { wallets: string[]; skipped: string[] } {
+  const seen = new Set<string>();
+  const wallets: string[] = [];
+  const skipped: string[] = [];
+
+  for (const value of url.searchParams.getAll("wallet")) {
+    const wallet = normalizeWalletAddress(value);
+    if (!wallet) {
+      if (value.trim()) {
+        skipped.push(value);
+      }
+      continue;
+    }
+
+    const key = wallet.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      wallets.push(wallet);
+    }
+  }
+
+  return { wallets, skipped };
+}
+
+function parseWalletProfilePatch(
+  body: Record<string, unknown>,
+  {
+    nowMs,
+    wallet,
+  }: {
+    nowMs: number;
+    wallet: string;
+  },
+): UpsertWalletProfileInput | null {
+  const displayName = optionalBoundedString(body.displayName, 40);
+  const bio = optionalBoundedString(body.bio, 240);
+  const avatarUrl = optionalBoundedString(body.avatarUrl, 500);
+  const xHandle = optionalBoundedString(body.xHandle, 32);
+  const defaultStakeAmountUsd = optionalPositiveNumber(body.defaultStakeAmountUsd);
+
+  if (
+    displayName === undefined &&
+    bio === undefined &&
+    avatarUrl === undefined &&
+    xHandle === undefined &&
+    defaultStakeAmountUsd === undefined
+  ) {
+    return null;
+  }
+
+  return {
+    wallet,
+    nowMs,
+    ...(displayName === undefined ? {} : { displayName }),
+    ...(bio === undefined ? {} : { bio }),
+    ...(avatarUrl === undefined ? {} : { avatarUrl }),
+    ...(xHandle === undefined ? {} : { xHandle }),
+    ...(defaultStakeAmountUsd === undefined ? {} : { defaultStakeAmountUsd }),
+  };
+}
+
+function toPublicWalletProfile(profile: WalletProfile) {
+  return {
+    wallet: profile.wallet,
+    ...(profile.displayName ? { displayName: profile.displayName } : {}),
+    ...(profile.bio ? { bio: profile.bio } : {}),
+    ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
+    ...(profile.xHandle ? { xHandle: profile.xHandle } : {}),
+    createdAtMs: profile.createdAtMs,
+    updatedAtMs: profile.updatedAtMs,
+  };
+}
+
 function parseCopyReceiptBody(
   body: Record<string, unknown>,
   {
@@ -398,6 +558,15 @@ function optionalStringValue(value: unknown): string | undefined {
   return stringValue(value) ?? undefined;
 }
 
+function optionalBoundedString(value: unknown, maxLength: number): string | undefined {
+  const string = stringValue(value);
+  if (!string) {
+    return undefined;
+  }
+
+  return string.slice(0, maxLength);
+}
+
 function numberValue(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -409,6 +578,11 @@ function numberValue(value: unknown): number | null {
   }
 
   return null;
+}
+
+function optionalPositiveNumber(value: unknown): number | undefined {
+  const parsed = numberValue(value);
+  return parsed !== null && parsed > 0 ? parsed : undefined;
 }
 
 function positiveIntegerValue(value: unknown): number | undefined {

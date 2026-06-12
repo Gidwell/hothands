@@ -188,6 +188,64 @@ describe("wallet leaderboards model", () => {
     });
   });
 
+  test("uses Hot Hands profile names before mainnet SuiNS on leaderboard entries", async () => {
+    const wallet = "0xaaaa222233334444555566667777888899990001";
+    const snapshot = await loadWalletLeaderboards({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      useHotHandsProfileNames: true,
+      useMainnetSuinsNames: true,
+      fetcher: async (url) => {
+        const requestUrl = String(url);
+
+        if (requestUrl.includes("/app/profiles")) {
+          return Response.json({
+            profiles: [
+              {
+                wallet,
+                displayName: "Alice",
+              },
+            ],
+          });
+        }
+
+        if (requestUrl.includes("/testnet/mainnet-suins-names")) {
+          return Response.json({
+            source: "mainnet_suins",
+            network: "mainnet",
+            names: [
+              {
+                wallet,
+                name: "alice.sui",
+                source: "mainnet_suins",
+              },
+            ],
+          });
+        }
+
+        return Response.json({
+          source: "indexed_testnet",
+          leaderboards: {
+            highestPnl: [
+              {
+                wallet,
+                totalPnl: 12_345_678,
+                winCount: 4,
+                lossCount: 1,
+                closedCount: 5,
+              },
+            ],
+          },
+        });
+      },
+    });
+
+    expect(snapshot.leaderboards.highestPnl[0]).toMatchObject({
+      wallet,
+      displayName: "Alice",
+      displayNameSource: "hot_hands_profile",
+    });
+  });
+
   test("preserves backend board ordering and filters malformed entries", () => {
     const snapshot = buildWalletLeaderboards({
       source: "indexed_testnet",

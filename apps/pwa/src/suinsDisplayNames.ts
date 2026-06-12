@@ -1,4 +1,7 @@
-export type WalletDisplayNameSource = "mainnet_suins" | "demo_seed";
+export type WalletDisplayNameSource =
+  | "hot_hands_profile"
+  | "mainnet_suins"
+  | "demo_seed";
 
 export type WalletDisplayName = {
   name: string;
@@ -14,10 +17,21 @@ export type LoadMainnetSuinsNamesOptions = {
   wallets: string[];
 };
 
+export type LoadHotHandsProfileNamesOptions = {
+  apiBaseUrl?: string;
+  fetcher?: typeof fetch;
+  wallets: string[];
+};
+
 type MainnetSuinsNameApiEntry = {
   wallet?: unknown;
   name?: unknown;
   source?: unknown;
+};
+
+type HotHandsProfileApiEntry = {
+  wallet?: unknown;
+  displayName?: unknown;
 };
 
 type CachedWalletDisplayName = {
@@ -30,6 +44,7 @@ const MAINNET_SUINS_LOOKUP_LIMIT = 50;
 const MAINNET_SUINS_CACHE_TTL_MS = 15 * 60_000;
 const MAINNET_SUINS_FAILURE_CACHE_TTL_MS = 60_000;
 const MAINNET_SUINS_REQUEST_TIMEOUT_MS = 500;
+const HOT_HANDS_PROFILE_NAMES_REQUEST_TIMEOUT_MS = 500;
 const DEMO_SUINS_NAMES = [
   "alpha.sui",
   "breakout.sui",
@@ -88,6 +103,31 @@ export async function loadMainnetSuinsNames({
   } catch {
     writeFailedCacheEntries(uncachedWallets, now);
     return readCachedDisplayNames(lookupWallets, now, true);
+  }
+}
+
+export async function loadHotHandsProfileNames({
+  apiBaseUrl,
+  fetcher = fetch,
+  wallets,
+}: LoadHotHandsProfileNamesOptions): Promise<WalletDisplayNamesByAddress> {
+  const normalizedBaseUrl = apiBaseUrl?.trim();
+  const lookupWallets = uniqueWallets(wallets);
+
+  if (!normalizedBaseUrl || lookupWallets.length === 0) {
+    return {};
+  }
+
+  try {
+    const response = await fetchWithTimeout(
+      fetcher,
+      buildHotHandsProfileNamesUrl(normalizedBaseUrl, lookupWallets),
+      HOT_HANDS_PROFILE_NAMES_REQUEST_TIMEOUT_MS,
+    );
+
+    return response.ok ? parseHotHandsProfileNames(await response.json()) : {};
+  } catch {
+    return {};
   }
 }
 
@@ -155,12 +195,51 @@ export function parseMainnetSuinsNames(
   return displayNames;
 }
 
+export function parseHotHandsProfileNames(
+  response: unknown,
+): WalletDisplayNamesByAddress {
+  const entries = isRecord(response) && Array.isArray(response.profiles)
+    ? response.profiles
+    : [];
+  const displayNames: WalletDisplayNamesByAddress = {};
+
+  for (const entry of entries) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+
+    const wallet = readString(entry.wallet);
+    const displayName = readString(entry.displayName);
+
+    if (!wallet || !displayName) {
+      continue;
+    }
+
+    displayNames[walletLookupKey(wallet)] = {
+      name: displayName,
+      source: "hot_hands_profile",
+    };
+  }
+
+  return displayNames;
+}
+
 export function clearMainnetSuinsDisplayNameCacheForTest(): void {
   mainnetSuinsDisplayNameCache.clear();
 }
 
 function buildMainnetSuinsNamesUrl(apiBaseUrl: string, wallets: string[]): string {
   const url = new URL(`${apiBaseUrl.replace(/\/+$/, "")}/testnet/mainnet-suins-names`);
+
+  for (const wallet of wallets) {
+    url.searchParams.append("wallet", wallet);
+  }
+
+  return url.toString();
+}
+
+function buildHotHandsProfileNamesUrl(apiBaseUrl: string, wallets: string[]): string {
+  const url = new URL(`${apiBaseUrl.replace(/\/+$/, "")}/app/profiles`);
 
   for (const wallet of wallets) {
     url.searchParams.append("wallet", wallet);

@@ -30,6 +30,20 @@ create table if not exists app_wallet_sessions (
 create index if not exists app_wallet_sessions_wallet_idx
   on app_wallet_sessions (wallet, expires_at_ms desc);
 
+create table if not exists app_profiles (
+  wallet text primary key,
+  display_name text,
+  bio text,
+  avatar_url text,
+  x_handle text,
+  default_stake_amount_usd numeric,
+  created_at_ms bigint not null,
+  updated_at_ms bigint not null
+);
+
+create index if not exists app_profiles_updated_idx
+  on app_profiles (updated_at_ms desc);
+
 create table if not exists app_wallet_follows (
   follower_wallet text not null,
   leader_wallet text not null,

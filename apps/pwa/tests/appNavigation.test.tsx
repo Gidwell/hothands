@@ -546,6 +546,29 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("Follow wallet");
   });
 
+  test("renders an editable custom profile name for a connected current wallet", () => {
+    const html = renderToStaticMarkup(
+      <ProfilePanel
+        currentWalletAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        followedWallets={[]}
+        ownProfileDisplayName="Signal Mom"
+        profileDisplayNameDraft="Signal Mom 2"
+        profileWallet={null}
+        walletConnected
+        onFollowWallet={() => undefined}
+        onProfileDisplayNameDraftChange={() => undefined}
+        onProfileDisplayNameSave={() => undefined}
+        onSelectWallet={() => undefined}
+        onUnfollowWallet={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Signal Mom");
+    expect(html).toContain('data-testid="profile-display-name-input"');
+    expect(html).toContain('value="Signal Mom 2"');
+    expect(html).toContain('data-testid="profile-display-name-save"');
+  });
+
   test("renders selected wallet positions on the profile page", () => {
     const profileWallet = "0xaaaa222233334444555566667777888899990000111122223333444455556666";
     const profileRows: MarketHeatPreviewRowInput[] = [

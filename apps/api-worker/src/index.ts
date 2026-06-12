@@ -55,7 +55,7 @@ export interface Env {
 
 const JSON_HEADERS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+  "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "access-control-allow-headers": "authorization, content-type",
   "content-type": "application/json; charset=utf-8"
 };

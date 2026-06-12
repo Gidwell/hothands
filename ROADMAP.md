@@ -1,6 +1,6 @@
 # Hot Hands Roadmap
 
-Last updated: June 3, 2026
+Last updated: June 12, 2026
 
 The hackathon submission deadline is June 21, 2026. This roadmap is organized around gates. Each gate should end with a working demo or a major risk retired.
 
@@ -217,6 +217,11 @@ Current notes:
 
 Target: June 3-7
 
+Status: In progress. Wallet signature auth, claimed wallet profile rows,
+saved default stake, public profile display-name lookup, follows, submitted
+copy/fade receipt writes, SuiNS overlays, and profile-name precedence are
+implemented in the local indexed testnet loop.
+
 Goal: create the durable social data layer for profiles, follows, copy/fade
 attribution, and position/trader demand metrics. This stage is DB-first; Move
 proof events are optional and should not block product reputation work.
@@ -224,8 +229,11 @@ proof events are optional and should not block product reputation work.
 Deliverables:
 
 - Postgres schema and migration path for Hot Hands app data.
+- Claimed profiles for connected wallets, including custom display names and
+  saved default stake settings.
+- Public profile display overlays with precedence: Hot Hands custom profile
+  name, then SuiNS, then shortened wallet address.
 - Shadow profiles for observed trader wallets and `PredictManager` IDs.
-- Claimed profiles for connected wallets.
 - SuiNS lookup/cache for `.sui` names on unclaimed and claimed wallets.
 - X account linking for claimed profiles.
 - Follows and watched external traders.
