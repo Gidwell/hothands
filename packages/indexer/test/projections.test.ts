@@ -43,117 +43,149 @@ describe("Predict durable projections", () => {
     ).toEqual(["mint:cold-newest:0", "mint:hot-older:0"]);
   });
 
-  test("builds transparent trader heat from activity and position summaries", () => {
-    const events = [
-      tradeEvent({
-        eventId: "mint:alpha:0",
-        actor: "0xalpha",
-        timestampMs: 10_000,
-        cost: 1_000_000,
-      }),
-      tradeEvent({
-        eventId: "redeem:alpha:1",
-        kind: "redeem",
-        actor: "0xalpha",
-        timestampMs: 10_500,
-        payout: 1_400_000,
-      }),
-      tradeEvent({
-        eventId: "mint:beta:0",
-        actor: "0xbeta",
-        timestampMs: 10_900,
-        cost: 600_000,
-      }),
-      tradeEvent({
-        eventId: "redeem:beta:1",
-        kind: "redeem",
-        actor: "0xbeta",
-        timestampMs: 10_950,
-        payout: 0,
-      }),
-      tradeEvent({
-        eventId: "mint:beta-open:2",
-        actor: "0xbeta",
-        timestampMs: 10_990,
-        cost: 300_000,
-      }),
-    ];
+  test("scores recent prediction quality instead of absolute PnL alone", () => {
     const positions = [
+      ...Array.from({ length: 6 }, (_, index) =>
+        positionSummary({
+          id: `small-sharp-${index}`,
+          owner: "0xsmall-sharp",
+          oracleId: `btc-small-${index}`,
+          strike: 72_000_000_000 + index,
+          mintedQuantity: 2_000_000,
+          redeemedQuantity: 2_000_000,
+          openQuantity: 0,
+          cost: 1_000_000,
+          payout: index === 0 ? 0 : 2_000_000,
+          realizedPnl: index === 0 ? -1_000_000 : 1_000_000,
+          lastEventMs: 10_000 + index,
+        }),
+      ),
       positionSummary({
-        id: "alpha-win",
-        owner: "0xalpha",
-        cost: 1_000_000,
-        payout: 1_400_000,
-        realizedPnl: 400_000,
-        status: "closed",
+        id: "large-one-shot",
+        owner: "0xlarge-one-shot",
+        oracleId: "btc-large-one-shot",
+        mintedQuantity: 200_000_000,
+        redeemedQuantity: 200_000_000,
+        openQuantity: 0,
+        cost: 100_000_000,
+        payout: 200_000_000,
+        realizedPnl: 100_000_000,
+        lastEventMs: 10_100,
       }),
-      positionSummary({
-        id: "beta-loss",
-        owner: "0xbeta",
-        cost: 600_000,
-        payout: 0,
-        realizedPnl: -600_000,
-        status: "closed",
-      }),
-      positionSummary({
-        id: "beta-open",
-        owner: "0xbeta",
-        cost: 300_000,
-        payout: 0,
-        realizedPnl: -300_000,
-        status: "open",
-      }),
+      ...Array.from({ length: 8 }, (_, index) =>
+        positionSummary({
+          id: `recent-loser-${index}`,
+          owner: "0xrecent-loser",
+          oracleId: `btc-loser-${index}`,
+          strike: 72_000_000_000 + index,
+          mintedQuantity: 10_000_000,
+          redeemedQuantity: 10_000_000,
+          openQuantity: 0,
+          cost: 5_000_000,
+          payout: 0,
+          realizedPnl: -5_000_000,
+          lastEventMs: 10_200 + index,
+        }),
+      ),
     ];
 
-    expect(
-      buildTraderHeatProjection(events, positions, {
-        nowMs: 11_000,
-        recentWindowMs: 1_000,
+    const heat = buildTraderHeatProjection([], positions, { nowMs: 11_000 });
+    const byWallet = new Map(heat.map((entry) => [entry.trader, entry]));
+
+    expect(byWallet.get("0xsmall-sharp")?.hotScore).toBeGreaterThanOrEqual(75);
+    expect(byWallet.get("0xsmall-sharp")?.hotScore).toBeGreaterThan(
+      byWallet.get("0xlarge-one-shot")?.hotScore ?? 0,
+    );
+    expect(byWallet.get("0xlarge-one-shot")?.hotScore).toBeLessThan(70);
+    expect(byWallet.get("0xrecent-loser")?.hotScore).toBeLessThanOrEqual(20);
+  });
+
+  test("aggregates repeated same-position buys before scoring heat confidence", () => {
+    const repeatedBuys = Array.from({ length: 5 }, (_, index) =>
+      positionSummary({
+        id: `repeat-${index}`,
+        owner: "0xrepeat",
+        oracleId: "btc-repeat",
+        strike: 72_000_000_000,
+        mintedQuantity: 2_000_000,
+        redeemedQuantity: 2_000_000,
+        openQuantity: 0,
+        cost: 1_000_000,
+        payout: 2_000_000,
+        realizedPnl: 1_000_000,
+        lastEventMs: 10_000 + index,
       }),
-    ).toEqual([
-      {
-        trader: "0xalpha",
-        hotScore: 60,
-        eventCount: 2,
-        mintCount: 1,
-        redeemCount: 1,
-        recentEventCount: 2,
-        observedVolume: 2_400_000,
-        realizedPnl: 400_000,
-        openCount: 0,
-        closedCount: 1,
-        winCount: 1,
-        lossCount: 0,
-        lastSeenMs: 10_500,
-        components: {
-          recentActivity: 16,
-          realizedPnl: 4,
-          winRedeem: 16,
-          observedVolume: 24,
-        },
-      },
-      {
-        trader: "0xbeta",
-        hotScore: 23,
-        eventCount: 3,
-        mintCount: 2,
-        redeemCount: 1,
-        recentEventCount: 3,
-        observedVolume: 900_000,
-        realizedPnl: -600_000,
-        openCount: 1,
-        closedCount: 1,
-        winCount: 0,
-        lossCount: 1,
-        lastSeenMs: 10_990,
-        components: {
-          recentActivity: 24,
-          realizedPnl: -6,
-          winRedeem: -4,
-          observedVolume: 9,
-        },
-      },
-    ]);
+    );
+    const diverseBuys = Array.from({ length: 5 }, (_, index) =>
+      positionSummary({
+        id: `diverse-${index}`,
+        owner: "0xdiverse",
+        oracleId: `btc-diverse-${index}`,
+        strike: 72_000_000_000 + index,
+        mintedQuantity: 2_000_000,
+        redeemedQuantity: 2_000_000,
+        openQuantity: 0,
+        cost: 1_000_000,
+        payout: 2_000_000,
+        realizedPnl: 1_000_000,
+        lastEventMs: 10_000 + index,
+      }),
+    );
+
+    const heat = buildTraderHeatProjection([], [...repeatedBuys, ...diverseBuys], {
+      nowMs: 11_000,
+    });
+    const byWallet = new Map(heat.map((entry) => [entry.trader, entry]));
+
+    expect(byWallet.get("0xrepeat")?.decisionCount).toBe(1);
+    expect(byWallet.get("0xdiverse")?.decisionCount).toBe(5);
+    expect(byWallet.get("0xdiverse")?.hotScore).toBeGreaterThan(
+      (byWallet.get("0xrepeat")?.hotScore ?? 0) + 20,
+    );
+  });
+
+  test("keeps recent noisy losing activity cold", () => {
+    const events = [
+      ...Array.from({ length: 20 }, (_, index) =>
+        tradeEvent({
+          eventId: `mint:loser:${index}`,
+          actor: "0xactive-loser",
+          timestampMs: 10_000 + index,
+          cost: 5_000_000,
+          quantity: 10_000_000,
+        }),
+      ),
+    ];
+    const positions = Array.from({ length: 8 }, (_, index) =>
+      positionSummary({
+        id: `active-loser-${index}`,
+        owner: "0xactive-loser",
+        oracleId: `btc-active-loser-${index}`,
+        strike: 72_000_000_000 + index,
+        mintedQuantity: 10_000_000,
+        redeemedQuantity: 10_000_000,
+        openQuantity: 0,
+        cost: 5_000_000,
+        payout: 0,
+        realizedPnl: -5_000_000,
+        lastEventMs: 10_100 + index,
+      }),
+    );
+
+    const heat = buildTraderHeatProjection(events, positions, {
+      nowMs: 11_000,
+      recentWindowMs: 1_000,
+    });
+
+    expect(heat[0]).toMatchObject({
+      trader: "0xactive-loser",
+      eventCount: 20,
+      recentEventCount: 20,
+      winCount: 0,
+      lossCount: 8,
+      decisionCount: 8,
+    });
+    expect(heat[0]?.hotScore).toBeLessThanOrEqual(20);
   });
 
   test("downsamples oracle price charts while preserving first and last points", () => {

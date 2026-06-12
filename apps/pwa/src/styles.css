@@ -2025,9 +2025,9 @@ button:disabled {
   position: absolute;
   top: 7px;
   bottom: 7px;
-  left: 8px;
+  left: 2px;
   display: grid;
-  width: 86px;
+  width: 62px;
   place-items: center;
   border-radius: 8px;
   color: #047857;
@@ -2041,13 +2041,37 @@ button:disabled {
     color 120ms ease;
 }
 
+.market-heat-swipe-action-fade {
+  right: 2px;
+  left: auto;
+  color: #b42318;
+  background: #fee4e2;
+}
+
 .market-heat-row-swiping .market-heat-swipe-action {
   transform: scale(1);
 }
 
-.market-heat-row-swipe-confirming .market-heat-swipe-action {
+.market-heat-row-swipe-copying .market-heat-swipe-action-copy {
   color: #064e3b;
   background: #bbf7d0;
+}
+
+.market-heat-row-swipe-hint-copy .market-heat-swipe-action-copy,
+.market-heat-row-swipe-hint-both .market-heat-swipe-action-copy {
+  color: #064e3b;
+  background: #bbf7d0;
+}
+
+.market-heat-row-swipe-fading .market-heat-swipe-action-fade {
+  color: #7a271a;
+  background: #fecdca;
+}
+
+.market-heat-row-swipe-hint-fade .market-heat-swipe-action-fade,
+.market-heat-row-swipe-hint-both .market-heat-swipe-action-fade {
+  color: #7a271a;
+  background: #fecdca;
 }
 
 .market-heat-compact-row {
@@ -2073,6 +2097,152 @@ button:disabled {
   background: #ecfdf3;
   font-size: 0.82rem;
   font-weight: 950;
+}
+
+@keyframes market-heat-copy-peek {
+  0%,
+  12%,
+  88%,
+  100% {
+    transform: translateX(0);
+  }
+
+  28%,
+  68% {
+    transform: translateX(46px);
+  }
+}
+
+@keyframes market-heat-fade-peek {
+  0%,
+  12%,
+  88%,
+  100% {
+    transform: translateX(0);
+  }
+
+  28%,
+  68% {
+    transform: translateX(-46px);
+  }
+}
+
+@keyframes market-heat-both-peek {
+  0%,
+  8%,
+  42%,
+  54%,
+  88%,
+  100% {
+    transform: translateX(0);
+  }
+
+  16%,
+  32% {
+    transform: translateX(46px);
+  }
+
+  66%,
+  82% {
+    transform: translateX(-46px);
+  }
+}
+
+@keyframes market-heat-copy-label-peek {
+  0%,
+  18%,
+  78%,
+  100% {
+    opacity: 0;
+  }
+
+  30%,
+  68% {
+    opacity: 1;
+  }
+}
+
+@keyframes market-heat-fade-label-peek {
+  0%,
+  18%,
+  78%,
+  100% {
+    opacity: 0;
+  }
+
+  30%,
+  68% {
+    opacity: 1;
+  }
+}
+
+@keyframes market-heat-both-copy-label-peek {
+  0%,
+  9%,
+  40%,
+  100% {
+    opacity: 0;
+  }
+
+  16%,
+  32% {
+    opacity: 1;
+  }
+}
+
+@keyframes market-heat-both-fade-label-peek {
+  0%,
+  58%,
+  90%,
+  100% {
+    opacity: 0;
+  }
+
+  66%,
+  82% {
+    opacity: 1;
+  }
+}
+
+.market-heat-swipe-action.market-heat-swipe-hint-label {
+  opacity: 0;
+  width: 50px;
+}
+
+.market-heat-swipe-action.market-heat-swipe-hint-label-copy {
+  inset: 0 auto 0 -2px;
+}
+
+.market-heat-swipe-action.market-heat-swipe-hint-label-fade {
+  inset: 0 -2px 0 auto;
+}
+
+.market-heat-row-swipe-hint-copy .market-heat-compact-row {
+  animation: market-heat-copy-peek 3.6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-fade .market-heat-compact-row {
+  animation: market-heat-fade-peek 3.6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-both .market-heat-compact-row {
+  animation: market-heat-both-peek 6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-copy .market-heat-swipe-hint-label-copy {
+  animation: market-heat-copy-label-peek 3.6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-fade .market-heat-swipe-hint-label-fade {
+  animation: market-heat-fade-label-peek 3.6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-both .market-heat-swipe-hint-label-copy {
+  animation: market-heat-both-copy-label-peek 6s ease-in-out 2.45s 1;
+}
+
+.market-heat-row-swipe-hint-both .market-heat-swipe-hint-label-fade {
+  animation: market-heat-both-fade-label-peek 6s ease-in-out 2.45s 1;
 }
 
 .wallet-avatar-compact {
@@ -3811,9 +3981,55 @@ button:disabled {
 }
 
 .market-heat-swipe-action {
-  inset: 0 auto 0 0;
-  width: 76px;
+  inset: 0 auto 0 -4px;
+  width: 54px;
   border-radius: 8px 0 0 8px;
+}
+
+.market-heat-swipe-action-fade {
+  inset: 0 -4px 0 auto;
+  border-radius: 0 8px 8px 0;
+  color: var(--hh-down);
+  background: var(--hh-down-soft);
+}
+
+.market-heat-row-swipe-fading .market-heat-swipe-action-fade {
+  color: var(--hh-down);
+  background: color-mix(in srgb, var(--hh-down-soft) 82%, var(--hh-down-line));
+}
+
+.market-heat-intent-mode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--hh-line);
+}
+
+.market-heat-intent-mode strong {
+  font-size: 0.95rem;
+  font-weight: 950;
+}
+
+.market-heat-intent-mode span:not(.market-heat-intent-side) {
+  color: var(--hh-muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.market-heat-intent-side {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+}
+
+.market-heat-intent-mode-copy strong {
+  color: var(--hh-up);
+}
+
+.market-heat-intent-mode-fade strong {
+  color: var(--hh-down);
 }
 
 .inline-watch-panel {
@@ -3827,7 +4043,7 @@ button:disabled {
 
 .market-heat-intent-targets {
   display: grid;
-  grid-template-columns: 0.94fr 0.94fr 1.2fr;
+  grid-template-columns: 1fr 1fr;
   gap: 0;
   border-bottom: 1px solid var(--hh-line);
 }
@@ -3835,7 +4051,7 @@ button:disabled {
 .market-heat-intent-targets span {
   display: grid;
   gap: 2px;
-  min-height: 56px;
+  min-height: 46px;
   padding: 0 11px 10px;
   border-right: 1px solid var(--hh-line);
 }
@@ -3864,16 +4080,8 @@ button:disabled {
   line-height: 1.08;
 }
 
-.market-heat-intent-targets span:last-child strong,
 .market-heat-intent-footer span:nth-child(2) strong {
   color: var(--hh-up);
-}
-
-.market-heat-intent-targets em {
-  color: var(--hh-muted);
-  font-size: 0.68rem;
-  font-style: normal;
-  font-weight: 800;
 }
 
 .market-heat-stake-label {
@@ -3980,6 +4188,17 @@ button:disabled {
   .theme-toggle {
     width: 42px;
     padding: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-heat-row-swipe-hint .market-heat-compact-row,
+  .market-heat-row-swipe-hint .market-heat-swipe-hint-label {
+    animation: none;
+  }
+
+  .market-heat-row-swipe-hint .market-heat-swipe-hint-label {
+    opacity: 0;
   }
 }
 

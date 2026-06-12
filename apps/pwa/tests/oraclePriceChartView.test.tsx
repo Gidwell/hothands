@@ -92,6 +92,10 @@ describe("OraclePriceChartModal", () => {
     );
 
     expect(html).toContain("BTC/USD market chart");
+    expect(html).toContain("UP $66,950 resolves Jun 11, 5:00 PM.");
+    expect(html).toContain("resolves in 2h 47m");
+    expect(html).toContain('data-testid="oracle-chart-range-4H"');
+    expect(html).not.toContain('data-testid="oracle-chart-range-6H"');
     expect(html).toContain('data-testid="oracle-chart-settlement-toggle"');
     expect(html).toContain("Settlement");
     expect(html).toContain("UP $66,950");
@@ -151,7 +155,7 @@ describe("OraclePriceChartModal", () => {
     ).not.toBe(
       buildOraclePriceChartFitResetKey({
         oracleId: "0xoracle",
-        rangeKey: "6H",
+        rangeKey: "4H",
       }),
     );
     expect(
@@ -192,7 +196,7 @@ describe("OraclePriceChartModal", () => {
     ).toBe(false);
   });
 
-  test("defaults expanded charts to the latest six hours when more history exists", () => {
+  test("defaults expanded charts to the latest four hours when more history exists", () => {
     expect(
       getInitialOraclePriceChartView({
         compact: false,
@@ -200,7 +204,7 @@ describe("OraclePriceChartModal", () => {
       }),
     ).toEqual({
       mode: "time-range",
-      from: 8_400,
+      from: 15_600,
       to: 30_000,
     });
   });
