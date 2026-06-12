@@ -166,6 +166,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Strike</small>");
     expect(html).toContain("Est. payout</small><strong>$937.50");
     expect(html).toContain("Max profit</small><strong>+$562.50");
+    expect(html).toContain("direction-pill-up market-heat-intent-side");
+    expect(html).not.toContain("Same side");
     expect(html).toContain('data-testid="market-heat-wallet-submit"');
     expect(html).toContain(">Copy</button>");
     expect(html).not.toContain("Manager 0xbbbb...0000");
@@ -201,7 +203,11 @@ describe("MarketHeatPreview component", () => {
     );
 
     expect(html).toContain("Fade");
-    expect(html).toContain("Opposite side");
+    expect(html).toContain("market-heat-intent-side");
+    expect(html).toContain("direction-pill-down");
+    expect(html).toContain(">DOWN</span>");
+    expect(html).not.toContain("Opposite side");
+    expect(html).not.toContain("Same side");
     expect(html).toContain("Fade target</small>");
     expect(html).toContain("Below $7,100");
     expect(html).toContain("Max profit</small><strong>+$562.50");

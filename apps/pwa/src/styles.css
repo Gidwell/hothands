@@ -3854,10 +3854,16 @@ button:disabled {
   font-weight: 950;
 }
 
-.market-heat-intent-mode span {
+.market-heat-intent-mode span:not(.market-heat-intent-side) {
   color: var(--hh-muted);
   font-size: 0.76rem;
   font-weight: 900;
+}
+
+.market-heat-intent-side {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.78rem;
 }
 
 .market-heat-intent-mode-copy strong {

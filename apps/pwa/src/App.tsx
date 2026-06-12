@@ -3961,7 +3961,11 @@ export function MarketHeatPreview({
       >
         <div className={`market-heat-intent-mode market-heat-intent-mode-${rowIntentMode}`}>
           <strong>{rowIntentLabel}</strong>
-          <span>{rowIntentMode === "fade" ? "Opposite side" : "Same side"}</span>
+          <span
+            className={`direction-pill direction-pill-${rowIntentSide.toLowerCase()} market-heat-intent-side`}
+          >
+            {rowIntentSide}
+          </span>
         </div>
         <div className="market-heat-intent-targets" aria-label={`${rowIdentityTitle} intent`}>
           <span>
