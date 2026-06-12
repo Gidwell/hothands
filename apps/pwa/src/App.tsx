@@ -109,6 +109,17 @@ import {
   type WalletLeaderboardTone,
   type WalletLeaderboardsSnapshot,
 } from "./walletLeaderboards";
+import {
+  clearStoredWalletAuthSession,
+  deleteFollowedWalletFromApi,
+  loadFollowedWalletsFromApi,
+  readStoredWalletAuthSession,
+  recordCopyReceiptToApi,
+  requestWalletAuthSession,
+  saveFollowedWalletToApi,
+  type FollowedWalletRecord,
+  type WalletAuthSession,
+} from "./walletAuth";
 import { buildTradeMintTransaction } from "./walletTransactions";
 import { buildPortfolioRedeemTransaction } from "./walletTransactions";
 import {
@@ -391,6 +402,13 @@ export type FollowedWallet = {
   displayName: string;
   wallet: string;
 };
+
+function followedWalletRecordsToUi(records: FollowedWalletRecord[]): FollowedWallet[] {
+  return records.map((record) => ({
+    displayName: record.displayName || formatWalletAddress(record.wallet),
+    wallet: record.wallet,
+  }));
+}
 
 export function resolveSelectedProfileWalletForNav(
   view: AppView,
@@ -4773,6 +4791,40 @@ export function App() {
       return nextRecords;
     });
   };
+  const requestPersistentWalletSession = async (): Promise<WalletAuthSession> => {
+    if (!currentAccount) {
+      throw new Error("Connect a Sui testnet wallet first.");
+    }
+
+    return await requestWalletAuthSession({
+      apiBaseUrl: realtimeApiBaseUrl,
+      wallet: currentAccount.address,
+      storage: typeof window === "undefined" ? null : window.localStorage,
+      signPersonalMessage: (message) => dAppKit.signPersonalMessage({ message }),
+    });
+  };
+  const replaceFollowedWallets = (wallets: FollowedWallet[]) => {
+    setFollowedWallets(wallets);
+    writeFollowedWallets(wallets);
+  };
+  const persistFollowedWallet = async (wallet: FollowedWallet) => {
+    const session = await requestPersistentWalletSession();
+    const savedWallets = await saveFollowedWalletToApi({
+      apiBaseUrl: realtimeApiBaseUrl,
+      session,
+      wallet,
+    });
+    replaceFollowedWallets(followedWalletRecordsToUi(savedWallets));
+  };
+  const persistUnfollowedWallet = async (leaderWallet: string) => {
+    const session = await requestPersistentWalletSession();
+    const savedWallets = await deleteFollowedWalletFromApi({
+      apiBaseUrl: realtimeApiBaseUrl,
+      leaderWallet,
+      session,
+    });
+    replaceFollowedWallets(followedWalletRecordsToUi(savedWallets));
+  };
   const openShareCard = async (input: HotHandsShareCardInput) => {
     try {
       const card = await renderShareCard(input);
@@ -5060,6 +5112,41 @@ export function App() {
       setIsWalletChooserOpen(false);
     }
   }, [connectedAccountAddress, wallets.length]);
+
+  useEffect(() => {
+    if (!currentAccount || !realtimeApiBaseUrl || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const session = readStoredWalletAuthSession(
+      window.localStorage,
+      currentAccount.address,
+      Date.now(),
+    );
+    if (!session) {
+      return undefined;
+    }
+
+    let isCurrent = true;
+    void loadFollowedWalletsFromApi({
+      apiBaseUrl: realtimeApiBaseUrl,
+      session,
+    })
+      .then((wallets) => {
+        if (isCurrent) {
+          replaceFollowedWallets(followedWalletRecordsToUi(wallets));
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          clearStoredWalletAuthSession(window.localStorage);
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentAccount?.address, realtimeApiBaseUrl]);
 
   useEffect(() => {
     syncAppViewToUrl(activeView);
@@ -6123,23 +6210,63 @@ export function App() {
         label: `${copyTradeLabel} transaction sent.`,
         digest,
       });
+      const copiedPositionId = buildPredictPortfolioPositionId({
+        managerId: activePredictManagerObjectId,
+        oracleId: copyTrade.market.oracleId,
+        expiry: copyTrade.market.expiry,
+        strike: copyTrade.market.strikeRaw,
+        direction: copyTradeSide,
+      });
+      const sourcePositionId = copyAttributionTargetForMarketHeatRow(copyTrade.row).positionId;
+      const copiedAmount =
+        Number.isFinite(quote.costUsd) && quote.costUsd > 0
+          ? quote.costUsd
+          : copyState.copyAmount;
       recordCopyAttribution({
-        amount:
-          Number.isFinite(quote.costUsd) && quote.costUsd > 0
-            ? quote.costUsd
-            : copyState.copyAmount,
-        copied_position_id: buildPredictPortfolioPositionId({
-          managerId: activePredictManagerObjectId,
-          oracleId: copyTrade.market.oracleId,
-          expiry: copyTrade.market.expiry,
-          strike: copyTrade.market.strikeRaw,
-          direction: copyTradeSide,
-        }),
+        amount: copiedAmount,
+        copied_position_id: copiedPositionId,
         copier: currentAccount.address,
-        position_id: copyAttributionTargetForMarketHeatRow(copyTrade.row).positionId,
+        position_id: sourcePositionId,
         source_wallet: copyTrade.row.wallet,
         timestamp: Date.now(),
       });
+      if (realtimeApiBaseUrl) {
+        void requestPersistentWalletSession()
+          .then((session) =>
+            recordCopyReceiptToApi({
+              apiBaseUrl: realtimeApiBaseUrl,
+              session,
+              receipt: {
+                receiptId: `${mode}-${digest ?? Date.now()}-${copyTrade.row.id}`,
+                sourceWallet: copyTrade.row.wallet,
+                sourcePositionId,
+                copiedPositionId,
+                mode,
+                status: "submitted",
+                oracleId: copyTrade.market.oracleId,
+                expiryMs: copyTrade.market.expiryMs,
+                strike: copyTrade.market.strikeRaw,
+                sourceSide: copyTrade.row.side,
+                executionSide: copyTradeSide,
+                amountUsd: copiedAmount,
+                quoteCost: quote.costUsd,
+                ...(digest ? { transactionDigest: digest } : {}),
+                raw: {
+                  feedRowId: copyTrade.row.id,
+                  marketId: copyTrade.market.id,
+                },
+              },
+            }),
+          )
+          .catch((receiptError) => {
+            pushToast({
+              kind: "warning",
+              title: "Copy saved locally",
+              message: walletErrorMessage(receiptError),
+              groupKey: "copy-receipt",
+            });
+          });
+      }
       refreshAfterWalletTransaction(digest);
     } catch (error) {
       setWalletTxState({
@@ -6229,6 +6356,20 @@ export function App() {
       message: wallet.displayName || formatWalletAddress(normalizedWallet),
       groupKey: "follow-wallet",
     });
+
+    if (currentAccount && realtimeApiBaseUrl) {
+      void persistFollowedWallet({
+        displayName: wallet.displayName || formatWalletAddress(normalizedWallet),
+        wallet: normalizedWallet,
+      }).catch((error) => {
+        pushToast({
+          kind: "warning",
+          title: "Saved locally",
+          message: walletErrorMessage(error),
+          groupKey: "follow-wallet",
+        });
+      });
+    }
   };
   const handleUnfollowWallet = (wallet: string) => {
     const normalizedWallet = normalizeProfileWalletAddress(wallet);
@@ -6256,6 +6397,17 @@ export function App() {
       message: formatWalletAddress(normalizedWallet),
       groupKey: "follow-wallet",
     });
+
+    if (currentAccount && realtimeApiBaseUrl) {
+      void persistUnfollowedWallet(normalizedWallet).catch((error) => {
+        pushToast({
+          kind: "warning",
+          title: "Saved locally",
+          message: walletErrorMessage(error),
+          groupKey: "follow-wallet",
+        });
+      });
+    }
   };
   const handleDepositAmountChange = (amount: number) => {
     setDepositAmount(clampDepositAmount(amount));
@@ -6328,6 +6480,7 @@ export function App() {
   const handleWalletDisconnect = async () => {
     try {
       await dAppKit.disconnectWallet();
+      clearStoredWalletAuthSession(typeof window === "undefined" ? null : window.localStorage);
       setWalletTxState(idleWalletTransactionState);
       setPortfolioWalletSubmitPositionId(null);
       pushToast({

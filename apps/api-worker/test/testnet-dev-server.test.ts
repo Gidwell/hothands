@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { PredictIndexerReader } from "@hot-hands/indexer";
+import type {
+  CopyReceipt,
+  HotHandsAppStore,
+  UpsertWalletFollowInput,
+  WalletAuthChallenge,
+  WalletFollow,
+  WalletSession,
+} from "../src/app-storage";
 import { createTestnetDevServerFetch } from "../src/testnet-dev-server";
 import {
   clearMainnetSuinsNameCacheForTest,
@@ -7,6 +15,202 @@ import {
 } from "../src/suins-names";
 
 describe("testnet API dev server harness", () => {
+  test("creates wallet auth challenges and sessions with signed personal messages", async () => {
+    const wallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000a1";
+    const challenges: WalletAuthChallenge[] = [];
+    const sessions: WalletSession[] = [];
+    const verifierCalls: unknown[] = [];
+    const fetchHandler = createTestnetDevServerFetch({
+      appStore: createTestAppStore({
+        challenges,
+        sessions,
+      }),
+      createSessionToken: () => "test-session-token",
+      randomId: () => "test-random-id",
+      verifyWalletSignature: async (input) => {
+        verifierCalls.push(input);
+      },
+      nowMs: () => 1_000,
+    });
+
+    const challengeResponse = await fetchHandler(
+      new Request("http://127.0.0.1:8789/app/auth/challenge", {
+        method: "POST",
+        body: JSON.stringify({ wallet }),
+      }),
+    );
+
+    expect(challengeResponse.status).toBe(200);
+    expect(challengeResponse.headers.get("access-control-allow-headers")).toContain(
+      "authorization",
+    );
+    const challengeBody = await challengeResponse.json();
+    expect(challengeBody).toMatchObject({
+      wallet,
+      nonce: "test-random-id",
+      expiresAtMs: 301_000,
+    });
+    expect(challenges[0]).toMatchObject({
+      challengeId: "test-random-id",
+      wallet,
+      nonce: "test-random-id",
+      expiresAtMs: 301_000,
+    });
+    expect(challengeBody.message).toContain("Sign in to Hot Hands");
+
+    const sessionResponse = await fetchHandler(
+      new Request("http://127.0.0.1:8789/app/auth/session", {
+        method: "POST",
+        body: JSON.stringify({
+          wallet,
+          nonce: "test-random-id",
+          signature: "signed-message",
+        }),
+      }),
+    );
+
+    expect(sessionResponse.status).toBe(200);
+    await expect(sessionResponse.json()).resolves.toMatchObject({
+      wallet,
+      token: "test-session-token",
+      expiresAtMs: 2_592_001_000,
+    });
+    expect(verifierCalls).toEqual([
+      {
+        wallet,
+        message: challenges[0]?.message,
+        signature: "signed-message",
+      },
+    ]);
+    expect(sessions[0]).toMatchObject({
+      sessionId: "test-random-id",
+      wallet,
+      issuedAtMs: 1_000,
+      expiresAtMs: 2_592_001_000,
+    });
+    expect(sessions[0]?.tokenHash).not.toBe("test-session-token");
+  });
+
+  test("persists followed wallets and copy receipts behind wallet auth", async () => {
+    const wallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000a1";
+    const leaderWallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000b2";
+    const follows: WalletFollow[] = [];
+    const followWrites: UpsertWalletFollowInput[] = [];
+    const receipts: CopyReceipt[] = [];
+    const fetchHandler = createTestnetDevServerFetch({
+      appStore: createTestAppStore({
+        follows,
+        followWrites,
+        receipts,
+        session: {
+          sessionId: "session-1",
+          wallet,
+          tokenHash: "hash",
+          issuedAtMs: 1_000,
+          expiresAtMs: 5_000,
+        },
+      }),
+      nowMs: () => 2_000,
+    });
+
+    const followResponse = await fetchHandler(
+      new Request("http://127.0.0.1:8789/app/follows", {
+        method: "POST",
+        headers: { authorization: "Bearer session-token" },
+        body: JSON.stringify({
+          leaderWallet,
+          leaderDisplayName: "leader.sui",
+        }),
+      }),
+    );
+
+    expect(followResponse.status).toBe(200);
+    await expect(followResponse.json()).resolves.toEqual({
+      wallet,
+      follows: [
+        {
+          followerWallet: wallet,
+          leaderWallet,
+          leaderDisplayName: "leader.sui",
+          createdAtMs: 2_000,
+          updatedAtMs: 2_000,
+        },
+      ],
+    });
+    expect(followWrites).toEqual([
+      {
+        followerWallet: wallet,
+        leaderWallet,
+        leaderDisplayName: "leader.sui",
+        nowMs: 2_000,
+      },
+    ]);
+
+    const receiptResponse = await fetchHandler(
+      new Request("http://127.0.0.1:8789/app/copy-receipts", {
+        method: "POST",
+        headers: { authorization: "Bearer session-token" },
+        body: JSON.stringify({
+          receiptId: "receipt-1",
+          sourceWallet: leaderWallet,
+          sourcePositionId: "source-position",
+          copiedPositionId: "copied-position",
+          mode: "fade",
+          status: "submitted",
+          sourceSide: "UP",
+          executionSide: "DOWN",
+          amountUsd: 25,
+          transactionDigest: "0xdigest",
+        }),
+      }),
+    );
+
+    expect(receiptResponse.status).toBe(200);
+    await expect(receiptResponse.json()).resolves.toMatchObject({
+      receipt: {
+        receiptId: "receipt-1",
+        copierWallet: wallet,
+        sourceWallet: leaderWallet,
+        mode: "fade",
+        executionSide: "DOWN",
+      },
+    });
+    expect(receipts[0]).toMatchObject({
+      receiptId: "receipt-1",
+      copierWallet: wallet,
+      sourceWallet: leaderWallet,
+      mode: "fade",
+      status: "submitted",
+      createdAtMs: 2_000,
+      updatedAtMs: 2_000,
+    });
+  });
+
+  test("rejects app social writes without an active wallet session", async () => {
+    const fetchHandler = createTestnetDevServerFetch({
+      appStore: createTestAppStore(),
+      nowMs: () => 2_000,
+    });
+
+    const response = await fetchHandler(
+      new Request("http://127.0.0.1:8789/app/follows", {
+        method: "POST",
+        body: JSON.stringify({
+          leaderWallet:
+            "0x00000000000000000000000000000000000000000000000000000000000000b2",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "auth_required",
+    });
+  });
+
   test("serves mainnet SuiNS names as a display-only testnet overlay", async () => {
     clearMainnetSuinsNameCacheForTest();
 
@@ -674,6 +878,78 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" }
   });
+}
+
+function createTestAppStore({
+  challenges = [],
+  follows = [],
+  followWrites = [],
+  receipts = [],
+  session,
+  sessions = [],
+}: {
+  challenges?: WalletAuthChallenge[];
+  follows?: WalletFollow[];
+  followWrites?: UpsertWalletFollowInput[];
+  receipts?: CopyReceipt[];
+  session?: WalletSession | null;
+  sessions?: WalletSession[];
+} = {}): HotHandsAppStore {
+  return {
+    createWalletAuthChallenge: async (challenge) => {
+      challenges.push(challenge);
+      return 1;
+    },
+    consumeWalletAuthChallenge: async ({ wallet, nonce, consumedAtMs }) => {
+      const challenge = challenges.find(
+        (candidate) => candidate.wallet === wallet && candidate.nonce === nonce,
+      );
+
+      if (!challenge) {
+        return null;
+      }
+
+      const consumed = { ...challenge, consumedAtMs };
+      challenges.splice(challenges.indexOf(challenge), 1, consumed);
+      return consumed;
+    },
+    upsertWalletSession: async (nextSession) => {
+      sessions.push(nextSession);
+      return 1;
+    },
+    getWalletSessionByTokenHash: async () => session ?? null,
+    revokeWalletSession: async () => 1,
+    upsertWalletFollow: async (follow) => {
+      followWrites.push(follow);
+      follows.splice(0, follows.length, {
+        followerWallet: follow.followerWallet,
+        leaderWallet: follow.leaderWallet,
+        ...(follow.leaderDisplayName ? { leaderDisplayName: follow.leaderDisplayName } : {}),
+        createdAtMs: follow.nowMs,
+        updatedAtMs: follow.nowMs,
+      });
+      return 1;
+    },
+    deleteWalletFollow: async ({ followerWallet, leaderWallet }) => {
+      const index = follows.findIndex(
+        (follow) =>
+          follow.followerWallet === followerWallet && follow.leaderWallet === leaderWallet,
+      );
+      if (index >= 0) {
+        follows.splice(index, 1);
+      }
+      return index >= 0 ? 1 : 0;
+    },
+    listWalletFollows: async (followerWallet) =>
+      follows.filter((follow) => follow.followerWallet === followerWallet),
+    recordCopyReceipt: async (receipt) => {
+      receipts.push(receipt);
+      return 1;
+    },
+    listCopyReceipts: async () => receipts,
+    upsertWalletHeatSnapshot: async () => 1,
+    listLatestWalletHeatSnapshots: async () => [],
+  };
 }
 
 function createTestIndexerReader(

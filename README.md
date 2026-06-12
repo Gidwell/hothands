@@ -52,12 +52,21 @@ The launcher starts:
 - Market heat API: `http://127.0.0.1:8789/testnet/market-heat`
 - Indexer status API: `http://127.0.0.1:8789/testnet/indexer-status`
 - Open-position close quote API: `http://127.0.0.1:8789/testnet/redeem-quote`
+- App auth/social API: `http://127.0.0.1:8789/app/auth/challenge`,
+  `/app/auth/session`, `/app/follows`, and `/app/copy-receipts`
 
 `dev:testnet` is the recommended teammate/agent loop. It applies indexer
 migrations, runs an idempotent bounded write backfill, starts the local API,
 starts the PWA pointed at that API, then starts the live indexer. The PWA opens
 directly in testnet mode and should read indexed data for Feed, Trade,
 Portfolio, Leaderboards, and the BTC chart.
+
+The same local Postgres database now also stores Hot Hands-owned app data:
+wallet auth challenges/sessions, followed wallets, submitted copy/fade
+receipts, and wallet heat snapshots. Follows and copy/fade receipts are written
+only after a real connected wallet signs a Hot Hands personal-message auth
+challenge. `devWallet` remains read-only and cannot create an authenticated app
+session.
 
 Quick health checks:
 
@@ -180,6 +189,10 @@ Keep the local shape simple and explicit:
 - keep the data path as: public DeepBook Predict server -> Postgres raw tables
   -> compact projections -> API worker endpoints -> PWA Feed, Trade,
   Portfolio, and chart views
+- keep app-owned state in the same local Postgres database but outside Predict
+  raw tables: `/app/auth/*` issues wallet signature sessions, `/app/follows`
+  persists followed wallets, and `/app/copy-receipts` persists copy/fade
+  attribution after submitted wallet transactions
 - keep 1-second UI ticks cheap: `/testnet/market-heat` is cached server-side
   for a short read-through window, and the PWA uses the lightweight
   `/testnet/price-snapshot` endpoint for price/market model refreshes after the

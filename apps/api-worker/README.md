@@ -94,6 +94,26 @@ and the PWA can present `Copy now` for a user-signed copy. `status: "watching"`
 means the row is still copyable as `Copy next`, but the app waits for the
 trader's next observed mint. Heat ranks rows; it does not gate copying.
 
+## App Auth And Social State
+
+When the local API is started with `DATABASE_URL`, it also creates a
+Postgres-backed Hot Hands app store. These routes are separate from read-only
+DeepBook Predict projections:
+
+- `POST /app/auth/challenge`: creates a short-lived Sui wallet personal-message
+  challenge.
+- `POST /app/auth/session`: verifies the signed challenge and returns a bearer
+  session token.
+- `GET /app/follows`: lists followed wallets for the authenticated wallet.
+- `POST /app/follows`: follows a leader wallet for the authenticated wallet.
+- `DELETE /app/follows?leaderWallet=...`: removes a follow edge.
+- `GET /app/copy-receipts`: lists persisted copy/fade attribution receipts.
+- `POST /app/copy-receipts`: records a submitted Copy or Fade receipt for the
+  authenticated wallet after a wallet transaction is sent.
+
+The PWA uses local storage as a fallback for read-only/dev-wallet mode, but
+server persistence requires a real connected wallet signature.
+
 ### Local Commands
 
 ```bash

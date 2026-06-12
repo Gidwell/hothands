@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   listMigrationSqlFiles,
+  readIndexerMigrationFiles,
   runIndexerMigrations,
   splitSqlStatements,
 } from "../src/migrations";
@@ -14,6 +15,18 @@ describe("Predict indexer migrations", () => {
         "0001_indexer_foundation.sql",
       ]),
     ).toEqual(["0001_indexer_foundation.sql", "0002_add_profiles.sql"]);
+  });
+
+  test("loads app-owned social and auth migrations after the indexer foundation", async () => {
+    const migrations = await readIndexerMigrationFiles();
+
+    expect(migrations.map((migration) => migration.name)).toEqual([
+      "0001_indexer_foundation.sql",
+      "0002_app_social.sql",
+    ]);
+    expect(migrations[1]?.sql).toContain("create table if not exists app_wallet_sessions");
+    expect(migrations[1]?.sql).toContain("create table if not exists app_copy_receipts");
+    expect(migrations[1]?.sql).toContain("create table if not exists app_wallet_heat_snapshots");
   });
 
   test("splits migration files into executable SQL statements", () => {

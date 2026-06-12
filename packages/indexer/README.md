@@ -74,6 +74,8 @@ serves them behind a narrow local setup:
    - Trade market ladder candidates
    - Portfolio mint/redeem events for a connected `PredictManager`
    - Oracle price history for the BTC chart
+   - Hot Hands-owned wallet sessions, followed wallets, copy/fade receipts, and
+     heat snapshots through `/app/*` API routes
 
    When `DATABASE_URL` is set, the dev launcher starts a separate live indexer
    process after migration/backfill bootstrap. The API remains read-only against
@@ -141,6 +143,16 @@ These rows are raw DeepBook Predict activity, not Hot Hands-native social
 records. A mint row has the trader address, manager ID, oracle ID, expiry,
 strike, direction, quantity, cost, and ask price. A redeem row adds payout, bid
 price, and settlement state.
+
+Hot Hands-owned social/auth records live beside the Predict raw tables but stay
+separate from them:
+
+- `app_wallet_auth_challenges` and `app_wallet_sessions` back Sui personal-message auth.
+- `app_wallet_follows` stores authenticated follower -> leader wallet edges.
+- `app_copy_receipts` stores submitted Copy/Fade attribution, source position,
+  execution side, amount, and transaction digest.
+- `app_wallet_heat_snapshots` reserves durable historical heat scores and
+  components for future streak/leaderboard analysis.
 
 `deepbook-predict.ts` normalizes captured minted, redeemed, and per-oracle rows
 into `PredictNormalizedTradeEvent` records and computes provisional

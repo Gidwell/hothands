@@ -18,6 +18,11 @@ import {
   type TableState
 } from "./table-state";
 import { createTableActivityBroadcast } from "./table-activity";
+import {
+  handleHotHandsAppRequest,
+  type VerifyWalletSignature
+} from "./app-auth";
+import type { HotHandsAppStore } from "./app-storage";
 import { getTestnetMarketHeat } from "./market-heat";
 import { getTestnetOraclePrices } from "./oracle-prices";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
@@ -40,14 +45,18 @@ import {
 export interface Env {
   TABLE_ROOM: DurableObjectNamespace;
   fetch?: typeof fetch;
+  appStore?: HotHandsAppStore;
+  createSessionToken?: () => string;
   indexerReader?: PredictIndexerReader;
   inspectPredictQuoteQuantity?: InspectPredictQuoteQuantity;
+  randomId?: () => string;
+  verifyWalletSignature?: VerifyWalletSignature;
 }
 
 const JSON_HEADERS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, POST, OPTIONS",
-  "access-control-allow-headers": "content-type",
+  "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+  "access-control-allow-headers": "authorization, content-type",
   "content-type": "application/json; charset=utf-8"
 };
 
@@ -75,6 +84,16 @@ export default {
 
     if (url.pathname === "/health") {
       return json({ ok: true, service: "api-worker", stage: 1 });
+    }
+
+    const appResponse = await handleHotHandsAppRequest(request, {
+      appStore: env.appStore,
+      createSessionToken: env.createSessionToken,
+      randomId: env.randomId,
+      verifyWalletSignature: env.verifyWalletSignature,
+    });
+    if (appResponse) {
+      return appResponse;
     }
 
     if (url.pathname === "/testnet/market-heat") {
