@@ -3885,7 +3885,7 @@ button:disabled {
 
 .market-heat-intent-targets {
   display: grid;
-  grid-template-columns: 0.94fr 0.94fr 1.2fr;
+  grid-template-columns: 1fr 1fr;
   gap: 0;
   border-bottom: 1px solid var(--hh-line);
 }
@@ -3893,7 +3893,7 @@ button:disabled {
 .market-heat-intent-targets span {
   display: grid;
   gap: 2px;
-  min-height: 56px;
+  min-height: 46px;
   padding: 0 11px 10px;
   border-right: 1px solid var(--hh-line);
 }
@@ -3922,16 +3922,8 @@ button:disabled {
   line-height: 1.08;
 }
 
-.market-heat-intent-targets span:last-child strong,
 .market-heat-intent-footer span:nth-child(2) strong {
   color: var(--hh-up);
-}
-
-.market-heat-intent-targets em {
-  color: var(--hh-muted);
-  font-size: 0.68rem;
-  font-style: normal;
-  font-weight: 800;
 }
 
 .market-heat-stake-label {

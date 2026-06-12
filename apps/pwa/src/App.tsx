@@ -3974,19 +3974,10 @@ export function MarketHeatPreview({
               {rowIntentSide === "UP" ? "Above" : "Below"}{" "}
               {row.strikeLabel.replace(/^Strike\s+/, "")}
             </strong>
-            <em>at expiry</em>
           </span>
           <span>
             <small>Expiry</small>
             <strong>{row.expiryTimeLabel}</strong>
-          </span>
-          <span>
-            <small>Potential payout</small>
-            <strong>
-              {isWalletSubmitReady
-                ? returnPreview?.profitLabel ?? quoteFallbackLabel
-                : intentPanel.detailLabel}
-            </strong>
           </span>
         </div>
         <div className="market-heat-stake-label">Stake amount</div>

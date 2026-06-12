@@ -117,7 +117,10 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Copy the hot hands");
     expect(html).toContain("Target</small>");
     expect(html).toContain("Below $6,200");
-    expect(html).toContain("Next observed mint");
+    expect(html).toContain("Expiry</small>");
+    expect(html).not.toContain("Next observed mint");
+    expect(html).not.toContain("Potential payout</small>");
+    expect(html).not.toContain("at expiry");
     expect(html).toContain("Stake amount");
     expect(html).toContain('data-testid="custom-copy-amount"');
     expect(html).toContain('aria-label="Custom copy amount"');
@@ -161,9 +164,12 @@ describe("MarketHeatPreview component", () => {
 
     expect(html).toContain("Target</small>");
     expect(html).toContain("Above $7,100");
+    expect(html).toContain("Expiry</small>");
     expect(html).toContain("Cost</small><strong>$375");
     expect(html).toContain("Heat</small><strong>94");
     expect(html).not.toContain("Strike</small>");
+    expect(html).not.toContain("at expiry");
+    expect(html).not.toContain("Potential payout</small>");
     expect(html).toContain("Est. payout</small><strong>$937.50");
     expect(html).toContain("Max profit</small><strong>+$562.50");
     expect(html).toContain("direction-pill-up market-heat-intent-side");
@@ -210,6 +216,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Same side");
     expect(html).toContain("Fade target</small>");
     expect(html).toContain("Below $7,100");
+    expect(html).not.toContain("at expiry");
+    expect(html).not.toContain("Potential payout</small>");
     expect(html).toContain("Max profit</small><strong>+$562.50");
     expect(html).not.toContain("Above $7,100");
     expect(html).not.toContain("Confirm transaction");
