@@ -147,6 +147,7 @@ describe("MarketHeatPreview component", () => {
     );
 
     expect(html).toContain('data-testid="market-heat-intent-panel"');
+    expect(html).toContain('data-testid="market-heat-row-toggle"');
     expect(html).toContain('title="Captured BTC markets"');
     expect(html).toContain('aria-label="Alpha Feed, Captured BTC markets"');
     expect(html).not.toContain("<span>Captured BTC markets</span>");
@@ -170,6 +171,39 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Expired");
     expect(html).toContain('aria-pressed="true"');
     expect(html).not.toContain("Ready for your wallet signature");
+  });
+
+  test("keeps the opened intent tray separate from the compact row toggle", () => {
+    const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
+      nowMs: 1_779_158_000_000,
+    }).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={[row]}
+        sourceLabel="Live Testnet"
+        sortMode="latest"
+        selectedRowId={row.id}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        quote={quoteFixture()}
+        quoteStatus="ready"
+        showMoreLabel="Show more"
+        walletConnected={true}
+        onAmountSet={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+        onWalletOpen={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('data-testid="market-heat-row-toggle"');
+    expect(html).toContain('data-testid="market-heat-intent-panel"');
+    expect(html).toContain('data-testid="custom-copy-amount"');
+    expect(html).toContain('data-testid="market-heat-wallet-submit"');
   });
 
   test("requires an explicit wallet handoff after selecting copy amount", () => {

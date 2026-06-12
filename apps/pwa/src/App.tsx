@@ -3963,6 +3963,11 @@ export function MarketHeatPreview({
     const action = resolveMarketHeatSwipeAction(deltaX, deltaY, row.status);
 
     if (action === "none") {
+      const isTap = Math.abs(deltaX) <= 8 && Math.abs(deltaY) <= 8;
+      if (isTap && row.id === selectedRowId) {
+        swipedRowRef.current = row.id;
+        onSelectRow(row.id, selectedMode);
+      }
       return;
     }
 
@@ -4059,10 +4064,36 @@ export function MarketHeatPreview({
     );
     const durationLabel = row.timeRemainingLabel ?? row.expiryTimeLabel;
     const isLiveCountdown = isLiveCountdownLabel(row.timeRemainingLabel);
+    const handleMarketHeatRowClick = (event: SyntheticEvent<HTMLElement>) => {
+      if (swipedRowRef.current === row.id) {
+        swipedRowRef.current = null;
+        return;
+      }
+
+      const clickTarget = event.target instanceof Element ? event.target : null;
+      const isCompactRowClick = Boolean(clickTarget?.closest(".market-heat-compact-row"));
+      if (isSelected && !isCompactRowClick) {
+        return;
+      }
+
+      onSelectRow(row.id, rowIntentMode);
+    };
+    const handleCompactRowClick = (event: SyntheticEvent<HTMLElement>) => {
+      event.stopPropagation();
+      handleMarketHeatRowClick(event);
+    };
+    const stopTrayPropagation = (event: SyntheticEvent<HTMLElement>) => {
+      event.stopPropagation();
+    };
     const intentPanelElement = intentPanel ? (
       <div
         className={`inline-watch-panel inline-watch-panel-${row.status}`}
         data-testid="market-heat-intent-panel"
+        onClick={stopTrayPropagation}
+        onPointerCancel={stopTrayPropagation}
+        onPointerDown={stopTrayPropagation}
+        onPointerMove={stopTrayPropagation}
+        onPointerUp={stopTrayPropagation}
       >
         <div className={`market-heat-intent-mode market-heat-intent-mode-${rowIntentMode}`}>
           <strong>{rowIntentLabel}</strong>
@@ -4152,14 +4183,7 @@ export function MarketHeatPreview({
         } ${rowSwipeHintMode ? `market-heat-row-swipe-hint market-heat-row-swipe-hint-${rowSwipeHintMode}` : ""}`}
         data-testid="market-heat-row"
         key={row.id}
-        onClick={() => {
-          if (swipedRowRef.current === row.id) {
-            swipedRowRef.current = null;
-            return;
-          }
-
-          onSelectRow(row.id, rowIntentMode);
-        }}
+        onClick={handleMarketHeatRowClick}
         onPointerCancel={() => {
           swipeStartRef.current = null;
         }}
@@ -4195,6 +4219,8 @@ export function MarketHeatPreview({
         ) : null}
         <div
           className="market-heat-compact-row"
+          data-testid="market-heat-row-toggle"
+          onClick={handleCompactRowClick}
           style={
             swipePreviewForRow
               ? { transform: `translateX(${swipePreviewForRow.deltaX}px)` }
