@@ -158,6 +158,37 @@ async function refreshPositionSummaries(execute: SqlExecutor): Promise<number> {
     "  status = excluded.status,",
     "  last_event_ms = excluded.last_event_ms,",
     "  materialized_at = now()",
+    "where (",
+    "  predict_position_summaries.owner,",
+    "  predict_position_summaries.manager_id,",
+    "  predict_position_summaries.oracle_id,",
+    "  predict_position_summaries.expiry_ms,",
+    "  predict_position_summaries.strike,",
+    "  predict_position_summaries.is_up,",
+    "  predict_position_summaries.minted_quantity,",
+    "  predict_position_summaries.redeemed_quantity,",
+    "  predict_position_summaries.open_quantity,",
+    "  predict_position_summaries.cost,",
+    "  predict_position_summaries.payout,",
+    "  predict_position_summaries.realized_pnl,",
+    "  predict_position_summaries.status,",
+    "  predict_position_summaries.last_event_ms",
+    ") is distinct from (",
+    "  excluded.owner,",
+    "  excluded.manager_id,",
+    "  excluded.oracle_id,",
+    "  excluded.expiry_ms,",
+    "  excluded.strike,",
+    "  excluded.is_up,",
+    "  excluded.minted_quantity,",
+    "  excluded.redeemed_quantity,",
+    "  excluded.open_quantity,",
+    "  excluded.cost,",
+    "  excluded.payout,",
+    "  excluded.realized_pnl,",
+    "  excluded.status,",
+    "  excluded.last_event_ms",
+    ")",
     "returning 1",
   ].join("\n");
 
@@ -234,12 +265,25 @@ async function upsertRowBatch<T>({
     .map((column) => `${column.name} = excluded.${column.name}`)
     .concat(touchColumn ? [`${touchColumn} = now()`] : [])
     .join(", ");
+  const changedColumns = columns.filter(
+    (column) => !conflictColumns.includes(column.name),
+  );
+  const changedWhereSql =
+    changedColumns.length === 0
+      ? ""
+      : [
+          "where",
+          `(${changedColumns.map((column) => `${table}.${column.name}`).join(", ")})`,
+          "is distinct from",
+          `(${changedColumns.map((column) => `excluded.${column.name}`).join(", ")})`,
+        ].join(" ");
   const statement = [
     `insert into ${table} (${columns.map((column) => column.name).join(", ")})`,
     `values ${valuesSql.join(", ")}`,
     `on conflict (${conflictColumns.join(", ")}) do update set ${updateSql}`,
+    changedWhereSql,
     "returning 1",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
   const result = await execute(statement, params);
 
   return rowsAffected(result);
