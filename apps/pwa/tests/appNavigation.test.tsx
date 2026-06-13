@@ -17,6 +17,7 @@ import {
   buildTradeQuoteKey,
   filterMarketHeatRowsByFollowedWallets,
   getAccountSummaryVariant,
+  getBankrollFundingUnavailableReason,
   getInitialAppView,
   getMarketHeatRowsRefreshMs,
   parseStoredStakeAmount,
@@ -442,6 +443,27 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Withdraw");
   });
 
+  test("routes bankroll funding to wallet and Predict account setup first", () => {
+    expect(
+      getBankrollFundingUnavailableReason({
+        predictManagerObjectId: null,
+        walletConnected: false,
+      }),
+    ).toBe("Connect a Sui testnet wallet first.");
+    expect(
+      getBankrollFundingUnavailableReason({
+        predictManagerObjectId: null,
+        walletConnected: true,
+      }),
+    ).toBe("Create a Predict account first.");
+    expect(
+      getBankrollFundingUnavailableReason({
+        predictManagerObjectId: "0xmanager",
+        walletConnected: true,
+      }),
+    ).toBeNull();
+  });
+
   test("wires the bankroll funding sheet amount for the selected action", () => {
     let changedAmount = 0;
     let submitMode = "";
@@ -565,6 +587,9 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain('data-testid="bottom-nav"');
     expect(html).toContain('class="bottom-nav-icon"');
+    expect(html).toContain('d="M17 20V4"');
+    expect(html).toContain('d="M7 4v16"');
+    expect(html).not.toContain('d="M7 7h11"');
     expect(html).toContain("<span>Feed</span>");
     expect(html).toContain("<span>Trade</span>");
     expect(html).toContain("<span>Leaders</span>");
@@ -798,7 +823,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Copied by 14");
     expect(html).toContain("Copied by 9");
     expect(html).toContain('data-testid="profile-share"');
-    expect(html).toContain('data-testid="market-heat-share"');
+    expect(html).not.toContain('data-testid="market-heat-share"');
     expect(html).toContain("wallet-identicon");
     expect(html).toContain('data-testid="profile-pnl-sparkline"');
     expect(html).toContain("PNL path");
@@ -815,7 +840,7 @@ describe("mobile app navigation", () => {
     const positionsHtml = html.slice(positionsStart, profileFormStart);
     expect(positionsHtml).toContain("Market");
     expect(positionsHtml).toContain("BTC/USD");
-    expect(positionsHtml).toContain("Share BTC/USD UP call");
+    expect(positionsHtml).not.toContain("Share BTC/USD UP call");
     expect(positionsHtml).not.toContain("0xaaaa...6666");
   });
 
@@ -1413,6 +1438,12 @@ describe("mobile app navigation", () => {
           },
         ]}
         copyAmount={100}
+        customStrike={{
+          marketId: "btc-2h-72000",
+          strike: 72_000,
+          strikeRaw: 72_000_000_000,
+          strikeLabel: "$72,000",
+        }}
         expiryOptions={[
           {
             count: 2,
@@ -1448,20 +1479,28 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="trade-expiry-2026-05-19"');
     expect(html).toContain("May 18");
     expect(html).toContain("May 19");
-    expect(html).toContain("Up/Down");
+    expect(html).not.toContain("Up/Down");
     expect(html).not.toContain("Range");
     expect(html).not.toContain('aria-label="Trade product type"');
-    expect(html).toContain("BTC strike ladder");
-    expect(html).toContain('aria-label="Up Down strike ladder"');
+    expect(html).toContain("BTC/USD");
+    expect(html).toContain('aria-label="Trade expiration times"');
+    expect(html).toContain("21:45 PDT");
+    expect(html).toContain("23:30 PDT");
+    expect(html).toContain('aria-label="Trade side"');
+    expect(html).toContain('data-testid="trade-side-up"');
+    expect(html).toContain('data-testid="trade-side-down"');
+    expect(html).toContain('aria-label="UP strike prices"');
+    expect(html).not.toContain('aria-label="Up Down strike ladder"');
     expect(html).toContain("UP");
     expect(html).toContain("DOWN");
-    expect(html).toContain("15m left");
+    expect(html).toContain("15m");
     expect(html).toContain('aria-label="Trade UP $72,000"');
-    expect(html).toContain('aria-label="Trade DOWN $72,000"');
+    expect(html).not.toContain('aria-label="Trade DOWN $72,000"');
     expect(html).toContain("2h");
     expect(html).toContain("Selected");
     expect(html).toContain("UP $72,000");
-    expect(html).toContain("Wins if BTC settles above $72,000");
+    expect(html).not.toContain("Wins if BTC settles");
+    expect(html).not.toContain("vs spot");
     expect(html).toContain("Spend</small>$100");
     expect(html).toContain("Est. payout</small>$250");
     expect(html).toContain("Max profit</small>+$150");
@@ -1542,17 +1581,59 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain('aria-label="Trade UP $71,000"');
-    expect(html).toContain('aria-label="Trade DOWN $71,000"');
+    expect(html).not.toContain('aria-label="Trade DOWN $71,000"');
     expect(html).toContain('aria-label="Trade UP $71,050"');
-    expect(html).toContain('aria-label="Trade DOWN $71,050"');
+    expect(html).not.toContain('aria-label="Trade DOWN $71,050"');
     expect(html).toContain("UP $71,050");
-    expect(html).toContain("Wins if BTC settles above $71,050");
+    expect(html).not.toContain("Wins if BTC settles");
+    expect(html).not.toContain("vs spot");
     expect(html).toContain("$0.40");
     expect(html).not.toContain("Pays $250");
     expect(html).toContain("Est. payout</small>Quote needed");
     expect(html).not.toContain("Est. payout</small>$250");
     expect(html).not.toContain('data-testid="trade-strike-select"');
     expect(html).not.toContain('data-testid="trade-custom-strike"');
+  });
+
+  test("keeps strike rows unselected until the user picks one", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[
+          tradeMarketRowFixture({
+            id: "btc-jun12-0100",
+            strike: 62_000,
+            strikeLabel: "$62,000",
+            strikeRaw: 62_000_000_000,
+            strikeOptions: [
+              {
+                strike: 62_000,
+                strikeLabel: "$62,000",
+                strikeRaw: 62_000_000_000,
+              },
+              {
+                strike: 62_100,
+                strikeLabel: "$62,100",
+                strikeRaw: 62_100_000_000,
+              },
+            ],
+          }),
+        ]}
+        copyAmount={25}
+        selectedMarketId="btc-jun12-0100"
+        selectedSide="UP"
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('aria-label="Trade UP $62,000"');
+    expect(html).toContain('aria-label="Trade UP $62,100"');
+    expect(html).not.toContain('aria-label="Selected position"');
+    expect(html).not.toContain("Spend</small>");
+    expect(html).not.toContain('data-testid="trade-wallet-submit"');
+    expect(html).not.toContain("trade-chain-row-up selected");
   });
 
   test("renders same-day trade markets as separate expiry cards", () => {
@@ -1603,15 +1684,16 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html.match(/data-testid="trade-market-card"/g) ?? []).toHaveLength(2);
-    expect(html.indexOf("Jun 12, 01:00 PDT")).toBeLessThan(
-      html.indexOf("Jun 12, 05:00 PDT"),
+    expect(html.match(/data-testid="trade-market-card"/g) ?? []).toHaveLength(1);
+    expect(html).toContain('aria-label="Trade expiration times"');
+    expect(html.indexOf("01:00 PDT")).toBeLessThan(
+      html.indexOf("05:00 PDT"),
     );
     expect(html).toContain('aria-label="Trade UP $62,000"');
-    expect(html).toContain('aria-label="Trade UP $63,000"');
+    expect(html).not.toContain('aria-label="Trade UP $63,000"');
   });
 
-  test("limits the trade ladder to four prices around the active strike", () => {
+  test("keeps a broader trade ladder window around the active strike", () => {
     const html = renderToStaticMarkup(
       <TradeTicket
         marketRows={[
@@ -1672,12 +1754,12 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).not.toContain('aria-label="Trade UP $70,000"');
+    expect(html).toContain('aria-label="Trade UP $70,000"');
     expect(html).toContain('aria-label="Trade UP $71,000"');
     expect(html).toContain('aria-label="Trade UP $72,000"');
     expect(html).toContain('aria-label="Trade UP $73,000"');
     expect(html).toContain('aria-label="Trade UP $74,000"');
-    expect(html).not.toContain('aria-label="Trade UP $75,000"');
+    expect(html).toContain('aria-label="Trade UP $75,000"');
   });
 
   test("keeps the oracle price marker visible when spot is above the ladder slice", () => {
@@ -1930,6 +2012,12 @@ describe("mobile app navigation", () => {
           },
         ]}
         copyAmount={25}
+        customStrike={{
+          marketId: "btc-2h-72000",
+          strike: 72_000,
+          strikeRaw: 72_000_000_000,
+          strikeLabel: "$72,000",
+        }}
         selectedMarketId="btc-2h-72000"
         selectedSide="UP"
         onAmountSet={() => undefined}
@@ -1984,6 +2072,12 @@ describe("mobile app navigation", () => {
           },
         ]}
         copyAmount={25}
+        customStrike={{
+          marketId: "btc-2h-72000",
+          strike: 72_000,
+          strikeRaw: 72_000_000_000,
+          strikeLabel: "$72,000",
+        }}
         selectedMarketId="btc-2h-72000"
         selectedSide="UP"
         quote={{
@@ -2058,6 +2152,12 @@ describe("mobile app navigation", () => {
           },
         ]}
         copyAmount={25}
+        customStrike={{
+          marketId: "btc-2h-72000",
+          strike: 72_000,
+          strikeRaw: 72_000_000_000,
+          strikeLabel: "$72,000",
+        }}
         selectedMarketId="btc-2h-72000"
         selectedSide="UP"
         quote={{

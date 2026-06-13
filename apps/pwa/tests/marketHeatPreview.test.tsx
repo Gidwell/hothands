@@ -385,8 +385,8 @@ describe("MarketHeatPreview component", () => {
 
     expect(row.heatScore).toBe(4);
     expect(row.heatScoreLabel).toBe("-");
-    expect(html).toContain("aria-label=\"Heat unrated.");
-    expect(html).toContain('<strong>-</strong>');
+    expect(html).not.toContain("market-heat-heat-pill");
+    expect(html).not.toContain("Heat unrated.");
     expect(html).not.toContain("Heat 4.");
   });
 
@@ -619,11 +619,28 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("market-heat-density-toggle");
     expect(html).not.toContain("Expanded");
     expect(html).toContain("Wallet");
-    expect(html).toContain("Direction");
-    expect(html).toContain("Expiration");
+    expect(html).toContain("Position");
+    expect(html).toContain("Expires");
+    expect(html).toContain("Entry");
+    expect(html).toContain("Now");
+    expect(html).not.toContain("Entry / Now");
+    expect(html).not.toContain(">Direction</span>");
+    expect(html).not.toContain(">Strike</span>");
+    expect(html).not.toContain(">Expiration</span>");
     expect(html).toContain("0xbbbb...0000");
     expect(html).toContain("wallet-identicon");
-    expect(html).toContain("+$22.23 · 12 wins · just now");
+    expect(html).not.toContain("+$22.23 · 12 wins · just now");
+    expect(html).toContain("market-heat-identity-meta");
+    expect(html).toContain("just now");
+    expect(html).toContain("market-heat-heat-pill");
+    expect(html).toContain("🔥 94");
+    expect(html).toContain("market-heat-compact-position");
+    expect(html).toContain('<span>$7,100</span><strong class="direction-pill direction-pill-up">UP</strong>');
+    expect(html).toContain("market-heat-entry-price");
+    expect(html).toContain("market-heat-current-price");
+    expect(html).toContain("$0.40");
+    expect(html).toContain("--");
+    expect(html).not.toContain('data-testid="market-heat-share"');
     expect(html).toContain("data-testid=\"market-heat-wallet-profile\"");
     expect(html).toContain("aria-label=\"Open 0xbbbb...0000 profile\"");
     const [dedupedRow] = buildMarketHeatPreview(
@@ -668,21 +685,21 @@ describe("MarketHeatPreview component", () => {
     expect(dedupedHtml).not.toContain("market-heat-fill-child-row");
     expect(dedupedHtml).toContain("UP");
     expect(dedupedHtml).toContain("$7,100");
-    expect(dedupedHtml).toContain("3h left");
+    expect(dedupedHtml).toContain("3h");
+    expect(dedupedHtml).not.toContain("3h left");
     expect(html).toContain("UP");
     expect(html).toContain("$7,100");
-    expect(html).toContain("3h left");
+    expect(html).toContain("3h");
+    expect(html).not.toContain("3h left");
     expect(html).toContain("market-heat-countdown-live");
     expect(html).not.toContain("Live expiry countdown");
     expect(html).not.toContain(">Live</small>");
-    expect(html).toContain("Heat");
     expect(html).toContain(
       "How hot this wallet has been lately, based on ROI, streaks, and activity.",
     );
-    expect(html).toContain("market-heat-info");
-    expect(html).toContain('data-testid="market-heat-info-trigger"');
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain('aria-label="What does Heat mean?"');
+    expect(html).not.toContain("market-heat-info");
+    expect(html).not.toContain('data-testid="market-heat-info-trigger"');
+    expect(html).not.toContain('aria-label="What does Heat mean?"');
     expect(html).toContain("aria-label=\"Heat 94.");
     expect(html).toContain("94");
     expect(html).not.toContain("Cost</small>");

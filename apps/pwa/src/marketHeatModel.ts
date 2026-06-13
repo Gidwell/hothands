@@ -69,6 +69,8 @@ export type MarketHeatAvailableMarketInput = {
   strikeRaw?: unknown;
   strikeCandidate?: unknown;
   strikeCandidatePrice?: unknown;
+  minStrike?: unknown;
+  tickSize?: unknown;
   latestPrice?: unknown;
   pricingModel?: unknown;
   status?: unknown;
@@ -96,6 +98,8 @@ export type MarketHeatAvailableMarket = {
   strike: number;
   strikeRaw: number;
   strikeLabel: string;
+  minStrikeRaw?: number;
+  tickSizeRaw?: number;
   status: string;
   pricingModel?: MarketHeatPricingModel;
 };
@@ -122,6 +126,11 @@ export type MarketHeatPreviewRow = {
   observedAtMs: number;
   heatScore: number;
   heatScoreLabel: string;
+  entryPrice?: number;
+  entryPriceLabel?: string;
+  currentPrice?: number;
+  currentPriceLabel?: string;
+  entryNowTone?: "up" | "down" | "flat" | "unknown";
   walletStats?: MarketHeatWalletStats;
   walletStatsLabel?: string;
   fillCount?: number;
@@ -227,6 +236,8 @@ export type TradeMarketLadderRow = {
   strike: number;
   strikeRaw: number;
   strikeLabel: string;
+  minStrikeRaw?: number;
+  tickSizeRaw?: number;
   moneynessLabel: string;
   activityLabel: string;
   uniqueWalletCount: number;
@@ -277,6 +288,10 @@ export type LoadTradeQuoteOptions = {
 
 const MARKET_HEAT_CANDIDATE_LIMIT = 768;
 const TRADE_QUOTE_TIMEOUT_MS = 6_000;
+const TRADE_SYNTHETIC_STRIKE_STEPS_PER_SIDE = 12;
+const TRADE_TARGET_SYNTHETIC_PRICE_STEP = 0.075;
+const TRADE_FALLBACK_DISPLAY_STRIKE_STEP_USD = 500;
+const TRADE_MAX_SYNTHETIC_SEARCH_TICKS = 50_000;
 const CAPTURED_ROW_BASE_AGE_MS = 5 * 60_000;
 const CAPTURED_ROW_AGE_STEP_MS = 15 * 60_000;
 const CAPTURED_MARKET_PRICE: MarketHeatPriceInput = {
@@ -337,6 +352,16 @@ export function buildMarketHeatPreview(
     walletDisplayNames = {},
   }: BuildMarketHeatPreviewOptions = {},
 ): MarketHeatPreview {
+  const previewRows = sortMarketHeatInputs(dedupeMarketHeatInputs(rows))
+    .slice(0, limit)
+    .map((row) =>
+      buildMarketHeatPreviewRowFromInput(row, {
+        nowMs,
+        timeZone,
+        walletDisplayNames,
+      }),
+    );
+
   return {
     title: "Alpha Feed",
     modeLabel: "Testnet",
@@ -344,15 +369,7 @@ export function buildMarketHeatPreview(
     detailLabel: "Live BTC Predict mints",
     sourceLabel: "Captured",
     marketPrice: buildMarketHeatPrice(marketPrice),
-    rows: sortMarketHeatInputs(dedupeMarketHeatInputs(rows))
-      .slice(0, limit)
-      .map((row) =>
-        buildMarketHeatPreviewRowFromInput(row, {
-          nowMs,
-          timeZone,
-          walletDisplayNames,
-        }),
-      ),
+    rows: annotateMarketHeatRowPrices(previewRows),
   };
 }
 
@@ -373,7 +390,7 @@ function buildMarketHeatPreviewRowFromInput(
   const walletDisplayName = resolveWalletDisplayName(row.wallet, walletDisplayNames);
   const fillCount = Math.max(1, Math.floor(row.fillCount ?? 1));
 
-  return {
+  const previewRow: MarketHeatPreviewRow = {
     id: row.id,
     ...(oracleId === undefined ? {} : { oracleId }),
     wallet: row.wallet,
@@ -410,6 +427,8 @@ function buildMarketHeatPreviewRowFromInput(
     status: isActionableCopy ? "copy_ready" : "watching",
     statusLabel: formatTradeTime(row.observedAtMs, nowMs),
   };
+
+  return annotateMarketHeatRowPrice(previewRow);
 }
 
 export function getCopyableMarketHeatRows(
@@ -524,6 +543,8 @@ export function buildTradeMarketLadder(
         strike: market.strike,
         strikeRaw: market.strikeRaw,
         strikeLabel: market.strikeLabel,
+        ...(market.minStrikeRaw === undefined ? {} : { minStrikeRaw: market.minStrikeRaw }),
+        ...(market.tickSizeRaw === undefined ? {} : { tickSizeRaw: market.tickSizeRaw }),
         moneynessLabel: formatMoneyness(market.strike - spotPrice),
         activityLabel: formatTradeMarketActivity(wallets.size, tradeCount, volumeLabel),
         uniqueWalletCount: wallets.size,
@@ -642,6 +663,9 @@ function buildTradeStrikeOptions(
   };
 
   addOption(market.strike, market.strikeRaw);
+  for (const option of buildSyntheticTradeStrikeOptions(market)) {
+    addOption(option.strike, option.strikeRaw);
+  }
   for (const row of activityRows) {
     addOption(row.strike, row.strikeRaw);
   }
@@ -651,6 +675,245 @@ function buildTradeStrikeOptions(
       left.strike - right.strike ||
       left.strikeRaw - right.strikeRaw,
   );
+}
+
+function buildSyntheticTradeStrikeOptions(
+  market: MarketHeatAvailableMarket,
+): TradeStrikeOption[] {
+  const scale = computeStrikeRawScale(market);
+
+  if (scale === null) {
+    return [];
+  }
+
+  const priceCurveOptions = buildPriceCurveSyntheticTradeStrikeOptions(market, scale);
+  if (priceCurveOptions.length > 0) {
+    return priceCurveOptions;
+  }
+
+  const displayStepRaw = computeSyntheticDisplayStepRaw(market);
+
+  if (displayStepRaw === null) {
+    return [];
+  }
+
+  const baseRaw = market.strikeRaw;
+  const minRaw = market.minStrikeRaw ?? displayStepRaw;
+  const options: TradeStrikeOption[] = [];
+
+  for (
+    let offset = -TRADE_SYNTHETIC_STRIKE_STEPS_PER_SIDE;
+    offset <= TRADE_SYNTHETIC_STRIKE_STEPS_PER_SIDE;
+    offset += 1
+  ) {
+    const strikeRaw = baseRaw + offset * displayStepRaw;
+    if (strikeRaw < minRaw || strikeRaw <= 0) {
+      continue;
+    }
+
+    const strike = roundSyntheticStrike(strikeRaw / scale);
+    if (!Number.isFinite(strike) || strike <= 0) {
+      continue;
+    }
+
+    options.push({
+      strike,
+      strikeRaw,
+      strikeLabel: formatStrike(strike),
+    });
+  }
+
+  return options;
+}
+
+function buildPriceCurveSyntheticTradeStrikeOptions(
+  market: MarketHeatAvailableMarket,
+  scale: number,
+): TradeStrikeOption[] {
+  const tickSizeRaw = market.tickSizeRaw;
+  const baseUpPrice = computeOracleIndicativeUpPrice(market.pricingModel, market.strikeRaw);
+
+  if (
+    tickSizeRaw === undefined ||
+    !Number.isFinite(tickSizeRaw) ||
+    tickSizeRaw <= 0 ||
+    baseUpPrice === undefined
+  ) {
+    return [];
+  }
+
+  const options: TradeStrikeOption[] = [];
+  for (const direction of [-1, 1] as const) {
+    let previousRaw = market.strikeRaw;
+    let previousUpPrice = baseUpPrice;
+
+    for (let step = 0; step < TRADE_SYNTHETIC_STRIKE_STEPS_PER_SIDE; step += 1) {
+      const nextRaw = findNextSyntheticStrikeRaw({
+        direction,
+        market,
+        previousRaw,
+        previousUpPrice,
+        tickSizeRaw,
+      });
+
+      if (nextRaw === null) {
+        break;
+      }
+
+      const nextUpPrice = computeOracleIndicativeUpPrice(market.pricingModel, nextRaw);
+      if (nextUpPrice === undefined) {
+        break;
+      }
+
+      options.push(buildSyntheticTradeStrikeOption(nextRaw, scale));
+      previousRaw = nextRaw;
+      previousUpPrice = nextUpPrice;
+
+      if (nextUpPrice <= 0 || nextUpPrice >= 1) {
+        break;
+      }
+    }
+  }
+
+  return options;
+}
+
+function findNextSyntheticStrikeRaw({
+  direction,
+  market,
+  previousRaw,
+  previousUpPrice,
+  tickSizeRaw,
+}: {
+  direction: -1 | 1;
+  market: MarketHeatAvailableMarket;
+  previousRaw: number;
+  previousUpPrice: number;
+  tickSizeRaw: number;
+}): number | null {
+  const minRaw = market.minStrikeRaw ?? tickSizeRaw;
+  let lowerTicks = 0;
+  let upperTicks = 1;
+  let upperRaw: number | null = null;
+
+  while (upperTicks <= TRADE_MAX_SYNTHETIC_SEARCH_TICKS) {
+    const candidateRaw = previousRaw + direction * upperTicks * tickSizeRaw;
+    if (!isValidSyntheticStrikeRaw(candidateRaw, minRaw)) {
+      return null;
+    }
+
+    const candidateUpPrice = computeOracleIndicativeUpPrice(market.pricingModel, candidateRaw);
+    if (candidateUpPrice === undefined) {
+      return null;
+    }
+
+    const priceDelta = Math.abs(candidateUpPrice - previousUpPrice);
+    if (
+      priceDelta >= TRADE_TARGET_SYNTHETIC_PRICE_STEP ||
+      candidateUpPrice <= 0 ||
+      candidateUpPrice >= 1
+    ) {
+      upperRaw = candidateRaw;
+      break;
+    }
+
+    lowerTicks = upperTicks;
+    upperTicks *= 2;
+  }
+
+  if (upperRaw === null) {
+    return null;
+  }
+
+  let low = lowerTicks + 1;
+  let high = upperTicks;
+  let bestRaw = upperRaw;
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const candidateRaw = previousRaw + direction * mid * tickSizeRaw;
+    if (!isValidSyntheticStrikeRaw(candidateRaw, minRaw)) {
+      high = mid - 1;
+      continue;
+    }
+
+    const candidateUpPrice = computeOracleIndicativeUpPrice(market.pricingModel, candidateRaw);
+    if (candidateUpPrice === undefined) {
+      high = mid - 1;
+      continue;
+    }
+
+    const priceDelta = Math.abs(candidateUpPrice - previousUpPrice);
+    if (
+      priceDelta >= TRADE_TARGET_SYNTHETIC_PRICE_STEP ||
+      candidateUpPrice <= 0 ||
+      candidateUpPrice >= 1
+    ) {
+      bestRaw = candidateRaw;
+      high = mid - 1;
+    } else {
+      low = mid + 1;
+    }
+  }
+
+  return bestRaw;
+}
+
+function isValidSyntheticStrikeRaw(strikeRaw: number, minRaw: number): boolean {
+  return Number.isFinite(strikeRaw) && strikeRaw >= minRaw && strikeRaw > 0;
+}
+
+function buildSyntheticTradeStrikeOption(
+  strikeRaw: number,
+  scale: number,
+): TradeStrikeOption {
+  const strike = roundSyntheticStrike(strikeRaw / scale);
+
+  return {
+    strike,
+    strikeRaw,
+    strikeLabel: formatStrike(strike),
+  };
+}
+
+function computeSyntheticDisplayStepRaw(
+  market: Pick<MarketHeatAvailableMarket, "strike" | "strikeRaw" | "tickSizeRaw">,
+): number | null {
+  const tickSizeRaw = market.tickSizeRaw;
+  const scale = computeStrikeRawScale(market);
+
+  if (
+    tickSizeRaw === undefined ||
+    !Number.isFinite(tickSizeRaw) ||
+    tickSizeRaw <= 0 ||
+    scale === null
+  ) {
+    return null;
+  }
+
+  const minimumStepRaw = TRADE_FALLBACK_DISPLAY_STRIKE_STEP_USD * scale;
+  const tickMultiple = Math.max(1, Math.ceil(minimumStepRaw / tickSizeRaw));
+
+  return tickMultiple * tickSizeRaw;
+}
+
+function computeStrikeRawScale(
+  market: Pick<MarketHeatAvailableMarket, "strike" | "strikeRaw">,
+): number | null {
+  if (
+    !Number.isFinite(market.strike) ||
+    market.strike <= 0 ||
+    !Number.isFinite(market.strikeRaw) ||
+    market.strikeRaw <= 0
+  ) {
+    return null;
+  }
+
+  return market.strikeRaw / market.strike;
+}
+
+function roundSyntheticStrike(strike: number): number {
+  return Math.round(strike * 100) / 100;
 }
 
 export function sortMarketHeatRows(
@@ -855,15 +1118,17 @@ export async function loadMarketHeatPreview({
           liveWalletDisplayNames,
         )
       : liveWalletDisplayNames;
+    const preview = buildMarketHeatPreview(previewRows, MARKET_HEAT_CANDIDATE_LIMIT, {
+      marketPrice,
+      nowMs,
+      timeZone,
+      walletDisplayNames,
+    });
 
     return {
-      ...buildMarketHeatPreview(previewRows, MARKET_HEAT_CANDIDATE_LIMIT, {
-        marketPrice,
-        nowMs,
-        timeZone,
-        walletDisplayNames,
-      }),
+      ...preview,
       availableMarkets,
+      rows: annotateMarketHeatRowPrices(preview.rows, availableMarkets),
       sourceLabel,
     };
   } catch {
@@ -936,6 +1201,7 @@ export async function loadMarketHeatPriceSnapshot(
       ...currentPreview,
       marketPrice: buildMarketHeatPrice(marketPrice),
       availableMarkets,
+      rows: annotateMarketHeatRowPrices(currentPreview.rows, availableMarkets),
     };
   } catch {
     return loadMarketHeatPreview({
@@ -958,10 +1224,13 @@ export function preserveMarketHeatAvailableMarketStrikes(
     nextPreview.availableMarkets,
     currentPreview.availableMarkets,
   );
+  const rows = annotateMarketHeatRowPrices(nextPreview.rows, availableMarkets);
 
-  return availableMarkets === nextPreview.availableMarkets
-    ? nextPreview
-    : { ...nextPreview, availableMarkets };
+  return {
+    ...nextPreview,
+    availableMarkets,
+    rows,
+  };
 }
 
 export async function loadTradeQuote({
@@ -1126,6 +1395,119 @@ function estimateMarketHeatRowPrice(row: MarketHeatPreviewRow): number | undefin
   return costUsd !== undefined && costUsd > 0 && quantityUsd > 0
     ? roundPrice(costUsd / quantityUsd)
     : undefined;
+}
+
+function annotateMarketHeatRowPrices(
+  rows: MarketHeatPreviewRow[],
+  availableMarkets?: MarketHeatAvailableMarket[],
+): MarketHeatPreviewRow[] {
+  return rows.map((row) => annotateMarketHeatRowPrice(row, availableMarkets));
+}
+
+function annotateMarketHeatRowPrice(
+  row: MarketHeatPreviewRow,
+  availableMarkets?: MarketHeatAvailableMarket[],
+): MarketHeatPreviewRow {
+  const baseRow = { ...row };
+  delete baseRow.entryPrice;
+  delete baseRow.entryPriceLabel;
+  delete baseRow.currentPrice;
+  delete baseRow.currentPriceLabel;
+  delete baseRow.entryNowTone;
+  const entryPrice = estimateMarketHeatRowPrice(row);
+  const currentPrice = estimateCurrentMarketHeatRowPrice(row, availableMarkets);
+  const entryPriceLabel = formatMarketHeatPositionPrice(entryPrice);
+  const currentPriceLabel = formatMarketHeatPositionPrice(currentPrice);
+  const entryNowTone = resolveEntryNowTone(entryPrice, currentPrice);
+
+  return {
+    ...baseRow,
+    ...(entryPrice === undefined ? {} : { entryPrice }),
+    ...(entryPriceLabel === undefined ? {} : { entryPriceLabel }),
+    ...(currentPrice === undefined ? {} : { currentPrice }),
+    ...(currentPriceLabel === undefined ? {} : { currentPriceLabel }),
+    ...(entryPrice === undefined && currentPrice === undefined ? {} : { entryNowTone }),
+  };
+}
+
+function estimateCurrentMarketHeatRowPrice(
+  row: MarketHeatPreviewRow,
+  availableMarkets?: MarketHeatAvailableMarket[],
+): number | undefined {
+  const matchingMarket = findAvailableMarketForMarketHeatRowPrice(row, availableMarkets);
+
+  if (!matchingMarket) {
+    return undefined;
+  }
+
+  const strikeRaw = row.strikeRaw ?? Math.round(row.strike * 1_000_000);
+  const up = computeOracleIndicativeUpPrice(matchingMarket.pricingModel, strikeRaw);
+
+  if (up === undefined) {
+    return undefined;
+  }
+
+  return row.side === "UP"
+    ? up
+    : roundPrice(Math.max(0, Math.min(1, 1 - up)));
+}
+
+function findAvailableMarketForMarketHeatRowPrice(
+  row: MarketHeatPreviewRow,
+  availableMarkets?: MarketHeatAvailableMarket[],
+): MarketHeatAvailableMarket | null {
+  if (!availableMarkets?.length) {
+    return null;
+  }
+
+  if (row.oracleId) {
+    const oracleMatch = availableMarkets.find(
+      (market) => market.oracleId === row.oracleId && market.expiryMs === row.expiryMs,
+    );
+
+    if (oracleMatch) {
+      return oracleMatch;
+    }
+  }
+
+  return (
+    availableMarkets.find(
+      (market) =>
+        market.pairLabel === row.pairLabel &&
+        market.expiryMs === row.expiryMs &&
+        market.intervalLabel === row.intervalLabel,
+    ) ?? null
+  );
+}
+
+function formatMarketHeatPositionPrice(price: number | undefined): string | undefined {
+  if (price === undefined || !Number.isFinite(price)) {
+    return undefined;
+  }
+
+  const clampedPrice = Math.max(0, Math.min(1, price));
+  return `$${clampedPrice.toFixed(2)}`;
+}
+
+function resolveEntryNowTone(
+  entryPrice: number | undefined,
+  currentPrice: number | undefined,
+): "up" | "down" | "flat" | "unknown" {
+  if (entryPrice === undefined || currentPrice === undefined) {
+    return "unknown";
+  }
+
+  const delta = roundPrice(currentPrice - entryPrice);
+
+  if (delta > 0.005) {
+    return "up";
+  }
+
+  if (delta < -0.005) {
+    return "down";
+  }
+
+  return "flat";
 }
 
 function preciseRowCostUsd(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd">): number | undefined {
@@ -1734,6 +2116,8 @@ function parseAvailableMarket(
     value.strike,
     strike,
   ]);
+  const minStrikeRaw = firstNonNegativeNumber([value.minStrike]);
+  const tickSizeRaw = firstNonNegativeNumber([value.tickSize]);
   const pricingModel = parsePricingModel(value.pricingModel);
 
   if (!oracleId || !intervalLabel || expiry === null || expiryMs === null || strike === null || strikeRaw === null) {
@@ -1751,6 +2135,8 @@ function parseAvailableMarket(
     strike,
     strikeRaw,
     strikeLabel: formatStrike(strike),
+    ...(minStrikeRaw === null ? {} : { minStrikeRaw }),
+    ...(tickSizeRaw === null ? {} : { tickSizeRaw }),
     status,
     ...(pricingModel === undefined ? {} : { pricingModel }),
   };

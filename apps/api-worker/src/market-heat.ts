@@ -46,6 +46,8 @@ export interface MarketHeatTradeMarket {
   intervalLabel: string;
   active: boolean;
   status: string;
+  minStrike?: number;
+  tickSize?: number;
   strikeCandidate: number | null;
   strikeCandidatePrice: number | null;
   latestPrice: number | null;
@@ -736,6 +738,8 @@ function mapAvailableBtcMarket(market: PredictAvailableBtcMarket): MarketHeatTra
     intervalLabel: market.intervalLabel,
     active: market.active,
     status: market.status,
+    minStrike: market.minStrike,
+    tickSize: market.tickSize,
     strikeCandidate: market.strikeCandidate,
     strikeCandidatePrice,
     latestPrice,
@@ -765,6 +769,8 @@ function mapIndexedBtcMarket(
     intervalLabel: formatIndexedOracleIntervalLabel(oracle),
     active: oracle.status === "active",
     status: oracle.status,
+    minStrike: oracle.min_strike,
+    tickSize: oracle.tick_size,
     strikeCandidate,
     strikeCandidatePrice,
     latestPrice: latestPriceValue,

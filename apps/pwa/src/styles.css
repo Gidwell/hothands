@@ -3374,9 +3374,232 @@ button:disabled {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 22%, transparent);
 }
 
+.trade-time-rail {
+  display: flex;
+  gap: 8px;
+  max-width: 100%;
+  margin-top: -3px;
+  padding: 0 0 6px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.trade-time-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.trade-time-rail button {
+  display: grid;
+  flex: 0 0 auto;
+  min-width: 78px;
+  min-height: 36px;
+  align-content: center;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--hh-line);
+  border-radius: 8px;
+  color: var(--hh-muted);
+  background: var(--hh-surface);
+  text-align: left;
+  scroll-snap-align: start;
+}
+
+.trade-time-rail button[aria-pressed="true"] {
+  border-color: var(--hh-accent);
+  color: var(--hh-accent);
+  background: var(--hh-accent-soft);
+}
+
+.trade-time-rail strong {
+  color: var(--hh-text);
+  font-size: 0.74rem;
+  line-height: 1;
+}
+
+.trade-time-rail small {
+  color: inherit;
+  font-size: 0.54rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
 .trade-ticket-panel {
+  gap: 8px;
+  padding: 9px;
+}
+
+.trade-options-chain {
+  overflow: hidden;
+}
+
+.trade-chain-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 10px;
+}
+
+.trade-chain-summary div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.trade-chain-summary small,
+.trade-chain-summary span {
+  color: var(--hh-muted);
+  font-size: 0.64rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.trade-chain-summary strong {
+  overflow: hidden;
+  color: var(--hh-text);
+  font-size: 1rem;
+  line-height: 1.08;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-side-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--hh-surface-2);
+}
+
+.trade-side-toggle button {
+  min-height: 32px;
+  border-radius: 999px;
+  color: var(--hh-muted);
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.trade-side-toggle button[aria-pressed="true"] {
+  color: var(--hh-text);
+  background: var(--hh-surface);
+  box-shadow: 0 6px 16px rgba(34, 48, 64, 0.1);
+}
+
+.trade-side-toggle [data-testid="trade-side-up"][aria-pressed="true"] {
+  color: var(--hh-up);
+}
+
+.trade-side-toggle [data-testid="trade-side-down"][aria-pressed="true"] {
+  color: var(--hh-down);
+}
+
+.trade-chain-list {
+  overflow: hidden;
+  border: 1px solid var(--hh-line);
+  border-radius: 8px;
+  background: var(--hh-surface);
+}
+
+.trade-chain-heading,
+.trade-chain-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(64px, auto);
+  gap: 8px;
+  align-items: center;
+}
+
+.trade-chain-heading {
+  min-height: 26px;
+  padding: 0 10px;
+  color: var(--hh-muted);
+  background: var(--hh-surface-2);
+  font-size: 0.54rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.trade-chain-heading span:last-child {
+  text-align: right;
+}
+
+.trade-chain-row-wrap + .trade-chain-row-wrap {
+  border-top: 1px solid var(--hh-line);
+}
+
+.trade-chain-row {
+  width: 100%;
+  min-height: 48px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 0;
+  color: var(--hh-text);
+  background: var(--hh-surface);
+  text-align: left;
+}
+
+.trade-chain-row.selected {
+  background: color-mix(in srgb, var(--hh-accent-soft) 42%, var(--hh-surface));
+}
+
+.trade-chain-row-up.selected {
+  box-shadow: inset 3px 0 0 var(--hh-up);
+}
+
+.trade-chain-row-down.selected {
+  box-shadow: inset 3px 0 0 var(--hh-down);
+}
+
+.trade-chain-strike,
+.trade-chain-price {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.trade-chain-strike strong,
+.trade-chain-price strong {
+  overflow: hidden;
+  color: var(--hh-text);
+  font-size: 0.9rem;
+  font-weight: 950;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-chain-strike small,
+.trade-chain-price small {
+  overflow: hidden;
+  color: var(--hh-muted);
+  font-size: 0.64rem;
+  font-weight: 850;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-chain-price {
+  justify-items: end;
+  text-align: right;
+}
+
+.trade-chain-row-up .trade-chain-price strong {
+  color: var(--hh-up);
+}
+
+.trade-chain-row-down .trade-chain-price strong {
+  color: var(--hh-down);
+}
+
+.trade-chain-row-wrap .trade-order-panel {
+  margin: 0;
+  border-width: 1px 0 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .trade-duration-pill {
@@ -3990,7 +4213,7 @@ button:disabled {
 .market-heat-table-head,
 .market-heat-compact-row {
   display: grid;
-  grid-template-columns: minmax(92px, 1.35fr) 58px 68px 56px 34px 28px 18px;
+  grid-template-columns: minmax(96px, 1.34fr) minmax(72px, 0.78fr) minmax(50px, 0.54fr) minmax(46px, 0.46fr) minmax(46px, 0.46fr) 18px;
   gap: 6px;
   align-items: center;
 }
@@ -4102,8 +4325,19 @@ button:disabled {
   min-width: 0;
 }
 
+.market-heat-identity-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 4px;
+}
+
 .market-heat-compact-identity strong {
+  min-width: 0;
+  overflow: hidden;
   font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .market-heat-compact-identity span {
@@ -4116,6 +4350,20 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.market-heat-heat-pill {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: var(--hh-up);
+  background: var(--hh-up-soft);
+  font-size: 0.54rem;
+  font-weight: 950;
+  line-height: 1;
 }
 
 .market-heat-wallet-profile {
@@ -4144,47 +4392,88 @@ button:disabled {
 }
 
 .market-heat-row-compact .direction-pill {
-  justify-self: center;
-  min-width: 42px;
-  min-height: 24px;
+  min-width: 36px;
+  min-height: 20px;
   padding: 0;
-  border-radius: 6px;
-  font-size: 0.66rem;
+  border-radius: 5px;
+  font-size: 0.58rem;
 }
 
-.market-heat-compact-strike strong,
+.market-heat-compact-position span,
 .market-heat-compact-duration strong {
   font-size: 0.76rem;
 }
 
-.market-heat-compact-strike,
-.market-heat-table-head span:nth-child(3) {
+.market-heat-compact-position {
+  display: grid;
+  justify-items: start;
+  align-content: center;
+  min-width: 0;
+  gap: 3px;
+}
+
+.market-heat-compact-position span {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-heat-compact-position .direction-pill {
+  justify-self: start;
+}
+
+.market-heat-table-head span:nth-child(2),
+.market-heat-table-head span:nth-child(3),
+.market-heat-table-head span:nth-child(4),
+.market-heat-table-head span:nth-child(5) {
   justify-self: start;
   text-align: left;
 }
 
 .market-heat-compact-duration {
-  justify-self: start;
-  text-align: left;
+  justify-self: stretch;
+  text-align: center;
 }
 
 .market-heat-countdown-live strong {
   color: var(--hh-up);
 }
 
-.market-heat-compact-heat {
-  justify-self: center;
+.market-heat-entry-price,
+.market-heat-current-price {
+  display: flex;
+  align-items: center;
+  justify-items: start;
+  min-width: 0;
 }
 
-.market-heat-compact-heat strong {
-  min-width: 31px;
-  min-height: 24px;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
+.market-heat-entry-price strong,
+.market-heat-current-price strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-heat-entry-price strong {
+  color: var(--hh-text);
+  font-size: 0.78rem;
+}
+
+.market-heat-current-price strong {
+  color: var(--hh-muted);
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.market-heat-current-price-up strong {
   color: var(--hh-up);
-  background: var(--hh-up-soft);
-  font-size: 0.72rem;
+}
+
+.market-heat-current-price-down strong {
+  color: var(--hh-down);
 }
 
 .market-heat-share-button {
@@ -4444,7 +4733,7 @@ button:disabled {
 @media (max-width: 430px) {
   .market-heat-table-head,
   .market-heat-compact-row {
-    grid-template-columns: minmax(78px, 1.35fr) 50px 58px 48px 32px 28px 14px;
+    grid-template-columns: minmax(106px, 1.48fr) minmax(56px, 0.58fr) minmax(38px, 0.42fr) minmax(40px, 0.38fr) minmax(40px, 0.38fr) 14px;
     gap: 5px;
   }
 

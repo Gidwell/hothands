@@ -4,6 +4,7 @@ import {
   buildMarketDurationOptions,
   buildMarketHeatIntentPanel,
   buildMarketHeatPreview,
+  computeOracleIndicativeUpPrice,
   closeMarketHeatIntent,
   loadMarketHeatPreview,
   loadMarketHeatPriceSnapshot,
@@ -453,7 +454,23 @@ describe("market heat preview model", () => {
         return Response.json({
           mode: "testnet",
           source: "indexed_testnet",
-          rows: [],
+          rows: [
+            {
+              id: "mint-oracle-priced",
+              oracleId: "0xoracle15",
+              wallet: "0x1111222233334444555566667777888899990000",
+              manager: "manager-a",
+              market: "BTC-USD",
+              side: "UP",
+              strike: 71_000,
+              strikeRaw: 71_000_000_000,
+              expiryMs: 1_779_158_400_000,
+              intervalLabel: "15m",
+              observedAtMs: 1_779_165_000_000,
+              heatScore: 10,
+              status: "copy_ready",
+            },
+          ],
         });
       },
     });
@@ -608,13 +625,99 @@ describe("market heat preview model", () => {
         }),
     });
     const [market] = buildTradeMarketLadder(preview, { nowMs });
+    const [row] = preview.rows;
 
+    expect(row.entryPrice).toBe(0.9);
+    expect(row.entryPriceLabel).toBe("$0.90");
+    expect(row.currentPrice).toBeCloseTo(0.4602, 3);
+    expect(row.currentPriceLabel).toBe("$0.46");
+    expect(row.entryNowTone).toBe("down");
     expect(market.pricingModel).toMatchObject({
       forward: 71_000_000_000,
       a: 40_000_000,
     });
     expect(market.up.estimatedPrice).toBeCloseTo(0.4602, 3);
     expect(market.down.estimatedPrice).toBeCloseTo(0.5398, 3);
+  });
+
+  test("builds a wider synthetic strike chain from oracle tick metadata and price curve", async () => {
+    const nowMs = 1_779_165_000_000;
+    const expiryMs = nowMs + 15 * 60_000;
+    const preview = await loadMarketHeatPreview({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs,
+      fetcher: async () =>
+        Response.json({
+          mode: "testnet",
+          source: "indexed_testnet",
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71_000,
+            source: "indexed_testnet",
+          },
+          markets: [
+            {
+              oracleId: "0xoracle15",
+              market: "BTC-USD",
+              intervalLabel: "15m",
+              expiry: expiryMs,
+              expiryMs,
+              minStrike: 50_000_000_000,
+              tickSize: 1_000_000,
+              strikeCandidate: 71_000_000_000,
+              strikeCandidatePrice: 71_000,
+              status: "active",
+              pricingModel: {
+                forward: 71_000_000_000,
+                forwardPrice: 71_000,
+                a: 40_000_000,
+                b: 0,
+                rho: 0,
+                m: 0,
+                sigma: 150_000_000,
+                timestampMs: nowMs,
+              },
+            },
+          ],
+          rows: [
+            {
+              id: "mint-oracle-synthetic",
+              oracleId: "0xoracle15",
+              wallet: "0x1111222233334444555566667777888899990000",
+              manager: "manager-a",
+              market: "BTC-USD",
+              side: "UP",
+              strike: 71_000,
+              strikeRaw: 71_000_000_000,
+              expiryMs,
+              intervalLabel: "15m",
+              observedAtMs: nowMs,
+              heatScore: 10,
+              status: "copy_ready",
+            },
+          ],
+        }),
+    });
+
+    const [market] = buildTradeMarketLadder(preview, { nowMs });
+
+    expect(market).toMatchObject({
+      minStrikeRaw: 50_000_000_000,
+      tickSizeRaw: 1_000_000,
+    });
+    expect(market.strikeOptions?.length).toBeGreaterThanOrEqual(9);
+    expect(market.strikeOptions?.some((option) => option.strike < 71_000)).toBe(true);
+    expect(market.strikeOptions?.some((option) => option.strike > 71_000)).toBe(true);
+    expect(market.strikeOptions?.every((option) => option.strikeRaw % 1_000_000 === 0)).toBe(true);
+
+    const priceSteps = market.strikeOptions
+      ?.map((option) => computeOracleIndicativeUpPrice(market.pricingModel, option.strikeRaw))
+      .filter((price): price is number => price !== undefined) ?? [];
+    const adjacentPriceDeltas = priceSteps
+      .slice(1)
+      .map((price, index) => Math.abs(price - priceSteps[index]));
+
+    expect(adjacentPriceDeltas.every((delta) => delta >= 0.05 && delta <= 0.1)).toBe(true);
   });
 
   test("overlays mainnet SuiNS names on market heat rows when requested", async () => {
