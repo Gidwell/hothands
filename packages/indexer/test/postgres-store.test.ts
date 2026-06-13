@@ -54,6 +54,8 @@ describe("Postgres Predict indexer store", () => {
     expect(calls[0]?.statement).toContain("insert into predict_oracles");
     expect(calls[0]?.statement).toContain("on conflict (oracle_id) do update");
     expect(calls[0]?.statement).toContain("indexed_at = now()");
+    expect(calls[0]?.statement).toContain("where (predict_oracles.predict_id");
+    expect(calls[0]?.statement).toContain("is distinct from (excluded.predict_id");
     expect(calls[0]?.params.slice(0, 9)).toEqual([
       "btc-15m",
       DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId,
@@ -67,6 +69,7 @@ describe("Postgres Predict indexer store", () => {
     ]);
 
     expect(calls[1]?.statement).toContain("insert into predict_trade_events");
+    expect(calls[1]?.statement).toContain("where (predict_trade_events.kind");
     expect(calls[1]?.params.slice(0, 12)).toEqual([
       "mint:0xmint:1",
       "mint",
@@ -83,6 +86,7 @@ describe("Postgres Predict indexer store", () => {
     ]);
 
     expect(calls[2]?.statement).toContain("insert into predict_oracle_prices");
+    expect(calls[2]?.statement).toContain("where (predict_oracle_prices.oracle_id");
     expect(calls[2]?.params.slice(0, 3)).toEqual([
       "price:btc-15m:101:1779070801000:72100000000:no-forward",
       "btc-15m",
@@ -91,6 +95,7 @@ describe("Postgres Predict indexer store", () => {
     expect(calls[3]?.statement).toContain("insert into predict_oracle_svi");
     expect(calls[4]?.statement).toContain("insert into predict_position_summaries");
     expect(calls[4]?.statement).toContain("materialized_at = now()");
+    expect(calls[4]?.statement).toContain("where (predict_position_summaries.owner");
 
     for (const call of calls) {
       expect(call.statement).toContain("returning 1");
@@ -106,6 +111,25 @@ describe("Postgres Predict indexer store", () => {
       normalizePredictTradeRow(mintedRow({ digest: "0xone" })),
       normalizePredictTradeRow(mintedRow({ digest: "0xtwo" })),
     ])).resolves.toBe(2);
+  });
+
+  test("guards raw upserts from touching unchanged conflict rows", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      return { rows: [], rowCount: 0 };
+    };
+    const store = createPostgresPredictIndexerStore({ execute });
+
+    await expect(store.upsertTradeEvents([
+      normalizePredictTradeRow(mintedRow()),
+    ])).resolves.toBe(0);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.statement).toContain("on conflict (event_id) do update");
+    expect(calls[0]?.statement).toContain("where (predict_trade_events.kind");
+    expect(calls[0]?.statement).toContain("is distinct from (excluded.kind");
+    expect(calls[0]?.statement).not.toContain("predict_trade_events.indexed_at");
   });
 
   test("dedupes repeated conflict keys before one upsert batch", async () => {
