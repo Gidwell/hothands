@@ -44,10 +44,20 @@ export function clampCopyAmount(amount: number): number {
   return Math.min(COPY_AMOUNT_MAX, Math.max(COPY_AMOUNT_MIN, cents));
 }
 
+export function normalizeEditableCopyAmount(amount: number): number {
+  if (!Number.isFinite(amount)) {
+    return 0;
+  }
+
+  const cents = Math.round(amount * 100) / 100;
+
+  return Math.min(COPY_AMOUNT_MAX, Math.max(0, cents));
+}
+
 export function setCopyAmount(state: CopyTableState, amount: number): CopyTableState {
   return {
     ...state,
-    copyAmount: clampCopyAmount(amount),
+    copyAmount: normalizeEditableCopyAmount(amount),
   };
 }
 
@@ -55,7 +65,10 @@ export function stepCopyAmount(
   state: CopyTableState,
   direction: -1 | 1,
 ): CopyTableState {
-  return setCopyAmount(state, state.copyAmount + direction * COPY_AMOUNT_STEP);
+  return {
+    ...state,
+    copyAmount: clampCopyAmount(state.copyAmount + direction * COPY_AMOUNT_STEP),
+  };
 }
 
 export function toggleCopyArmed(state: CopyTableState): CopyTableState {
@@ -118,7 +131,7 @@ export function getSelectedTrader(state: CopyTableState, traders: Trader[]): Tra
 }
 
 export function formatCopyAmount(amount: number): string {
-  const clampedAmount = clampCopyAmount(amount);
+  const clampedAmount = normalizeEditableCopyAmount(amount);
 
   return `$${clampedAmount.toLocaleString("en-US", {
     maximumFractionDigits: 2,

@@ -47,8 +47,12 @@ function findElementByTestId(node: ReactNode, testId: string): ReactElement | nu
     return null;
   }
 
-  const props = node.props as { children?: ReactNode; "data-testid"?: string };
-  if (props["data-testid"] === testId) {
+  const props = node.props as {
+    children?: ReactNode;
+    "data-testid"?: string;
+    testId?: string;
+  };
+  if (props["data-testid"] === testId || props.testId === testId) {
     return node;
   }
 
@@ -394,8 +398,9 @@ describe("mobile app navigation", () => {
     );
   });
 
-  test("renders bankroll funding controls without a wallet balance metric", () => {
+  test("renders bankroll funding actions without a wallet balance metric", () => {
     let depositClicked = false;
+    let withdrawClicked = false;
     const html = renderToStaticMarkup(
       <AccountSummary
         bankrollLabel="$12.50"
@@ -413,11 +418,15 @@ describe("mobile app navigation", () => {
         onDeposit={() => {
           depositClicked = true;
         }}
-        onDepositAmountChange={() => undefined}
+        onWithdraw={() => {
+          withdrawClicked = true;
+        }}
+        variant="portfolio"
       />,
     );
 
     expect(depositClicked).toBe(false);
+    expect(withdrawClicked).toBe(false);
     expect(html).toContain('aria-label="Account summary"');
     expect(html).toContain("All-time PNL");
     expect(html).not.toContain(">Balance</span>");
@@ -426,17 +435,23 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Deposited");
     expect(html).toContain('data-testid="predict-bankroll-balance"');
     expect(html).toContain("$12.50");
-    expect(html).toContain('aria-label="Deposit amount"');
-    expect(html).toContain('data-testid="deposit-bankroll-amount"');
-    expect(html).toContain('value="75"');
-    expect(html).toContain('data-testid="deposit-bankroll"');
+    expect(html).not.toContain('data-testid="deposit-bankroll-amount"');
+    expect(html).toContain('data-testid="portfolio-deposit-bankroll"');
+    expect(html).toContain('data-testid="portfolio-withdraw-bankroll"');
     expect(html).toContain("Deposit");
+    expect(html).toContain("Withdraw");
   });
 
-  test("wires the custom deposit amount input", () => {
+  test("wires the bankroll funding sheet amount for the selected action", () => {
     let changedAmount = 0;
+    let submitMode = "";
+    let closed = false;
     const tree = AccountSummary({
       depositAmount: 25,
+      fundingAmount: 18.75,
+      fundingMode: "deposit",
+      bankrollLabel: "$12.50",
+      walletDusdcBalanceLabel: "$91.25",
       summary: {
         accountValue: "$100",
         available: "$80",
@@ -448,25 +463,56 @@ describe("mobile app navigation", () => {
         title: "My Session",
       },
       onDeposit: () => undefined,
-      onDepositAmountChange: (amount) => {
+      onWithdraw: () => undefined,
+      onFundingAmountChange: (amount) => {
         changedAmount = amount;
       },
+      onFundingClose: () => {
+        closed = true;
+      },
+      onFundingSubmit: (mode) => {
+        submitMode = mode;
+      },
+      variant: "portfolio",
     });
+    const html = renderToStaticMarkup(tree);
 
-    const input = findElementByTestId(tree, "deposit-bankroll-amount");
+    expect(html).toContain('data-testid="bankroll-funding-sheet"');
+    expect(html).toContain("Deposit");
+    expect(html).toContain("Send to wallet");
+    expect(html).toContain("Wallet DUSDC");
+    expect(html).toContain("$91.25");
+    expect(html).toContain("Deposited");
+    expect(html).toContain("$12.50");
+    expect(html).not.toContain('data-testid="bankroll-funding-mode-deposit"');
+    expect(html).not.toContain('data-testid="bankroll-funding-mode-withdraw"');
+
+    const input = findElementByTestId(tree, "bankroll-funding-amount");
     expect(input).not.toBeNull();
     const props = input?.props as {
-      onChange?: (event: { currentTarget: { value: string } }) => void;
+      onChange?: (amount: number) => void;
       value?: number;
     };
 
-    expect(props.value).toBe(25);
-    props.onChange?.({ currentTarget: { value: "12.34" } });
+    expect(props.value).toBe(18.75);
+    props.onChange?.(12.34);
     expect(changedAmount).toBe(12.34);
+    props.onChange?.(0);
+    expect(changedAmount).toBe(0);
+
+    const submitButton = findElementByTestId(tree, "bankroll-funding-submit");
+    (submitButton?.props as { onClick?: () => void }).onClick?.();
+    expect(submitMode).toBe("deposit");
+
+    const closeButton = findElementByTestId(tree, "bankroll-funding-close");
+    (closeButton?.props as { onClick?: () => void }).onClick?.();
+    expect(closed).toBe(true);
   });
 
-  test("renders portfolio stake budget and deposit action without wallet balance", () => {
+  test("renders portfolio stake budget and funding actions without wallet balance", () => {
     let stakeAmount = 0;
+    let depositOpened = false;
+    let withdrawOpened = false;
     const tree = AccountSummary({
       bankrollLabel: "$12.50",
       stakeAmount: 25,
@@ -481,7 +527,12 @@ describe("mobile app navigation", () => {
         title: "My Session",
       },
       variant: "portfolio",
-      onDeposit: () => undefined,
+      onDeposit: () => {
+        depositOpened = true;
+      },
+      onWithdraw: () => {
+        withdrawOpened = true;
+      },
       onStakeAmountChange: (amount) => {
         stakeAmount = amount;
       },
@@ -491,12 +542,20 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain("Stake");
     expect(html).toContain('data-testid="portfolio-deposit-bankroll"');
+    expect(html).toContain('data-testid="portfolio-withdraw-bankroll"');
     expect(html).not.toContain('data-testid="available-wallet-balance"');
     expect(html).not.toContain("Position");
     expect(input).not.toBeNull();
-    (input?.props as { onChange?: (event: { currentTarget: { value: string } }) => void })
-      .onChange?.({ currentTarget: { value: "50" } });
+    (input?.props as { onChange?: (amount: number) => void }).onChange?.(50);
     expect(stakeAmount).toBe(50);
+
+    const depositButton = findElementByTestId(tree, "portfolio-deposit-bankroll");
+    (depositButton?.props as { onClick?: () => void }).onClick?.();
+    expect(depositOpened).toBe(true);
+
+    const withdrawButton = findElementByTestId(tree, "portfolio-withdraw-bankroll");
+    (withdrawButton?.props as { onClick?: () => void }).onClick?.();
+    expect(withdrawOpened).toBe(true);
   });
 
   test("renders bottom navigation tabs in primary product order", () => {

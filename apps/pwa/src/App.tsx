@@ -21,6 +21,7 @@ import {
 import {
   buildCreatePredictManagerTransaction,
   buildDepositQuoteTransaction,
+  buildWithdrawQuoteBankrollTransaction,
 } from "@hot-hands/contracts";
 import {
   clampCopyAmount,
@@ -127,6 +128,7 @@ import { buildTradeMintTransaction } from "./walletTransactions";
 import { buildPortfolioRedeemTransaction } from "./walletTransactions";
 import {
   formatDusdcBalance,
+  loadDusdcBalanceLabel,
   loadPredictManagerBankrollAtomic,
   selectDusdcDepositCoin,
   usdToDusdcAtomic,
@@ -164,7 +166,6 @@ const PORTFOLIO_HISTORY_PAGE_SIZE = 8;
 const TRADE_LADDER_VISIBLE_STRIKE_COUNT = 4;
 const TRADE_LADDER_BELOW_TARGET_COUNT = 2;
 const DEPOSIT_AMOUNT_DEFAULT = 25;
-const DEPOSIT_AMOUNT_MIN = 0.01;
 const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
 const STAKE_AMOUNT_STORAGE_KEY = "hot-hands-default-stake-amount";
@@ -173,6 +174,7 @@ const APP_VIEW_QUERY_PARAM = "view";
 type PreviewMode = "replay" | "market";
 export type AppView = "feed" | "trade" | "leaderboards" | "portfolio" | "profile";
 export type AccountSummaryVariant = "default" | "portfolio";
+export type BankrollFundingMode = "deposit" | "withdraw";
 type MarketHeatFeedMode = MarketHeatSortMode | "following";
 type MarketHeatIdentityMode = "wallet" | "market";
 type ThemeMode = "light" | "dark";
@@ -353,6 +355,12 @@ type PredictManagerBankrollState = {
   refreshKey: number;
   status: "idle" | "loading" | "ready" | "error";
   atomicBalance: bigint | null;
+  label: string | null;
+};
+type WalletDusdcBalanceState = {
+  accountAddress: string | null;
+  refreshKey: number;
+  status: "idle" | "loading" | "ready" | "error";
   label: string | null;
 };
 type PredictManagerStatus = "idle" | "checking" | "ready" | "missing" | "error";
@@ -725,12 +733,12 @@ function formatSignedUsdValue(amount: number): string {
   return `${prefix}${formatUsdValue(Math.abs(amount))}`;
 }
 
-function clampDepositAmount(amount: number): number {
+function clampBankrollFundingAmount(amount: number): number {
   if (!Number.isFinite(amount)) {
-    return DEPOSIT_AMOUNT_DEFAULT;
+    return 0;
   }
 
-  return Math.max(DEPOSIT_AMOUNT_MIN, Math.round(amount * 100) / 100);
+  return Math.max(0, Math.round(amount * 100) / 100);
 }
 
 function buildReturnPreviewFromQuote(quote: TradeQuote): ReturnPreview {
@@ -1144,6 +1152,84 @@ function formatTradeOutcome(side: TradeSide, strikeLabel: string): string {
   return `Wins if BTC settles ${side === "UP" ? "above" : "below"} ${strikeLabel}`;
 }
 
+function usdAmountInputValue(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return "";
+  }
+
+  return String(Math.round(amount * 100) / 100);
+}
+
+function parseUsdAmountInputValue(value: string): number {
+  const normalizedValue = value.replace(/[$,\s]/g, "");
+  if (!normalizedValue) {
+    return 0;
+  }
+
+  const amount = Number(normalizedValue);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return 0;
+  }
+
+  return amount;
+}
+
+function isUsableUsdAmount(amount: number): boolean {
+  return Number.isFinite(amount) && amount >= COPY_AMOUNT_MIN;
+}
+
+function EditableUsdAmountInput({
+  ariaLabel,
+  className,
+  max,
+  testId,
+  value,
+  onChange,
+  onClick,
+}: {
+  ariaLabel: string;
+  className?: string;
+  max?: number;
+  testId?: string;
+  value: number;
+  onChange: (amount: number) => void;
+  onClick?: (event: SyntheticEvent<HTMLInputElement>) => void;
+}) {
+  const [draftValue, setDraftValue] = useState(() => usdAmountInputValue(value));
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setDraftValue(usdAmountInputValue(value));
+    }
+  }, [isFocused, value]);
+
+  return (
+    <input
+      aria-label={ariaLabel}
+      className={className}
+      data-testid={testId}
+      inputMode="decimal"
+      max={max}
+      step="0.01"
+      type="text"
+      value={draftValue}
+      onBlur={() => {
+        setIsFocused(false);
+      }}
+      onChange={(event) => {
+        const nextValue = event.currentTarget.value;
+        setDraftValue(nextValue);
+        onChange(parseUsdAmountInputValue(nextValue));
+      }}
+      onClick={onClick}
+      onFocus={() => {
+        setIsFocused(true);
+      }}
+    />
+  );
+}
+
 function CopyAmountControls({
   ariaLabel,
   copyAmount,
@@ -1182,17 +1268,13 @@ function CopyAmountControls({
         <span>Custom</span>
         <span className="custom-copy-amount-field">
           <span aria-hidden="true">$</span>
-          <input
-            aria-label="Custom copy amount"
-            data-testid="custom-copy-amount"
-            inputMode="numeric"
-            min={COPY_AMOUNT_MIN}
+          <EditableUsdAmountInput
+            ariaLabel="Custom copy amount"
+            testId="custom-copy-amount"
             max={COPY_AMOUNT_MAX}
-            step="0.01"
-            type="number"
             value={copyAmount}
             onClick={stopEvent}
-            onChange={(event) => onAmountSet(Number(event.currentTarget.value))}
+            onChange={onAmountSet}
           />
         </span>
       </label>
@@ -2493,6 +2575,7 @@ export function TradeTicket({
       ? selectedMarket.up
       : selectedMarket.down
     : null;
+  const hasUsableCopyAmount = isUsableUsdAmount(copyAmount);
   const returnPreview = quote
     ? buildReturnPreviewFromQuote(quote)
     : buildReturnPreview(copyAmount, selectedSideSummary?.estimatedPrice);
@@ -2501,6 +2584,7 @@ export function TradeTicket({
   const canSubmitTrade =
     walletConnected &&
     hasPredictManagerObjectId &&
+    hasUsableCopyAmount &&
     quoteStatus === "ready" &&
     Boolean(quote) &&
     !walletActionPending;
@@ -2510,6 +2594,8 @@ export function TradeTicket({
       ? "Connect wallet first"
       : !hasPredictManagerObjectId
         ? "Create Predict account first"
+        : !hasUsableCopyAmount
+          ? "Enter amount"
         : quoteStatus === "loading"
           ? "Wait for quote"
           : quoteStatus === "error"
@@ -4038,15 +4124,20 @@ export function MarketHeatPreview({
     const isWalletSubmitReady = row.status === "copy_ready";
     const rowQuote = isSelected ? quote : null;
     const rowQuoteStatus = isSelected ? quoteStatus : "idle";
+    const hasUsableCopyAmount = isUsableUsdAmount(copyAmount);
     const isQuoteReady = Boolean(rowQuoteStatus === "ready" && rowQuote);
     const isQuoteError = rowQuoteStatus === "error";
     const quoteFallbackLabel = isQuoteError
       ? "Quote unavailable — retry"
-      : rowQuoteStatus === "loading"
+      : !hasUsableCopyAmount
+        ? "Enter amount"
+        : rowQuoteStatus === "loading"
         ? "Loading quote..."
         : "Live quote needed";
     const walletSubmitCta = !walletConnected
       ? "Connect wallet first"
+      : !hasUsableCopyAmount
+        ? "Enter amount"
       : isQuoteError
         ? "Quote unavailable — retry"
         : isQuoteReady
@@ -4173,7 +4264,11 @@ export function MarketHeatPreview({
               type="button"
               className="wallet-submit-button"
               data-testid="market-heat-wallet-submit"
-              disabled={!walletConnected || (!isQuoteReady && !isQuoteError)}
+              disabled={
+                !walletConnected ||
+                !hasUsableCopyAmount ||
+                (!isQuoteReady && !isQuoteError)
+              }
               onClick={(event) => {
                 event.stopPropagation();
                 if (!walletConnected) {
@@ -4533,9 +4628,15 @@ export function MarketHeader({
 export function AccountSummary({
   bankrollLabel = null,
   depositAmount = DEPOSIT_AMOUNT_DEFAULT,
+  fundingAmount,
+  fundingMode = null,
+  walletDusdcBalanceLabel = null,
   onDeposit,
-  onDepositAmountChange,
+  onFundingAmountChange,
+  onFundingClose,
+  onFundingSubmit,
   onStakeAmountChange,
+  onWithdraw,
   pnlLabel,
   pnlTitle = "All-time PNL",
   pnlTone,
@@ -4545,9 +4646,15 @@ export function AccountSummary({
 }: {
   bankrollLabel?: string | null;
   depositAmount?: number;
+  fundingAmount?: number;
+  fundingMode?: BankrollFundingMode | null;
+  walletDusdcBalanceLabel?: string | null;
   onDeposit?: () => void;
-  onDepositAmountChange?: (amount: number) => void;
+  onFundingAmountChange?: (amount: number) => void;
+  onFundingClose?: () => void;
+  onFundingSubmit?: (mode: BankrollFundingMode) => void;
   onStakeAmountChange?: (amount: number) => void;
+  onWithdraw?: () => void;
   pnlLabel?: string;
   pnlTitle?: string;
   pnlTone?: "positive" | "negative" | "flat";
@@ -4562,6 +4669,13 @@ export function AccountSummary({
       ? stakeAmount
       : COPY_AMOUNT_DEFAULT;
   const isPortfolioSummary = variant === "portfolio";
+  const visibleFundingAmount =
+    typeof fundingAmount === "number" && Number.isFinite(fundingAmount)
+      ? fundingAmount
+      : depositAmount;
+  const fundingModeLabel = fundingMode === "withdraw" ? "Withdraw" : "Deposit";
+  const visibleBankrollLabel = bankrollLabel ?? summary.accountValue;
+  const visibleWalletDusdcLabel = walletDusdcBalanceLabel ?? "$--";
 
   return (
     <section
@@ -4579,31 +4693,6 @@ export function AccountSummary({
           <strong data-testid="predict-bankroll-balance">
             {bankrollLabel ?? summary.accountValue}
           </strong>
-          {onDeposit && !isPortfolioSummary ? (
-            <div className="account-deposit-control">
-              <label className="account-deposit-amount">
-                <span aria-hidden="true">$</span>
-                <input
-                  aria-label="Deposit amount"
-                  data-testid="deposit-bankroll-amount"
-                  inputMode="decimal"
-                  min={DEPOSIT_AMOUNT_MIN}
-                  step="0.01"
-                  type="number"
-                  value={depositAmount}
-                  onChange={(event) => onDepositAmountChange?.(Number(event.currentTarget.value))}
-                />
-              </label>
-              <button
-                type="button"
-                className="account-deposit-button"
-                data-testid="deposit-bankroll"
-                onClick={onDeposit}
-              >
-                Deposit
-              </button>
-            </div>
-          ) : null}
         </div>
       </div>
       <div className="account-summary-stats">
@@ -4613,29 +4702,37 @@ export function AccountSummary({
               <span>Stake</span>
               <label className="account-stake-amount">
                 <span aria-hidden="true">$</span>
-                <input
-                  aria-label="Default stake amount"
-                  data-testid="default-stake-amount"
-                  inputMode="decimal"
-                  min={COPY_AMOUNT_MIN}
+                <EditableUsdAmountInput
+                  ariaLabel="Default stake amount"
+                  testId="default-stake-amount"
                   max={COPY_AMOUNT_MAX}
-                  step="0.01"
-                  type="number"
                   value={visibleStakeAmount}
-                  onChange={(event) => onStakeAmountChange?.(Number(event.currentTarget.value))}
+                  onChange={(amount) => onStakeAmountChange?.(amount)}
                 />
               </label>
             </div>
-            {onDeposit ? (
-              <div className="account-deposit-cell">
-                <button
-                  type="button"
-                  className="account-summary-deposit-button"
-                  data-testid="portfolio-deposit-bankroll"
-                  onClick={onDeposit}
-                >
-                  Deposit
-                </button>
+            {onDeposit || onWithdraw ? (
+              <div className="account-funding-cell">
+                {onDeposit ? (
+                  <button
+                    type="button"
+                    className="account-summary-deposit-button"
+                    data-testid="portfolio-deposit-bankroll"
+                    onClick={onDeposit}
+                  >
+                    Deposit
+                  </button>
+                ) : null}
+                {onWithdraw ? (
+                  <button
+                    type="button"
+                    className="account-summary-withdraw-button"
+                    data-testid="portfolio-withdraw-bankroll"
+                    onClick={onWithdraw}
+                  >
+                    Withdraw
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </>
@@ -4652,6 +4749,57 @@ export function AccountSummary({
           </>
         )}
       </div>
+      {fundingMode ? (
+        <div
+          className={`bankroll-funding-sheet bankroll-funding-sheet-${fundingMode}`}
+          data-testid="bankroll-funding-sheet"
+        >
+          <div className="bankroll-funding-header">
+            <div>
+              <span>Bankroll</span>
+              <strong>{fundingModeLabel}</strong>
+            </div>
+            <button
+              type="button"
+              className="bankroll-funding-close"
+              data-testid="bankroll-funding-close"
+              onClick={onFundingClose}
+            >
+              Close
+            </button>
+          </div>
+          <label className="bankroll-funding-amount">
+            <span>Amount</span>
+            <span className="bankroll-funding-input">
+              <span aria-hidden="true">$</span>
+              <EditableUsdAmountInput
+                ariaLabel={`${fundingModeLabel} amount`}
+                testId="bankroll-funding-amount"
+                value={visibleFundingAmount}
+                onChange={(amount) => onFundingAmountChange?.(amount)}
+              />
+            </span>
+          </label>
+          <div className="bankroll-funding-balances">
+            <span>
+              <small>Wallet DUSDC</small>
+              <strong>{visibleWalletDusdcLabel}</strong>
+            </span>
+            <span>
+              <small>Deposited</small>
+              <strong>{visibleBankrollLabel}</strong>
+            </span>
+          </div>
+          <button
+            type="button"
+            className="bankroll-funding-submit"
+            data-testid="bankroll-funding-submit"
+            onClick={() => onFundingSubmit?.(fundingMode)}
+          >
+            Send to wallet
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -4766,6 +4914,14 @@ export function App() {
   );
   const [predictManagerBankrollRefreshKey, setPredictManagerBankrollRefreshKey] =
     useState(0);
+  const [walletDusdcBalanceRefreshKey, setWalletDusdcBalanceRefreshKey] = useState(0);
+  const [walletDusdcBalanceState, setWalletDusdcBalanceState] =
+    useState<WalletDusdcBalanceState>({
+      accountAddress: null,
+      refreshKey: 0,
+      status: "idle",
+      label: null,
+    });
   const [predictManagerBankrollState, setPredictManagerBankrollState] =
     useState<PredictManagerBankrollState>({
       accountAddress: null,
@@ -4818,6 +4974,9 @@ export function App() {
     () => new Set(),
   );
   const [depositAmount, setDepositAmount] = useState(DEPOSIT_AMOUNT_DEFAULT);
+  const [withdrawAmount, setWithdrawAmount] = useState(DEPOSIT_AMOUNT_DEFAULT);
+  const [bankrollFundingMode, setBankrollFundingMode] =
+    useState<BankrollFundingMode | null>(null);
   const [tradeQuoteState, setTradeQuoteState] = useState<{
     key: string | null;
     status: TradeQuoteStatus;
@@ -4984,9 +5143,16 @@ export function App() {
   };
   const copyState = replayState.copy;
   useEffect(() => {
-    writeStoredStakeAmount(copyState.copyAmount);
+    if (isUsableUsdAmount(copyState.copyAmount)) {
+      writeStoredStakeAmount(copyState.copyAmount);
+    }
 
-    if (!currentAccount || !realtimeApiBaseUrl || typeof window === "undefined") {
+    if (
+      !isUsableUsdAmount(copyState.copyAmount) ||
+      !currentAccount ||
+      !realtimeApiBaseUrl ||
+      typeof window === "undefined"
+    ) {
       return undefined;
     }
 
@@ -5129,7 +5295,8 @@ export function App() {
     selectedMarket: selectedTradeMarket,
     selectedSide: tradeSide,
   });
-  const tradeQuoteKey = selectedTradeMarket
+  const hasUsableCopyAmount = isUsableUsdAmount(copyState.copyAmount);
+  const tradeQuoteKey = selectedTradeMarket && hasUsableCopyAmount
     ? buildTradeQuoteKey(selectedTradeMarket, tradeSide, copyState.copyAmount)
     : null;
   const activeTradeQuote =
@@ -5150,7 +5317,7 @@ export function App() {
   const activeMarketHeatQuoteSide = activeMarketHeatCopyTrade
     ? resolveMarketHeatIntentSide(activeMarketHeatCopyTrade.row.side, activeMarketHeatIntentMode)
     : null;
-  const marketHeatQuoteKey = activeMarketHeatCopyTrade
+  const marketHeatQuoteKey = activeMarketHeatCopyTrade && hasUsableCopyAmount
     ? buildTradeQuoteKey(
         activeMarketHeatCopyTrade.market,
         activeMarketHeatQuoteSide ?? activeMarketHeatCopyTrade.row.side,
@@ -5469,6 +5636,21 @@ export function App() {
       ? predictManagerState.status
       : "checking"
     : "idle";
+  const isWalletDusdcBalanceStateCurrent =
+    connectedAccountAddress &&
+    walletDusdcBalanceState.accountAddress === connectedAccountAddress &&
+    walletDusdcBalanceState.refreshKey === walletDusdcBalanceRefreshKey;
+  const visibleWalletDusdcBalanceLabel = connectedAccountAddress
+    ? isWalletDusdcBalanceStateCurrent
+      ? walletDusdcBalanceState.status === "ready"
+        ? walletDusdcBalanceState.label
+        : walletDusdcBalanceState.status === "loading"
+          ? "Loading..."
+          : walletDusdcBalanceState.status === "error"
+            ? "$--"
+            : null
+      : "Loading..."
+    : null;
   const isPredictManagerBankrollStateCurrent =
     connectedAccountAddress &&
     activePredictManagerObjectId &&
@@ -5662,6 +5844,59 @@ export function App() {
       readDismissedPortfolioPositionIds(activePredictManagerObjectId || null),
     );
   }, [activePredictManagerObjectId]);
+
+  useEffect(() => {
+    if (!connectedAccountAddress) {
+      setWalletDusdcBalanceState({
+        accountAddress: null,
+        refreshKey: walletDusdcBalanceRefreshKey,
+        status: "idle",
+        label: null,
+      });
+      return undefined;
+    }
+
+    let isCurrent = true;
+    setWalletDusdcBalanceState({
+      accountAddress: connectedAccountAddress,
+      refreshKey: walletDusdcBalanceRefreshKey,
+      status: "loading",
+      label: null,
+    });
+
+    void loadDusdcBalanceLabel({
+      client: currentClient,
+      owner: connectedAccountAddress,
+    })
+      .then((label) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setWalletDusdcBalanceState({
+          accountAddress: connectedAccountAddress,
+          refreshKey: walletDusdcBalanceRefreshKey,
+          status: "ready",
+          label,
+        });
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setWalletDusdcBalanceState({
+          accountAddress: connectedAccountAddress,
+          refreshKey: walletDusdcBalanceRefreshKey,
+          status: "error",
+          label: null,
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [connectedAccountAddress, currentClient, walletDusdcBalanceRefreshKey]);
 
   useEffect(() => {
     if (!connectedAccountAddress || !activePredictManagerObjectId) {
@@ -6230,7 +6465,7 @@ export function App() {
 
   const handleAmountSet = (amount: number) => {
     if (activeView === "trade") {
-      setTradeQuoteRequested(true);
+      setTradeQuoteRequested(isUsableUsdAmount(amount));
     }
 
     setReplayState((state) => updateReplayCopy(state, (copy) => setCopyAmount(copy, amount)));
@@ -6297,6 +6532,15 @@ export function App() {
       setWalletTxState({
         status: "error",
         label: "Create a Predict account first.",
+        digest: null,
+      });
+      return;
+    }
+
+    if (!isUsableUsdAmount(copyState.copyAmount)) {
+      setWalletTxState({
+        status: "error",
+        label: "Enter an amount first.",
         digest: null,
       });
       return;
@@ -6646,8 +6890,28 @@ export function App() {
       });
     }
   };
-  const handleDepositAmountChange = (amount: number) => {
-    setDepositAmount(clampDepositAmount(amount));
+  const handleBankrollFundingOpen = (mode: BankrollFundingMode) => {
+    setBankrollFundingMode(mode);
+  };
+  const handleBankrollFundingClose = () => {
+    setBankrollFundingMode(null);
+  };
+  const handleBankrollFundingAmountChange = (amount: number) => {
+    const clampedAmount = clampBankrollFundingAmount(amount);
+    if (bankrollFundingMode === "withdraw") {
+      setWithdrawAmount(clampedAmount);
+      return;
+    }
+
+    setDepositAmount(clampedAmount);
+  };
+  const handleBankrollFundingSubmit = (mode: BankrollFundingMode) => {
+    if (mode === "withdraw") {
+      void handleWithdrawBankroll();
+      return;
+    }
+
+    void handleDepositBankroll();
   };
   const handleTradeSideChange = (side: TradeSide) => {
     setTradeQuoteRequested(true);
@@ -6736,6 +7000,7 @@ export function App() {
   const refreshPredictWalletSurfaces = () => {
     setPredictManagerRefreshKey((key) => key + 1);
     setPredictManagerBankrollRefreshKey((key) => key + 1);
+    setWalletDusdcBalanceRefreshKey((key) => key + 1);
     setPredictPortfolioRefreshKey((key) => key + 1);
   };
   const refreshAfterWalletTransaction = (digest: string | null) => {
@@ -6812,6 +7077,15 @@ export function App() {
       return;
     }
 
+    if (!isUsableUsdAmount(depositAmount)) {
+      setWalletTxState({
+        status: "error",
+        label: "Enter a deposit amount first.",
+        digest: null,
+      });
+      return;
+    }
+
     const amount = usdToDusdcAtomic(depositAmount);
     const amountLabel = formatCopyAmount(depositAmount);
 
@@ -6849,6 +7123,93 @@ export function App() {
         label: `${amountLabel} deposit transaction sent.`,
         digest,
       });
+      setBankrollFundingMode(null);
+      refreshAfterWalletTransaction(digest);
+    } catch (error) {
+      setWalletTxState({
+        status: "error",
+        label: walletErrorMessage(error),
+        digest: null,
+      });
+    }
+  };
+  const handleWithdrawBankroll = async () => {
+    if (!currentAccount) {
+      setWalletTxState({
+        status: "error",
+        label: "Connect a Sui testnet wallet first.",
+        digest: null,
+      });
+      return;
+    }
+
+    if (!activePredictManagerObjectId) {
+      setWalletTxState({
+        status: "error",
+        label: "Create a Predict account first.",
+        digest: null,
+      });
+      return;
+    }
+
+    if (!isUsableUsdAmount(withdrawAmount)) {
+      setWalletTxState({
+        status: "error",
+        label: "Enter a withdrawal amount first.",
+        digest: null,
+      });
+      return;
+    }
+
+    const amount = usdToDusdcAtomic(withdrawAmount);
+    const amountAtomic = BigInt(amount);
+    const amountLabel = formatCopyAmount(withdrawAmount);
+
+    if (
+      livePredictManagerBankrollAtomic !== null &&
+      livePredictManagerBankrollAtomic < amountAtomic
+    ) {
+      setWalletTxState({
+        status: "error",
+        label: `Withdraw less than your deposited bankroll. Bankroll ${formatDusdcBalance(
+          livePredictManagerBankrollAtomic,
+        )}.`,
+        digest: null,
+      });
+      return;
+    }
+
+    setWalletTxState({
+      status: "pending",
+      label: `Withdrawing ${amountLabel} from bankroll...`,
+      digest: null,
+    });
+
+    try {
+      const result = await dAppKit.signAndExecuteTransaction({
+        transaction: buildWithdrawQuoteBankrollTransaction({
+          amount,
+          predictManagerObjectId: activePredictManagerObjectId,
+          recipientAddress: currentAccount.address,
+        }),
+      });
+      const error = walletResultError(result);
+      if (error) {
+        setWalletTxState({
+          status: "error",
+          label: error,
+          digest: null,
+        });
+        return;
+      }
+
+      const digest = walletResultDigest(result);
+      setWalletTxState({
+        status: "success",
+        label: `${amountLabel} withdrawal transaction sent.`,
+        digest,
+      });
+      setBankrollFundingMode(null);
       refreshAfterWalletTransaction(digest);
     } catch (error) {
       setWalletTxState({
@@ -6863,6 +7224,15 @@ export function App() {
       setWalletTxState({
         status: "error",
         label: "Connect a Sui testnet wallet first.",
+        digest: null,
+      });
+      return;
+    }
+
+    if (!isUsableUsdAmount(copyState.copyAmount)) {
+      setWalletTxState({
+        status: "error",
+        label: "Enter an amount first.",
         digest: null,
       });
       return;
@@ -7191,14 +7561,22 @@ export function App() {
             <AccountSummary
               bankrollLabel={livePredictManagerBankrollLabel}
               depositAmount={depositAmount}
-              onDeposit={handleDepositBankroll}
-              onDepositAmountChange={handleDepositAmountChange}
+              fundingAmount={
+                bankrollFundingMode === "withdraw" ? withdrawAmount : depositAmount
+              }
+              fundingMode={bankrollFundingMode}
+              onDeposit={() => handleBankrollFundingOpen("deposit")}
+              onFundingAmountChange={handleBankrollFundingAmountChange}
+              onFundingClose={handleBankrollFundingClose}
+              onFundingSubmit={handleBankrollFundingSubmit}
               onStakeAmountChange={handleAmountSet}
+              onWithdraw={() => handleBankrollFundingOpen("withdraw")}
               pnlLabel={visiblePortfolioPnl.pnlLabel}
               pnlTone={visiblePortfolioPnl.pnlTone}
               stakeAmount={copyState.copyAmount}
               summary={accountSummary}
               variant={getAccountSummaryVariant(activeView)}
+              walletDusdcBalanceLabel={visibleWalletDusdcBalanceLabel}
             />
           ) : null}
           {activeView === "feed" ? (

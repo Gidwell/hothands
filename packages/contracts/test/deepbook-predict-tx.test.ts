@@ -7,6 +7,7 @@ import {
   buildCreatePredictManagerTransaction,
   buildDepositQuoteTransaction,
   buildRedeemPositionTransaction,
+  buildWithdrawQuoteBankrollTransaction,
   explainPredictMintDryRunPrerequisites,
   parsePredictTxBuilderConfig,
   serializeCopyNextMintIntent,
@@ -37,6 +38,8 @@ describe("DeepBook Predict transaction config", () => {
         "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::predict::create_manager",
       deposit:
         "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::predict_manager::deposit",
+      withdraw:
+        "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::predict_manager::withdraw",
       marketKeyNew:
         "0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::market_key::new",
       marketKeyUp:
@@ -307,6 +310,64 @@ describe("DeepBook Predict SDK transaction builders", () => {
     expect(() =>
       buildDepositQuoteTransaction({ ...valid, predictManagerObjectId: "manager" }),
     ).toThrow("predictManagerObjectId must be a Sui object id");
+  });
+
+  test("builds a quote bankroll withdraw transaction to a recipient", () => {
+    const tx = buildWithdrawQuoteBankrollTransaction({
+      predictManagerObjectId:
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+      amount: 2_500_000,
+      recipientAddress:
+        "0x3333333333333333333333333333333333333333333333333333333333333333",
+    });
+    const data = tx.getData();
+
+    expect(data.commands).toHaveLength(2);
+    expect(data.commands[0]).toMatchObject({
+      MoveCall: {
+        package: DEEPBOOK_PREDICT_TESTNET_TX_CONFIG.predictPackageId,
+        module: "predict_manager",
+        function: "withdraw",
+        typeArguments: [DEEPBOOK_PREDICT_TESTNET_TX_CONFIG.quoteAssetType],
+        arguments: [
+          { Input: 0, type: "object" },
+          { Input: 1, type: "pure" },
+        ],
+      },
+    });
+    expect(data.commands[1]).toMatchObject({
+      TransferObjects: {
+        objects: [{ Result: 0 }],
+        address: { Input: 2, type: "pure" },
+      },
+    });
+    expect(typeof tx.serialize()).toBe("string");
+  });
+
+  test("validates quote bankroll withdraw inputs", () => {
+    const valid = {
+      predictManagerObjectId:
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+      amount: 1,
+      recipientAddress:
+        "0x3333333333333333333333333333333333333333333333333333333333333333",
+    };
+
+    expect(() =>
+      buildWithdrawQuoteBankrollTransaction({ ...valid, amount: 0 }),
+    ).toThrow("amount must be a positive integer");
+    expect(() =>
+      buildWithdrawQuoteBankrollTransaction({
+        ...valid,
+        predictManagerObjectId: "manager",
+      }),
+    ).toThrow("predictManagerObjectId must be a Sui object id");
+    expect(() =>
+      buildWithdrawQuoteBankrollTransaction({
+        ...valid,
+        recipientAddress: "recipient",
+      }),
+    ).toThrow("recipientAddress must be a Sui address");
   });
 
   test("builds a redeem transaction for an existing UP/DOWN position", () => {

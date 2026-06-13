@@ -20,12 +20,12 @@ describe("copy interaction model", () => {
     expect(stepCopyAmount(setCopyAmount(state, 5_000), 1).copyAmount).toBe(1_000);
   });
 
-  test("allows custom copy amounts below ten dollars", () => {
+  test("allows custom copy amounts below ten dollars and editable zero", () => {
     const state = createInitialCopyState(traders);
 
     expect(setCopyAmount(state, 7.5).copyAmount).toBe(7.5);
     expect(setCopyAmount(state, 0.25).copyAmount).toBe(0.25);
-    expect(setCopyAmount(state, 0).copyAmount).toBe(0.01);
+    expect(setCopyAmount(state, 0).copyAmount).toBe(0);
   });
 
   test("toggles copy arming without losing the selected leader", () => {

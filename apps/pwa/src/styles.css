@@ -598,37 +598,6 @@ button:disabled {
   padding: 5px 9px;
 }
 
-.account-deposit-control {
-  display: grid;
-  grid-template-columns: minmax(72px, 1fr) auto;
-  gap: 6px;
-  align-items: center;
-}
-
-.account-deposit-amount {
-  display: flex;
-  min-height: 28px;
-  align-items: center;
-  border: 1px solid #d8e3ed;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #6b7280;
-  font-size: 0.78rem;
-  font-weight: 900;
-  padding: 0 6px;
-}
-
-.account-deposit-amount input {
-  min-width: 0;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: #111827;
-  font: inherit;
-  outline: none;
-  text-align: right;
-}
-
 .account-summary-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -656,6 +625,151 @@ button:disabled {
   color: #111827;
   font-size: 0.86rem;
   line-height: 1.05;
+}
+
+.account-funding-cell {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.account-summary-deposit-button,
+.account-summary-withdraw-button {
+  min-height: 32px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 950;
+  padding: 0 8px;
+}
+
+.account-summary-deposit-button {
+  color: #ffffff;
+  background: #6d4aff;
+}
+
+.account-summary-withdraw-button {
+  border-color: #d8e3ed;
+  color: #111827;
+  background: #f8fafc;
+}
+
+.bankroll-funding-sheet {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d8e3ed;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
+}
+
+.bankroll-funding-header,
+.bankroll-funding-meta,
+.bankroll-funding-balances {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bankroll-funding-header span,
+.bankroll-funding-amount > span:first-child,
+.bankroll-funding-meta,
+.bankroll-funding-balances small {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bankroll-funding-header strong {
+  display: block;
+  margin-top: 2px;
+  color: #111827;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.bankroll-funding-close {
+  min-height: 32px;
+  border: 1px solid #d8e3ed;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #111827;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 900;
+  padding: 0 10px;
+}
+
+.bankroll-funding-balances {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bankroll-funding-balances span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  min-height: 48px;
+  align-content: center;
+  border: 1px solid #d8e3ed;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px 9px;
+}
+
+.bankroll-funding-balances strong {
+  overflow-wrap: anywhere;
+  color: #111827;
+  font-size: 0.86rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.bankroll-funding-amount {
+  display: grid;
+  gap: 5px;
+}
+
+.bankroll-funding-input {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  border: 1px solid #d8e3ed;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 1.08rem;
+  font-weight: 950;
+  padding: 0 10px;
+}
+
+.bankroll-funding-input input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #111827;
+  font: inherit;
+  outline: none;
+  text-align: right;
+}
+
+.bankroll-funding-submit {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: #111827;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 950;
 }
 
 .bottom-nav button,
@@ -2925,6 +3039,58 @@ button:disabled {
   border-right: 0;
 }
 
+.account-summary-deposit-button,
+.account-summary-withdraw-button {
+  border-color: var(--hh-line);
+}
+
+.account-summary-deposit-button {
+  color: #ffffff;
+  background: var(--hh-accent);
+}
+
+.account-summary-withdraw-button {
+  color: var(--hh-text);
+  background: var(--hh-surface-2);
+}
+
+.bankroll-funding-sheet {
+  border-color: var(--hh-line);
+  color: var(--hh-text);
+  background: var(--hh-surface);
+}
+
+.bankroll-funding-header span,
+.bankroll-funding-amount > span:first-child,
+.bankroll-funding-meta,
+.bankroll-funding-balances small {
+  color: var(--hh-muted);
+}
+
+.bankroll-funding-header strong,
+.bankroll-funding-input input,
+.bankroll-funding-balances strong {
+  color: var(--hh-text);
+}
+
+.bankroll-funding-close,
+.bankroll-funding-input,
+.bankroll-funding-balances span {
+  border-color: var(--hh-line);
+  color: var(--hh-muted);
+  background: var(--hh-surface-2);
+}
+
+.bankroll-funding-submit {
+  color: #ffffff;
+  background: var(--hh-text);
+}
+
+.app-shell[data-theme="dark"] .bankroll-funding-submit {
+  color: #090d13;
+  background: var(--hh-text);
+}
+
 .account-deposit-amount,
 .custom-copy-amount-field,
 .amount-stepper strong,
@@ -3640,10 +3806,6 @@ button:disabled {
   border-right: 0;
 }
 
-.account-deposit-control {
-  display: none;
-}
-
 .account-pnl p,
 .account-value span,
 .account-summary-stats span {
@@ -3685,16 +3847,85 @@ button:disabled {
   outline: none;
 }
 
-.account-summary-deposit-button {
+.account-funding-cell {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.account-summary-deposit-button,
+.account-summary-withdraw-button {
   min-height: 28px;
   width: 100%;
   max-width: 100%;
+  border: 1px solid var(--hh-line);
   border-radius: 7px;
-  color: #ffffff;
-  background: var(--hh-accent);
   font-size: 0.68rem;
   font-weight: 950;
-  padding: 0 9px;
+  padding: 0 6px;
+}
+
+.account-summary-deposit-button {
+  border-color: transparent;
+  color: #ffffff;
+  background: var(--hh-accent);
+}
+
+.account-summary-withdraw-button {
+  color: var(--hh-text);
+  background: var(--hh-surface-2);
+}
+
+.bankroll-funding-sheet {
+  grid-column: 1 / -1;
+  gap: 9px;
+  margin: 0 8px 8px;
+  border-color: var(--hh-line);
+  color: var(--hh-text);
+  background: var(--hh-surface);
+  box-shadow: none;
+}
+
+.bankroll-funding-header {
+  align-items: start;
+}
+
+.bankroll-funding-header strong {
+  font-size: 1.05rem;
+}
+
+.bankroll-funding-close {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.bankroll-funding-input {
+  min-height: 42px;
+  border-color: var(--hh-line);
+  color: var(--hh-muted);
+  background: var(--hh-surface-2);
+}
+
+.bankroll-funding-input input {
+  color: var(--hh-text);
+}
+
+.bankroll-funding-balances {
+  gap: 6px;
+}
+
+.bankroll-funding-balances span {
+  min-height: 44px;
+  border-color: var(--hh-line);
+  background: var(--hh-surface-2);
+}
+
+.bankroll-funding-balances strong {
+  color: var(--hh-text);
+  font-size: 0.82rem;
+}
+
+.bankroll-funding-submit {
+  min-height: 40px;
 }
 
 .section-heading {

@@ -14,6 +14,7 @@ export type PredictDirection = "up" | "down";
 export type DeepBookPredictTargets = {
   createManager: string;
   deposit: string;
+  withdraw: string;
   marketKeyNew: string;
   marketKeyUp: string;
   marketKeyDown: string;
@@ -38,6 +39,14 @@ export type DepositQuoteTransactionInput = {
   predictManagerObjectId: string;
   quoteCoinObjectId: string;
   amount: IntegerLike;
+  quoteAssetType?: string;
+  config?: DeepBookPredictTxConfig;
+};
+
+export type WithdrawQuoteBankrollTransactionInput = {
+  predictManagerObjectId: string;
+  amount: IntegerLike;
+  recipientAddress: string;
   quoteAssetType?: string;
   config?: DeepBookPredictTxConfig;
 };
@@ -131,6 +140,7 @@ export function buildDeepBookPredictTargets(
   return {
     createManager: `${pkg}::predict::create_manager`,
     deposit: `${pkg}::predict_manager::deposit`,
+    withdraw: `${pkg}::predict_manager::withdraw`,
     marketKeyNew: `${pkg}::market_key::new`,
     marketKeyUp: `${pkg}::market_key::up`,
     marketKeyDown: `${pkg}::market_key::down`,
@@ -239,6 +249,30 @@ export function buildDepositQuoteTransaction(
   return tx;
 }
 
+export function buildWithdrawQuoteBankrollTransaction(
+  input: WithdrawQuoteBankrollTransactionInput,
+): Transaction {
+  const config = input.config ?? DEEPBOOK_PREDICT_TESTNET_TX_CONFIG;
+  const targets = buildDeepBookPredictTargets(config);
+  const amount = toPositiveIntegerString(input.amount, "amount");
+  const quoteAssetType = input.quoteAssetType ?? config.quoteAssetType;
+
+  assertObjectId(input.predictManagerObjectId, "predictManagerObjectId");
+  assertSuiAddress(input.recipientAddress, "recipientAddress");
+  assertNonEmpty(quoteAssetType, "quoteAssetType");
+
+  const tx = new Transaction();
+  const withdrawnCoin = tx.moveCall({
+    target: targets.withdraw,
+    typeArguments: [quoteAssetType],
+    arguments: [tx.object(input.predictManagerObjectId), tx.pure.u64(amount)],
+  });
+
+  tx.transferObjects([withdrawnCoin], tx.pure.address(input.recipientAddress));
+
+  return tx;
+}
+
 export function buildCopyNextMintTransaction(intent: CopyNextMintIntent): Transaction {
   const tx = new Transaction();
   const marketKey = tx.moveCall({
@@ -342,5 +376,11 @@ function assertNonEmpty(value: string, name: string): void {
 function assertObjectId(value: string, name: string): void {
   if (!/^0x[0-9a-fA-F]+$/.test(value)) {
     throw new Error(`${name} must be a Sui object id`);
+  }
+}
+
+function assertSuiAddress(value: string, name: string): void {
+  if (!/^0x[0-9a-fA-F]+$/.test(value)) {
+    throw new Error(`${name} must be a Sui address`);
   }
 }
