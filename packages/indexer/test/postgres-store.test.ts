@@ -56,6 +56,7 @@ describe("Postgres Predict indexer store", () => {
     expect(calls[0]?.statement).toContain("indexed_at = now()");
     expect(calls[0]?.statement).toContain("where (predict_oracles.predict_id");
     expect(calls[0]?.statement).toContain("is distinct from (excluded.predict_id");
+    expect(calls[0]?.statement).not.toContain("predict_oracles.raw");
     expect(calls[0]?.params.slice(0, 9)).toEqual([
       "btc-15m",
       DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId,
@@ -70,6 +71,8 @@ describe("Postgres Predict indexer store", () => {
 
     expect(calls[1]?.statement).toContain("insert into predict_trade_events");
     expect(calls[1]?.statement).toContain("where (predict_trade_events.kind");
+    expect(calls[1]?.statement).not.toContain("predict_trade_events.source");
+    expect(calls[1]?.statement).not.toContain("predict_trade_events.raw");
     expect(calls[1]?.params.slice(0, 12)).toEqual([
       "mint:0xmint:1",
       "mint",
@@ -87,6 +90,8 @@ describe("Postgres Predict indexer store", () => {
 
     expect(calls[2]?.statement).toContain("insert into predict_oracle_prices");
     expect(calls[2]?.statement).toContain("where (predict_oracle_prices.oracle_id");
+    expect(calls[2]?.statement).not.toContain("predict_oracle_prices.source");
+    expect(calls[2]?.statement).not.toContain("predict_oracle_prices.raw");
     expect(calls[2]?.params.slice(0, 3)).toEqual([
       "price:btc-15m:101:1779070801000:72100000000:no-forward",
       "btc-15m",
@@ -129,6 +134,8 @@ describe("Postgres Predict indexer store", () => {
     expect(calls[0]?.statement).toContain("on conflict (event_id) do update");
     expect(calls[0]?.statement).toContain("where (predict_trade_events.kind");
     expect(calls[0]?.statement).toContain("is distinct from (excluded.kind");
+    expect(calls[0]?.statement).not.toContain("predict_trade_events.source");
+    expect(calls[0]?.statement).not.toContain("predict_trade_events.raw");
     expect(calls[0]?.statement).not.toContain("predict_trade_events.indexed_at");
   });
 

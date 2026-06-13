@@ -32,6 +32,7 @@ type SqlColumn<T> = {
 };
 
 const POSTGRES_PARAMETER_BUDGET = 60_000;
+const UPSERT_CHANGE_IGNORED_COLUMNS = new Set(["raw", "source"]);
 
 export function createPostgresPredictIndexerStore({
   execute,
@@ -266,7 +267,9 @@ async function upsertRowBatch<T>({
     .concat(touchColumn ? [`${touchColumn} = now()`] : [])
     .join(", ");
   const changedColumns = columns.filter(
-    (column) => !conflictColumns.includes(column.name),
+    (column) =>
+      !conflictColumns.includes(column.name) &&
+      !UPSERT_CHANGE_IGNORED_COLUMNS.has(column.name),
   );
   const changedWhereSql =
     changedColumns.length === 0
