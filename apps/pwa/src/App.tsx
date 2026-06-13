@@ -87,7 +87,7 @@ import {
 } from "./OraclePriceChart";
 import {
   loadOraclePriceChart,
-  loadOraclePriceChartTick,
+  mergeOraclePriceChartTick,
   type OraclePriceChart,
 } from "./oraclePriceChartModel";
 import {
@@ -154,7 +154,6 @@ import {
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_PRICE_REFRESH_MS = 1_000;
 const MARKET_HEAT_ROWS_REFRESH_MS = 3_000;
-const ORACLE_PRICE_CHART_TICK_REFRESH_MS = 1_000;
 const ORACLE_PRICE_CHART_HISTORY_REFRESH_MS = 60_000;
 const DEFAULT_SHARE_URL = "https://hothands.app/";
 const LOCAL_SHARE_HOSTS = new Set(["127.0.0.1", "0.0.0.0", "::1", "localhost"]);
@@ -6206,7 +6205,6 @@ export function App() {
 
     let isCurrent = true;
     let isHistoryRefreshing = false;
-    let isTickRefreshing = false;
     setOraclePriceChart((chart) => {
       const nextChart = chart?.oracleId === activeChartOracleId ? chart : null;
       oraclePriceChartRef.current = nextChart;
@@ -6237,40 +6235,7 @@ export function App() {
       }
     };
 
-    const refreshOraclePriceChartTick = async () => {
-      if (isTickRefreshing) {
-        return;
-      }
-
-      const currentChart = oraclePriceChartRef.current;
-      if (
-        !currentChart ||
-        currentChart.status !== "ready" ||
-        currentChart.oracleId !== activeChartOracleId
-      ) {
-        return;
-      }
-
-      isTickRefreshing = true;
-      try {
-        const chart = await loadOraclePriceChartTick({
-          chart: currentChart,
-          apiBaseUrl: realtimeApiBaseUrl,
-          oracleId: activeChartOracleId,
-        });
-        if (isCurrent && chart !== currentChart) {
-          updateOraclePriceChart(chart);
-        }
-      } finally {
-        isTickRefreshing = false;
-      }
-    };
-
     void refreshOraclePriceChartHistory();
-    const tickRefreshTimer = window.setInterval(
-      refreshOraclePriceChartTick,
-      ORACLE_PRICE_CHART_TICK_REFRESH_MS,
-    );
     const historyRefreshTimer = window.setInterval(
       refreshOraclePriceChartHistory,
       ORACLE_PRICE_CHART_HISTORY_REFRESH_MS,
@@ -6278,10 +6243,51 @@ export function App() {
 
     return () => {
       isCurrent = false;
-      window.clearInterval(tickRefreshTimer);
       window.clearInterval(historyRefreshTimer);
     };
   }, [activeChartOracleId, realtimeApiBaseUrl]);
+
+  useEffect(() => {
+    if (!activeChartOracleId) {
+      return;
+    }
+
+    const activeMarket = marketHeatPreview.availableMarkets?.find(
+      (marketRow) => marketRow.oracleId === activeChartOracleId,
+    );
+    const timestampMs =
+      activeMarket?.latestPriceTimestampMs ?? activeMarket?.pricingModel?.timestampMs;
+    const price = activeMarket?.latestPrice ?? activeMarket?.pricingModel?.forwardPrice;
+
+    if (!activeMarket || timestampMs === undefined || price === undefined) {
+      return;
+    }
+
+    const currentChart = oraclePriceChartRef.current;
+    if (
+      !currentChart ||
+      currentChart.status !== "ready" ||
+      currentChart.oracleId !== activeChartOracleId
+    ) {
+      return;
+    }
+
+    const chart = mergeOraclePriceChartTick(currentChart, {
+      timestampMs,
+      price,
+      ...(activeMarket.pricingModel?.forwardPrice === undefined
+        ? {}
+        : { forwardPrice: activeMarket.pricingModel.forwardPrice }),
+      ...(activeMarket.latestPriceCheckpoint === undefined
+        ? {}
+        : { checkpoint: activeMarket.latestPriceCheckpoint }),
+    });
+
+    if (chart !== currentChart) {
+      oraclePriceChartRef.current = chart;
+      setOraclePriceChart(chart);
+    }
+  }, [activeChartOracleId, marketHeatPreview.availableMarkets]);
 
   useEffect(() => {
     if (

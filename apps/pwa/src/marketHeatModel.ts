@@ -100,6 +100,9 @@ export type MarketHeatAvailableMarket = {
   strikeLabel: string;
   minStrikeRaw?: number;
   tickSizeRaw?: number;
+  latestPrice?: number;
+  latestPriceTimestampMs?: number;
+  latestPriceCheckpoint?: number;
   status: string;
   pricingModel?: MarketHeatPricingModel;
 };
@@ -2118,6 +2121,9 @@ function parseAvailableMarket(
   ]);
   const minStrikeRaw = firstNonNegativeNumber([value.minStrike]);
   const tickSizeRaw = firstNonNegativeNumber([value.tickSize]);
+  const latestPrice = firstNonNegativeNumber([value.latestPrice]);
+  const latestPriceTimestampMs = firstNonNegativeNumber([value.latestPriceTimestampMs]);
+  const latestPriceCheckpoint = firstNonNegativeNumber([value.latestPriceCheckpoint]);
   const pricingModel = parsePricingModel(value.pricingModel);
 
   if (!oracleId || !intervalLabel || expiry === null || expiryMs === null || strike === null || strikeRaw === null) {
@@ -2137,6 +2143,9 @@ function parseAvailableMarket(
     strikeLabel: formatStrike(strike),
     ...(minStrikeRaw === null ? {} : { minStrikeRaw }),
     ...(tickSizeRaw === null ? {} : { tickSizeRaw }),
+    ...(latestPrice === null ? {} : { latestPrice }),
+    ...(latestPriceTimestampMs === null ? {} : { latestPriceTimestampMs }),
+    ...(latestPriceCheckpoint === null ? {} : { latestPriceCheckpoint }),
     status,
     ...(pricingModel === undefined ? {} : { pricingModel }),
   };

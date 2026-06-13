@@ -500,13 +500,43 @@ describe("market heat preview model", () => {
             price: 72_345.67,
             source: "indexed_testnet",
           },
+          markets: [
+            {
+              id: "btc-indexed",
+              oracleId: "btc-indexed",
+              market: "BTC-USD",
+              intervalLabel: "1h",
+              expiry: 1_779_168_600_000,
+              strikeCandidatePrice: 72_500,
+              strikeCandidate: 72_500_000_000,
+              latestPrice: 72_345.67,
+              latestPriceTimestampMs: 1_779_165_100_000,
+              latestPriceCheckpoint: 112,
+              pricingModel: {
+                forward: 72_360,
+                forwardPrice: 72_360,
+                a: 1,
+                b: 2,
+                rho: 0.1,
+                m: 3,
+                sigma: 4,
+                timestampMs: 1_779_165_100_000,
+              },
+              status: "active",
+            },
+          ],
         });
       },
     });
 
     expect(calls).toEqual(["https://api.hot-hands.test/testnet/price-snapshot"]);
     expect(preview.rows).toEqual(currentPreview.rows);
-    expect(preview.availableMarkets).toEqual(currentPreview.availableMarkets);
+    expect(preview.availableMarkets?.[0]).toMatchObject({
+      oracleId: "btc-indexed",
+      latestPrice: 72_345.67,
+      latestPriceTimestampMs: 1_779_165_100_000,
+      latestPriceCheckpoint: 112,
+    });
     expect(preview.marketPrice).toEqual({
       marketLabel: "BTC/USD",
       priceLabel: "$72,346",

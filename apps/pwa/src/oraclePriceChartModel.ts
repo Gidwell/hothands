@@ -224,7 +224,7 @@ function parseOraclePriceTickFromSnapshot(
   };
 }
 
-function mergeOraclePriceChartTick(
+export function mergeOraclePriceChartTick(
   chart: OraclePriceChart,
   tick: OraclePriceChartPoint,
 ): OraclePriceChart {
