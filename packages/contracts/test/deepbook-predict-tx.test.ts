@@ -292,6 +292,50 @@ describe("DeepBook Predict SDK transaction builders", () => {
     expect(typeof tx.serialize()).toBe("string");
   });
 
+  test("builds a quote deposit transaction by merging multiple owned quote coins", () => {
+    const tx = buildDepositQuoteTransaction({
+      predictManagerObjectId:
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+      quoteCoinObjectIds: [
+        "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "0x4444444444444444444444444444444444444444444444444444444444444444",
+      ],
+      amount: 2_500_000,
+    });
+    const data = tx.getData();
+
+    expect(data.commands).toHaveLength(3);
+    expect(data.commands[0]).toMatchObject({
+      MergeCoins: {
+        destination: { Input: 0, type: "object" },
+        sources: [
+          { Input: 1, type: "object" },
+          { Input: 2, type: "object" },
+        ],
+      },
+    });
+    expect(data.commands[1]).toMatchObject({
+      SplitCoins: {
+        coin: { Input: 0, type: "object" },
+        amounts: [{ Input: 3, type: "pure" }],
+      },
+    });
+    expect(data.commands[2]).toMatchObject({
+      MoveCall: {
+        package: DEEPBOOK_PREDICT_TESTNET_TX_CONFIG.predictPackageId,
+        module: "predict_manager",
+        function: "deposit",
+        typeArguments: [DEEPBOOK_PREDICT_TESTNET_TX_CONFIG.quoteAssetType],
+        arguments: [
+          { Input: 4, type: "object" },
+          { NestedResult: [1, 0] },
+        ],
+      },
+    });
+    expect(typeof tx.serialize()).toBe("string");
+  });
+
   test("validates quote deposit inputs", () => {
     const valid = {
       predictManagerObjectId:
@@ -307,6 +351,12 @@ describe("DeepBook Predict SDK transaction builders", () => {
     expect(() =>
       buildDepositQuoteTransaction({ ...valid, quoteCoinObjectId: "quote-coin" }),
     ).toThrow("quoteCoinObjectId must be a Sui object id");
+    expect(() =>
+      buildDepositQuoteTransaction({ ...valid, quoteCoinObjectIds: [] }),
+    ).toThrow("quoteCoinObjectIds must include at least one Sui object id");
+    expect(() =>
+      buildDepositQuoteTransaction({ ...valid, quoteCoinObjectIds: ["quote-coin"] }),
+    ).toThrow("quoteCoinObjectIds[0] must be a Sui object id");
     expect(() =>
       buildDepositQuoteTransaction({ ...valid, predictManagerObjectId: "manager" }),
     ).toThrow("predictManagerObjectId must be a Sui object id");

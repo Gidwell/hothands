@@ -7151,7 +7151,7 @@ export function App() {
         transaction: buildDepositQuoteTransaction({
           amount,
           predictManagerObjectId: activePredictManagerObjectId,
-          quoteCoinObjectId: coin.coinObjectId,
+          quoteCoinObjectIds: coin.coinObjectIds,
         }),
       });
       const error = walletResultError(result);

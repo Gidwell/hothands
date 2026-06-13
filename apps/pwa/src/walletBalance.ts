@@ -30,6 +30,7 @@ export type PredictManagerBankrollClient = {
 
 export type DusdcDepositCoin = {
   coinObjectId: string;
+  coinObjectIds: string[];
   balance: string;
 };
 
@@ -37,12 +38,16 @@ export type DusdcDepositCoinClient = {
   getCoins(input: {
     owner: string;
     coinType: string;
+    cursor?: string | null;
+    limit?: number;
   }): Promise<{
     data: Array<{
       coinObjectId?: string;
       balance?: string;
       coinBalance?: string;
     }>;
+    hasNextPage?: boolean;
+    nextCursor?: string | null;
   }>;
 };
 
@@ -141,25 +146,66 @@ export async function selectDusdcDepositCoin({
   owner: string;
 }): Promise<DusdcDepositCoin> {
   const targetAmount = typeof amount === "bigint" ? amount : parseAtomicBalance(amount);
-  const response = await client.getCoins({
-    owner,
-    coinType: DUSDC_COIN_TYPE,
-  });
-  const coin = response.data.find((candidate) => {
-    if (!candidate.coinObjectId) {
-      return false;
+  const selectedCoins: Array<{
+    balance: bigint;
+    coinObjectId: string;
+  }> = [];
+  let selectedBalance = 0n;
+  let cursor: string | null = null;
+
+  do {
+    const response = await client.getCoins({
+      owner,
+      coinType: DUSDC_COIN_TYPE,
+      cursor,
+      limit: 50,
+    });
+    const candidateCoins = response.data
+      .flatMap((candidate) => {
+        if (!candidate.coinObjectId) {
+          return [];
+        }
+
+        return [
+          {
+            balance: parseAtomicBalance(candidate.balance ?? candidate.coinBalance ?? "0"),
+            coinObjectId: candidate.coinObjectId,
+          },
+        ];
+      })
+      .filter((candidate) => candidate.balance > 0n)
+      .sort((left, right) => {
+        if (left.balance === right.balance) {
+          return left.coinObjectId.localeCompare(right.coinObjectId);
+        }
+
+        return left.balance < right.balance ? 1 : -1;
+      });
+
+    for (const candidate of candidateCoins) {
+      if (selectedBalance >= targetAmount) {
+        break;
+      }
+
+      selectedCoins.push(candidate);
+      selectedBalance += candidate.balance;
     }
 
-    return parseAtomicBalance(candidate.balance ?? candidate.coinBalance ?? "0") >= targetAmount;
-  });
+    if (selectedBalance >= targetAmount || !response.hasNextPage) {
+      break;
+    }
 
-  if (!coin?.coinObjectId) {
-    throw new Error("Not enough DUSDC available in one wallet coin to deposit.");
+    cursor = response.nextCursor ?? null;
+  } while (cursor !== null);
+
+  if (selectedBalance < targetAmount || selectedCoins.length === 0) {
+    throw new Error("Not enough DUSDC available to deposit.");
   }
 
   return {
-    coinObjectId: coin.coinObjectId,
-    balance: coin.balance ?? coin.coinBalance ?? "0",
+    coinObjectId: selectedCoins[0].coinObjectId,
+    coinObjectIds: selectedCoins.map((coin) => coin.coinObjectId),
+    balance: selectedBalance.toString(),
   };
 }
 

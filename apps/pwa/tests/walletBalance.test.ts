@@ -115,7 +115,12 @@ describe("DUSDC wallet balance", () => {
   });
 
   test("selects a DUSDC coin that can cover a deposit amount", async () => {
-    const calls: Array<{ owner: string; coinType: string }> = [];
+    const calls: Array<{
+      owner: string;
+      coinType: string;
+      cursor?: string | null;
+      limit?: number;
+    }> = [];
     const coin = await selectDusdcDepositCoin({
       owner: "0xwallet",
       amount: "10000000",
@@ -142,11 +147,89 @@ describe("DUSDC wallet balance", () => {
       {
         owner: "0xwallet",
         coinType: DUSDC_COIN_TYPE,
+        cursor: null,
+        limit: 50,
       },
     ]);
     expect(coin).toEqual({
       coinObjectId: "0xlarge",
+      coinObjectIds: ["0xlarge"],
       balance: "25000000",
+    });
+  });
+
+  test("selects multiple DUSDC coins when no single coin covers a deposit amount", async () => {
+    const calls: Array<{
+      owner: string;
+      coinType: string;
+      cursor?: string | null;
+      limit?: number;
+    }> = [];
+    const coin = await selectDusdcDepositCoin({
+      owner: "0xwallet",
+      amount: "25000000",
+      client: {
+        getCoins: async (input) => {
+          calls.push(input);
+          return {
+            data: [
+              {
+                coinObjectId: "0x8",
+                balance: "8000000",
+              },
+              {
+                coinObjectId: "0x9",
+                balance: "9000000",
+              },
+              {
+                coinObjectId: "0x10",
+                balance: "10000000",
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        owner: "0xwallet",
+        coinType: DUSDC_COIN_TYPE,
+        cursor: null,
+        limit: 50,
+      },
+    ]);
+    expect(coin).toEqual({
+      coinObjectId: "0x10",
+      coinObjectIds: ["0x10", "0x9", "0x8"],
+      balance: "27000000",
+    });
+  });
+
+  test("selects fragmented coins matching a wallet with $26 total for a $25 deposit", async () => {
+    const coin = await selectDusdcDepositCoin({
+      owner: "0xwallet",
+      amount: "25000000",
+      client: {
+        getCoins: async () => ({
+          data: [
+            {
+              coinObjectId: "0xcoin16",
+              balance: "16000000",
+            },
+            {
+              coinObjectId: "0xcoin10",
+              balance: "10000000",
+            },
+          ],
+        }),
+      },
+    });
+
+    expect(coin).toEqual({
+      coinObjectId: "0xcoin16",
+      coinObjectIds: ["0xcoin16", "0xcoin10"],
+      balance: "26000000",
     });
   });
 });

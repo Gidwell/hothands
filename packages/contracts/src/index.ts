@@ -37,7 +37,8 @@ export type CopyNextMintIntentInput = {
 
 export type DepositQuoteTransactionInput = {
   predictManagerObjectId: string;
-  quoteCoinObjectId: string;
+  quoteCoinObjectId?: string;
+  quoteCoinObjectIds?: string[];
   amount: IntegerLike;
   quoteAssetType?: string;
   config?: DeepBookPredictTxConfig;
@@ -230,15 +231,23 @@ export function buildDepositQuoteTransaction(
   const targets = buildDeepBookPredictTargets(config);
   const amount = toPositiveIntegerString(input.amount, "amount");
   const quoteAssetType = input.quoteAssetType ?? config.quoteAssetType;
+  const quoteCoinObjectIds = normalizeQuoteCoinObjectIds(input);
 
   assertObjectId(input.predictManagerObjectId, "predictManagerObjectId");
-  assertObjectId(input.quoteCoinObjectId, "quoteCoinObjectId");
   assertNonEmpty(quoteAssetType, "quoteAssetType");
 
   const tx = new Transaction();
-  const [splitCoin] = tx.splitCoins(tx.object(input.quoteCoinObjectId), [
-    tx.pure.u64(amount),
-  ]);
+  const [primaryQuoteCoinObjectId, ...sourceQuoteCoinObjectIds] = quoteCoinObjectIds;
+  const primaryQuoteCoin = tx.object(primaryQuoteCoinObjectId);
+
+  if (sourceQuoteCoinObjectIds.length > 0) {
+    tx.mergeCoins(
+      primaryQuoteCoin,
+      sourceQuoteCoinObjectIds.map((objectId) => tx.object(objectId)),
+    );
+  }
+
+  const [splitCoin] = tx.splitCoins(primaryQuoteCoin, [tx.pure.u64(amount)]);
 
   tx.moveCall({
     target: targets.deposit,
@@ -247,6 +256,30 @@ export function buildDepositQuoteTransaction(
   });
 
   return tx;
+}
+
+function normalizeQuoteCoinObjectIds(input: DepositQuoteTransactionInput): string[] {
+  const objectIds = Array.isArray(input.quoteCoinObjectIds)
+    ? input.quoteCoinObjectIds
+    : input.quoteCoinObjectId
+      ? [input.quoteCoinObjectId]
+      : [];
+  const uniqueObjectIds = Array.from(new Set(objectIds));
+
+  if (uniqueObjectIds.length === 0) {
+    throw new Error("quoteCoinObjectIds must include at least one Sui object id");
+  }
+
+  uniqueObjectIds.forEach((objectId, index) => {
+    assertObjectId(
+      objectId,
+      Array.isArray(input.quoteCoinObjectIds)
+        ? `quoteCoinObjectIds[${index}]`
+        : "quoteCoinObjectId",
+    );
+  });
+
+  return uniqueObjectIds;
 }
 
 export function buildWithdrawQuoteBankrollTransaction(
