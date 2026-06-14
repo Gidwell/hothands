@@ -60,6 +60,20 @@ describe("DeepBook Predict live indexer", () => {
     });
   });
 
+  test("uses small latest-page trade defaults for live polling", () => {
+    expect(
+      parseLiveIndexerCliOptions({
+        argv: [],
+        env: {
+          DATABASE_URL: "postgres://example",
+        },
+      }),
+    ).toMatchObject({
+      tradeLimit: 250,
+      oracleTradeLimit: 50,
+    });
+  });
+
   test("uses one-second startup chart backfill buckets by default", () => {
     expect(
       parseLiveIndexerCliOptions({
@@ -215,7 +229,132 @@ describe("DeepBook Predict live indexer", () => {
     expect(store.snapshot().tradeEvents).toHaveLength(3);
     expect(refreshCount).toBe(3);
   });
+
+  test("skips duplicate global position pages after live watermarks", async () => {
+    const store = createInMemoryPredictIndexerStore();
+    const tradeBatchSizes: number[] = [];
+    let refreshCount = 0;
+    let nowMs = 1_779_070_801_000;
+
+    const options = {
+      fetchImpl: liveIndexerFetchFixture,
+      nowMs: () => {
+        nowMs += 100;
+        return nowMs;
+      },
+      reader: {
+        listBtcOracles: async () => [btcOracle()],
+        listIndexerJobStatuses: async () => store.listIndexerJobStatuses(),
+      },
+      writer: {
+        upsertOracles: (oracles: Parameters<typeof store.upsertOracles>[0]) =>
+          store.upsertOracles(oracles),
+        upsertTradeEvents: (events: Parameters<typeof store.upsertTradeEvents>[0]) => {
+          tradeBatchSizes.push(events.length);
+          return store.upsertTradeEvents(events);
+        },
+        upsertOraclePrices: (points: Parameters<typeof store.upsertOraclePrices>[0]) =>
+          store.upsertOraclePrices(points),
+        upsertOracleSvi: (points: Parameters<typeof store.upsertOracleSvi>[0]) =>
+          store.upsertOracleSvi(points),
+        upsertPositionSummaries: (
+          summaries: Parameters<typeof store.upsertPositionSummaries>[0],
+        ) => store.upsertPositionSummaries(summaries),
+        refreshPositionSummaries: async () => {
+          refreshCount += 1;
+          return store.refreshPositionSummaries();
+        },
+        upsertIndexerJobStatus: (status: PredictIndexerJobStatus) =>
+          store.upsertIndexerJobStatus(status),
+      },
+      tradeLimit: 9,
+      oracleTradeLimit: 7,
+    };
+
+    await runDeepBookPredictLiveIndexerOnce(options);
+    expect(tradeBatchSizes).toEqual([1, 1, 1]);
+    expect(refreshCount).toBe(3);
+
+    tradeBatchSizes.length = 0;
+    refreshCount = 0;
+    await runDeepBookPredictLiveIndexerOnce(options);
+
+    expect(tradeBatchSizes).toEqual([0, 0, 1]);
+    expect(refreshCount).toBe(0);
+    await expect(
+      store.listIndexerJobStatuses().then((statuses) =>
+        statuses.find((status) => status.jobName === "predict.positions.minted"),
+      ),
+    ).resolves.toMatchObject({
+      lastSourceTimestampMs: 1_779_070_800_000,
+      rowsFetched: 1,
+      rowsWritten: 0,
+    });
+  });
 });
+
+async function liveIndexerFetchFixture(input: RequestInfo | URL) {
+  const url = String(input);
+
+  if (url.endsWith("/status")) {
+    return jsonResponse({ status: "OK", latest_onchain_checkpoint: 50 });
+  }
+
+  if (url.endsWith(`/predicts/${DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId}/state`)) {
+    return jsonResponse({
+      predict_id: DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId,
+      quote_assets: [DEEPBOOK_PREDICT_TESTNET_CONFIG.quoteAssetType],
+    });
+  }
+
+  if (url.endsWith(`/predicts/${DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId}/oracles`)) {
+    return jsonResponse([btcOracle()]);
+  }
+
+  if (url.endsWith("/oracles/btc-fast/prices/latest")) {
+    return jsonResponse({
+      event_digest: "0xprice",
+      event_index: 1,
+      oracle_id: "btc-fast",
+      spot: "72000000000",
+      checkpoint: "48",
+      checkpoint_timestamp_ms: "1779070800000",
+    });
+  }
+
+  if (url.endsWith("/oracles/btc-fast/svi?limit=1")) {
+    return jsonResponse([
+      {
+        event_digest: "0xsvi",
+        event_index: 2,
+        oracle_id: "btc-fast",
+        a: "43176",
+        b: "2305586",
+        rho: "812089434",
+        rho_negative: true,
+        m: "4328013",
+        m_negative: true,
+        sigma: "5248731",
+        checkpoint: "49",
+        checkpoint_timestamp_ms: "1779070800500",
+      },
+    ]);
+  }
+
+  if (url.includes("/positions/minted")) {
+    return jsonResponse([mintedRow()]);
+  }
+
+  if (url.includes("/positions/redeemed")) {
+    return jsonResponse([redeemedRow()]);
+  }
+
+  if (url.includes("/trades/btc-fast")) {
+    return jsonResponse([mintedRow({ event_digest: "0xoracletrade", digest: "0xoracletrade" })]);
+  }
+
+  return jsonResponse({ error: "not_found" }, 404);
+}
 
 function btcOracle(overrides: Partial<PredictOracleState> = {}): PredictOracleState {
   return {

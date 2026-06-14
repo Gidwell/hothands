@@ -207,7 +207,16 @@ describe("DeepBook Predict backfill runner", () => {
   });
 
   test("loads oracle price history through chunked time windows", async () => {
-    const store = createInMemoryPredictIndexerStore();
+    const baseStore = createInMemoryPredictIndexerStore();
+    const priceWriteSizes: number[] = [];
+    const store = Object.assign(Object.create(baseStore), {
+      upsertOraclePrices: async (
+        points: Parameters<typeof baseStore.upsertOraclePrices>[0],
+      ) => {
+        priceWriteSizes.push(points.length);
+        return baseStore.upsertOraclePrices(points);
+      },
+    });
     const requests: string[] = [];
     const fetchImpl = async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -295,13 +304,15 @@ describe("DeepBook Predict backfill runner", () => {
     expect(summary).toMatchObject({
       oracleCount: 1,
       tradeEventCount: 0,
-      oraclePriceCount: 2,
+      oraclePriceCount: 3,
       positionSummaryCount: 0,
       selectedOracleIds: ["btc-15m"],
       selectedPriceOracleIds: ["btc-15m"],
     });
-    expect(store.snapshot().oraclePrices.map((price) => price.eventId)).toEqual([
+    expect(priceWriteSizes).toEqual([2, 1]);
+    expect(baseStore.snapshot().oraclePrices.map((price) => price.eventId)).toEqual([
       "price:0xprice-window-1:1",
+      "price:0xprice-window-1b:2",
       "price:0xprice-window-2:1",
     ]);
     expect(requests).toContain(

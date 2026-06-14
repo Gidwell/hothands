@@ -91,8 +91,8 @@ export async function runDeepBookPredictBackfill({
       .filter((oracle) => oracle.underlying_asset === "BTC")
       .map((oracle) => oracle.oracle_id)
     : selectedOracleIds;
-  const oraclePrices = includePrices
-    ? await fetchOraclePrices(priceClient, selectedPriceOracleIds, {
+  const oraclePriceCount = includePrices
+    ? await backfillOraclePrices(store, priceClient, selectedPriceOracleIds, {
       limit: priceLimit,
       rangeEndMs: priceRangeEndMs,
       rangeStartMs: priceRangeStartMs,
@@ -100,8 +100,7 @@ export async function runDeepBookPredictBackfill({
       windowConcurrency: priceWindowConcurrency,
       windowMs: priceWindowMs,
     })
-    : [];
-  const oraclePriceCount = await store.upsertOraclePrices(oraclePrices);
+    : 0;
 
   const sviClient = createPredictOracleSviClient({ config, fetchImpl });
   const oracleSvi = includeSvi
@@ -124,7 +123,8 @@ export async function runDeepBookPredictBackfill({
   };
 }
 
-async function fetchOraclePrices(
+async function backfillOraclePrices(
+  store: Pick<PredictIndexerWriter, "upsertOraclePrices">,
   priceClient: ReturnType<typeof createPredictOraclePriceClient>,
   oracleIds: string[],
   {
@@ -145,7 +145,7 @@ async function fetchOraclePrices(
 ) {
   const fetchForOracle = async (oracleId: string) => {
     if (rangeStartMs !== undefined && rangeEndMs !== undefined) {
-      return fetchOraclePriceWindows(priceClient, oracleId, {
+      return backfillOraclePriceWindows(store, priceClient, oracleId, {
         rangeEndMs,
         rangeStartMs,
         sampleMs,
@@ -153,14 +153,16 @@ async function fetchOraclePrices(
       });
     }
 
-    return priceClient.listOraclePrices(oracleId, { limit }).catch(() => []);
+    const points = await priceClient.listOraclePrices(oracleId, { limit }).catch(() => []);
+    return store.upsertOraclePrices(points);
   };
 
   return runWithConcurrency(oracleIds, Math.max(1, Math.floor(windowConcurrency)), fetchForOracle)
-    .then((groups) => groups.flat());
+    .then((counts) => counts.reduce((total, count) => total + count, 0));
 }
 
-async function fetchOraclePriceWindows(
+async function backfillOraclePriceWindows(
+  store: Pick<PredictIndexerWriter, "upsertOraclePrices">,
   priceClient: ReturnType<typeof createPredictOraclePriceClient>,
   oracleId: string,
   {
@@ -176,10 +178,10 @@ async function fetchOraclePriceWindows(
   },
 ) {
   if (rangeEndMs < rangeStartMs) {
-    return [];
+    return 0;
   }
 
-  const points = [];
+  let writtenCount = 0;
   let windowStartMs = rangeStartMs;
   const normalizedWindowMs = Math.max(1, Math.floor(windowMs));
   while (windowStartMs <= rangeEndMs) {
@@ -190,11 +192,13 @@ async function fetchOraclePriceWindows(
         endTime: windowEndMs,
       })
       .catch(() => []);
-    points.push(...windowPoints);
+    const sampledPoints =
+      sampleMs === undefined ? windowPoints : sampleOraclePricePoints(windowPoints, sampleMs);
+    writtenCount += await store.upsertOraclePrices(sampledPoints);
     windowStartMs = windowEndMs + 1;
   }
 
-  return sampleMs === undefined ? points : sampleOraclePricePoints(points, sampleMs);
+  return writtenCount;
 }
 
 function sampleOraclePricePoints<

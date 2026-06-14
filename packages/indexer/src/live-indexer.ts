@@ -76,15 +76,15 @@ type LiveIndexerJobResult = {
 type LiveIndexerJob = {
   intervalMs: number;
   jobName: string;
-  run(): Promise<LiveIndexerJobResult>;
+  run(previous?: PredictIndexerJobStatus): Promise<LiveIndexerJobResult>;
   source: string;
 };
 
 const DEFAULT_POSITIONS_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_ORACLE_TRADES_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_ORACLES_POLL_INTERVAL_MS = 30_000;
-const DEFAULT_TRADE_LIMIT = 5_000;
-const DEFAULT_ORACLE_TRADE_LIMIT = 500;
+const DEFAULT_TRADE_LIMIT = 250;
+const DEFAULT_ORACLE_TRADE_LIMIT = 50;
 const DEFAULT_SVI_LIMIT = 1;
 const DEFAULT_STARTUP_PRICE_BACKFILL_SAMPLE_MS = 1_000;
 const DEFAULT_STARTUP_PRICE_BACKFILL_WINDOW_MS = 60 * 60_000;
@@ -257,10 +257,13 @@ function createLiveIndexerJobs({
       intervalMs: resolvedIntervals.positions,
       jobName: "predict.positions.minted",
       source: "positions/minted",
-      run: async () => {
+      run: async (previous) => {
         const events = await tradeClient.listMintedPositions({ limit: tradeLimit });
-        const rowsWritten = await writer.upsertTradeEvents(events);
-        await writer.refreshPositionSummaries();
+        const newEvents = filterEventsAfterWatermark(events, previous);
+        const rowsWritten = await writer.upsertTradeEvents(newEvents);
+        if (rowsWritten > 0) {
+          await writer.refreshPositionSummaries();
+        }
 
         return {
           ...latestTradeMetadata(events),
@@ -273,10 +276,13 @@ function createLiveIndexerJobs({
       intervalMs: resolvedIntervals.positions,
       jobName: "predict.positions.redeemed",
       source: "positions/redeemed",
-      run: async () => {
+      run: async (previous) => {
         const events = await tradeClient.listRedeemedPositions({ limit: tradeLimit });
-        const rowsWritten = await writer.upsertTradeEvents(events);
-        await writer.refreshPositionSummaries();
+        const newEvents = filterEventsAfterWatermark(events, previous);
+        const rowsWritten = await writer.upsertTradeEvents(newEvents);
+        if (rowsWritten > 0) {
+          await writer.refreshPositionSummaries();
+        }
 
         return {
           ...latestTradeMetadata(events),
@@ -299,7 +305,9 @@ function createLiveIndexerJobs({
           ),
         ).then((groups) => groups.flat());
         const rowsWritten = await writer.upsertTradeEvents(events);
-        await writer.refreshPositionSummaries();
+        if (rowsWritten > 0) {
+          await writer.refreshPositionSummaries();
+        }
 
         return {
           ...latestTradeMetadata(events),
@@ -328,7 +336,7 @@ async function runLiveIndexerJob(
   const previous = await findPreviousJobStatus(reader, job.jobName);
 
   try {
-    const result = await job.run();
+    const result = await job.run(previous);
     const completedAtMs = nowMs();
     const sourceAdvanced = Boolean(
       result.lastSourceTimestampMs !== undefined &&
@@ -345,6 +353,15 @@ async function runLiveIndexerJob(
       previous?.lastSourceTimestampMs !== undefined
         ? result.lastSourceTimestampMs - previous.lastSourceTimestampMs
         : undefined;
+    const lastSourceTimestampMs = maxOptionalNumber(
+      previous?.lastSourceTimestampMs,
+      result.lastSourceTimestampMs,
+    );
+    const lastCheckpoint = maxOptionalNumber(previous?.lastCheckpoint, result.lastCheckpoint);
+    const lagMs =
+      result.lastSourceTimestampMs === undefined || lastSourceTimestampMs === undefined
+        ? previous?.lagMs
+        : Math.max(0, completedAtMs - lastSourceTimestampMs);
     const status: PredictIndexerJobStatus = {
       jobName: job.jobName,
       source: job.source,
@@ -359,13 +376,11 @@ async function runLiveIndexerJob(
           ? {}
           : { lastNewDataAtMs: previous.lastNewDataAtMs }),
       ...(result.lastSourceTimestampMs === undefined
-        ? {}
-        : { lastSourceTimestampMs: result.lastSourceTimestampMs }),
-      ...(result.lastCheckpoint === undefined
-        ? previous?.lastCheckpoint === undefined
+        ? previous?.lastSourceTimestampMs === undefined
           ? {}
-          : { lastCheckpoint: previous.lastCheckpoint }
-        : { lastCheckpoint: result.lastCheckpoint }),
+          : { lastSourceTimestampMs: previous.lastSourceTimestampMs }
+        : { lastSourceTimestampMs }),
+      ...(lastCheckpoint === undefined ? {} : { lastCheckpoint }),
       rowsFetched: result.rowsFetched,
       rowsWritten: result.rowsWritten,
       totalRowsWritten: (previous?.totalRowsWritten ?? 0) + result.rowsWritten,
@@ -376,9 +391,7 @@ async function runLiveIndexerJob(
           : { observedUpdateGapMs: previous.observedUpdateGapMs }
         : { observedUpdateGapMs }
       ),
-      ...(result.lastSourceTimestampMs === undefined
-        ? {}
-        : { lagMs: Math.max(0, completedAtMs - result.lastSourceTimestampMs) }),
+      ...(lagMs === undefined ? {} : { lagMs }),
       updatedAtMs: completedAtMs,
     };
 
@@ -489,6 +502,17 @@ function latestTradeMetadata(
     : {};
 }
 
+function filterEventsAfterWatermark(
+  events: readonly PredictNormalizedTradeEvent[],
+  previous: PredictIndexerJobStatus | undefined,
+): PredictNormalizedTradeEvent[] {
+  if (previous?.lastSourceTimestampMs === undefined) {
+    return [...events];
+  }
+
+  return events.filter((event) => event.timestampMs > previous.lastSourceTimestampMs!);
+}
+
 function latestSviMetadata(
   points: readonly PredictOracleSviPoint[],
 ): Pick<LiveIndexerJobResult, "lastCheckpoint" | "lastSourceTimestampMs"> {
@@ -504,6 +528,21 @@ function latestSviMetadata(
         lastSourceTimestampMs: latest.timestampMs,
       }
     : {};
+}
+
+function maxOptionalNumber(
+  left: number | undefined,
+  right: number | undefined,
+): number | undefined {
+  if (left === undefined) {
+    return right;
+  }
+
+  if (right === undefined) {
+    return left;
+  }
+
+  return Math.max(left, right);
 }
 
 type ParsedArgs = {

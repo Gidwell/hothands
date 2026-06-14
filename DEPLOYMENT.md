@@ -68,6 +68,13 @@ DATABASE_URL=${{Postgres.DATABASE_URL}}
 The indexer has no public domain. Use logs and `/testnet/indexer-status` on the
 API to confirm it is writing fresh data.
 
+Live polling is intentionally a small latest-page catch-up loop, not a wide
+backfill loop. Leave `HOT_HANDS_INDEXER_TRADE_LIMIT` and
+`HOT_HANDS_INDEXER_ORACLE_TRADE_LIMIT` unset for normal production unless a
+short diagnostic run needs wider pages. Wide limits on 1-second polling
+reprocess duplicate rows, increase Postgres and Predict server pressure, and
+can produce Railway memory growth without adding useful indexed facts.
+
 Optional chart-history bootstrap variables:
 
 ```text

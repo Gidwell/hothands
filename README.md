@@ -212,14 +212,21 @@ price history. The launcher also starts a separate live indexer process.
 Disable automatic bootstrap with `HOT_HANDS_DEV_MIGRATE=false` or
 `HOT_HANDS_DEV_BACKFILL=false` when you intentionally want to skip either step.
 Prices,
-positions, active-oracle trade activity, and latest-only SVI poll every 1 second
-by default; oracle metadata polls every 30 seconds by default. Tune these with
+small latest-page positions, small active-oracle trade pages, and latest-only
+SVI poll every 1 second by default; oracle metadata polls every 30 seconds by
+default. Tune these with
 `HOT_HANDS_INDEXER_PRICE_POLL_MS`, `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`,
 `HOT_HANDS_INDEXER_TRADES_POLL_MS`, `HOT_HANDS_INDEXER_SVI_POLL_MS`, and
-`HOT_HANDS_INDEXER_ORACLES_POLL_MS`. Live SVI fetches one latest point per
-active oracle by default; increase `HOT_HANDS_INDEXER_SVI_LIMIT` only for
-diagnostics because wide live SVI reads create avoidable DB/write pressure. The
-API exposes freshness at
+`HOT_HANDS_INDEXER_ORACLES_POLL_MS`. Live global position pages default to
+`250` rows and active-oracle trade pages default to `50` rows; increase
+`HOT_HANDS_INDEXER_TRADE_LIMIT` or `HOT_HANDS_INDEXER_ORACLE_TRADE_LIMIT` only
+for short diagnostics or manual backfills because wide live reads repeatedly
+reprocess duplicate rows and can trigger Predict server rate limits. Live SVI
+fetches one latest point per active oracle by default; increase
+`HOT_HANDS_INDEXER_SVI_LIMIT` only for diagnostics because wide live SVI reads
+create avoidable DB/write pressure. Global mint/redeem live jobs keep local
+high-water marks from the last indexed source timestamp and skip duplicate
+position-summary refreshes when no new facts are written. The API exposes freshness at
 `/testnet/indexer-status`. The chart requests up to 10,000
 indexed/downsampled points and includes the full stored range metadata. Public
 Predict, captured rows, and direct Sui event reads are degraded diagnostics

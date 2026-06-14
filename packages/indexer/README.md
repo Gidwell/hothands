@@ -117,17 +117,30 @@ serves them behind a narrow local setup:
    - `predict.positions.redeemed`: poll global redeemed positions
    - `predict.trades.active_oracles`: poll per-active-oracle trade history
 
-   Prices, positions, active-oracle trades, and latest-only SVI poll every 1
-   second by default; oracle metadata polls every 30 seconds. Tune with
+   Prices, small latest-page positions, small active-oracle trade pages, and
+   latest-only SVI poll every 1 second by default; oracle metadata polls every
+   30 seconds. Tune with
    `HOT_HANDS_INDEXER_PRICE_POLL_MS`,
    `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`,
    `HOT_HANDS_INDEXER_SVI_POLL_MS`,
    `HOT_HANDS_INDEXER_TRADES_POLL_MS`, and
-   `HOT_HANDS_INDEXER_ORACLES_POLL_MS`. Live SVI fetches one latest point per
-   active oracle by default; use `HOT_HANDS_INDEXER_SVI_LIMIT` when you
-   intentionally need a wider diagnostic live read. Every job writes freshness
-   status to `predict_indexer_jobs`, and the local API exposes it at
-   `/testnet/indexer-status`.
+   `HOT_HANDS_INDEXER_ORACLES_POLL_MS`. Live global position pages default to
+   `250` rows and active-oracle trade pages default to `50` rows; use
+   `HOT_HANDS_INDEXER_TRADE_LIMIT` or `HOT_HANDS_INDEXER_ORACLE_TRADE_LIMIT`
+   only when you intentionally need a wider diagnostic live read. Wide history
+   reads belong in bounded backfill jobs, not 1-second live polling. Live SVI
+   fetches one latest point per active oracle by default; use
+   `HOT_HANDS_INDEXER_SVI_LIMIT` when you intentionally need a wider diagnostic
+   live read. Every job writes freshness status to `predict_indexer_jobs`, and
+   the local API exposes it at `/testnet/indexer-status`.
+
+   Live global mint/redeem jobs use their previous indexed source timestamp as
+   a local high-water mark before writing. This keeps repeated latest-page
+   reads idempotent without re-upserting duplicate rows or rebuilding position
+   summaries every second. As of the current public Predict server behavior,
+   `start_time` is verified for oracle price history but not for the global
+   `positions/minted` and `positions/redeemed` endpoints, so server-side
+   position cursors should not be assumed until re-tested.
 
    The chart endpoint requests downsampled full-range history from
    `predict_oracle_prices`, preserving the first and latest indexed points while
@@ -142,7 +155,9 @@ serves them behind a narrow local setup:
    can set `HOT_HANDS_INDEXER_STARTUP_PRICE_BACKFILL_DAYS=3` and
    `HOT_HANDS_INDEXER_STARTUP_PRICE_SAMPLE_MS=1000` to keep one historical
    chart point per second while live polling continues at one latest tick per
-   second.
+   second. Startup price backfill writes each oracle/window as it goes, so a
+   multi-day bootstrap does not need to hold the whole price history in memory
+   before writing.
 6. Build projections from the raw tables before serving product flows:
 
    ```text
