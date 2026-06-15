@@ -38,7 +38,9 @@ import {
 import {
   appendCopyAttributionRecord,
   buildCopyAttributionSourcePositionId,
+  copyAttributionRecordFromApiReceipt,
   formatCopyAttributionLabel,
+  mergeCopyAttributionRecords,
   readCopyAttributionRecords,
   summarizeCopyAttribution,
   writeCopyAttributionRecords,
@@ -114,6 +116,7 @@ import {
   clearStoredWalletAuthSession,
   deleteFollowedWalletFromApi,
   loadAuthenticatedWalletProfileFromApi,
+  loadCopyReceiptsFromApi,
   loadFollowedWalletsFromApi,
   readStoredWalletAuthSession,
   recordCopyReceiptToApi,
@@ -6059,6 +6062,27 @@ export function App() {
     let isCurrent = true;
     let isRefreshing = false;
 
+    const refreshCopyAttributionReceipts = async () => {
+      if (!realtimeApiBaseUrl) {
+        return;
+      }
+
+      try {
+        const receipts = await loadCopyReceiptsFromApi({
+          apiBaseUrl: realtimeApiBaseUrl,
+          limit: 500,
+        });
+        const apiRecords = receipts.map(copyAttributionRecordFromApiReceipt);
+        if (isCurrent) {
+          setCopyAttributions((currentRecords) =>
+            mergeCopyAttributionRecords(apiRecords, currentRecords),
+          );
+        }
+      } catch {
+        // Copy counts are social context; keep the market feed usable if they miss a refresh.
+      }
+    };
+
     const refreshMarketHeat = async () => {
       if (isRefreshing) {
         return;
@@ -6080,6 +6104,7 @@ export function App() {
           marketHeatPreviewRef.current = stablePreview;
           setMarketHeatPreview(stablePreview);
         }
+        await refreshCopyAttributionReceipts();
       } finally {
         isRefreshing = false;
       }

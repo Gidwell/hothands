@@ -3,6 +3,7 @@ import {
   clearStoredWalletAuthSession,
   deleteFollowedWalletFromApi,
   loadAuthenticatedWalletProfileFromApi,
+  loadCopyReceiptsFromApi,
   loadFollowedWalletsFromApi,
   readStoredWalletAuthSession,
   recordCopyReceiptToApi,
@@ -195,6 +196,60 @@ describe("wallet auth client", () => {
         executionSide: "DOWN",
         amountUsd: 25,
         transactionDigest: "0xdigest",
+      },
+    ]);
+  });
+
+  test("loads public copy receipts without wallet auth", async () => {
+    const requests: Array<{ url: string; authorization: string | null; method: string }> = [];
+    await expect(
+      loadCopyReceiptsFromApi({
+        apiBaseUrl: "http://api",
+        limit: 250,
+        fetchImpl: async (input, init) => {
+          requests.push({
+            url: String(input),
+            authorization: new Headers(init?.headers).get("authorization"),
+            method: init?.method ?? "GET",
+          });
+          return Response.json({
+            receipts: [
+              {
+                receiptId: "receipt-1",
+                copierWallet: "0xcopier",
+                sourceWallet: "0xleader",
+                sourcePositionId: "source-position",
+                copiedPositionId: "copied-position",
+                mode: "copy",
+                status: "submitted",
+                amountUsd: 25,
+                createdAtMs: 1_000,
+                updatedAtMs: 1_000,
+              },
+            ],
+          });
+        },
+      }),
+    ).resolves.toEqual([
+      {
+        receiptId: "receipt-1",
+        copierWallet: "0xcopier",
+        sourceWallet: "0xleader",
+        sourcePositionId: "source-position",
+        copiedPositionId: "copied-position",
+        mode: "copy",
+        status: "submitted",
+        amountUsd: 25,
+        createdAtMs: 1_000,
+        updatedAtMs: 1_000,
+      },
+    ]);
+
+    expect(requests).toEqual([
+      {
+        url: "http://api/app/copy-receipts?limit=250",
+        authorization: null,
+        method: "GET",
       },
     ]);
   });

@@ -54,6 +54,12 @@ export type CopyReceiptApiInput = {
   raw?: Record<string, unknown>;
 };
 
+export type CopyReceiptApiRecord = CopyReceiptApiInput & {
+  copierWallet: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
 const encoder = new TextEncoder();
 
 export async function requestWalletAuthSession({
@@ -279,6 +285,25 @@ export async function recordCopyReceiptToApi({
   });
 }
 
+export async function loadCopyReceiptsFromApi({
+  apiBaseUrl,
+  fetchImpl = fetch,
+  limit = 500,
+}: {
+  apiBaseUrl: string | undefined;
+  fetchImpl?: typeof fetch;
+  limit?: number;
+}): Promise<CopyReceiptApiRecord[]> {
+  const url = buildApiUrl(apiBaseUrl, "/app/copy-receipts");
+  url.searchParams.set("limit", String(Math.max(1, Math.trunc(limit))));
+  const response = await fetchJson<CopyReceiptsResponse>({
+    fetchImpl,
+    url,
+  });
+
+  return response.receipts;
+}
+
 type WalletAuthChallengeResponse = {
   wallet: string;
   nonce: string;
@@ -297,6 +322,10 @@ type WalletFollowApiRecord = {
 type FollowedWalletsResponse = {
   wallet: string;
   follows: WalletFollowApiRecord[];
+};
+
+type CopyReceiptsResponse = {
+  receipts: CopyReceiptApiRecord[];
 };
 
 type WalletProfileResponse = {
