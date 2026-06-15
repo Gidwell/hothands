@@ -155,6 +155,11 @@ describe("DeepBook Predict live indexer", () => {
     ).toMatchObject({
       tradeLimit: 250,
       oracleTradeLimit: 50,
+      intervals: {
+        positions: 5_000,
+        oracleTrades: 1_000,
+        prices: 1_000,
+      },
     });
   });
 

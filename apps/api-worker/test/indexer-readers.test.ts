@@ -98,4 +98,77 @@ describe("API indexer readers", () => {
     });
     expect(calls).toHaveLength(3);
   });
+
+  test("loads bounded indexed oracle price windows for compact charts", async () => {
+    const calls: Array<{ statement: string; params: readonly unknown[] }> = [];
+    const client: PostgresSqlClient = {
+      execute: async (statement, params = []) => {
+        calls.push({ statement, params });
+
+        if (statement.includes("order by timestamp_ms desc")) {
+          return {
+            rows: [
+              {
+                event_id: "price:latest",
+                oracle_id: "btc-15m",
+                spot: "72050000000",
+                forward: null,
+                checkpoint: 102,
+                timestamp_ms: 1_779_071_700_000,
+                source: "oracles/prices",
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+
+        return {
+          rows: [
+            {
+              event_id: "price:old",
+              oracle_id: "btc-15m",
+              spot: "72000000000",
+              forward: null,
+              checkpoint: 101,
+              timestamp_ms: 1_779_070_800_000,
+              source: "oracles/prices",
+            },
+            {
+              event_id: "price:new",
+              oracle_id: "btc-15m",
+              spot: "72050000000",
+              forward: null,
+              checkpoint: 102,
+              timestamp_ms: 1_779_071_700_000,
+              source: "oracles/prices",
+            },
+          ],
+          rowCount: 2,
+        };
+      },
+      close: async () => {},
+    };
+
+    const readers = createIndexerReadersFromSqlClient(client);
+    const history = await readers.indexedOraclePriceHistoryLoader({
+      market: "BTC-USD",
+      oracleId: "btc-15m",
+      maxPoints: 900,
+      startTimestampMs: 1_779_070_800_000,
+      endTimestampMs: 1_779_071_700_000,
+    });
+
+    expect(calls[0]?.statement).toContain("timestamp_ms >= $2");
+    expect(calls[0]?.statement).toContain("timestamp_ms <= $3");
+    expect(calls[0]?.params).toEqual([
+      "btc-15m",
+      1_779_070_800_000,
+      1_779_071_700_000,
+      900,
+    ]);
+    expect(history?.startTimestampMs).toBe(1_779_070_800_000);
+    expect(history?.endTimestampMs).toBe(1_779_071_700_000);
+    expect(history?.totalPointCount).toBe(2);
+    expect(calls).toHaveLength(2);
+  });
 });

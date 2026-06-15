@@ -30,7 +30,10 @@ export type OraclePriceChart = {
 
 export type LoadOraclePriceChartOptions = {
   apiBaseUrl?: string;
+  endTimestampMs?: number;
+  maxPoints?: number;
   oracleId: string;
+  startTimestampMs?: number;
   fetcher?: typeof fetch;
 };
 
@@ -43,11 +46,21 @@ const ORACLE_CHART_MAX_POINTS = 10_000;
 
 export async function loadOraclePriceChart({
   apiBaseUrl = DEFAULT_API_BASE_URL,
+  endTimestampMs,
+  maxPoints = ORACLE_CHART_MAX_POINTS,
   oracleId,
+  startTimestampMs,
   fetcher = fetch,
 }: LoadOraclePriceChartOptions): Promise<OraclePriceChart> {
   try {
-    const response = await fetcher(buildOraclePriceChartUrl(apiBaseUrl, oracleId));
+    const response = await fetcher(
+      buildOraclePriceChartUrl(apiBaseUrl, {
+        endTimestampMs,
+        maxPoints,
+        oracleId,
+        startTimestampMs,
+      }),
+    );
     if (!response.ok) {
       return buildUnavailableOraclePriceChart(oracleId);
     }
@@ -194,10 +207,29 @@ function parseOraclePriceChartPoint(value: unknown): OraclePriceChartPoint | nul
   };
 }
 
-function buildOraclePriceChartUrl(apiBaseUrl: string, oracleId: string): string {
+function buildOraclePriceChartUrl(
+  apiBaseUrl: string,
+  {
+    endTimestampMs,
+    maxPoints,
+    oracleId,
+    startTimestampMs,
+  }: {
+    endTimestampMs?: number;
+    maxPoints: number;
+    oracleId: string;
+    startTimestampMs?: number;
+  },
+): string {
   const url = new URL("/testnet/oracle-prices", normalizeBaseUrl(apiBaseUrl));
   url.searchParams.set("oracleId", oracleId);
-  url.searchParams.set("maxPoints", String(ORACLE_CHART_MAX_POINTS));
+  url.searchParams.set("maxPoints", String(maxPoints));
+  if (isPositiveFiniteNumber(startTimestampMs)) {
+    url.searchParams.set("startTimestampMs", String(Math.floor(startTimestampMs)));
+  }
+  if (isPositiveFiniteNumber(endTimestampMs)) {
+    url.searchParams.set("endTimestampMs", String(Math.floor(endTimestampMs)));
+  }
 
   return url.toString();
 }
@@ -330,6 +362,10 @@ function numberValue(value: unknown): number | undefined {
   }
 
   return undefined;
+}
+
+function isPositiveFiniteNumber(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value) && value > 0;
 }
 
 function booleanValue(value: unknown): boolean | undefined {

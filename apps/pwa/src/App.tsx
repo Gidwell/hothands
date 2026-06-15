@@ -156,6 +156,8 @@ import {
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_PRICE_REFRESH_MS = 1_000;
 const MARKET_HEAT_ROWS_REFRESH_MS = 3_000;
+const COMPACT_ORACLE_CHART_HISTORY_MS = 15 * 60_000;
+const COMPACT_ORACLE_CHART_MAX_POINTS = 900;
 const DEFAULT_SHARE_URL = "https://hothands.app/";
 const LOCAL_SHARE_HOSTS = new Set(["127.0.0.1", "0.0.0.0", "::1", "localhost"]);
 const MARKET_HEAT_PAGE_SIZE = 8;
@@ -6080,14 +6082,15 @@ export function App() {
 
   useEffect(() => {
     let isCurrent = true;
-    let isRefreshing = false;
+    let isPriceRefreshing = false;
+    let isRowsRefreshing = false;
 
     const refreshMarketHeat = async () => {
-      if (isRefreshing) {
+      if (isRowsRefreshing) {
         return;
       }
 
-      isRefreshing = true;
+      isRowsRefreshing = true;
       try {
         const preview = await loadMarketHeatPreview({
           apiBaseUrl: realtimeApiBaseUrl,
@@ -6104,16 +6107,16 @@ export function App() {
           setMarketHeatPreview(stablePreview);
         }
       } finally {
-        isRefreshing = false;
+        isRowsRefreshing = false;
       }
     };
 
     const refreshMarketHeatPrice = async () => {
-      if (isRefreshing) {
+      if (isPriceRefreshing) {
         return;
       }
 
-      isRefreshing = true;
+      isPriceRefreshing = true;
       try {
         const preview = await loadMarketHeatPriceSnapshot(marketHeatPreviewRef.current, {
           apiBaseUrl: realtimeApiBaseUrl,
@@ -6126,7 +6129,7 @@ export function App() {
           setMarketHeatPreview(preview);
         }
       } finally {
-        isRefreshing = false;
+        isPriceRefreshing = false;
       }
     };
 
@@ -6269,6 +6272,50 @@ export function App() {
     };
 
     void refreshOraclePriceChartHistory();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [activeChartOracleId, isOracleChartOpen, realtimeApiBaseUrl]);
+
+  useEffect(() => {
+    if (!realtimeApiBaseUrl || !activeChartOracleId || isOracleChartOpen) {
+      return undefined;
+    }
+
+    const currentChart = oraclePriceChartRef.current;
+    if (
+      currentChart?.status === "ready" &&
+      currentChart.oracleId === activeChartOracleId &&
+      currentChart.points.length >= 2
+    ) {
+      return undefined;
+    }
+
+    let isCurrent = true;
+    const activeMarket = marketHeatPreviewRef.current.availableMarkets?.find(
+      (marketRow) => marketRow.oracleId === activeChartOracleId,
+    );
+    const endTimestampMs =
+      activeMarket?.latestPriceTimestampMs ??
+      activeMarket?.pricingModel?.timestampMs ??
+      Date.now();
+    const startTimestampMs = Math.max(1, endTimestampMs - COMPACT_ORACLE_CHART_HISTORY_MS);
+
+    void loadOraclePriceChart({
+      apiBaseUrl: realtimeApiBaseUrl,
+      endTimestampMs,
+      maxPoints: COMPACT_ORACLE_CHART_MAX_POINTS,
+      oracleId: activeChartOracleId,
+      startTimestampMs,
+    }).then((chart) => {
+      if (!isCurrent) {
+        return;
+      }
+
+      oraclePriceChartRef.current = chart;
+      setOraclePriceChart(chart);
+    });
 
     return () => {
       isCurrent = false;

@@ -67,6 +67,37 @@ describe("oracle price chart model", () => {
     });
   });
 
+  test("loads a bounded compact chart history window", async () => {
+    const calls: string[] = [];
+    const chart = await loadOraclePriceChart({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      oracleId: "btc-compact",
+      maxPoints: 900,
+      startTimestampMs: 1_779_070_800_000,
+      endTimestampMs: 1_779_071_700_000,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        return Response.json({
+          source: "indexed_testnet",
+          market: "BTC-USD",
+          oracleId: "btc-compact",
+          latestPrice: 72125,
+          points: [
+            { timestampMs: 1_779_070_800_000, price: 72000 },
+            { timestampMs: 1_779_071_700_000, price: 72125 },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/oracle-prices?oracleId=btc-compact&maxPoints=900&startTimestampMs=1779070800000&endTimestampMs=1779071700000",
+    ]);
+    expect(chart.status).toBe("ready");
+    expect(chart.points).toHaveLength(2);
+  });
+
   test("represents indexed full-history metadata without modal copy", async () => {
     const chart = await loadOraclePriceChart({
       apiBaseUrl: "https://api.hot-hands.test/",

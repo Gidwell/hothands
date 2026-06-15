@@ -24,7 +24,10 @@ import {
 } from "./app-auth";
 import type { HotHandsAppStore } from "./app-storage";
 import { getTestnetMarketHeat } from "./market-heat";
-import { getTestnetOraclePrices } from "./oracle-prices";
+import {
+  createIndexedOraclePriceHistoryLoader,
+  getTestnetOraclePrices
+} from "./oracle-prices";
 import { getTestnetOracleSettlement } from "./oracle-settlement";
 import { getTestnetPriceSnapshot } from "./price-snapshot";
 import { getMainnetSuinsNames } from "./suins-names";
@@ -256,8 +259,14 @@ export default {
       try {
         return json(
           await getTestnetOraclePrices({
+            endTimestampMs: readOptionalPositiveIntegerSearchParam(url, "endTimestampMs"),
             fetchImpl: env.fetch ?? fetch,
-            oracleId: requireSearchParam(url, "oracleId")
+            indexedOraclePriceHistoryLoader: env.indexerReader
+              ? createIndexedOraclePriceHistoryLoader(env.indexerReader)
+              : undefined,
+            maxPoints: readOptionalPositiveIntegerSearchParam(url, "maxPoints"),
+            oracleId: requireSearchParam(url, "oracleId"),
+            startTimestampMs: readOptionalPositiveIntegerSearchParam(url, "startTimestampMs")
           })
         );
       } catch (error) {
@@ -333,6 +342,20 @@ function testnetCacheKey(name: string, env: Env): string {
 
 function parseIncludeExpiredRequest(url: URL): boolean {
   return url.searchParams.get("includeExpired") === "true";
+}
+
+function readOptionalPositiveIntegerSearchParam(url: URL, name: string): number | undefined {
+  const value = url.searchParams.get(name);
+  if (value === null || value.trim() === "") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+
+  return parsed;
 }
 
 function cacheNamespaceId(value: object): number {

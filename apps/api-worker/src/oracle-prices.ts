@@ -1,5 +1,7 @@
 import {
   createPredictOraclePriceClient,
+  type OraclePriceStats,
+  type PredictIndexerReader,
   type PredictOraclePricePoint
 } from "@hot-hands/indexer";
 
@@ -38,9 +40,11 @@ export interface OraclePriceChartPoint {
 }
 
 export interface IndexedOraclePriceHistoryRequest {
+  endTimestampMs?: number;
   oracleId: string;
   market: typeof MARKET;
   maxPoints: number;
+  startTimestampMs?: number;
 }
 
 export interface IndexedOraclePriceHistory {
@@ -57,31 +61,44 @@ export type IndexedOraclePriceHistoryLoader = (
 ) => Promise<IndexedOraclePriceHistory | null | undefined>;
 
 export interface OraclePriceHistoryOptions {
+  endTimestampMs?: number;
   fetchImpl?: typeof fetch;
   indexedOraclePriceHistoryLoader?: IndexedOraclePriceHistoryLoader;
   maxPoints?: number;
   oracleId: string;
+  startTimestampMs?: number;
 }
 
 export async function getTestnetOraclePrices({
+  endTimestampMs,
   fetchImpl = fetch,
   indexedOraclePriceHistoryLoader,
   maxPoints = DEFAULT_ORACLE_PRICE_HISTORY_MAX_POINTS,
-  oracleId
+  oracleId,
+  startTimestampMs
 }: OraclePriceHistoryOptions): Promise<OraclePriceChartProjection> {
   const requestedMaxPoints = normalizeMaxPoints(maxPoints);
+  const requestedStartTimestampMs = positiveNumber(startTimestampMs);
+  const requestedEndTimestampMs = positiveNumber(endTimestampMs);
   const indexedProjection = await getIndexedOraclePriceProjection({
+    endTimestampMs: requestedEndTimestampMs,
     indexedOraclePriceHistoryLoader,
     maxPoints: requestedMaxPoints,
-    oracleId
+    oracleId,
+    startTimestampMs: requestedStartTimestampMs
   });
   if (indexedProjection) {
     return indexedProjection;
   }
 
   const client = createPredictOraclePriceClient({ fetchImpl });
-  const points = (await client.listOraclePrices(oracleId, { limit: requestedMaxPoints }))
-    .map(mapOraclePricePoint);
+  const points = (
+    await client.listOraclePrices(oracleId, {
+      endTime: requestedEndTimestampMs,
+      limit: requestedMaxPoints,
+      startTime: requestedStartTimestampMs,
+    })
+  ).map(mapOraclePricePoint);
   const latestPoint = points.at(-1) ?? null;
 
   return {
@@ -95,14 +112,54 @@ export async function getTestnetOraclePrices({
   };
 }
 
+export function createIndexedOraclePriceHistoryLoader(
+  reader: PredictIndexerReader,
+): IndexedOraclePriceHistoryLoader {
+  return async ({ endTimestampMs, oracleId, maxPoints, startTimestampMs }) => {
+    const points = await reader.listOraclePrices({
+      fromMs: startTimestampMs,
+      oracleId,
+      toMs: endTimestampMs,
+      maxPoints,
+      maxRawPoints: Math.max(maxPoints, 250_000),
+    });
+    const latestPrice = await reader.getLatestOraclePrice(oracleId);
+    const stats =
+      startTimestampMs === undefined && endTimestampMs === undefined
+        ? await reader.getOraclePriceStats(oracleId)
+        : null;
+
+    if (points.length === 0) {
+      return null;
+    }
+
+    return {
+      latestPrice: latestPrice ? normalizePredictPrice(latestPrice.spot) : null,
+      ...buildIndexedHistoryStats(points, maxPoints, stats),
+      points: points.map((point) => ({
+        timestampMs: point.timestampMs,
+        price: normalizePredictPrice(point.spot),
+        ...(point.forward === undefined
+          ? {}
+          : { forwardPrice: normalizePredictPrice(point.forward) }),
+        ...(point.checkpoint === undefined ? {} : { checkpoint: point.checkpoint }),
+      })),
+    };
+  };
+}
+
 async function getIndexedOraclePriceProjection({
+  endTimestampMs,
   indexedOraclePriceHistoryLoader,
   maxPoints,
-  oracleId
+  oracleId,
+  startTimestampMs
 }: {
+  endTimestampMs?: number;
   indexedOraclePriceHistoryLoader?: IndexedOraclePriceHistoryLoader;
   maxPoints: number;
   oracleId: string;
+  startTimestampMs?: number;
 }): Promise<OraclePriceChartProjection | null> {
   if (!indexedOraclePriceHistoryLoader) {
     return null;
@@ -110,9 +167,11 @@ async function getIndexedOraclePriceProjection({
 
   try {
     const history = await indexedOraclePriceHistoryLoader({
+      endTimestampMs,
       market: MARKET,
       maxPoints,
-      oracleId
+      oracleId,
+      startTimestampMs
     });
     if (!history) {
       return null;
@@ -187,6 +246,23 @@ function buildHistoryRange(
     returnedPointCount,
     maxPoints,
     downsampled: history.downsampled ?? totalPointCount > returnedPointCount
+  };
+}
+
+function buildIndexedHistoryStats(
+  points: PredictOraclePricePoint[],
+  maxPoints: number,
+  stats: OraclePriceStats | null,
+): Omit<IndexedOraclePriceHistory, "points" | "latestPrice"> {
+  const firstPoint = points[0];
+  const latestPoint = points.at(-1) ?? firstPoint;
+  const totalPointCount = stats?.totalPointCount ?? points.length;
+
+  return {
+    startTimestampMs: stats?.startTimestampMs ?? firstPoint.timestampMs,
+    endTimestampMs: stats?.endTimestampMs ?? latestPoint.timestampMs,
+    totalPointCount,
+    downsampled: totalPointCount > points.length,
   };
 }
 

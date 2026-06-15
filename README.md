@@ -211,10 +211,9 @@ for Market Heat, Trade markets, Portfolio events, Leaderboards, and oracle
 price history. The launcher also starts a separate live indexer process.
 Disable automatic bootstrap with `HOT_HANDS_DEV_MIGRATE=false` or
 `HOT_HANDS_DEV_BACKFILL=false` when you intentionally want to skip either step.
-Prices,
-small latest-page positions, small active-oracle trade pages, and latest-only
-SVI poll every 1 second by default; oracle metadata polls every 30 seconds by
-default. Tune these with
+Prices, small active-oracle trade pages, and latest-only SVI poll every 1
+second by default; global minted/redeemed position pages poll every 5 seconds
+by default; oracle metadata polls every 30 seconds by default. Tune these with
 `HOT_HANDS_INDEXER_PRICE_POLL_MS`, `HOT_HANDS_INDEXER_POSITIONS_POLL_MS`,
 `HOT_HANDS_INDEXER_TRADES_POLL_MS`, `HOT_HANDS_INDEXER_SVI_POLL_MS`, and
 `HOT_HANDS_INDEXER_ORACLES_POLL_MS`. Live global position pages default to
@@ -239,7 +238,9 @@ What is live today:
 - `Testnet` reads indexed DeepBook Predict activity through the local API.
   `Live Testnet`, `Captured`, or `indexer_unavailable` means the local indexed
   dev environment needs attention.
-- `Latest` shows the newest observed active trader rows first and refreshes every second while the app is open.
+- `Latest` shows the newest observed active trader rows first, refreshes rows
+  every few seconds while the app is open, and keeps price/ladder/chart ticks
+  updating every second.
 - After the first full feed load, 1-second BTC price and ladder model updates
   use `/testnet/price-snapshot` instead of reloading trader rows every tick.
 - Rows are grouped by trader/manager, so a repeat trade moves that row upward instead of creating a duplicate feed item.

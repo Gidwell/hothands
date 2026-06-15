@@ -334,10 +334,12 @@ export function createTestnetDevServerFetch({
       try {
         return json(
           await getTestnetOraclePrices({
+            endTimestampMs: readOptionalPositiveIntegerSearchParam(url, "endTimestampMs"),
             fetchImpl,
             indexedOraclePriceHistoryLoader,
             maxPoints: readOptionalPositiveIntegerSearchParam(url, "maxPoints"),
-            oracleId: requireSearchParam(url, "oracleId")
+            oracleId: requireSearchParam(url, "oracleId"),
+            startTimestampMs: readOptionalPositiveIntegerSearchParam(url, "startTimestampMs")
           })
         );
       } catch (error) {
