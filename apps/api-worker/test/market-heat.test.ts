@@ -221,6 +221,67 @@ describe("testnet market heat endpoint", () => {
     ).toBeGreaterThan(projection.rows[0].heatScore);
   });
 
+  test("enriches indexed market heat rows with persisted copy attribution", async () => {
+    const response = await worker.fetch(
+      new Request("https://api.hot-hands.test/testnet/market-heat"),
+      {
+        indexerReader: createIndexedMarketHeatReader(),
+        appStore: {
+          listCopyReceipts: async () => [
+            {
+              receiptId: "copy-1",
+              copierWallet: "0xcopier-one",
+              sourceWallet: "0xtrader-new",
+              sourcePositionId:
+                "0xtrader-new:btc-indexed-long:1779158400000:72125000000:DOWN",
+              copiedPositionId: "copied-position-1",
+              mode: "copy",
+              status: "submitted",
+              amountUsd: 25,
+              createdAtMs: 1_779_071_250_000,
+              updatedAtMs: 1_779_071_250_000
+            },
+            {
+              receiptId: "copy-2",
+              copierWallet: "0xcopier-two",
+              sourceWallet: "0xtrader-new",
+              sourcePositionId:
+                "0xtrader-new:btc-indexed-long:1779158400000:72125000000:DOWN",
+              copiedPositionId: "copied-position-2",
+              mode: "copy",
+              status: "submitted",
+              amountUsd: 12.5,
+              createdAtMs: 1_779_071_260_000,
+              updatedAtMs: 1_779_071_260_000
+            },
+            {
+              receiptId: "fade-ignored",
+              copierWallet: "0xfader",
+              sourceWallet: "0xtrader-new",
+              sourcePositionId:
+                "0xtrader-new:btc-indexed-long:1779158400000:72125000000:DOWN",
+              mode: "fade",
+              status: "submitted",
+              amountUsd: 100,
+              createdAtMs: 1_779_071_270_000,
+              updatedAtMs: 1_779_071_270_000
+            }
+          ]
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.rows[0]).toMatchObject({
+      wallet: "0xtrader-new",
+      copyAttribution: {
+        count: 2,
+        amountUsd: 37.5
+      }
+    });
+  });
+
   test("excludes expired active-status indexed oracles from trade markets", async () => {
     const projection = await getTestnetMarketHeat({
       reader: createIndexedMarketHeatReader(),

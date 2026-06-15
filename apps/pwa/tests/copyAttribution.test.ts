@@ -3,9 +3,7 @@ import {
   COPY_ATTRIBUTION_STORAGE_KEY,
   appendCopyAttributionRecord,
   buildCopyAttributionSourcePositionId,
-  copyAttributionRecordFromApiReceipt,
   formatCopyAttributionLabel,
-  mergeCopyAttributionRecords,
   parseCopyAttributionRecords,
   readCopyAttributionRecords,
   summarizeCopyAttribution,
@@ -96,35 +94,4 @@ describe("copy attribution", () => {
     expect(readCopyAttributionRecords(storageLike)).toEqual(records);
   });
 
-  test("normalizes API receipts and deduplicates optimistic local records", () => {
-    const apiRecord = copyAttributionRecordFromApiReceipt({
-      receiptId: "copy-0xdigest-row-1",
-      copierWallet: "0xCOPIER",
-      sourceWallet: "0xSOURCE",
-      sourcePositionId: "source-position",
-      copiedPositionId: "copied-position",
-      amountUsd: 25,
-      createdAtMs: 1_779_158_000_000,
-    });
-    const localRecord: CopyAttributionRecord = {
-      amount: 25,
-      copied_position_id: "copied-position",
-      copier: "0xcopier",
-      id: "copy-local-1",
-      position_id: "source-position",
-      source_wallet: "0xsource",
-      timestamp: 1_779_158_000_001,
-    };
-
-    expect(apiRecord).toEqual({
-      amount: 25,
-      copied_position_id: "copied-position",
-      copier: "0xCOPIER",
-      id: "copy-0xdigest-row-1",
-      position_id: "source-position",
-      source_wallet: "0xSOURCE",
-      timestamp: 1_779_158_000_000,
-    });
-    expect(mergeCopyAttributionRecords([apiRecord!], [localRecord])).toEqual([apiRecord]);
-  });
 });

@@ -18,6 +18,7 @@ import {
   type WalletPerformanceEntry,
   type WalletStreakType
 } from "@hot-hands/indexer";
+import type { CopyReceipt, HotHandsAppStore } from "./app-storage";
 
 export interface MarketHeatProjection {
   source: MarketHeatSource;
@@ -75,6 +76,11 @@ export interface MarketHeatWalletStats {
   lastSeenMs: number;
 }
 
+export interface MarketHeatCopyAttribution {
+  count: number;
+  amountUsd: number;
+}
+
 export interface MarketHeatRow {
   id: string;
   wallet: string;
@@ -92,12 +98,14 @@ export interface MarketHeatRow {
   observedAtMs: number;
   heatScore: number;
   walletStats?: MarketHeatWalletStats;
+  copyAttribution?: MarketHeatCopyAttribution;
   status: "copy_ready" | "watching";
 }
 
 export interface TestnetMarketHeatOptions {
   fetchImpl?: typeof fetch;
   includeExpired?: boolean;
+  appStore?: HotHandsAppStore;
   mode?: "live" | "captured";
   reader?: PredictIndexerReader;
   nowMs?: number;
@@ -113,6 +121,7 @@ export function getCapturedTestnetMarketHeat(): MarketHeatProjection {
 }
 
 export async function getTestnetMarketHeat({
+  appStore,
   fetchImpl = fetch,
   includeExpired = false,
   mode = "live",
@@ -129,7 +138,7 @@ export async function getTestnetMarketHeat({
         includeExpired
       });
       if (indexed.rows.length > 0) {
-        return indexed;
+        return await attachCopyAttributionToMarketHeat(indexed, appStore);
       }
     } catch {
       // Fall through to public Predict reads below.
@@ -138,10 +147,77 @@ export async function getTestnetMarketHeat({
 
   try {
     const live = await getLiveTestnetMarketHeat(fetchImpl);
-    return live.rows.length > 0 ? live : getCapturedTestnetMarketHeat();
+    return live.rows.length > 0
+      ? await attachCopyAttributionToMarketHeat(live, appStore)
+      : getCapturedTestnetMarketHeat();
   } catch {
     return getCapturedTestnetMarketHeat();
   }
+}
+
+async function attachCopyAttributionToMarketHeat(
+  projection: MarketHeatProjection,
+  appStore: HotHandsAppStore | undefined
+): Promise<MarketHeatProjection> {
+  if (!appStore || projection.rows.length === 0) {
+    return projection;
+  }
+
+  try {
+    const receipts = await appStore.listCopyReceipts({ limit: 1_000 });
+    const summaryByPositionId = summarizeCopyReceiptsBySourcePositionId(receipts);
+    const rows = projection.rows.map((row) => {
+      const summary = summaryByPositionId.get(buildMarketHeatSourcePositionId(row));
+      return summary ? { ...row, copyAttribution: summary } : row;
+    });
+
+    return { ...projection, rows };
+  } catch {
+    return projection;
+  }
+}
+
+function summarizeCopyReceiptsBySourcePositionId(
+  receipts: CopyReceipt[]
+): Map<string, MarketHeatCopyAttribution> {
+  const summaries = new Map<string, MarketHeatCopyAttribution>();
+
+  for (const receipt of receipts) {
+    if (receipt.status !== "submitted" || receipt.mode !== "copy") {
+      continue;
+    }
+
+    const current = summaries.get(receipt.sourcePositionId) ?? {
+      amountUsd: 0,
+      count: 0
+    };
+    summaries.set(receipt.sourcePositionId, {
+      amountUsd: roundUsd(current.amountUsd + receipt.amountUsd),
+      count: current.count + 1
+    });
+  }
+
+  return summaries;
+}
+
+function buildMarketHeatSourcePositionId(row: MarketHeatRow): string {
+  const normalizedWallet = row.wallet.trim().toLowerCase();
+  const normalizedOracle = (row.oracleId ?? row.id).trim();
+  const normalizedStrike =
+    typeof row.strikeRaw === "number" && Number.isFinite(row.strikeRaw)
+      ? Math.trunc(row.strikeRaw)
+      : "unknown";
+  const normalizedExpiry = Number.isFinite(row.expiryMs)
+    ? Math.trunc(row.expiryMs)
+    : "unknown";
+
+  return [
+    normalizedWallet || "unknown-wallet",
+    normalizedOracle || row.id,
+    normalizedExpiry,
+    normalizedStrike,
+    row.side
+  ].join(":");
 }
 
 async function getIndexedTestnetMarketHeat(
@@ -707,6 +783,10 @@ function formatPositionIntervalLabel(
 
 function normalizeHeatScore(score: number): number {
   return Math.min(99, Math.max(0, Math.round(score)));
+}
+
+function roundUsd(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function shortWallet(wallet: string): string {

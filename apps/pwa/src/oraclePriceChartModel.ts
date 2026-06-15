@@ -85,6 +85,34 @@ export async function loadOraclePriceChartTick({
   }
 }
 
+export function buildOraclePriceChartFromTick(
+  oracleId: string,
+  tick: OraclePriceChartPoint,
+): OraclePriceChart {
+  return {
+    status: "ready",
+    oracleId,
+    marketLabel: "BTC/USD",
+    sourceLabel: "Indexed Testnet",
+    title: "DeepBook BTC oracle price",
+    detail: "DeepBook Predict oracle price used for BTC market settlement.",
+    latestPriceLabel: formatUsdPrice(tick.price),
+    points: [tick],
+  };
+}
+
+export function shouldLoadOraclePriceChartHistory({
+  apiBaseUrl,
+  isOpen,
+  oracleId,
+}: {
+  apiBaseUrl?: string | null;
+  isOpen: boolean;
+  oracleId?: string | null;
+}): boolean {
+  return Boolean(isOpen && apiBaseUrl?.trim() && oracleId?.trim());
+}
+
 function buildOraclePriceChartFromPayload(payload: unknown, oracleId: string): OraclePriceChart {
   const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
   const points = parseOraclePriceChartPoints(record.points);

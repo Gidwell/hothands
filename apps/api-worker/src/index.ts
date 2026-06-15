@@ -113,6 +113,7 @@ export default {
             ttlMs: TESTNET_SNAPSHOT_CACHE_TTL_MS,
             load: () =>
               getTestnetMarketHeat({
+                appStore: env.appStore,
                 fetchImpl: env.fetch ?? fetch,
                 includeExpired,
                 nowMs: Date.now(),
@@ -325,7 +326,8 @@ function testnetCacheKey(name: string, env: Env): string {
     "testnet",
     name,
     env.fetch ? `fetch:${cacheNamespaceId(env.fetch)}` : "fetch:global",
-    env.indexerReader ? `reader:${cacheNamespaceId(env.indexerReader)}` : "reader:none"
+    env.indexerReader ? `reader:${cacheNamespaceId(env.indexerReader)}` : "reader:none",
+    env.appStore ? `app:${cacheNamespaceId(env.appStore)}` : "app:none"
   ].join(":");
 }
 

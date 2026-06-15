@@ -38,9 +38,7 @@ import {
 import {
   appendCopyAttributionRecord,
   buildCopyAttributionSourcePositionId,
-  copyAttributionRecordFromApiReceipt,
   formatCopyAttributionLabel,
-  mergeCopyAttributionRecords,
   readCopyAttributionRecords,
   summarizeCopyAttribution,
   writeCopyAttributionRecords,
@@ -88,8 +86,10 @@ import {
   type OraclePriceChartMarketContext,
 } from "./OraclePriceChart";
 import {
+  buildOraclePriceChartFromTick,
   loadOraclePriceChart,
   mergeOraclePriceChartTick,
+  shouldLoadOraclePriceChartHistory,
   type OraclePriceChart,
 } from "./oraclePriceChartModel";
 import {
@@ -116,7 +116,6 @@ import {
   clearStoredWalletAuthSession,
   deleteFollowedWalletFromApi,
   loadAuthenticatedWalletProfileFromApi,
-  loadCopyReceiptsFromApi,
   loadFollowedWalletsFromApi,
   readStoredWalletAuthSession,
   recordCopyReceiptToApi,
@@ -157,7 +156,6 @@ import {
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_PRICE_REFRESH_MS = 1_000;
 const MARKET_HEAT_ROWS_REFRESH_MS = 3_000;
-const ORACLE_PRICE_CHART_HISTORY_REFRESH_MS = 60_000;
 const DEFAULT_SHARE_URL = "https://hothands.app/";
 const LOCAL_SHARE_HOSTS = new Set(["127.0.0.1", "0.0.0.0", "::1", "localhost"]);
 const MARKET_HEAT_PAGE_SIZE = 8;
@@ -307,6 +305,11 @@ function buildCopyAttributionLabelsByRowId(
   records: CopyAttributionRecord[],
 ): Record<string, string> {
   return getCopyableMarketHeatRows(rows).reduce<Record<string, string>>((labels, row) => {
+    if (row.copyAttributionLabel) {
+      labels[row.id] = row.copyAttributionLabel;
+      return labels;
+    }
+
     const summary = summarizeCopyAttribution(copyAttributionTargetForMarketHeatRow(row), records);
     if (summary.count > 0 || summary.amount > 0) {
       labels[row.id] = formatCopyAttributionLabel(summary);
@@ -321,6 +324,23 @@ function buildCopyAttributionLabelForRows(
 ): string | null {
   if (!rows.length) {
     return null;
+  }
+
+  const backendSummary = getCopyableMarketHeatRows(rows)
+    .map((row) => row.copyAttribution)
+    .filter((summary): summary is NonNullable<MarketHeatPreviewRow["copyAttribution"]> =>
+      summary !== undefined,
+    )
+    .reduce(
+      (total, item) => ({
+        amount: total.amount + item.amountUsd,
+        count: total.count + item.count,
+      }),
+      { amount: 0, count: 0 },
+    );
+
+  if (backendSummary.count > 0 || backendSummary.amount > 0) {
+    return formatCopyAttributionLabel(backendSummary);
   }
 
   const summary = getCopyableMarketHeatRows(rows)
@@ -6062,27 +6082,6 @@ export function App() {
     let isCurrent = true;
     let isRefreshing = false;
 
-    const refreshCopyAttributionReceipts = async () => {
-      if (!realtimeApiBaseUrl) {
-        return;
-      }
-
-      try {
-        const receipts = await loadCopyReceiptsFromApi({
-          apiBaseUrl: realtimeApiBaseUrl,
-          limit: 500,
-        });
-        const apiRecords = receipts.map(copyAttributionRecordFromApiReceipt);
-        if (isCurrent) {
-          setCopyAttributions((currentRecords) =>
-            mergeCopyAttributionRecords(apiRecords, currentRecords),
-          );
-        }
-      } catch {
-        // Copy counts are social context; keep the market feed usable if they miss a refresh.
-      }
-    };
-
     const refreshMarketHeat = async () => {
       if (isRefreshing) {
         return;
@@ -6104,7 +6103,6 @@ export function App() {
           marketHeatPreviewRef.current = stablePreview;
           setMarketHeatPreview(stablePreview);
         }
-        await refreshCopyAttributionReceipts();
       } finally {
         isRefreshing = false;
       }
@@ -6228,6 +6226,16 @@ export function App() {
       return undefined;
     }
 
+    if (
+      !shouldLoadOraclePriceChartHistory({
+        apiBaseUrl: realtimeApiBaseUrl,
+        isOpen: isOracleChartOpen,
+        oracleId: activeChartOracleId,
+      })
+    ) {
+      return undefined;
+    }
+
     let isCurrent = true;
     let isHistoryRefreshing = false;
     setOraclePriceChart((chart) => {
@@ -6261,16 +6269,11 @@ export function App() {
     };
 
     void refreshOraclePriceChartHistory();
-    const historyRefreshTimer = window.setInterval(
-      refreshOraclePriceChartHistory,
-      ORACLE_PRICE_CHART_HISTORY_REFRESH_MS,
-    );
 
     return () => {
       isCurrent = false;
-      window.clearInterval(historyRefreshTimer);
     };
-  }, [activeChartOracleId, realtimeApiBaseUrl]);
+  }, [activeChartOracleId, isOracleChartOpen, realtimeApiBaseUrl]);
 
   useEffect(() => {
     if (!activeChartOracleId) {
@@ -6289,15 +6292,7 @@ export function App() {
     }
 
     const currentChart = oraclePriceChartRef.current;
-    if (
-      !currentChart ||
-      currentChart.status !== "ready" ||
-      currentChart.oracleId !== activeChartOracleId
-    ) {
-      return;
-    }
-
-    const chart = mergeOraclePriceChartTick(currentChart, {
+    const tick = {
       timestampMs,
       price,
       ...(activeMarket.pricingModel?.forwardPrice === undefined
@@ -6306,7 +6301,11 @@ export function App() {
       ...(activeMarket.latestPriceCheckpoint === undefined
         ? {}
         : { checkpoint: activeMarket.latestPriceCheckpoint }),
-    });
+    };
+    const chart =
+      currentChart?.status === "ready" && currentChart.oracleId === activeChartOracleId
+        ? mergeOraclePriceChartTick(currentChart, tick)
+        : buildOraclePriceChartFromTick(activeChartOracleId, tick);
 
     if (chart !== currentChart) {
       oraclePriceChartRef.current = chart;

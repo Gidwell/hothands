@@ -153,6 +153,7 @@ export function createTestnetDevServerFetch({
             nowMs,
             load: () =>
               getTestnetMarketHeat({
+                appStore,
                 fetchImpl,
                 includeExpired,
                 nowMs: nowMs(),

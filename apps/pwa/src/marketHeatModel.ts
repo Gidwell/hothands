@@ -24,6 +24,11 @@ export type MarketHeatWalletStats = {
   lastSeenMs: number;
 };
 
+export type MarketHeatCopyAttribution = {
+  count: number;
+  amountUsd: number;
+};
+
 export type MarketHeatPreviewRowInput = {
   id: string;
   oracleId?: string;
@@ -42,6 +47,7 @@ export type MarketHeatPreviewRowInput = {
   heatScore: number;
   status: MarketHeatStatus;
   walletStats?: MarketHeatWalletStats;
+  copyAttribution?: MarketHeatCopyAttribution;
   fillCount?: number;
 };
 
@@ -136,6 +142,8 @@ export type MarketHeatPreviewRow = {
   entryNowTone?: "up" | "down" | "flat" | "unknown";
   walletStats?: MarketHeatWalletStats;
   walletStatsLabel?: string;
+  copyAttribution?: MarketHeatCopyAttribution;
+  copyAttributionLabel?: string;
   fillCount?: number;
   actionLabel: "Copy now";
   status: MarketHeatStatus;
@@ -392,6 +400,7 @@ function buildMarketHeatPreviewRowFromInput(
   const strikeRaw = optionalNonNegativeNumber(row.strikeRaw);
   const walletDisplayName = resolveWalletDisplayName(row.wallet, walletDisplayNames);
   const fillCount = Math.max(1, Math.floor(row.fillCount ?? 1));
+  const copyAttribution = normalizeCopyAttribution(row.copyAttribution);
 
   const previewRow: MarketHeatPreviewRow = {
     id: row.id,
@@ -426,12 +435,51 @@ function buildMarketHeatPreviewRowFromInput(
             nowMs,
           ),
         }),
+    ...(copyAttribution === undefined
+      ? {}
+      : {
+          copyAttribution,
+          copyAttributionLabel: formatCopyAttributionSummary(copyAttribution),
+        }),
     actionLabel: "Copy now",
     status: isActionableCopy ? "copy_ready" : "watching",
     statusLabel: formatTradeTime(row.observedAtMs, nowMs),
   };
 
   return annotateMarketHeatRowPrice(previewRow);
+}
+
+function normalizeCopyAttribution(
+  attribution: MarketHeatCopyAttribution | undefined,
+): MarketHeatCopyAttribution | undefined {
+  if (!attribution) {
+    return undefined;
+  }
+
+  const count = Math.floor(attribution.count);
+  const amountUsd = attribution.amountUsd;
+
+  if (count <= 0 || !Number.isFinite(amountUsd) || amountUsd < 0) {
+    return undefined;
+  }
+
+  return {
+    amountUsd,
+    count,
+  };
+}
+
+function formatCopyAttributionSummary(attribution: MarketHeatCopyAttribution): string {
+  const countLabel = attribution.count === 1
+    ? "1 copier"
+    : `${attribution.count.toLocaleString("en-US")} copiers`;
+  const amount = attribution.amountUsd;
+  const amountLabel = `$${amount.toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
+  })}`;
+
+  return `${countLabel} · ${amountLabel}`;
 }
 
 export function getCopyableMarketHeatRows(
@@ -1971,10 +2019,14 @@ function parseMarketHeatRows(payload: unknown): MarketHeatPreviewRowInput[] | nu
     .filter(isMarketHeatRowInput)
     .map((row) => {
       const walletStats = parseMarketHeatWalletStats(row.walletStats);
+      const copyAttribution = parseMarketHeatCopyAttribution(row.copyAttribution);
 
       return {
         ...row,
         ...(walletStats === null ? { walletStats: undefined } : { walletStats }),
+        ...(copyAttribution === null
+          ? { copyAttribution: undefined }
+          : { copyAttribution }),
         intervalLabel: normalizeMarketDurationLabel(row.intervalLabel),
       };
     });
@@ -2055,8 +2107,30 @@ function isMarketHeatRowInput(value: unknown): value is MarketHeatPreviewRowInpu
     isNonNegativeNumber(value.observedAtMs) &&
     isNonNegativeNumber(value.heatScore) &&
     (value.walletStats === undefined || parseMarketHeatWalletStats(value.walletStats) !== null) &&
+    (
+      value.copyAttribution === undefined ||
+      parseMarketHeatCopyAttribution(value.copyAttribution) !== null
+    ) &&
     (value.status === "copy_ready" || value.status === "watching")
   );
+}
+
+function parseMarketHeatCopyAttribution(value: unknown): MarketHeatCopyAttribution | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const count = optionalNonNegativeNumber(value.count);
+  const amountUsd = optionalNonNegativeNumber(value.amountUsd);
+
+  if (count === undefined || amountUsd === undefined || count <= 0) {
+    return null;
+  }
+
+  return {
+    amountUsd,
+    count: Math.floor(count),
+  };
 }
 
 function parseMarketHeatWalletStats(value: unknown): MarketHeatWalletStats | null {

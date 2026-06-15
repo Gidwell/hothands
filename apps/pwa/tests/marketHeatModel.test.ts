@@ -196,6 +196,36 @@ describe("market heat preview model", () => {
     expect(market?.volumeUsd).toBe(37.5);
   });
 
+  test("formats backend copy attribution summaries on feed rows", () => {
+    const [row] = buildMarketHeatPreview(
+      [
+        {
+          id: "copied-row",
+          wallet: "0xcopytarget",
+          manager: "manager-copy",
+          market: "BTC-USD",
+          oracleId: "btc-copy",
+          side: "UP",
+          strike: 72_000,
+          strikeRaw: 72_000_000_000,
+          expiryMs: 1_779_158_400_000,
+          intervalLabel: "15m",
+          observedAtMs: 1_779_070_000_000,
+          heatScore: 82,
+          status: "copy_ready",
+          copyAttribution: {
+            amountUsd: 42.5,
+            count: 2,
+          },
+        },
+      ],
+      8,
+      { nowMs: 1_779_071_000_000 },
+    ).rows;
+
+    expect(row?.copyAttributionLabel).toBe("2 copiers · $42.50");
+  });
+
   test("selects and closes a next-mint row without implying a ready signature", () => {
     const preview = buildMarketHeatPreview(MARKET_HEAT_PREVIEW_ROWS, 3, {
       nowMs: 1_779_165_600_000,

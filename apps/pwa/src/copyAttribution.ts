@@ -13,17 +13,6 @@ export type CopyAttributionRecord = {
 
 export type CopyAttributionInput = Omit<CopyAttributionRecord, "id">;
 
-export type CopyAttributionApiReceipt = {
-  receiptId: string;
-  copierWallet: string;
-  sourceWallet: string;
-  sourcePositionId: string;
-  copiedPositionId?: string;
-  status?: string;
-  amountUsd: number;
-  createdAtMs: number;
-};
-
 export type CopyAttributionTarget = {
   positionId: string;
   sourceWallet: string;
@@ -126,50 +115,6 @@ export function appendCopyAttributionRecord(
   return [record, ...records].slice(0, MAX_STORED_COPY_ATTRIBUTIONS);
 }
 
-export function copyAttributionRecordFromApiReceipt(
-  receipt: CopyAttributionApiReceipt,
-): CopyAttributionRecord | null {
-  if (receipt.status && receipt.status !== "submitted") {
-    return null;
-  }
-
-  return parseCopyAttributionRecord({
-    id: receipt.receiptId,
-    copier: receipt.copierWallet,
-    source_wallet: receipt.sourceWallet,
-    position_id: receipt.sourcePositionId,
-    amount: receipt.amountUsd,
-    timestamp: receipt.createdAtMs,
-    copied_position_id: receipt.copiedPositionId,
-  });
-}
-
-export function mergeCopyAttributionRecords(
-  ...recordGroups: Array<readonly (CopyAttributionRecord | null | undefined)[]>
-): CopyAttributionRecord[] {
-  const recordsByKey = new Map<string, CopyAttributionRecord>();
-
-  for (const record of recordGroups.flat()) {
-    if (!record) {
-      continue;
-    }
-
-    const parsedRecord = parseCopyAttributionRecord(record);
-    if (!parsedRecord) {
-      continue;
-    }
-
-    const key = copyAttributionDedupeKey(parsedRecord);
-    if (!recordsByKey.has(key)) {
-      recordsByKey.set(key, parsedRecord);
-    }
-  }
-
-  return [...recordsByKey.values()]
-    .sort((left, right) => right.timestamp - left.timestamp || left.id.localeCompare(right.id))
-    .slice(0, MAX_STORED_COPY_ATTRIBUTIONS);
-}
-
 export function summarizeCopyAttribution(
   target: CopyAttributionTarget,
   records: CopyAttributionRecord[],
@@ -202,20 +147,6 @@ export function formatCopyAttributionAmount(amount: number): string {
     maximumFractionDigits: 2,
     minimumFractionDigits: Number.isInteger(safeAmount) ? 0 : 2,
   })}`;
-}
-
-function copyAttributionDedupeKey(record: CopyAttributionRecord): string {
-  if (record.copied_position_id) {
-    return [
-      "copied",
-      record.copier.toLowerCase(),
-      record.source_wallet.toLowerCase(),
-      record.position_id,
-      record.copied_position_id,
-    ].join(":");
-  }
-
-  return `id:${record.id}`;
 }
 
 function parseCopyAttributionRecord(value: unknown): CopyAttributionRecord | null {

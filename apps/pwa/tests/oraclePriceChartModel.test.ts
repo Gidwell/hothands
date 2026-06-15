@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildOraclePriceChartFromTick,
   loadOraclePriceChart,
   loadOraclePriceChartTick,
+  shouldLoadOraclePriceChartHistory,
   type OraclePriceChart,
 } from "../src/oraclePriceChartModel";
 
@@ -195,6 +197,57 @@ describe("oracle price chart model", () => {
       forwardPrice: 72140,
       checkpoint: 112,
     });
+  });
+
+  test("seeds a lightweight mini chart from price snapshot ticks", () => {
+    const chart = buildOraclePriceChartFromTick("btc-indexed", {
+      timestampMs: 1_779_071_700_000,
+      price: 72125,
+      forwardPrice: 72140,
+      checkpoint: 112,
+    });
+
+    expect(chart).toEqual({
+      status: "ready",
+      oracleId: "btc-indexed",
+      marketLabel: "BTC/USD",
+      sourceLabel: "Indexed Testnet",
+      title: "DeepBook BTC oracle price",
+      detail: "DeepBook Predict oracle price used for BTC market settlement.",
+      latestPriceLabel: "$72,125",
+      points: [
+        {
+          timestampMs: 1_779_071_700_000,
+          price: 72125,
+          forwardPrice: 72140,
+          checkpoint: 112,
+        },
+      ],
+    });
+  });
+
+  test("loads full chart history only when the expanded chart is open", () => {
+    expect(
+      shouldLoadOraclePriceChartHistory({
+        apiBaseUrl: "https://api.hot-hands.test",
+        isOpen: false,
+        oracleId: "btc-indexed",
+      }),
+    ).toBe(false);
+    expect(
+      shouldLoadOraclePriceChartHistory({
+        apiBaseUrl: "https://api.hot-hands.test",
+        isOpen: true,
+        oracleId: "btc-indexed",
+      }),
+    ).toBe(true);
+    expect(
+      shouldLoadOraclePriceChartHistory({
+        apiBaseUrl: "",
+        isOpen: true,
+        oracleId: "btc-indexed",
+      }),
+    ).toBe(false);
   });
 
   test("keeps the current chart when the price snapshot does not include the oracle", async () => {
