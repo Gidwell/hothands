@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  clearHotHandsProfileNameCacheForTest,
   clearMainnetSuinsDisplayNameCacheForTest,
   loadHotHandsProfileNames,
   loadMainnetSuinsNames,
@@ -76,6 +77,8 @@ describe("SuiNS display names", () => {
   });
 
   test("loads Hot Hands profile names for display overlays", async () => {
+    clearHotHandsProfileNameCacheForTest();
+
     const wallet = "0xaaaa222233334444555566667777888899990001";
     const calls: string[] = [];
 
@@ -94,6 +97,51 @@ describe("SuiNS display names", () => {
             ],
           });
         },
+      }),
+    ).resolves.toEqual({
+      [wallet]: {
+        name: "Alice",
+        source: "hot_hands_profile",
+      },
+    });
+
+    expect(calls).toEqual([
+      `https://api.hot-hands.test/app/profiles?wallet=${wallet}`,
+    ]);
+  });
+
+  test("caches Hot Hands profile names between live feed refreshes", async () => {
+    clearHotHandsProfileNameCacheForTest();
+
+    const wallet = "0xaaaa222233334444555566667777888899990001";
+    let now = 1_000;
+    const calls: string[] = [];
+    const fetcher = async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return Response.json({
+        profiles: [
+          {
+            wallet,
+            displayName: "Alice",
+          },
+        ],
+      });
+    };
+
+    await loadHotHandsProfileNames({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      fetcher,
+      nowMs: () => now,
+      wallets: [wallet],
+    });
+
+    now += 1_000;
+    await expect(
+      loadHotHandsProfileNames({
+        apiBaseUrl: "https://api.hot-hands.test/",
+        fetcher,
+        nowMs: () => now,
+        wallets: [wallet],
       }),
     ).resolves.toEqual({
       [wallet]: {

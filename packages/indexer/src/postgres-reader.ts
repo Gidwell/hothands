@@ -37,6 +37,10 @@ export type ListBtcOraclesOptions = {
 };
 
 export type ListRecentTradeEventsOptions = {
+  afterCursor?: {
+    eventId: string;
+    timestampMs: number;
+  };
   kind?: "mint" | "redeem";
   limit?: number;
   hideExpiredAtMs?: number;
@@ -100,6 +104,7 @@ export function createPostgresPredictIndexerReader({
       return result.rows.map(mapOracleRow);
     },
     listRecentTradeEvents: async ({
+      afterCursor,
       kind,
       limit = DEFAULT_MARKET_LIMIT,
       hideExpiredAtMs,
@@ -122,6 +127,16 @@ export function createPostgresPredictIndexerReader({
       if (kind) {
         params.push(kind);
         filters.push(`kind = $${params.length}`);
+      }
+
+      if (afterCursor) {
+        params.push(afterCursor.timestampMs);
+        const timestampParam = `$${params.length}`;
+        params.push(afterCursor.eventId);
+        const eventParam = `$${params.length}`;
+        filters.push(
+          `(timestamp_ms > ${timestampParam} or (timestamp_ms = ${timestampParam} and event_id > ${eventParam}))`,
+        );
       }
 
       if (hideExpiredAtMs !== undefined) {

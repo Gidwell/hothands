@@ -6,6 +6,7 @@ import {
   buildMarketHeatPreview,
   computeOracleIndicativeUpPrice,
   closeMarketHeatIntent,
+  loadMarketHeatFeedUpdates,
   loadMarketHeatPreview,
   loadMarketHeatPriceSnapshot,
   loadTradeQuote,
@@ -624,6 +625,74 @@ describe("market heat preview model", () => {
     expect(preview.marketPrice.priceLabel).toBe("$71,234");
     expect(preview.rows).toHaveLength(1);
     expect(preview.rows[0].id).toBe("external-0x1111");
+  });
+
+  test("merges compact feed updates without reloading market heat", async () => {
+    const calls: string[] = [];
+    const currentPreview = {
+      ...buildMarketHeatPreview(
+        [
+          {
+            id: "external-old",
+            wallet: "0x1111222233334444555566667777888899990000",
+            manager: "manager-old",
+            market: "BTC-USD",
+            side: "UP" as const,
+            strike: 71_000,
+            expiryMs: 1_779_165_900_000,
+            intervalLabel: "15m",
+            observedAtMs: 1_779_165_000_000,
+            heatScore: 25,
+            status: "copy_ready" as const,
+          },
+        ],
+        8,
+        {
+          marketPrice: {
+            market: "BTC-USD",
+            price: 71_234,
+            source: "indexed_testnet",
+          },
+          nowMs: 1_779_165_100_000,
+        },
+      ),
+      feedCursor: "1779165000000:6f6c64",
+    };
+
+    const preview = await loadMarketHeatFeedUpdates(currentPreview, {
+      apiBaseUrl: "https://api.hot-hands.test/",
+      nowMs: 1_779_165_200_000,
+      fetcher: async (url) => {
+        calls.push(String(url));
+        return Response.json({
+          source: "indexed_testnet",
+          mode: "testnet",
+          cursor: "1779165200000:6e6577",
+          rows: [
+            {
+              id: "external-new",
+              wallet: "0x2222222233334444555566667777888899990000",
+              manager: "manager-new",
+              market: "BTC-USD",
+              side: "DOWN",
+              strike: 70_500,
+              expiryMs: 1_779_165_900_000,
+              intervalLabel: "15m",
+              observedAtMs: 1_779_165_200_000,
+              heatScore: 0,
+              status: "copy_ready",
+            },
+          ],
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      "https://api.hot-hands.test/testnet/feed-updates?cursor=1779165000000%3A6f6c64",
+    ]);
+    expect(preview.feedCursor).toBe("1779165200000:6e6577");
+    expect(preview.rows.map((row) => row.id)).toEqual(["external-new", "external-old"]);
+    expect(preview.rows[0].heatScoreLabel).toBe("-");
   });
 
   test("uses oracle SVI pricing for trade ladder indicative prices", async () => {

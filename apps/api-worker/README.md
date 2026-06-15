@@ -65,10 +65,17 @@ Postgres projections and returns `source: "indexed_testnet"` when usable rows
 are available. If the indexer is unavailable, the route falls back to live
 DeepBook Predict public testnet reads labelled `source: "live_testnet"`, then to
 deterministic captured activity labelled `source: "captured_testnet"`.
+The PWA uses this as a full feed resync, not the every-second live tape path.
 Rows are returned newest-first from the BTC Predict event stream, so different
 expiry buckets can appear together. The endpoint returns a bounded candidate
 set that includes the latest traders plus high-heat traders so the PWA can
 switch between `Latest` and `Heat` ordering without losing the live tape.
+
+`GET /testnet/feed-updates?cursor=...` is the lightweight live tape path. It
+returns only newly indexed BTC mint rows after the opaque cursor emitted by
+`/testnet/market-heat` or the previous feed update. It intentionally omits
+market metadata, pricing models, wallet stats, and copy attribution; those are
+refreshed by the slower full snapshot and price snapshot paths.
 
 Rows use the browser-facing input shape:
 

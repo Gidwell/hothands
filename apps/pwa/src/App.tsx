@@ -65,6 +65,7 @@ import {
   computeOracleIndicativeUpPrice,
   getCopyableMarketHeatRows,
   loadTradeQuote,
+  loadMarketHeatFeedUpdates,
   loadMarketHeatPreview,
   loadMarketHeatPriceSnapshot,
   preserveMarketHeatAvailableMarketStrikes,
@@ -155,7 +156,8 @@ import {
 
 const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_PRICE_REFRESH_MS = 1_000;
-const MARKET_HEAT_ROWS_REFRESH_MS = 3_000;
+const MARKET_HEAT_FEED_UPDATES_REFRESH_MS = 1_000;
+const MARKET_HEAT_ROWS_REFRESH_MS = 15_000;
 const COMPACT_ORACLE_CHART_HISTORY_MS = 15 * 60_000;
 const COMPACT_ORACLE_CHART_MAX_POINTS = 900;
 const DEFAULT_SHARE_URL = "https://hothands.app/";
@@ -6082,6 +6084,7 @@ export function App() {
 
   useEffect(() => {
     let isCurrent = true;
+    let isFeedUpdatesRefreshing = false;
     let isPriceRefreshing = false;
     let isRowsRefreshing = false;
 
@@ -6133,6 +6136,28 @@ export function App() {
       }
     };
 
+    const refreshMarketHeatFeedUpdates = async () => {
+      if (isFeedUpdatesRefreshing) {
+        return;
+      }
+
+      isFeedUpdatesRefreshing = true;
+      try {
+        const preview = await loadMarketHeatFeedUpdates(marketHeatPreviewRef.current, {
+          apiBaseUrl: realtimeApiBaseUrl,
+          includeExpired: marketHeatShowExpired,
+          useHotHandsProfileNames: true,
+          useMainnetSuinsNames: true,
+        });
+        if (isCurrent && preview !== marketHeatPreviewRef.current) {
+          marketHeatPreviewRef.current = preview;
+          setMarketHeatPreview(preview);
+        }
+      } finally {
+        isFeedUpdatesRefreshing = false;
+      }
+    };
+
     void refreshMarketHeat();
 
     if (previewMode !== "market" || !realtimeApiBaseUrl) {
@@ -6145,6 +6170,12 @@ export function App() {
       refreshMarketHeatPrice,
       MARKET_HEAT_PRICE_REFRESH_MS,
     );
+    const feedUpdatesRefreshTimer = shouldAutoRefreshMarketHeatRows(activeView)
+      ? window.setInterval(
+          refreshMarketHeatFeedUpdates,
+          MARKET_HEAT_FEED_UPDATES_REFRESH_MS,
+        )
+      : null;
     const rowsRefreshMs = getMarketHeatRowsRefreshMs(activeView);
     const rowsRefreshTimer = rowsRefreshMs === null
       ? null
@@ -6153,6 +6184,9 @@ export function App() {
     return () => {
       isCurrent = false;
       window.clearInterval(priceRefreshTimer);
+      if (feedUpdatesRefreshTimer !== null) {
+        window.clearInterval(feedUpdatesRefreshTimer);
+      }
       if (rowsRefreshTimer !== null) {
         window.clearInterval(rowsRefreshTimer);
       }

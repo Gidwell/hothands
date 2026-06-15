@@ -26,8 +26,17 @@ export interface MarketHeatProjection {
   mode: "testnet";
   detail: string;
   capturedAt: string;
+  cursor?: string;
   marketPrice: MarketHeatPrice;
   markets: MarketHeatTradeMarket[];
+  rows: MarketHeatRow[];
+}
+
+export interface MarketHeatFeedUpdates {
+  source: MarketHeatSource;
+  mode: "testnet";
+  capturedAt: string;
+  cursor?: string;
   rows: MarketHeatRow[];
 }
 
@@ -115,6 +124,7 @@ const LATEST_ACTIVITY_ROW_LIMIT = 48;
 const HEAT_ACCOUNT_ROW_LIMIT = 48;
 const OPEN_POSITION_FEED_ROW_LIMIT = 512;
 const WALLET_STATS_POSITION_LIMIT = 10_000;
+const FEED_UPDATES_ROW_LIMIT = 24;
 
 export function getCapturedTestnetMarketHeat(): MarketHeatProjection {
   return CAPTURED_TESTNET_MARKET_HEAT;
@@ -153,6 +163,50 @@ export async function getTestnetMarketHeat({
   } catch {
     return getCapturedTestnetMarketHeat();
   }
+}
+
+export async function getTestnetFeedUpdates({
+  cursor,
+  includeExpired = false,
+  reader,
+  nowMs = Date.now()
+}: Pick<TestnetMarketHeatOptions, "includeExpired" | "reader" | "nowMs"> & {
+  cursor?: string | null;
+} = {}): Promise<MarketHeatFeedUpdates> {
+  if (!reader) {
+    return {
+      source: "live_testnet",
+      mode: "testnet",
+      capturedAt: new Date().toISOString(),
+      ...(cursor ? { cursor } : {}),
+      rows: []
+    };
+  }
+
+  const afterCursor = parseMarketHeatFeedCursor(cursor);
+  const [oracles, events] = await Promise.all([
+    reader.listBtcOracles({ includeSettled: true }),
+    reader.listRecentTradeEvents({
+      ...(afterCursor ? { afterCursor } : {}),
+      kind: "mint",
+      limit: FEED_UPDATES_ROW_LIMIT,
+      ...(includeExpired ? {} : { hideExpiredAtMs: nowMs })
+    })
+  ]);
+  const oraclesById = new Map(oracles.map((oracle) => [oracle.oracle_id, oracle]));
+  const sortedEvents = dedupeEvents(events).sort(compareEventsByLatest);
+  const rows = sortedEvents.map((event) =>
+    mapIndexedTradeEventToRow(event, new Map(), oraclesById)
+  );
+  const newestEvent = sortedEvents[0];
+
+  return {
+    source: "indexed_testnet",
+    mode: "testnet",
+    capturedAt: new Date().toISOString(),
+    cursor: newestEvent ? encodeMarketHeatFeedCursor(newestEvent) : cursor ?? undefined,
+    rows
+  };
 }
 
 async function attachCopyAttributionToMarketHeat(
@@ -313,6 +367,7 @@ async function getIndexedTestnetMarketHeat(
     mode: "testnet",
     detail: "Indexed DeepBook Predict BTC market heat from testnet reader data.",
     capturedAt: new Date().toISOString(),
+    cursor: encodeLatestMarketHeatFeedCursor(events),
     marketPrice: {
       market: "BTC-USD",
       price: normalizeStrike(selectedPrice?.spot ?? 0),
@@ -365,6 +420,7 @@ async function getLiveTestnetMarketHeat(fetchImpl: typeof fetch): Promise<Market
     mode: "testnet",
     detail: "Live DeepBook Predict BTC market heat from the public testnet server.",
     capturedAt: new Date().toISOString(),
+    cursor: encodeLatestMarketHeatFeedCursor(allEvents),
     marketPrice: {
       market: "BTC-USD",
       price: normalizeStrike(canary.latestPrice?.spot ?? 0),
@@ -373,6 +429,60 @@ async function getLiveTestnetMarketHeat(fetchImpl: typeof fetch): Promise<Market
     markets: canary.availableBtcMarkets.map(mapAvailableBtcMarket),
     rows
   };
+}
+
+function encodeLatestMarketHeatFeedCursor(
+  events: PredictNormalizedTradeEvent[]
+): string | undefined {
+  const latestMint = [...events]
+    .filter((event) => event.kind === "mint")
+    .sort(compareEventsByLatest)[0];
+
+  return latestMint ? encodeMarketHeatFeedCursor(latestMint) : undefined;
+}
+
+function encodeMarketHeatFeedCursor(
+  event: Pick<PredictNormalizedTradeEvent, "eventId" | "timestampMs">
+): string {
+  return `${Math.trunc(event.timestampMs)}:${encodeCursorEventId(event.eventId)}`;
+}
+
+function parseMarketHeatFeedCursor(
+  cursor: string | null | undefined
+): { eventId: string; timestampMs: number } | undefined {
+  if (!cursor) {
+    return undefined;
+  }
+
+  const [timestampPart, eventPart] = cursor.split(":", 2);
+  const timestampMs = Number(timestampPart);
+  const eventId = eventPart ? decodeCursorEventId(eventPart) : "";
+
+  return Number.isFinite(timestampMs) && timestampMs > 0 && eventId
+    ? {
+        eventId,
+        timestampMs
+      }
+    : undefined;
+}
+
+function encodeCursorEventId(eventId: string): string {
+  return Array.from(eventId)
+    .map((character) => character.charCodeAt(0).toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function decodeCursorEventId(encoded: string): string {
+  if (!/^[0-9a-f]*$/i.test(encoded) || encoded.length % 2 !== 0) {
+    return "";
+  }
+
+  let decoded = "";
+  for (let index = 0; index < encoded.length; index += 2) {
+    decoded += String.fromCharCode(Number.parseInt(encoded.slice(index, index + 2), 16));
+  }
+
+  return decoded;
 }
 
 function dedupeEvents(events: PredictNormalizedTradeEvent[]): PredictNormalizedTradeEvent[] {

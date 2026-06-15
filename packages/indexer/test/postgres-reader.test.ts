@@ -226,6 +226,36 @@ describe("Postgres Predict indexer reader", () => {
     expect(calls[0]?.params).toEqual(["0xwallet", "redeem", 10]);
   });
 
+  test("filters indexed trade events after an exact feed cursor", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlQueryExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      return { rows: [] };
+    };
+    const reader = createPostgresPredictIndexerReader({ execute });
+
+    await reader.listRecentTradeEvents({
+      afterCursor: {
+        eventId: "mint:0xold:1",
+        timestampMs: 1_779_070_800_000,
+      },
+      kind: "mint",
+      limit: 16,
+    });
+
+    expect(calls[0]?.statement).toContain(
+      "(timestamp_ms > $2 or (timestamp_ms = $2 and event_id > $3))",
+    );
+    expect(calls[0]?.statement).toContain("kind = $1");
+    expect(calls[0]?.statement).toContain("limit $4");
+    expect(calls[0]?.params).toEqual([
+      "mint",
+      1_779_070_800_000,
+      "mint:0xold:1",
+      16,
+    ]);
+  });
+
   test("reads the latest indexed oracle price without using ascending history order", async () => {
     const calls: SqlCall[] = [];
     const execute: SqlQueryExecutor = async (statement, params = []) => {

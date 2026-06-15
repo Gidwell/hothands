@@ -23,7 +23,7 @@ import {
   type VerifyWalletSignature
 } from "./app-auth";
 import type { HotHandsAppStore } from "./app-storage";
-import { getTestnetMarketHeat } from "./market-heat";
+import { getTestnetFeedUpdates, getTestnetMarketHeat } from "./market-heat";
 import {
   createIndexedOraclePriceHistoryLoader,
   getTestnetOraclePrices
@@ -118,6 +118,37 @@ export default {
               getTestnetMarketHeat({
                 appStore: env.appStore,
                 fetchImpl: env.fetch ?? fetch,
+                includeExpired,
+                nowMs: Date.now(),
+                reader: env.indexerReader
+              })
+          })
+        ).value
+      );
+    }
+
+    if (url.pathname === "/testnet/feed-updates") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      const includeExpired = parseIncludeExpiredRequest(url);
+      const cursor = url.searchParams.get("cursor");
+      return json(
+        (
+          await readThroughResponseCache({
+            cache: responseCache,
+            key: testnetCacheKey(
+              [
+                includeExpired ? "feed-updates:expired" : "feed-updates:live",
+                cursor ?? "latest"
+              ].join(":"),
+              env
+            ),
+            ttlMs: TESTNET_SNAPSHOT_CACHE_TTL_MS,
+            load: () =>
+              getTestnetFeedUpdates({
+                cursor,
                 includeExpired,
                 nowMs: Date.now(),
                 reader: env.indexerReader

@@ -4,7 +4,7 @@ import {
   type PredictIndexerReader
 } from "@hot-hands/indexer";
 import worker, { type Env } from "../src/index";
-import { getTestnetMarketHeat } from "../src/market-heat";
+import { getTestnetFeedUpdates, getTestnetMarketHeat } from "../src/market-heat";
 import { getTestnetOraclePrices } from "../src/oracle-prices";
 import { getTestnetPriceSnapshot } from "../src/price-snapshot";
 
@@ -452,6 +452,75 @@ describe("testnet market heat endpoint", () => {
         limit: expect.any(Number)
       }
     ]);
+  });
+
+  test("serves compact feed updates after the last feed cursor", async () => {
+    const requests: unknown[] = [];
+    const reader = createIndexedMarketHeatReader();
+    const cursor = `${1_779_070_800_000}:${hexEncode("mint:indexed:1")}`;
+    const updates = await getTestnetFeedUpdates({
+      cursor,
+      nowMs: 1_779_071_500_000,
+      reader: {
+        ...reader,
+        listRecentTradeEvents: async (options) => {
+          requests.push(options);
+          return [
+            indexedTradeEvent({
+              actor: "0xnew",
+              eventId: "mint:indexed:2",
+              managerId: "manager-new",
+              oracleId: "btc-indexed-short",
+              timestampMs: 1_779_070_801_000
+            })
+          ];
+        }
+      }
+    });
+
+    expect(requests).toEqual([
+      {
+        afterCursor: {
+          eventId: "mint:indexed:1",
+          timestampMs: 1_779_070_800_000
+        },
+        hideExpiredAtMs: 1_779_071_500_000,
+        kind: "mint",
+        limit: expect.any(Number)
+      }
+    ]);
+    expect(updates).toMatchObject({
+      source: "indexed_testnet",
+      mode: "testnet",
+      rows: [
+        expect.objectContaining({
+          id: "indexed-manager-new-new-mint:indexed:2",
+          status: "copy_ready",
+          wallet: "0xnew"
+        })
+      ]
+    });
+    expect(updates.cursor).toBe(`${1_779_070_801_000}:${hexEncode("mint:indexed:2")}`);
+    expect(updates).not.toHaveProperty("markets");
+    expect(updates).not.toHaveProperty("marketPrice");
+
+    const response = await worker.fetch(
+      new Request(`https://api.hot-hands.test/testnet/feed-updates?cursor=${cursor}`),
+      {
+        indexerReader: {
+          ...reader,
+          listRecentTradeEvents: async () => []
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      source: "indexed_testnet",
+      rows: []
+    });
+    expect(body).not.toHaveProperty("markets");
   });
 
   test("requests the same deep wallet stats window used by leaderboards", async () => {
@@ -1651,4 +1720,10 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" }
   });
+}
+
+function hexEncode(value: string): string {
+  return Array.from(value)
+    .map((character) => character.charCodeAt(0).toString(16).padStart(2, "0"))
+    .join("");
 }

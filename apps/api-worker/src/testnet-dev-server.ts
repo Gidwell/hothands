@@ -1,4 +1,4 @@
-import { getTestnetMarketHeat } from "./market-heat";
+import { getTestnetFeedUpdates, getTestnetMarketHeat } from "./market-heat";
 import {
   handleHotHandsAppRequest,
   type VerifyWalletSignature
@@ -75,6 +75,7 @@ const TESTNET_DEV_SERVER_ROUTES = [
   "/app/copy-receipts",
   "/testnet/indexer-status",
   "/testnet/market-heat",
+  "/testnet/feed-updates",
   "/testnet/price-snapshot",
   "/testnet/oracle-settlement",
   "/testnet/oracle-prices",
@@ -155,6 +156,35 @@ export function createTestnetDevServerFetch({
               getTestnetMarketHeat({
                 appStore,
                 fetchImpl,
+                includeExpired,
+                nowMs: nowMs(),
+                reader: indexerReader
+              })
+          })
+        ).value
+      );
+    }
+
+    if (url.pathname === "/testnet/feed-updates") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      const includeExpired = parseIncludeExpiredRequest(url);
+      const cursor = url.searchParams.get("cursor");
+      return json(
+        (
+          await readThroughResponseCache({
+            cache: responseCache,
+            key: [
+              includeExpired ? "testnet:feed-updates:expired" : "testnet:feed-updates:live",
+              cursor ?? "latest"
+            ].join(":"),
+            ttlMs: TESTNET_SNAPSHOT_CACHE_TTL_MS,
+            nowMs,
+            load: () =>
+              getTestnetFeedUpdates({
+                cursor,
                 includeExpired,
                 nowMs: nowMs(),
                 reader: indexerReader

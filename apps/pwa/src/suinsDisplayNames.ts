@@ -20,6 +20,7 @@ export type LoadMainnetSuinsNamesOptions = {
 export type LoadHotHandsProfileNamesOptions = {
   apiBaseUrl?: string;
   fetcher?: typeof fetch;
+  nowMs?: () => number;
   wallets: string[];
 };
 
@@ -44,6 +45,8 @@ const MAINNET_SUINS_LOOKUP_LIMIT = 50;
 const MAINNET_SUINS_CACHE_TTL_MS = 15 * 60_000;
 const MAINNET_SUINS_FAILURE_CACHE_TTL_MS = 60_000;
 const MAINNET_SUINS_REQUEST_TIMEOUT_MS = 500;
+const HOT_HANDS_PROFILE_NAMES_CACHE_TTL_MS = 60_000;
+const HOT_HANDS_PROFILE_NAMES_FAILURE_CACHE_TTL_MS = 10_000;
 const HOT_HANDS_PROFILE_NAMES_REQUEST_TIMEOUT_MS = 500;
 const DEMO_SUINS_NAMES = [
   "alpha.sui",
@@ -61,6 +64,7 @@ const DEMO_SUINS_NAMES = [
 ];
 
 const mainnetSuinsDisplayNameCache = new Map<string, CachedWalletDisplayName>();
+const hotHandsProfileNameCache = new Map<string, CachedWalletDisplayName>();
 
 export async function loadMainnetSuinsNames({
   apiBaseUrl,
@@ -109,25 +113,63 @@ export async function loadMainnetSuinsNames({
 export async function loadHotHandsProfileNames({
   apiBaseUrl,
   fetcher = fetch,
+  nowMs = Date.now,
   wallets,
 }: LoadHotHandsProfileNamesOptions): Promise<WalletDisplayNamesByAddress> {
   const normalizedBaseUrl = apiBaseUrl?.trim();
   const lookupWallets = uniqueWallets(wallets);
+  const now = nowMs();
 
   if (!normalizedBaseUrl || lookupWallets.length === 0) {
     return {};
   }
 
+  const displayNames = readCachedDisplayNamesFromCache(
+    hotHandsProfileNameCache,
+    lookupWallets,
+    now,
+  );
+  const uncachedWallets = lookupWallets.filter(
+    (wallet) =>
+      !isFreshCachedDisplayNameInCache(hotHandsProfileNameCache, walletLookupKey(wallet), now),
+  );
+
+  if (uncachedWallets.length === 0) {
+    return displayNames;
+  }
+
   try {
     const response = await fetchWithTimeout(
       fetcher,
-      buildHotHandsProfileNamesUrl(normalizedBaseUrl, lookupWallets),
+      buildHotHandsProfileNamesUrl(normalizedBaseUrl, uncachedWallets),
       HOT_HANDS_PROFILE_NAMES_REQUEST_TIMEOUT_MS,
     );
 
-    return response.ok ? parseHotHandsProfileNames(await response.json()) : {};
+    if (!response.ok) {
+      writeFailedCacheEntriesToCache(hotHandsProfileNameCache, uncachedWallets, now);
+      return readCachedDisplayNamesFromCache(
+        hotHandsProfileNameCache,
+        lookupWallets,
+        now,
+        true,
+      );
+    }
+
+    writeHotHandsProfileResponseCacheEntries(await response.json(), uncachedWallets, now);
+    return readCachedDisplayNamesFromCache(
+      hotHandsProfileNameCache,
+      lookupWallets,
+      now,
+      true,
+    );
   } catch {
-    return {};
+    writeFailedCacheEntriesToCache(hotHandsProfileNameCache, uncachedWallets, now);
+    return readCachedDisplayNamesFromCache(
+      hotHandsProfileNameCache,
+      lookupWallets,
+      now,
+      true,
+    );
   }
 }
 
@@ -228,6 +270,10 @@ export function clearMainnetSuinsDisplayNameCacheForTest(): void {
   mainnetSuinsDisplayNameCache.clear();
 }
 
+export function clearHotHandsProfileNameCacheForTest(): void {
+  hotHandsProfileNameCache.clear();
+}
+
 function buildMainnetSuinsNamesUrl(apiBaseUrl: string, wallets: string[]): string {
   const url = new URL(`${apiBaseUrl.replace(/\/+$/, "")}/testnet/mainnet-suins-names`);
 
@@ -322,6 +368,48 @@ function isFreshCachedDisplayName(key: string, nowMs: number): boolean {
   return nowMs - cached.cachedAtMs < ttl;
 }
 
+function readCachedDisplayNamesFromCache(
+  cache: Map<string, CachedWalletDisplayName>,
+  wallets: string[],
+  nowMs: number,
+  includeStaleResolved = false,
+): WalletDisplayNamesByAddress {
+  const displayNames: WalletDisplayNamesByAddress = {};
+
+  for (const wallet of wallets) {
+    const key = walletLookupKey(wallet);
+    const cached = cache.get(key);
+
+    if (
+      cached?.displayName &&
+      (includeStaleResolved ||
+        isFreshCachedDisplayNameInCache(cache, key, nowMs))
+    ) {
+      displayNames[key] = cached.displayName;
+    }
+  }
+
+  return displayNames;
+}
+
+function isFreshCachedDisplayNameInCache(
+  cache: Map<string, CachedWalletDisplayName>,
+  key: string,
+  nowMs: number,
+): boolean {
+  const cached = cache.get(key);
+  if (!cached) {
+    return false;
+  }
+
+  const ttl =
+    cached.status === "failed"
+      ? HOT_HANDS_PROFILE_NAMES_FAILURE_CACHE_TTL_MS
+      : HOT_HANDS_PROFILE_NAMES_CACHE_TTL_MS;
+
+  return nowMs - cached.cachedAtMs < ttl;
+}
+
 function writeResponseCacheEntries(
   response: unknown,
   requestedWallets: string[],
@@ -373,6 +461,50 @@ function writeFailedCacheEntries(wallets: string[], cachedAtMs: number): void {
     const existing = mainnetSuinsDisplayNameCache.get(key);
 
     mainnetSuinsDisplayNameCache.set(key, {
+      cachedAtMs,
+      displayName: existing?.displayName ?? null,
+      status: "failed",
+    });
+  }
+}
+
+function writeHotHandsProfileResponseCacheEntries(
+  response: unknown,
+  requestedWallets: string[],
+  cachedAtMs: number,
+): void {
+  const displayNames = parseHotHandsProfileNames(response);
+
+  for (const [wallet, displayName] of Object.entries(displayNames)) {
+    hotHandsProfileNameCache.set(walletLookupKey(wallet), {
+      cachedAtMs,
+      displayName,
+      status: "resolved",
+    });
+  }
+
+  for (const wallet of requestedWallets) {
+    const key = walletLookupKey(wallet);
+    if (!hotHandsProfileNameCache.has(key)) {
+      hotHandsProfileNameCache.set(key, {
+        cachedAtMs,
+        displayName: null,
+        status: "missing",
+      });
+    }
+  }
+}
+
+function writeFailedCacheEntriesToCache(
+  cache: Map<string, CachedWalletDisplayName>,
+  wallets: string[],
+  cachedAtMs: number,
+): void {
+  for (const wallet of wallets) {
+    const key = walletLookupKey(wallet);
+    const existing = cache.get(key);
+
+    cache.set(key, {
       cachedAtMs,
       displayName: existing?.displayName ?? null,
       status: "failed",

@@ -173,6 +173,7 @@ export type MarketHeatPreview = {
   modeLabel: "Testnet";
   actionLabel: "Copy";
   detailLabel: "Live BTC Predict mints";
+  feedCursor?: string;
   sourceLabel: string;
   marketPrice: MarketHeatPrice;
   availableMarkets?: MarketHeatAvailableMarket[];
@@ -197,6 +198,7 @@ export type LoadMarketHeatPreviewOptions = {
 };
 
 export type LoadMarketHeatPriceSnapshotOptions = LoadMarketHeatPreviewOptions;
+export type LoadMarketHeatFeedUpdatesOptions = LoadMarketHeatPreviewOptions;
 
 export type BuildMarketHeatPreviewOptions = {
   marketPrice?: MarketHeatPriceInput;
@@ -1179,6 +1181,7 @@ export async function loadMarketHeatPreview({
     return {
       ...preview,
       availableMarkets,
+      ...parseMarketHeatFeedCursor(payload),
       rows: annotateMarketHeatRowPrices(preview.rows, availableMarkets),
       sourceLabel,
     };
@@ -1267,6 +1270,94 @@ export async function loadMarketHeatPriceSnapshot(
   }
 }
 
+export async function loadMarketHeatFeedUpdates(
+  currentPreview: MarketHeatPreview,
+  {
+    apiBaseUrl,
+    fetcher = fetch,
+    includeExpired = false,
+    nowMs = Date.now(),
+    timeZone,
+    useHotHandsProfileNames = false,
+    useMainnetSuinsNames = false,
+  }: LoadMarketHeatFeedUpdatesOptions = {},
+): Promise<MarketHeatPreview> {
+  const normalizedBaseUrl = apiBaseUrl?.trim();
+
+  if (!normalizedBaseUrl || !currentPreview.feedCursor) {
+    return currentPreview;
+  }
+
+  try {
+    const response = await fetcher(
+      buildMarketHeatFeedUpdatesUrl(
+        normalizedBaseUrl,
+        currentPreview.feedCursor,
+        includeExpired,
+      ),
+    );
+
+    if (!response.ok) {
+      return currentPreview;
+    }
+
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || !Array.isArray(payload.rows)) {
+      return currentPreview;
+    }
+
+    const cursorPatch = parseMarketHeatFeedCursor(payload);
+    const rowInputs = parseMarketHeatRows(payload) ?? [];
+    if (rowInputs.length === 0) {
+      return cursorPatch.feedCursor && cursorPatch.feedCursor !== currentPreview.feedCursor
+        ? {
+            ...currentPreview,
+            ...cursorPatch,
+          }
+        : currentPreview;
+    }
+
+    const rowWallets = rowInputs.map((row) => row.wallet);
+    const hotHandsProfileDisplayNames = useHotHandsProfileNames
+      ? await loadHotHandsProfileNames({
+          apiBaseUrl: normalizedBaseUrl,
+          fetcher,
+          nowMs: () => nowMs,
+          wallets: rowWallets,
+        }).catch(() => ({}))
+      : {};
+    const mainnetWalletDisplayNames = useMainnetSuinsNames
+      ? await loadMainnetSuinsNames({
+          apiBaseUrl: normalizedBaseUrl,
+          fetcher,
+          nowMs: () => nowMs,
+          wallets: rowWallets,
+        }).catch(() => ({}))
+      : {};
+    const walletDisplayNames = {
+      ...mainnetWalletDisplayNames,
+      ...hotHandsProfileDisplayNames,
+    };
+    const nextRows = buildMarketHeatPreview(rowInputs, MARKET_HEAT_CANDIDATE_LIMIT, {
+      marketPrice: marketHeatPriceInputFromPreview(currentPreview),
+      nowMs,
+      timeZone,
+      walletDisplayNames,
+    }).rows;
+
+    return {
+      ...currentPreview,
+      ...cursorPatch,
+      rows: annotateMarketHeatRowPrices(
+        mergeMarketHeatPreviewRows(currentPreview.rows, nextRows),
+        currentPreview.availableMarkets,
+      ),
+    };
+  } catch {
+    return currentPreview;
+  }
+}
+
 export function preserveMarketHeatAvailableMarketStrikes(
   nextPreview: MarketHeatPreview,
   currentPreview: Pick<MarketHeatPreview, "availableMarkets">,
@@ -1338,6 +1429,20 @@ function buildMarketHeatUrl(apiBaseUrl: string, includeExpired: boolean): string
 
 function buildMarketHeatPriceSnapshotUrl(apiBaseUrl: string): string {
   return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/price-snapshot`;
+}
+
+function buildMarketHeatFeedUpdatesUrl(
+  apiBaseUrl: string,
+  cursor: string,
+  includeExpired: boolean,
+): string {
+  const url = new URL(`${apiBaseUrl.replace(/\/+$/, "")}/testnet/feed-updates`);
+  url.searchParams.set("cursor", cursor);
+  if (includeExpired) {
+    url.searchParams.set("includeExpired", "true");
+  }
+
+  return url.toString();
 }
 
 function buildTradeQuoteUrl(
@@ -1453,6 +1558,54 @@ function annotateMarketHeatRowPrices(
   availableMarkets?: MarketHeatAvailableMarket[],
 ): MarketHeatPreviewRow[] {
   return rows.map((row) => annotateMarketHeatRowPrice(row, availableMarkets));
+}
+
+function mergeMarketHeatPreviewRows(
+  currentRows: MarketHeatPreviewRow[],
+  nextRows: MarketHeatPreviewRow[],
+): MarketHeatPreviewRow[] {
+  const rowsById = new Map(currentRows.map((row) => [row.id, row]));
+
+  for (const nextRow of nextRows) {
+    const currentRow = rowsById.get(nextRow.id);
+    rowsById.set(
+      nextRow.id,
+      currentRow
+        ? {
+            ...currentRow,
+            ...nextRow,
+            ...(nextRow.walletStats === undefined && currentRow.walletStats !== undefined
+              ? {
+                  walletStats: currentRow.walletStats,
+                  walletStatsLabel: currentRow.walletStatsLabel,
+                }
+              : {}),
+            ...(nextRow.copyAttribution === undefined &&
+            currentRow.copyAttribution !== undefined
+              ? {
+                  copyAttribution: currentRow.copyAttribution,
+                  copyAttributionLabel: currentRow.copyAttributionLabel,
+                }
+              : {}),
+          }
+        : nextRow,
+    );
+  }
+
+  return sortMarketHeatRows([...rowsById.values()], "latest").slice(
+    0,
+    MARKET_HEAT_CANDIDATE_LIMIT,
+  );
+}
+
+function marketHeatPriceInputFromPreview(
+  preview: Pick<MarketHeatPreview, "marketPrice">,
+): MarketHeatPriceInput {
+  return {
+    market: "BTC-USD",
+    price: parseFormattedUsd(preview.marketPrice.priceLabel) ?? 0,
+    source: "indexed_testnet",
+  };
 }
 
 function annotateMarketHeatRowPrice(
@@ -2032,6 +2185,14 @@ function parseMarketHeatRows(payload: unknown): MarketHeatPreviewRowInput[] | nu
     });
 
   return rows.length > 0 ? rows : null;
+}
+
+function parseMarketHeatFeedCursor(payload: unknown): Pick<MarketHeatPreview, "feedCursor"> {
+  if (!isRecord(payload) || !isNonEmptyString(payload.cursor)) {
+    return {};
+  }
+
+  return { feedCursor: payload.cursor };
 }
 
 function parseMarketHeatPrice(payload: unknown): MarketHeatPriceInput | null {

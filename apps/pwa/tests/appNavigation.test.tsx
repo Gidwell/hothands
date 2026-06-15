@@ -252,8 +252,8 @@ describe("mobile app navigation", () => {
     expect(shouldAutoRefreshMarketHeatRows("trade")).toBe(false);
     expect(shouldAutoRefreshMarketHeatRows("portfolio")).toBe(false);
     expect(shouldAutoRefreshMarketHeatRows("leaderboards")).toBe(false);
-    expect(getMarketHeatRowsRefreshMs("feed")).toBe(3000);
-    expect(getMarketHeatRowsRefreshMs("profile")).toBe(3000);
+    expect(getMarketHeatRowsRefreshMs("feed")).toBe(15000);
+    expect(getMarketHeatRowsRefreshMs("profile")).toBe(15000);
     expect(getMarketHeatRowsRefreshMs("trade")).toBeNull();
   });
 
