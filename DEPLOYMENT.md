@@ -104,7 +104,9 @@ worker runs a price-only backfill from inside Railway before live polling starts
 then resumes the normal latest-price indexer. `1000` keeps one historical point
 per second, matching the live chart cadence closely enough for smooth graphs.
 Writes are idempotent by price event ID, so reruns fill missing points without
-duplicating existing rows.
+duplicating existing rows. Chart-history backfill is active-market only; do not
+rebuild price/SVI history for expired oracles because those rows are intentionally
+pruned after expiry.
 
 ### Manual Railway Deploys
 
@@ -146,8 +148,9 @@ railway run --service hothands-api -- bun run indexer:backfill:predict -- --writ
 ```
 
 Keep `--price-window-concurrency` low, usually `2`, if the public Predict server
-starts returning rate limits. By default this covers the current active BTC
-trade markets; use explicit `--oracle-id` values for targeted diagnostics.
+starts returning rate limits. Price/SVI history backfills cover only current
+active BTC trade markets. Explicit `--oracle-id` values may still be useful for
+trade-history diagnostics, but expired IDs are ignored for price/SVI series.
 
 If Railway SSH is configured for the machine, the same command can run inside the
 private network:

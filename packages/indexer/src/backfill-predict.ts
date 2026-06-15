@@ -26,7 +26,6 @@ export type BackfillCliOptions = {
   priceWindowDays?: number;
   priceWindowMs: number;
   sviLimit: number;
-  includeAllBtcOraclePrices: boolean;
   includeOracleTrades: boolean;
   includePositions: boolean;
   includePrices: boolean;
@@ -89,9 +88,6 @@ export function parseBackfillCliOptions({
       lastValue(parsed, "svi-limit") ?? env.HOT_HANDS_INDEXER_SVI_LIMIT,
       1_000,
     ),
-    includeAllBtcOraclePrices:
-      parsed.flags.has("all-btc-oracle-prices") ||
-      env.HOT_HANDS_INDEXER_ALL_BTC_ORACLE_PRICES === "true",
     includeOracleTrades:
       !parsed.flags.has("prices-only") &&
       !parsed.flags.has("skip-oracle-trades") &&
@@ -141,7 +137,6 @@ async function main() {
       priceWindowConcurrency: cli.priceWindowConcurrency,
       priceWindowMs: cli.priceWindowMs,
       sviLimit: cli.sviLimit,
-      includeAllBtcOraclePrices: cli.includeAllBtcOraclePrices,
       includeOracleTrades: cli.includeOracleTrades,
       includePositions: cli.includePositions,
       includePrices: cli.includePrices,

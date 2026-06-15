@@ -21,7 +21,6 @@ export type DeepBookPredictBackfillOptions = {
   priceWindowConcurrency?: number;
   priceWindowMs?: number;
   sviLimit?: number;
-  includeAllBtcOraclePrices?: boolean;
   includeOracleTrades?: boolean;
   includePositions?: boolean;
   includePrices?: boolean;
@@ -54,7 +53,6 @@ export async function runDeepBookPredictBackfill({
   priceWindowConcurrency = DEFAULT_PRICE_WINDOW_CONCURRENCY,
   priceWindowMs = DEFAULT_PRICE_WINDOW_MS,
   sviLimit = 1_000,
-  includeAllBtcOraclePrices = false,
   includeOracleTrades = true,
   includePositions = true,
   includePrices = true,
@@ -62,7 +60,11 @@ export async function runDeepBookPredictBackfill({
 }: DeepBookPredictBackfillOptions): Promise<DeepBookPredictBackfillSummary> {
   const canary = await createPredictReadCanary({ config, fetchImpl }).run();
   const btcOracles = canary.btcOracles;
-  const selectedOracleIds = oracleIds ?? canary.availableBtcMarkets.map((market) => market.oracleId);
+  const activeBtcOracleIds = new Set(canary.availableBtcMarkets.map((market) => market.oracleId));
+  const selectedOracleIds = oracleIds ?? [...activeBtcOracleIds];
+  const selectedSeriesOracleIds = selectedOracleIds.filter((oracleId) =>
+    activeBtcOracleIds.has(oracleId),
+  );
   await store.upsertOracles(btcOracles);
 
   const tradeClient = createPredictTradeHistoryClient({ config, fetchImpl });
@@ -86,11 +88,7 @@ export async function runDeepBookPredictBackfill({
   );
 
   const priceClient = createPredictOraclePriceClient({ config, fetchImpl });
-  const selectedPriceOracleIds = includeAllBtcOraclePrices
-    ? btcOracles
-      .filter((oracle) => oracle.underlying_asset === "BTC")
-      .map((oracle) => oracle.oracle_id)
-    : selectedOracleIds;
+  const selectedPriceOracleIds = selectedSeriesOracleIds;
   const oraclePriceCount = includePrices
     ? await backfillOraclePrices(store, priceClient, selectedPriceOracleIds, {
       limit: priceLimit,
@@ -105,7 +103,7 @@ export async function runDeepBookPredictBackfill({
   const sviClient = createPredictOracleSviClient({ config, fetchImpl });
   const oracleSvi = includeSvi
     ? await Promise.all(
-      selectedOracleIds.map((oracleId) =>
+      selectedSeriesOracleIds.map((oracleId) =>
         sviClient.listOracleSvi(oracleId, { limit: sviLimit }).catch(() => []),
       ),
     ).then((groups) => groups.flat())

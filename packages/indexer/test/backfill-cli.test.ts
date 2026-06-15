@@ -18,7 +18,6 @@ describe("Predict backfill CLI options", () => {
           "btc-15m",
           "--oracle-ids=btc-1h,btc-1d",
           "--include-svi",
-          "--all-btc-oracle-prices",
           "--dry-run",
         ],
         env: {
@@ -40,7 +39,6 @@ describe("Predict backfill CLI options", () => {
       includePrices: true,
       includeOracleTrades: true,
       includePositions: true,
-      includeAllBtcOraclePrices: true,
     });
   });
 

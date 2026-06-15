@@ -72,9 +72,11 @@ serves them behind a narrow local setup:
    ```
 
    Keep `--price-window-concurrency` low, usually `2`, if the public Predict
-   server starts returning rate limits. The default oracle set is the current
-   active BTC trade markets; use explicit `--oracle-id` values for targeted
-   debugging.
+   server starts returning rate limits. Price and SVI series backfills are
+   intentionally limited to the current active BTC trade markets. Explicit
+   `--oracle-id` values may target trade-history diagnostics, but expired
+   oracle IDs are ignored for price/SVI history so pruned chart series are not
+   resurrected.
 
    In production, Railway Postgres uses the private
    `postgres.railway.internal` host. A local `railway run ... backfill` command
@@ -169,7 +171,8 @@ serves them behind a narrow local setup:
    chart point per second while live polling continues at one latest tick per
    second. Startup price backfill writes each oracle/window as it goes, so a
    multi-day bootstrap does not need to hold the whole price history in memory
-   before writing.
+   before writing. Startup price backfill uses only active BTC trade markets.
+   It should not be used to rebuild expired oracle chart history.
 
    For emergency/manual cleanup, the same prune logic can be run once from a
    Railway service console or local database shell:

@@ -322,6 +322,102 @@ describe("DeepBook Predict backfill runner", () => {
       `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-15m/prices?start_time=1779070860001&end_time=1779070920000`,
     );
   });
+
+  test("does not backfill expired oracle price or SVI series", async () => {
+    const store = createInMemoryPredictIndexerStore();
+    const requests: string[] = [];
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requests.push(url);
+
+      if (url.endsWith("/status")) {
+        return jsonResponse({ status: "OK" });
+      }
+
+      if (url.endsWith("/state")) {
+        return jsonResponse({
+          predict_id: DEEPBOOK_PREDICT_TESTNET_CONFIG.predictObjectId,
+          quote_assets: [DEEPBOOK_PREDICT_TESTNET_CONFIG.quoteAssetType],
+        });
+      }
+
+      if (url.endsWith("/oracles")) {
+        return jsonResponse([
+          btcOracle({ oracle_id: "btc-15m", expiry: 1_779_158_400, status: "active" }),
+          btcOracle({ oracle_id: "btc-expired", expiry: 1_779_150_000, status: "settled" }),
+        ]);
+      }
+
+      if (url.endsWith("/oracles/btc-15m/prices/latest")) {
+        return jsonResponse({
+          oracle_id: "btc-15m",
+          spot: 72_000_000_000,
+          checkpoint: 100,
+        });
+      }
+
+      if (url.endsWith("/oracles/btc-15m/prices?limit=10000")) {
+        return jsonResponse([
+          {
+            event_digest: "0xactive-price",
+            event_index: 1,
+            oracle_id: "btc-15m",
+            spot: "72000000000",
+            checkpoint_timestamp_ms: "1779070801000",
+          },
+        ]);
+      }
+
+      if (url.endsWith("/oracles/btc-15m/svi?limit=1000")) {
+        return jsonResponse([
+          {
+            event_digest: "0xactive-svi",
+            event_index: 1,
+            oracle_id: "btc-15m",
+            a: "1",
+            b: "2",
+            rho: "3",
+            rho_negative: "4",
+            m: "5",
+            m_negative: "6",
+            sigma: "7",
+            checkpoint_timestamp_ms: "1779070802000",
+          },
+        ]);
+      }
+
+      return jsonResponse({ error: "not_found" }, 404);
+    };
+
+    const summary = await runDeepBookPredictBackfill({
+      store,
+      fetchImpl,
+      oracleIds: ["btc-15m", "btc-expired"],
+      includeOracleTrades: false,
+      includePositions: false,
+      includeSvi: true,
+    });
+
+    expect(summary).toMatchObject({
+      oracleCount: 2,
+      oraclePriceCount: 1,
+      oracleSviCount: 1,
+      selectedOracleIds: ["btc-15m", "btc-expired"],
+      selectedPriceOracleIds: ["btc-15m"],
+    });
+    expect(requests).toContain(
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-15m/prices?limit=10000`,
+    );
+    expect(requests).toContain(
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-15m/svi?limit=1000`,
+    );
+    expect(requests).not.toContain(
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-expired/prices?limit=10000`,
+    );
+    expect(requests).not.toContain(
+      `${DEEPBOOK_PREDICT_TESTNET_CONFIG.serverUrl}/oracles/btc-expired/svi?limit=1000`,
+    );
+  });
 });
 
 function btcOracle(overrides: Partial<PredictOracleState> = {}): PredictOracleState {
