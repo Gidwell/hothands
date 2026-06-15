@@ -142,6 +142,18 @@ serves them behind a narrow local setup:
    `positions/minted` and `positions/redeemed` endpoints, so server-side
    position cursors should not be assumed until re-tested.
 
+   The live indexer also runs an expired-market maintenance job by default. It
+   deletes only `predict_oracle_prices` and `predict_oracle_svi` rows for
+   oracles whose `expiry_ms` is at or before the prune cutoff. It never deletes
+   `predict_trade_events`, `predict_position_summaries`, or `predict_oracles`,
+   so historic wallet and position data remains intact. The job runs every
+   minute by default and deletes at most 100 expired oracles per table per run.
+   Tune with `HOT_HANDS_INDEXER_MAINTENANCE_POLL_MS`,
+   `HOT_HANDS_INDEXER_PRUNE_BATCH_ORACLE_LIMIT`,
+   `HOT_HANDS_INDEXER_PRUNE_MAX_BATCHES`, and
+   `HOT_HANDS_INDEXER_PRUNE_RETENTION_MS`; disable with
+   `HOT_HANDS_INDEXER_PRUNE_EXPIRED_SERIES=false`.
+
    The chart endpoint requests downsampled full-range history from
    `predict_oracle_prices`, preserving the first and latest indexed points while
    returning at most the requested point budget.
@@ -158,6 +170,20 @@ serves them behind a narrow local setup:
    second. Startup price backfill writes each oracle/window as it goes, so a
    multi-day bootstrap does not need to hold the whole price history in memory
    before writing.
+
+   For emergency/manual cleanup, the same prune logic can be run once from a
+   Railway service console or local database shell:
+
+   ```bash
+   bun run --cwd packages/indexer prune:predict -- --dry-run
+   bun run --cwd packages/indexer prune:predict -- --write --max-batches 100 --vacuum
+   ```
+
+   Normal `VACUUM (ANALYZE)` makes deleted pages reusable by Postgres but may
+   not immediately lower provider volume usage. If a deployed database is
+   already near full, first add temporary volume headroom, then prune, and only
+   consider a rewrite-style reclaim such as `VACUUM FULL` during a maintenance
+   window.
 6. Build projections from the raw tables before serving product flows:
 
    ```text

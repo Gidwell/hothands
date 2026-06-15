@@ -93,6 +93,45 @@ describe("DeepBook Predict live indexer", () => {
     });
   });
 
+  test("enables bounded expired series pruning by default", () => {
+    expect(
+      parseLiveIndexerCliOptions({
+        argv: [
+          "--maintenance-poll-ms",
+          "30000",
+          "--prune-batch-oracle-limit=25",
+          "--prune-max-batches",
+          "4",
+          "--prune-retention-ms",
+          "60000",
+          "--prune-vacuum",
+        ],
+        env: {
+          DATABASE_URL: "postgres://example",
+        },
+      }),
+    ).toMatchObject({
+      expiredSeriesPrune: {
+        batchOracleLimit: 25,
+        maxBatches: 4,
+        retentionMs: 60_000,
+        vacuum: true,
+      },
+      intervals: {
+        maintenance: 30_000,
+      },
+    });
+
+    expect(
+      parseLiveIndexerCliOptions({
+        argv: ["--skip-prune-expired-series"],
+        env: { DATABASE_URL: "postgres://example" },
+      }),
+    ).toMatchObject({
+      expiredSeriesPrune: undefined,
+    });
+  });
+
   test("runs every live ingestion job once and records freshness", async () => {
     const requests: string[] = [];
     const statuses: PredictIndexerJobStatus[] = [];
@@ -289,6 +328,66 @@ describe("DeepBook Predict live indexer", () => {
       lastSourceTimestampMs: 1_779_070_800_000,
       rowsFetched: 1,
       rowsWritten: 0,
+    });
+  });
+
+  test("runs expired price and SVI pruning as a live maintenance job when provided", async () => {
+    const store = createInMemoryPredictIndexerStore();
+    let pruneCount = 0;
+    let nowMs = 1_779_070_801_000;
+
+    const summary = await runDeepBookPredictLiveIndexerOnce({
+      fetchImpl: liveIndexerFetchFixture,
+      nowMs: () => {
+        nowMs += 100;
+        return nowMs;
+      },
+      pruneExpiredSeries: async () => {
+        pruneCount += 1;
+        return {
+          dryRun: false,
+          cutoffMs: nowMs,
+          prices: {
+            tableName: "predict_oracle_prices",
+            batchOracleLimit: 100,
+            batchesRun: 1,
+            candidateRows: 0,
+            rowsDeleted: 70,
+            stoppedBecause: "max_batches",
+          },
+          svi: {
+            tableName: "predict_oracle_svi",
+            batchOracleLimit: 100,
+            batchesRun: 1,
+            candidateRows: 0,
+            rowsDeleted: 8,
+            stoppedBecause: "empty",
+          },
+          vacuumedTables: [],
+        };
+      },
+      reader: {
+        listBtcOracles: async () => [btcOracle()],
+        listIndexerJobStatuses: async () => store.listIndexerJobStatuses(),
+      },
+      writer: {
+        upsertOracles: (oracles) => store.upsertOracles(oracles),
+        upsertTradeEvents: (events) => store.upsertTradeEvents(events),
+        upsertOraclePrices: (points) => store.upsertOraclePrices(points),
+        upsertOracleSvi: (points) => store.upsertOracleSvi(points),
+        upsertPositionSummaries: (summaries) => store.upsertPositionSummaries(summaries),
+        refreshPositionSummaries: () => store.refreshPositionSummaries(),
+        upsertIndexerJobStatus: (status) => store.upsertIndexerJobStatus(status),
+      },
+    });
+
+    expect(pruneCount).toBe(1);
+    expect(summary.jobs.at(-1)).toMatchObject({
+      jobName: "predict.maintenance.prune_expired_series",
+      source: "postgres/expired-oracle-series",
+      rowsFetched: 2,
+      rowsWritten: 78,
+      status: "ok",
     });
   });
 });

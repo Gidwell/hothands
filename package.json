@@ -20,6 +20,7 @@
     "test:scoring": "bun test packages/shared/test/scoring.test.ts",
     "indexer:backfill:predict": "bun run --cwd packages/indexer backfill:predict",
     "indexer:migrate": "bun run --cwd packages/indexer migrate",
+    "indexer:prune:predict": "bun run --cwd packages/indexer prune:predict",
     "build:pwa": "bun run --cwd apps/pwa build",
     "build:api": "bun run --cwd apps/api-worker build",
     "move:test": "echo \"TODO: run sui move test in packages/contracts\"",

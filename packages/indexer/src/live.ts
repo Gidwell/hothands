@@ -10,6 +10,7 @@ import {
 import { createPostgresSqlClient } from "./postgres-client";
 import { createPostgresPredictIndexerReader } from "./postgres-reader";
 import { createPostgresPredictIndexerStore } from "./postgres-store";
+import { runDeepBookPredictPrune } from "./prune-predict";
 
 declare const process: {
   argv: string[];
@@ -80,6 +81,16 @@ async function main() {
         intervals: cli.intervals,
         oracleTradeLimit: cli.oracleTradeLimit,
         reader,
+        ...(cli.expiredSeriesPrune
+          ? {
+              pruneExpiredSeries: () =>
+                runDeepBookPredictPrune({
+                  execute: client.execute,
+                  dryRun: false,
+                  ...cli.expiredSeriesPrune!,
+                }),
+            }
+          : {}),
         sviLimit: cli.sviLimit,
         tradeLimit: cli.tradeLimit,
         writer,
@@ -99,6 +110,9 @@ async function main() {
       `SVI: every ${cli.intervals.svi}ms`,
       `Positions: every ${cli.intervals.positions}ms`,
       `Oracle trades: every ${cli.intervals.oracleTrades}ms`,
+      cli.expiredSeriesPrune
+        ? `Expired price/SVI prune: every ${cli.intervals.maintenance}ms`
+        : "Expired price/SVI prune: disabled",
       "",
     ].join("\n"),
   );
@@ -115,6 +129,16 @@ async function main() {
       process.stdout.write(formatJobSummary(summary));
     },
     oracleTradeLimit: cli.oracleTradeLimit,
+    ...(cli.expiredSeriesPrune
+      ? {
+          pruneExpiredSeries: () =>
+            runDeepBookPredictPrune({
+              execute: client.execute,
+              dryRun: false,
+              ...cli.expiredSeriesPrune!,
+            }),
+        }
+      : {}),
     sviLimit: cli.sviLimit,
     reader,
     tradeLimit: cli.tradeLimit,

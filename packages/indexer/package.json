@@ -11,6 +11,7 @@
     "live": "bun src/live.ts",
     "live:predict": "bun src/live.ts",
     "migrate": "bun src/migrate.ts",
+    "prune:predict": "bun src/prune-predict.ts",
     "typecheck": "tsc --noEmit",
     "verify:testnet": "bun src/verify-testnet.ts"
   },

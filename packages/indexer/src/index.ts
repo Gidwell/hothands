@@ -89,6 +89,7 @@ export {
   parseLiveIndexerCliOptions,
   runDeepBookPredictLiveIndexerOnce,
   startDeepBookPredictLiveIndexer,
+  type DeepBookPredictExpiredSeriesPruneOptions,
   type DeepBookPredictLiveIndexer,
   type DeepBookPredictLiveIndexerCliOptions,
   type DeepBookPredictLiveIndexerIntervals,
@@ -97,6 +98,14 @@ export {
   type DeepBookPredictLiveIndexerOnceSummary,
   type DeepBookPredictLiveIndexerOptions,
 } from "./live-indexer";
+
+export {
+  parsePredictPruneCliOptions,
+  runDeepBookPredictPrune,
+  type PredictPruneCliOptions,
+  type PredictPruneSeriesSummary,
+  type PredictPruneSummary,
+} from "./prune-predict";
 
 export {
   buildLatestTradeFeedProjection,

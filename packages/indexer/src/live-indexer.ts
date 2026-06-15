@@ -12,9 +12,11 @@ import {
   pollDeepBookPredictLatestPrices,
 } from "./price-poller";
 import type { PredictIndexerReader } from "./postgres-reader";
+import type { PredictPruneSummary } from "./prune-predict";
 import type { PredictIndexerJobStatus, PredictIndexerWriter } from "./store";
 
 export type DeepBookPredictLiveIndexerIntervals = {
+  maintenance: number;
   oracles: number;
   prices: number;
   svi: number;
@@ -24,12 +26,20 @@ export type DeepBookPredictLiveIndexerIntervals = {
 
 export type DeepBookPredictLiveIndexerCliOptions = {
   databaseUrl?: string;
+  expiredSeriesPrune?: DeepBookPredictExpiredSeriesPruneOptions;
   intervals: DeepBookPredictLiveIndexerIntervals;
   once: boolean;
   oracleTradeLimit: number;
   startupPriceBackfill?: DeepBookPredictStartupPriceBackfillOptions;
   sviLimit: number;
   tradeLimit: number;
+};
+
+export type DeepBookPredictExpiredSeriesPruneOptions = {
+  batchOracleLimit: number;
+  maxBatches: number;
+  retentionMs: number;
+  vacuum: boolean;
 };
 
 export type DeepBookPredictStartupPriceBackfillOptions = {
@@ -45,6 +55,7 @@ export type DeepBookPredictLiveIndexerOnceOptions = {
   intervals?: Partial<DeepBookPredictLiveIndexerIntervals>;
   nowMs?: () => number;
   oracleTradeLimit?: number;
+  pruneExpiredSeries?: () => Promise<PredictPruneSummary>;
   sviLimit?: number;
   reader: Pick<PredictIndexerReader, "listBtcOracles" | "listIndexerJobStatuses">;
   tradeLimit?: number;
@@ -83,14 +94,18 @@ type LiveIndexerJob = {
 const DEFAULT_POSITIONS_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_ORACLE_TRADES_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_ORACLES_POLL_INTERVAL_MS = 30_000;
+const DEFAULT_MAINTENANCE_POLL_INTERVAL_MS = 60_000;
 const DEFAULT_TRADE_LIMIT = 250;
 const DEFAULT_ORACLE_TRADE_LIMIT = 50;
 const DEFAULT_SVI_LIMIT = 1;
+const DEFAULT_PRUNE_BATCH_ORACLE_LIMIT = 100;
+const DEFAULT_PRUNE_MAX_BATCHES = 1;
 const DEFAULT_STARTUP_PRICE_BACKFILL_SAMPLE_MS = 1_000;
 const DEFAULT_STARTUP_PRICE_BACKFILL_WINDOW_MS = 60 * 60_000;
 const DEFAULT_STARTUP_PRICE_BACKFILL_CONCURRENCY = 2;
 
 export const DEFAULT_LIVE_INDEXER_INTERVALS: DeepBookPredictLiveIndexerIntervals = {
+  maintenance: DEFAULT_MAINTENANCE_POLL_INTERVAL_MS,
   oracles: DEFAULT_ORACLES_POLL_INTERVAL_MS,
   prices: DEFAULT_PRICE_POLL_INTERVAL_MS,
   svi: DEFAULT_PRICE_POLL_INTERVAL_MS,
@@ -109,7 +124,13 @@ export function parseLiveIndexerCliOptions({
 
   return {
     databaseUrl: env.DATABASE_URL,
+    expiredSeriesPrune: parseExpiredSeriesPruneOptions(parsed, env),
     intervals: {
+      maintenance: positiveInt(
+        lastValue(parsed, "maintenance-poll-ms") ??
+          env.HOT_HANDS_INDEXER_MAINTENANCE_POLL_MS,
+        DEFAULT_LIVE_INDEXER_INTERVALS.maintenance,
+      ),
       oracles: positiveInt(
         lastValue(parsed, "oracles-poll-ms") ?? env.HOT_HANDS_INDEXER_ORACLES_POLL_MS,
         DEFAULT_LIVE_INDEXER_INTERVALS.oracles,
@@ -181,6 +202,7 @@ function createLiveIndexerJobs({
   fetchImpl = fetch,
   intervals = {},
   oracleTradeLimit = DEFAULT_ORACLE_TRADE_LIMIT,
+  pruneExpiredSeries,
   reader,
   sviLimit = DEFAULT_SVI_LIMIT,
   tradeLimit = DEFAULT_TRADE_LIMIT,
@@ -193,7 +215,7 @@ function createLiveIndexerJobs({
   const tradeClient = createPredictTradeHistoryClient({ config, fetchImpl });
   const sviClient = createPredictOracleSviClient({ config, fetchImpl });
 
-  return [
+  const jobs: LiveIndexerJob[] = [
     {
       intervalMs: resolvedIntervals.oracles,
       jobName: "predict.oracles",
@@ -317,6 +339,24 @@ function createLiveIndexerJobs({
       },
     },
   ];
+
+  if (pruneExpiredSeries) {
+    jobs.push({
+      intervalMs: resolvedIntervals.maintenance,
+      jobName: "predict.maintenance.prune_expired_series",
+      source: "postgres/expired-oracle-series",
+      run: async () => {
+        const summary = await pruneExpiredSeries();
+
+        return {
+          rowsFetched: summary.prices.batchesRun + summary.svi.batchesRun,
+          rowsWritten: summary.prices.rowsDeleted + summary.svi.rowsDeleted,
+        };
+      },
+    });
+  }
+
+  return jobs;
 }
 
 async function runLiveIndexerJob(
@@ -581,10 +621,14 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
 
 function expectsValue(key: string): boolean {
   return [
+    "maintenance-poll-ms",
     "oracle-trade-limit",
     "oracles-poll-ms",
     "positions-poll-ms",
     "price-poll-ms",
+    "prune-batch-oracle-limit",
+    "prune-max-batches",
+    "prune-retention-ms",
     "svi-limit",
     "svi-poll-ms",
     "trade-limit",
@@ -607,6 +651,48 @@ function positiveInt(value: string | undefined, fallback: number): number {
 
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function nonNegativeInt(value: string | undefined, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function parseExpiredSeriesPruneOptions(
+  parsed: ParsedArgs,
+  env: Record<string, string | undefined>,
+): DeepBookPredictExpiredSeriesPruneOptions | undefined {
+  if (
+    parsed.flags.has("skip-prune-expired-series") ||
+    env.HOT_HANDS_INDEXER_PRUNE_EXPIRED_SERIES === "false"
+  ) {
+    return undefined;
+  }
+
+  return {
+    batchOracleLimit: positiveInt(
+      lastValue(parsed, "prune-batch-oracle-limit") ??
+        env.HOT_HANDS_INDEXER_PRUNE_BATCH_ORACLE_LIMIT,
+      DEFAULT_PRUNE_BATCH_ORACLE_LIMIT,
+    ),
+    maxBatches: positiveInt(
+      lastValue(parsed, "prune-max-batches") ??
+        env.HOT_HANDS_INDEXER_PRUNE_MAX_BATCHES,
+      DEFAULT_PRUNE_MAX_BATCHES,
+    ),
+    retentionMs: nonNegativeInt(
+      lastValue(parsed, "prune-retention-ms") ??
+        env.HOT_HANDS_INDEXER_PRUNE_RETENTION_MS,
+      0,
+    ),
+    vacuum:
+      parsed.flags.has("prune-vacuum") ||
+      env.HOT_HANDS_INDEXER_PRUNE_VACUUM === "true",
+  };
 }
 
 function parseStartupPriceBackfillOptions(

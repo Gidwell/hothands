@@ -75,6 +75,21 @@ short diagnostic run needs wider pages. Wide limits on 1-second polling
 reprocess duplicate rows, increase Postgres and Predict server pressure, and
 can produce Railway memory growth without adding useful indexed facts.
 
+The indexer also prunes expired oracle chart series by default. This controls
+Postgres volume growth from `predict_oracle_prices` and `predict_oracle_svi`
+without touching historic wallet/position tables. Defaults:
+
+```text
+HOT_HANDS_INDEXER_MAINTENANCE_POLL_MS=60000
+HOT_HANDS_INDEXER_PRUNE_BATCH_ORACLE_LIMIT=100
+HOT_HANDS_INDEXER_PRUNE_MAX_BATCHES=1
+HOT_HANDS_INDEXER_PRUNE_RETENTION_MS=0
+```
+
+Set `HOT_HANDS_INDEXER_PRUNE_EXPIRED_SERIES=false` only for diagnostics. Use
+`HOT_HANDS_INDEXER_PRUNE_VACUUM=true` sparingly; normal vacuum frees pages for
+reuse but does not necessarily reduce the provider volume meter immediately.
+
 Optional chart-history bootstrap variables:
 
 ```text
@@ -140,6 +155,25 @@ private network:
 ```bash
 railway ssh --service hothands-indexer -- bun run indexer:backfill:predict -- --write --prices-only --price-window-days 3 --price-window-ms 3600000 --price-sample-ms 1000
 ```
+
+### Storage Maintenance
+
+Price/SVI history is intentionally disposable after a Predict oracle expires.
+All position history should remain in `predict_trade_events` and
+`predict_position_summaries`.
+
+For a manual prune from a Railway service console:
+
+```bash
+bun run --cwd packages/indexer prune:predict -- --dry-run
+bun run --cwd packages/indexer prune:predict -- --write --max-batches 100 --vacuum
+```
+
+If Postgres is already at the Railway volume limit, increase volume headroom
+before running large prune batches. Batched deletes stop future growth and
+normal `VACUUM (ANALYZE)` makes pages reusable, but lowering the visible volume
+meter may require a rewrite-style maintenance operation such as `VACUUM FULL`
+after there is enough free disk to perform it.
 
 ## Cloudflare Pages
 
