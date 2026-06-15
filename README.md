@@ -135,7 +135,8 @@ Hot Hands dev processes before restarting:
 bun run dev:cleanup
 ```
 
-The cleanup command uses the pidfile first, then falls back to known ports and
+The cleanup command uses the pidfile first, then falls back to the configured
+API port, the configured PWA port, the next ten Vite fallback PWA ports, and
 repo-local Bun/Vite/esbuild commands. The launcher starts API and indexer as
 direct Bun scripts, keeps the PWA inside its proven Vite package script, and
 shuts down each process group on exit. That keeps orphaned Bun/Vite/esbuild

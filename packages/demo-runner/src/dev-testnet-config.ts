@@ -17,6 +17,7 @@ export interface DevTestnetConfig {
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_API_PORT = 8789;
 const DEFAULT_PWA_PORT = 5176;
+const PWA_CLEANUP_FALLBACK_PORT_COUNT = 10;
 const DEFAULT_READINESS_TIMEOUT_MS = 30_000;
 const API_COMMAND = ["bun", "apps/api-worker/src/testnet-dev-server.ts"];
 const BACKFILL_COMMAND = [
@@ -73,7 +74,7 @@ export function resolveDevTestnetConfig(
     apiPort,
     apiUrl: localHttpUrl(apiHost, apiPort),
     bootstrapBackfillCommand,
-    cleanupPorts: [apiPort, pwaPort],
+    cleanupPorts: cleanupPorts({ apiPort, pwaPort }),
     liveIndexerCommand,
     migrationCommand,
     pwaCommand: [
@@ -102,6 +103,21 @@ function readPort(value: string | undefined, fallback: number): number {
 
 function localHttpUrl(host: string, port: number): string {
   return `http://${host}:${port}`;
+}
+
+function cleanupPorts({
+  apiPort,
+  pwaPort,
+}: {
+  apiPort: number;
+  pwaPort: number;
+}): number[] {
+  const ports = new Set<number>([apiPort]);
+  for (let offset = 0; offset <= PWA_CLEANUP_FALLBACK_PORT_COUNT; offset += 1) {
+    ports.add(pwaPort + offset);
+  }
+
+  return [...ports];
 }
 
 function readPositiveInteger(value: string | undefined, fallback: number): number {

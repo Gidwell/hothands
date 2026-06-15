@@ -118,15 +118,17 @@ If a stale local listener or Vite/esbuild process still owns the dev loop, run:
 bun run dev:cleanup
 ```
 
-`dev:cleanup` uses the pidfile first, then falls back to the configured ports
-and repo-local Bun/Vite/esbuild commands. If the PWA repeatedly times out
-before opening a port, run the app from a no-space git worktree; Vite/esbuild
-has hung in paths such as `Documents/New project`.
+`dev:cleanup` uses the pidfile first, then falls back to the configured API
+port, the configured PWA port, the next ten Vite fallback PWA ports, and
+repo-local Bun/Vite/esbuild commands. If the PWA repeatedly times out before
+opening a port, run the app from a no-space git worktree; Vite/esbuild has hung
+in paths such as `Documents/New project`.
 
 If cleanup does not free a port, inspect the exact listener before killing it:
 
 ```bash
 lsof -nP -iTCP:5176 -sTCP:LISTEN
+lsof -nP -iTCP:5186 -sTCP:LISTEN
 lsof -nP -iTCP:8789 -sTCP:LISTEN
 ```
 

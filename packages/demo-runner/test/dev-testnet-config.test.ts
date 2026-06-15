@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { resolveDevTestnetConfig } from "../src/dev-testnet-config";
 
+const pwaCleanupRange = (basePort: number) =>
+  Array.from({ length: 11 }, (_, offset) => basePort + offset);
+
 describe("testnet dev launcher config", () => {
   test("uses local ports that do not collide with the live worker harness", () => {
     expect(resolveDevTestnetConfig({ DATABASE_URL: "postgres://hot-hands.test" })).toEqual({
@@ -14,7 +17,7 @@ describe("testnet dev launcher config", () => {
         "--write",
         "--include-svi",
       ],
-      cleanupPorts: [8789, 5176],
+      cleanupPorts: [8789, ...pwaCleanupRange(5176)],
       liveIndexerCommand: ["bun", "packages/indexer/src/live.ts"],
       migrationCommand: ["bun", "packages/indexer/src/migrate.ts"],
       readinessTimeoutMs: 30000,
@@ -56,7 +59,7 @@ describe("testnet dev launcher config", () => {
         "--write",
         "--include-svi",
       ],
-      cleanupPorts: [8899, 5299],
+      cleanupPorts: [8899, ...pwaCleanupRange(5299)],
       liveIndexerCommand: ["bun", "packages/indexer/src/live.ts"],
       migrationCommand: ["bun", "packages/indexer/src/migrate.ts"],
       readinessTimeoutMs: 30000,
