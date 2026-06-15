@@ -86,9 +86,11 @@ export {
 
 export {
   DEFAULT_LIVE_INDEXER_INTERVALS,
+  computeLiveIndexerNextPollDelayMs,
   parseLiveIndexerCliOptions,
   runDeepBookPredictLiveIndexerOnce,
   startDeepBookPredictLiveIndexer,
+  type DeepBookPredictLiveIndexerBackoffOptions,
   type DeepBookPredictExpiredSeriesPruneOptions,
   type DeepBookPredictLiveIndexer,
   type DeepBookPredictLiveIndexerCliOptions,

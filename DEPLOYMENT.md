@@ -75,6 +75,19 @@ short diagnostic run needs wider pages. Wide limits on 1-second polling
 reprocess duplicate rows, increase Postgres and Predict server pressure, and
 can produce Railway memory growth without adding useful indexed facts.
 
+The live indexer backs off per job after errors, with a stronger floor for
+Predict server `429` rate limits and jitter to avoid synchronized retry bursts.
+Defaults:
+
+```text
+HOT_HANDS_INDEXER_BACKOFF_JITTER_RATIO=0.2
+HOT_HANDS_INDEXER_BACKOFF_MAX_MS=120000
+HOT_HANDS_INDEXER_RATE_LIMIT_BACKOFF_FLOOR_MS=5000
+```
+
+Keep these enabled in production. Lowering them can make charts feel fresher for
+a few seconds, but it also risks longer 429 storms and more missed polls.
+
 The indexer also prunes expired oracle chart series by default. This controls
 Postgres volume growth from `predict_oracle_prices` and `predict_oracle_svi`
 without touching historic wallet/position tables. Defaults:

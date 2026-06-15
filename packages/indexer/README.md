@@ -136,6 +136,15 @@ serves them behind a narrow local setup:
    live read. Every job writes freshness status to `predict_indexer_jobs`, and
    the local API exposes it at `/testnet/indexer-status`.
 
+   Live jobs use per-job adaptive backoff after errors instead of continuing to
+   hit the public Predict server on the fixed poll interval. Successful loops
+   keep a small jitter so jobs do not stay synchronized after a deploy. On
+   `429` rate limits, a 1-second job backs off from a 5-second floor and grows
+   exponentially up to 120 seconds by default. Tune with
+   `HOT_HANDS_INDEXER_BACKOFF_JITTER_RATIO`,
+   `HOT_HANDS_INDEXER_BACKOFF_MAX_MS`, and
+   `HOT_HANDS_INDEXER_RATE_LIMIT_BACKOFF_FLOOR_MS`.
+
    Live global mint/redeem jobs use their previous indexed source timestamp as
    a local high-water mark before writing. This keeps repeated latest-page
    reads idempotent without re-upserting duplicate rows or rebuilding position

@@ -110,6 +110,7 @@ async function main() {
       `SVI: every ${cli.intervals.svi}ms`,
       `Positions: every ${cli.intervals.positions}ms`,
       `Oracle trades: every ${cli.intervals.oracleTrades}ms`,
+      `Error backoff: max ${cli.backoff.maxDelayMs}ms, 429 floor ${cli.backoff.rateLimitFloorMs}ms, jitter ${cli.backoff.jitterRatio}`,
       cli.expiredSeriesPrune
         ? `Expired price/SVI prune: every ${cli.intervals.maintenance}ms`
         : "Expired price/SVI prune: disabled",
@@ -118,6 +119,7 @@ async function main() {
   );
 
   const indexer = startDeepBookPredictLiveIndexer({
+    backoff: cli.backoff,
     config,
     intervals: cli.intervals,
     onError: (error, jobName) => {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEEPBOOK_PREDICT_TESTNET_CONFIG,
+  computeLiveIndexerNextPollDelayMs,
   createInMemoryPredictIndexerStore,
   parseLiveIndexerCliOptions,
   runDeepBookPredictLiveIndexerOnce,
@@ -23,6 +24,11 @@ describe("DeepBook Predict live indexer", () => {
         },
       }),
     ).toMatchObject({
+      backoff: {
+        jitterRatio: 0.2,
+        maxDelayMs: 120_000,
+        rateLimitFloorMs: 5_000,
+      },
       databaseUrl: "postgres://example",
       once: true,
       startupPriceBackfill: undefined,
@@ -36,6 +42,84 @@ describe("DeepBook Predict live indexer", () => {
         oracleTrades: 2_000,
       },
     });
+  });
+
+  test("parses live indexer backoff config from environment", () => {
+    expect(
+      parseLiveIndexerCliOptions({
+        argv: [],
+        env: {
+          DATABASE_URL: "postgres://example",
+          HOT_HANDS_INDEXER_BACKOFF_JITTER_RATIO: "0.1",
+          HOT_HANDS_INDEXER_BACKOFF_MAX_MS: "45000",
+          HOT_HANDS_INDEXER_RATE_LIMIT_BACKOFF_FLOOR_MS: "3000",
+        },
+      }),
+    ).toMatchObject({
+      backoff: {
+        jitterRatio: 0.1,
+        maxDelayMs: 45_000,
+        rateLimitFloorMs: 3_000,
+      },
+    });
+  });
+
+  test("backs off 429 polling errors with jitter and a bounded cap", () => {
+    const status = indexerErrorStatus({
+      consecutiveErrorCount: 3,
+      lastError:
+        "Predict server request failed (429) for https://predict-server.testnet.mystenlabs.com/positions/minted?limit=250.",
+    });
+
+    expect(
+      computeLiveIndexerNextPollDelayMs({
+        backoff: { jitterRatio: 0, maxDelayMs: 120_000, rateLimitFloorMs: 5_000 },
+        baseIntervalMs: 1_000,
+        status,
+      }),
+    ).toBe(20_000);
+    expect(
+      computeLiveIndexerNextPollDelayMs({
+        backoff: {
+          jitterRatio: 0.2,
+          maxDelayMs: 120_000,
+          random: () => 1,
+          rateLimitFloorMs: 5_000,
+        },
+        baseIntervalMs: 1_000,
+        status,
+      }),
+    ).toBe(24_000);
+    expect(
+      computeLiveIndexerNextPollDelayMs({
+        backoff: { jitterRatio: 0, maxDelayMs: 60_000, rateLimitFloorMs: 5_000 },
+        baseIntervalMs: 1_000,
+        status: indexerErrorStatus({
+          consecutiveErrorCount: 10,
+          lastError: "Predict server request failed (429).",
+        }),
+      }),
+    ).toBe(60_000);
+  });
+
+  test("keeps successful polling near the base interval with jitter", () => {
+    expect(
+      computeLiveIndexerNextPollDelayMs({
+        backoff: { jitterRatio: 0.2, random: () => 0.5 },
+        baseIntervalMs: 1_000,
+        status: {
+          ...indexerOkStatus(),
+          consecutiveErrorCount: 0,
+        },
+      }),
+    ).toBe(1_000);
+    expect(
+      computeLiveIndexerNextPollDelayMs({
+        backoff: { jitterRatio: 0.2, random: () => 0 },
+        baseIntervalMs: 1_000,
+        status: indexerOkStatus(),
+      }),
+    ).toBe(800);
   });
 
   test("parses optional startup price history backfill config", () => {
@@ -503,6 +587,40 @@ function redeemedRow(overrides: Record<string, unknown> = {}) {
     payout: "700000",
     checkpoint: "4244",
     checkpoint_timestamp_ms: "1779070801000",
+    ...overrides,
+  };
+}
+
+function indexerOkStatus(
+  overrides: Partial<PredictIndexerJobStatus> = {},
+): PredictIndexerJobStatus {
+  return {
+    jobName: "predict.positions.minted",
+    source: "positions/minted",
+    pollIntervalMs: 1_000,
+    status: "ok",
+    lastPollStartedAtMs: 1_000,
+    lastPollCompletedAtMs: 1_100,
+    lastSuccessAtMs: 1_100,
+    rowsFetched: 1,
+    rowsWritten: 1,
+    totalRowsWritten: 1,
+    consecutiveErrorCount: 0,
+    updatedAtMs: 1_100,
+    ...overrides,
+  };
+}
+
+function indexerErrorStatus(
+  overrides: Partial<PredictIndexerJobStatus> = {},
+): PredictIndexerJobStatus {
+  return {
+    ...indexerOkStatus(),
+    status: "error",
+    rowsFetched: 0,
+    rowsWritten: 0,
+    consecutiveErrorCount: 1,
+    lastError: "Predict server request failed.",
     ...overrides,
   };
 }

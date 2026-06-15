@@ -25,6 +25,7 @@ export type DeepBookPredictLiveIndexerIntervals = {
 };
 
 export type DeepBookPredictLiveIndexerCliOptions = {
+  backoff: DeepBookPredictLiveIndexerBackoffOptions;
   databaseUrl?: string;
   expiredSeriesPrune?: DeepBookPredictExpiredSeriesPruneOptions;
   intervals: DeepBookPredictLiveIndexerIntervals;
@@ -69,12 +70,20 @@ export type DeepBookPredictLiveIndexerOnceSummary = {
 };
 
 export type DeepBookPredictLiveIndexerOptions = DeepBookPredictLiveIndexerOnceOptions & {
+  backoff?: DeepBookPredictLiveIndexerBackoffOptions;
   onError?: (error: unknown, jobName: string) => void;
   onPoll?: (summary: DeepBookPredictLiveIndexerJobSummary) => void;
 };
 
 export type DeepBookPredictLiveIndexer = {
   stop(): void;
+};
+
+export type DeepBookPredictLiveIndexerBackoffOptions = {
+  jitterRatio?: number;
+  maxDelayMs?: number;
+  random?: () => number;
+  rateLimitFloorMs?: number;
 };
 
 type LiveIndexerJobResult = {
@@ -103,6 +112,9 @@ const DEFAULT_PRUNE_MAX_BATCHES = 1;
 const DEFAULT_STARTUP_PRICE_BACKFILL_SAMPLE_MS = 1_000;
 const DEFAULT_STARTUP_PRICE_BACKFILL_WINDOW_MS = 60 * 60_000;
 const DEFAULT_STARTUP_PRICE_BACKFILL_CONCURRENCY = 2;
+const DEFAULT_BACKOFF_JITTER_RATIO = 0.2;
+const DEFAULT_BACKOFF_MAX_DELAY_MS = 120_000;
+const DEFAULT_RATE_LIMIT_BACKOFF_FLOOR_MS = 5_000;
 
 export const DEFAULT_LIVE_INDEXER_INTERVALS: DeepBookPredictLiveIndexerIntervals = {
   maintenance: DEFAULT_MAINTENANCE_POLL_INTERVAL_MS,
@@ -123,6 +135,7 @@ export function parseLiveIndexerCliOptions({
   const parsed = parseArgs(argv);
 
   return {
+    backoff: parseBackoffOptions(env),
     databaseUrl: env.DATABASE_URL,
     expiredSeriesPrune: parseExpiredSeriesPruneOptions(parsed, env),
     intervals: {
@@ -494,10 +507,18 @@ function startLiveIndexerJobLoop(
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running = false;
+  let lastStatus: PredictIndexerJobStatus | undefined;
 
   const schedule = () => {
     if (!stopped) {
-      timer = setTimeout(run, job.intervalMs);
+      timer = setTimeout(
+        run,
+        computeLiveIndexerNextPollDelayMs({
+          baseIntervalMs: job.intervalMs,
+          backoff: options.backoff,
+          status: lastStatus,
+        }),
+      );
     }
   };
   const run = async () => {
@@ -508,7 +529,7 @@ function startLiveIndexerJobLoop(
 
     running = true;
     try {
-      await runLiveIndexerJob(job, options);
+      lastStatus = await runLiveIndexerJob(job, options);
     } finally {
       running = false;
       schedule();
@@ -523,6 +544,73 @@ function startLiveIndexerJobLoop(
       clearTimeout(timer);
     }
   };
+}
+
+export function computeLiveIndexerNextPollDelayMs({
+  backoff = {},
+  baseIntervalMs,
+  status,
+}: {
+  backoff?: DeepBookPredictLiveIndexerBackoffOptions;
+  baseIntervalMs: number;
+  status?: PredictIndexerJobStatus;
+}): number {
+  const jitterRatio = clamp(
+    backoff.jitterRatio ?? DEFAULT_BACKOFF_JITTER_RATIO,
+    0,
+    1,
+  );
+  const maxDelayMs = Math.max(
+    baseIntervalMs,
+    backoff.maxDelayMs ?? DEFAULT_BACKOFF_MAX_DELAY_MS,
+  );
+  const rateLimitFloorMs = Math.max(
+    baseIntervalMs,
+    backoff.rateLimitFloorMs ?? DEFAULT_RATE_LIMIT_BACKOFF_FLOOR_MS,
+  );
+  const random = backoff.random ?? Math.random;
+  const statusErrorCount =
+    status?.status === "error" ? Math.max(1, status.consecutiveErrorCount) : 0;
+  const unjitteredDelayMs =
+    statusErrorCount === 0
+      ? baseIntervalMs
+      : Math.min(
+          maxDelayMs,
+          errorBackoffBaseMs(status, baseIntervalMs, rateLimitFloorMs) *
+            2 ** Math.min(statusErrorCount - 1, 8),
+        );
+
+  return Math.max(1, Math.round(applyJitter(unjitteredDelayMs, jitterRatio, random)));
+}
+
+function errorBackoffBaseMs(
+  status: PredictIndexerJobStatus | undefined,
+  baseIntervalMs: number,
+  rateLimitFloorMs: number,
+): number {
+  return isRateLimitJobStatus(status) ? rateLimitFloorMs : baseIntervalMs;
+}
+
+function isRateLimitJobStatus(status: PredictIndexerJobStatus | undefined): boolean {
+  return Boolean(
+    status?.status === "error" &&
+      status.lastError &&
+      /(^|[^0-9])429([^0-9]|$)/.test(status.lastError),
+  );
+}
+
+function applyJitter(
+  delayMs: number,
+  jitterRatio: number,
+  random: () => number,
+): number {
+  if (jitterRatio <= 0) {
+    return delayMs;
+  }
+
+  const sampled = clamp(random(), 0, 1);
+  const factor = 1 - jitterRatio + sampled * jitterRatio * 2;
+  return delayMs * factor;
 }
 
 function latestTradeMetadata(
@@ -662,6 +750,23 @@ function nonNegativeInt(value: string | undefined, fallback: number): number {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+function parseBackoffOptions(
+  env: Record<string, string | undefined>,
+): DeepBookPredictLiveIndexerBackoffOptions {
+  return {
+    jitterRatio: optionalNonNegativeNumber(env.HOT_HANDS_INDEXER_BACKOFF_JITTER_RATIO) ??
+      DEFAULT_BACKOFF_JITTER_RATIO,
+    maxDelayMs: positiveInt(
+      env.HOT_HANDS_INDEXER_BACKOFF_MAX_MS,
+      DEFAULT_BACKOFF_MAX_DELAY_MS,
+    ),
+    rateLimitFloorMs: positiveInt(
+      env.HOT_HANDS_INDEXER_RATE_LIMIT_BACKOFF_FLOOR_MS,
+      DEFAULT_RATE_LIMIT_BACKOFF_FLOOR_MS,
+    ),
+  };
+}
+
 function parseExpiredSeriesPruneOptions(
   parsed: ParsedArgs,
   env: Record<string, string | undefined>,
@@ -729,4 +834,17 @@ function optionalPositiveNumber(value: string | undefined): number | undefined {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function optionalNonNegativeNumber(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
