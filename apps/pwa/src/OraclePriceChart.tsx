@@ -275,6 +275,71 @@ export function OraclePriceChartModal({
   );
 }
 
+export function OraclePriceChartPanel({
+  chart,
+  className = "",
+  marketContext = null,
+  nowMs = Date.now(),
+  testId = "oracle-chart-panel",
+}: {
+  chart: OraclePriceChart | null;
+  className?: string;
+  marketContext?: OraclePriceChartMarketContext | null;
+  nowMs?: number;
+  testId?: string;
+}) {
+  const [rangeKey, setRangeKey] = useState<OraclePriceChartRangeKey>("4H");
+  const hasChart = chart?.status === "ready" && chart.points.length >= 2;
+  const activeRange =
+    ORACLE_PRICE_CHART_RANGES.find((range) => range.key === rangeKey) ??
+    ORACLE_PRICE_CHART_RANGES[1];
+
+  return (
+    <section
+      className={`oracle-chart-panel ${className}`.trim()}
+      data-testid={testId}
+      aria-label="BTC/USD oracle chart"
+    >
+      <div className="oracle-chart-panel-header">
+        <div>
+          <span>{chart?.marketLabel ?? "BTC/USD"}</span>
+          <strong>{chart?.latestPriceLabel ?? "No price yet"}</strong>
+        </div>
+        <div className="oracle-chart-range-controls" aria-label="Oracle chart range">
+          {ORACLE_PRICE_CHART_RANGES.map((range) => (
+            <button
+              type="button"
+              aria-pressed={range.key === rangeKey}
+              data-testid={`oracle-chart-range-${range.key}`}
+              key={range.key}
+              onClick={() => setRangeKey(range.key)}
+            >
+              {range.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="oracle-expanded-chart oracle-chart-panel-visual">
+        {hasChart ? (
+          <LightweightOraclePriceChart
+            points={chart.points}
+            fitResetKey={buildOraclePriceChartFitResetKey({
+              oracleId: chart.oracleId,
+              rangeKey,
+            })}
+            height={240}
+            marketContext={marketContext}
+            nowMs={nowMs}
+            rangeSeconds={activeRange.seconds}
+          />
+        ) : (
+          <div className="oracle-chart-modal-empty">Waiting for DeepBook oracle price history.</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function buildOraclePriceChartFitResetKey({
   oracleId,
   rangeKey,
@@ -672,21 +737,19 @@ function syncOracleMarketPriceLines(
     return;
   }
 
-  for (const strike of marketContext.strikes) {
-    const color = strike.selected ? "#3ed982" : "rgba(62, 217, 130, 0.42)";
+  for (const strike of marketContext.strikes.filter((candidate) => candidate.selected)) {
+    const color = "#3ed982";
     priceLinesRef.current.push(
       series.createPriceLine({
-        axisLabelColor: strike.selected ? "#16a34a" : "rgba(20, 83, 45, 0.92)",
+        axisLabelColor: "#16a34a",
         axisLabelTextColor: "#ffffff",
-        axisLabelVisible: strike.selected,
+        axisLabelVisible: true,
         color,
-        lineStyle: strike.selected ? LineStyle.Solid : LineStyle.Dashed,
+        lineStyle: LineStyle.Solid,
         lineVisible: true,
-        lineWidth: strike.selected ? 2 : 1,
+        lineWidth: 2,
         price: strike.price,
-        title: strike.selected
-          ? `Settlement ${strike.label}`
-          : strike.label,
+        title: `Settlement ${strike.label}`,
       }),
     );
   }

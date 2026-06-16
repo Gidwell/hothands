@@ -84,6 +84,7 @@ import {
 import {
   OraclePriceChartCard,
   OraclePriceChartModal,
+  OraclePriceChartPanel,
   type OraclePriceChartMarketContext,
 } from "./OraclePriceChart";
 import {
@@ -193,11 +194,11 @@ type MarketHeatSwipePreview = {
   rowId: string;
 };
 export function shouldShowAccountSummary(view: AppView): boolean {
-  return view === "trade" || view === "portfolio";
+  return view === "portfolio";
 }
 
 export function getAccountSummaryVariant(view: AppView): AccountSummaryVariant {
-  return view === "trade" || view === "portfolio" ? "portfolio" : "default";
+  return view === "portfolio" ? "portfolio" : "default";
 }
 
 export function getBankrollFundingUnavailableReason({
@@ -1004,9 +1005,7 @@ function buildOraclePriceChartMarketContext({
       const selected =
         option.strikeRaw === selectedMarket.strikeRaw ||
         option.strike === selectedMarket.strike;
-      const existing = strikeMap.get(String(option.strikeRaw));
-
-      if (existing?.selected) {
+      if (!selected) {
         continue;
       }
 
@@ -2092,6 +2091,7 @@ export function BottomNav({
       {items.map((item) => (
         <button
           type="button"
+          className={item.view === "trade" ? "bottom-nav-trade-action" : undefined}
           aria-pressed={activeView === item.view}
           key={item.view}
           onClick={() => onViewChange(item.view)}
@@ -2441,7 +2441,6 @@ function TradeMarketCard({
           <small>{cardMarket.pairLabel}</small>
           <strong>{cardMarket.expiryTimeLabel}</strong>
         </div>
-        <span>{marketPriceLabel ?? "Live market"}</span>
       </div>
 
       <div className="trade-side-toggle" aria-label="Trade side">
@@ -2603,6 +2602,9 @@ export function TradeTicket({
   expiryOptions = [],
   marketPriceLabel = null,
   marketRows,
+  nowMs = Date.now(),
+  oracleChart = null,
+  oracleChartMarketContext = null,
   selectedExpiryDate = null,
   selectedMarketId,
   selectedSide,
@@ -2624,6 +2626,9 @@ export function TradeTicket({
   expiryOptions?: TradeExpiryOption[];
   marketPriceLabel?: string | null;
   marketRows: TradeMarketLadderRow[];
+  nowMs?: number;
+  oracleChart?: OraclePriceChart | null;
+  oracleChartMarketContext?: OraclePriceChartMarketContext | null;
   selectedExpiryDate?: string | null;
   selectedMarketId: string;
   selectedSide: TradeSide;
@@ -2691,6 +2696,7 @@ export function TradeTicket({
     displayedMarketRows.find((marketRow) => marketRow.id === (selectedMarket?.id ?? selectedMarketId)) ??
     displayedMarketRows[0] ??
     null;
+  const shouldRenderOracleChart = oracleChart !== null;
 
   return (
     <section className="trade-ticket" aria-label="Trade" data-testid={testId}>
@@ -2709,6 +2715,15 @@ export function TradeTicket({
         onMarketChange={onMarketChange}
         onMarketTimeChange={onMarketTimeChange}
       />
+      {shouldRenderOracleChart ? (
+        <OraclePriceChartPanel
+          chart={oracleChart}
+          className="trade-oracle-chart-panel"
+          marketContext={oracleChartMarketContext}
+          nowMs={nowMs}
+          testId="trade-oracle-chart-panel"
+        />
+      ) : null}
       {activeMarketRow ? (
         <TradeMarketCard
           canSubmitTrade={canSubmitTrade}
@@ -7629,13 +7644,16 @@ export function App() {
     />
   );
 
-  const renderTradeTicket = (testId = "trade-view") => (
+  const renderTradeTicket = (testId = "trade-view", includeOracleChart = true) => (
     <TradeTicket
       customStrike={selectedTradeCustomStrike}
       copyAmount={copyState.copyAmount}
       expiryOptions={tradeExpiryOptions}
       marketPriceLabel={tradeMarketPriceLabel}
       marketRows={displayedTradeMarketRows}
+      nowMs={marketHeatNowMs}
+      oracleChart={includeOracleChart ? oraclePriceChart : null}
+      oracleChartMarketContext={includeOracleChart ? oracleChartMarketContext : null}
       selectedExpiryDate={activeTradeExpiryDate}
       selectedMarketId={baseSelectedTradeMarket?.id ?? ""}
       selectedSide={tradeSide}
@@ -7696,11 +7714,13 @@ export function App() {
               />
             }
           />
-          <OraclePriceChartCard
-            chart={oraclePriceChart}
-            fallbackPriceLabel={marketHeatPreview.marketPrice.priceLabel}
-            onOpen={() => setIsOracleChartOpen(true)}
-          />
+          {activeView === "trade" ? null : (
+            <OraclePriceChartCard
+              chart={oraclePriceChart}
+              fallbackPriceLabel={marketHeatPreview.marketPrice.priceLabel}
+              onOpen={() => setIsOracleChartOpen(true)}
+            />
+          )}
           <WalletStatusBar
             accountAddress={connectedAccountAddress}
             connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
@@ -7816,7 +7836,7 @@ export function App() {
             nowMs={marketHeatNowMs}
             onClose={() => setIsOracleChartOpen(false)}
           >
-            {renderTradeTicket("expanded-chart-trade-ticket")}
+            {renderTradeTicket("expanded-chart-trade-ticket", false)}
           </OraclePriceChartModal>
         ) : null}
         {shareCard ? (

@@ -510,6 +510,51 @@ button:disabled {
   text-align: right;
 }
 
+.oracle-chart-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dbe5ee;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 28px rgba(34, 48, 64, 0.07);
+}
+
+.oracle-chart-panel-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.oracle-chart-panel-header > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.oracle-chart-panel-header span {
+  color: #667085;
+  font-size: 0.66rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.oracle-chart-panel-header strong {
+  overflow: hidden;
+  color: #111827;
+  font-size: 1.14rem;
+  font-weight: 950;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oracle-chart-panel-visual {
+  min-height: 240px;
+}
+
 .oracle-chart-modal-empty {
   display: grid;
   place-items: center;
@@ -3196,6 +3241,46 @@ button:disabled {
   background: var(--hh-accent-soft);
 }
 
+.bottom-nav .bottom-nav-trade-action {
+  position: relative;
+  z-index: 2;
+  justify-self: center;
+  width: 66px;
+  height: 66px;
+  min-height: 66px;
+  margin: -22px 0 -8px;
+  border-radius: 999px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 32% 22%, rgba(255, 255, 255, 0.5), transparent 24%),
+    linear-gradient(145deg, #ffb000 0%, #ff6b2b 44%, #ff3d81 100%);
+  box-shadow:
+    0 16px 32px rgba(255, 92, 45, 0.38),
+    0 0 0 7px color-mix(in srgb, var(--hh-surface) 92%, transparent),
+    inset 0 -2px 8px rgba(80, 24, 0, 0.2);
+}
+
+.bottom-nav .bottom-nav-trade-action[aria-pressed="true"] {
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 32% 22%, rgba(255, 255, 255, 0.55), transparent 24%),
+    linear-gradient(145deg, #ffc638 0%, #ff7033 42%, #ff2f7a 100%);
+  box-shadow:
+    0 18px 38px rgba(255, 79, 73, 0.48),
+    0 0 0 7px color-mix(in srgb, var(--hh-surface) 92%, transparent),
+    inset 0 -2px 8px rgba(80, 24, 0, 0.22);
+}
+
+.bottom-nav .bottom-nav-trade-action .bottom-nav-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.bottom-nav .bottom-nav-trade-action span {
+  font-size: 0.65rem;
+  font-weight: 950;
+}
+
 .bottom-nav button:focus {
   outline: none;
 }
@@ -3435,10 +3520,8 @@ button:disabled {
 }
 
 .trade-chain-summary {
-  display: flex;
+  display: grid;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
 }
 
 .trade-chain-summary div {
@@ -3447,8 +3530,7 @@ button:disabled {
   min-width: 0;
 }
 
-.trade-chain-summary small,
-.trade-chain-summary span {
+.trade-chain-summary small {
   color: var(--hh-muted);
   font-size: 0.64rem;
   font-weight: 950;
@@ -3807,6 +3889,20 @@ button:disabled {
   color: #f4f7fb;
   background: rgba(18, 24, 33, 0.34);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+
+.app-shell[data-theme="dark"] .oracle-chart-panel {
+  border-color: var(--hh-line);
+  background: var(--hh-surface);
+  box-shadow: none;
+}
+
+.app-shell[data-theme="dark"] .oracle-chart-panel-header span {
+  color: var(--hh-muted);
+}
+
+.app-shell[data-theme="dark"] .oracle-chart-panel-header strong {
+  color: var(--hh-text);
 }
 
 .app-shell[data-theme="dark"] .oracle-market-chart-summary span,

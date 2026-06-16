@@ -32,6 +32,7 @@ import {
   type MarketHeatPreviewRowInput,
   type TradeMarketLadderRow,
 } from "../src/marketHeatModel";
+import type { OraclePriceChart } from "../src/oraclePriceChartModel";
 
 function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
   if (Array.isArray(node)) {
@@ -126,6 +127,26 @@ function portfolioHistoryItemFixture(index: number) {
     updatedAtLabel: `Jun ${index}, 2026`,
   };
 }
+
+const readyOracleChartFixture: OraclePriceChart = {
+  detail: "DeepBook Predict oracle price used for BTC market settlement.",
+  latestPriceLabel: "$66,978",
+  marketLabel: "BTC/USD",
+  oracleId: "0xoracle2h",
+  points: [
+    {
+      price: 66_900,
+      timestampMs: 1_779_158_000_000,
+    },
+    {
+      price: 66_978,
+      timestampMs: 1_779_158_060_000,
+    },
+  ],
+  sourceLabel: "Indexed Testnet",
+  status: "ready",
+  title: "DeepBook BTC oracle price",
+};
 
 describe("mobile app navigation", () => {
   test("places wallet connection in the market header action slot", () => {
@@ -232,18 +253,18 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Connected");
   });
 
-  test("shows account summary only on trade and portfolio views", () => {
+  test("shows account summary only on portfolio views", () => {
     expect(shouldShowAccountSummary("feed")).toBe(false);
     expect(shouldShowAccountSummary("leaderboards")).toBe(false);
     expect(shouldShowAccountSummary("profile")).toBe(false);
-    expect(shouldShowAccountSummary("trade")).toBe(true);
+    expect(shouldShowAccountSummary("trade")).toBe(false);
     expect(shouldShowAccountSummary("portfolio")).toBe(true);
   });
 
-  test("uses the portfolio account strip on trade and portfolio views", () => {
-    expect(getAccountSummaryVariant("trade")).toBe("portfolio");
+  test("uses the portfolio account strip only on portfolio views", () => {
     expect(getAccountSummaryVariant("portfolio")).toBe("portfolio");
     expect(getAccountSummaryVariant("feed")).toBe("default");
+    expect(getAccountSummaryVariant("trade")).toBe("default");
   });
 
   test("auto-refreshes market heat rows on feed and profile views", () => {
@@ -587,6 +608,7 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain('data-testid="bottom-nav"');
     expect(html).toContain('class="bottom-nav-icon"');
+    expect(html).toContain('class="bottom-nav-trade-action"');
     expect(html).toContain('d="M17 20V4"');
     expect(html).toContain('d="M7 4v16"');
     expect(html).not.toContain('d="M7 7h11"');
@@ -1463,6 +1485,24 @@ describe("mobile app navigation", () => {
         selectedMarketId="btc-2h-72000"
         selectedExpiryDate="2026-05-18"
         selectedSide="UP"
+        oracleChart={readyOracleChartFixture}
+        oracleChartMarketContext={{
+          expiryLabel: "May 18, 23:30 PDT",
+          expiryMs: 1_779_172_200_000,
+          selectedSide: "UP",
+          selectedStrikeLabel: "$72,000",
+          selectedStrikePrice: 72_000,
+          strikes: [
+            {
+              id: "selected",
+              label: "$72,000",
+              price: 72_000,
+              selected: true,
+            },
+          ],
+          timeRemainingLabel: "2h left",
+        }}
+        nowMs={1_779_165_000_000}
         onAmountSet={() => undefined}
         onExpiryChange={() => undefined}
         onMarketChange={() => undefined}
@@ -1479,6 +1519,14 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="trade-expiry-2026-05-19"');
     expect(html).toContain("May 18");
     expect(html).toContain("May 19");
+    expect(html).toContain('data-testid="trade-oracle-chart-panel"');
+    expect(html.indexOf('data-testid="trade-expiry-2026-05-18"')).toBeLessThan(
+      html.indexOf('data-testid="trade-oracle-chart-panel"'),
+    );
+    expect(html.indexOf('data-testid="trade-oracle-chart-panel"')).toBeLessThan(
+      html.indexOf('data-testid="trade-market-card"'),
+    );
+    expect(html).toContain('data-testid="oracle-chart-range-4H"');
     expect(html).not.toContain("Up/Down");
     expect(html).not.toContain("Range");
     expect(html).not.toContain('aria-label="Trade product type"');
@@ -1501,6 +1549,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain("UP $72,000");
     expect(html).not.toContain("Wins if BTC settles");
     expect(html).not.toContain("vs spot");
+    expect(html).not.toContain("Live market");
     expect(html).toContain("Spend</small>$100");
     expect(html).toContain("Est. payout</small>$250");
     expect(html).toContain("Max profit</small>+$150");
