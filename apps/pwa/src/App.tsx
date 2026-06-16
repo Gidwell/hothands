@@ -168,8 +168,9 @@ const DEFAULT_SHARE_URL = "https://hothands.app/";
 const LOCAL_SHARE_HOSTS = new Set(["127.0.0.1", "0.0.0.0", "::1", "localhost"]);
 const MARKET_HEAT_PAGE_SIZE = 8;
 const WALLET_LEADERBOARDS_REFRESH_MS = 15_000;
-const PORTFOLIO_DATA_REFRESH_MS = 15_000;
-const PORTFOLIO_TIME_REFRESH_MS = 15_000;
+const PORTFOLIO_DATA_REFRESH_MS = 5_000;
+const PORTFOLIO_PENDING_DATA_REFRESH_MS = 2_000;
+const PORTFOLIO_TIME_REFRESH_MS = 1_000;
 const PORTFOLIO_HISTORY_PAGE_SIZE = 8;
 const TRADE_LADDER_VISIBLE_STRIKE_COUNT = 13;
 const TRADE_LADDER_BELOW_TARGET_COUNT = 6;
@@ -234,6 +235,27 @@ export function getMarketHeatRowsRefreshMs(view: AppView): number | null {
 
 export function shouldAutoRefreshWalletLeaderboards(view: AppView): boolean {
   return view === "leaderboards" || view === "profile";
+}
+
+export function shouldAutoRefreshPredictPortfolio(view: AppView): boolean {
+  return view === "portfolio";
+}
+
+export function getPredictPortfolioRefreshMs(
+  view: AppView,
+  {
+    hasPendingExpiredPosition = false,
+  }: {
+    hasPendingExpiredPosition?: boolean;
+  } = {},
+): number | null {
+  if (!shouldAutoRefreshPredictPortfolio(view)) {
+    return null;
+  }
+
+  return hasPendingExpiredPosition
+    ? PORTFOLIO_PENDING_DATA_REFRESH_MS
+    : PORTFOLIO_DATA_REFRESH_MS;
 }
 
 function getInitialThemeMode(): ThemeMode {
@@ -5931,8 +5953,7 @@ export function App() {
       : null;
   const isPredictPortfolioStateCurrent =
     activePredictManagerObjectId &&
-    predictPortfolioState.managerObjectId === activePredictManagerObjectId &&
-    predictPortfolioState.refreshKey === predictPortfolioRefreshKey;
+    predictPortfolioState.managerObjectId === activePredictManagerObjectId;
   const visiblePortfolioStatus: PredictPortfolioState["status"] = activePredictManagerObjectId
     ? isPredictPortfolioStateCurrent
       ? predictPortfolioState.status
@@ -5944,6 +5965,14 @@ export function App() {
         nowMs: portfolioNowMs,
       })
     : [];
+  const hasPendingExpiredPortfolioPosition =
+    Boolean(isPredictPortfolioStateCurrent) &&
+    predictPortfolioState.positions.some(
+      (position) =>
+        position.expiryMs <= portfolioNowMs &&
+        !position.dismissible &&
+        position.claimValueAtomic === undefined,
+    );
   const copiedPositionSourceLabels = useMemo(
     () => buildCopiedPositionSourceLabels(copyAttributions, connectedAccountAddress),
     [connectedAccountAddress, copyAttributions],
@@ -6243,7 +6272,11 @@ export function App() {
           ? state.pnl
           : idlePredictPortfolioPnl,
       refreshKey: predictPortfolioRefreshKey,
-      status: "loading",
+      status:
+        state.managerObjectId === activePredictManagerObjectId &&
+        (state.status === "ready" || state.status === "loading")
+          ? state.status
+          : "loading",
       positions:
         state.managerObjectId === activePredictManagerObjectId
           ? state.positions
@@ -6283,14 +6316,27 @@ export function App() {
           return;
         }
 
-        setPredictPortfolioState({
-          history: [],
+        setPredictPortfolioState((state) => ({
+          history:
+            state.managerObjectId === activePredictManagerObjectId
+              ? state.history
+              : [],
           managerObjectId: activePredictManagerObjectId,
-          pnl: idlePredictPortfolioPnl,
+          pnl:
+            state.managerObjectId === activePredictManagerObjectId
+              ? state.pnl
+              : idlePredictPortfolioPnl,
           refreshKey: predictPortfolioRefreshKey,
-          status: "error",
-          positions: [],
-        });
+          status:
+            state.managerObjectId === activePredictManagerObjectId &&
+            (state.status === "ready" || state.positions.length > 0 || state.history.length > 0)
+              ? "ready"
+              : "error",
+          positions:
+            state.managerObjectId === activePredictManagerObjectId
+              ? state.positions
+              : [],
+        }));
       });
 
     return () => {
@@ -6930,16 +6976,24 @@ export function App() {
   }, [activeView]);
 
   useEffect(() => {
-    if (activeView !== "portfolio" || !activePredictManagerObjectId) {
+    if (!activePredictManagerObjectId) {
       return undefined;
     }
 
+    const refreshMs = getPredictPortfolioRefreshMs(activeView, {
+      hasPendingExpiredPosition: hasPendingExpiredPortfolioPosition,
+    });
+    if (refreshMs === null) {
+      return undefined;
+    }
+
+    setPredictPortfolioRefreshKey((key) => key + 1);
     const timer = window.setInterval(() => {
       setPredictPortfolioRefreshKey((key) => key + 1);
-    }, PORTFOLIO_DATA_REFRESH_MS);
+    }, refreshMs);
 
     return () => window.clearInterval(timer);
-  }, [activePredictManagerObjectId, activeView]);
+  }, [activePredictManagerObjectId, activeView, hasPendingExpiredPortfolioPosition]);
 
   const handleTraderSelect = (traderId: string) => {
     setReplayState((state) =>

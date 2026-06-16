@@ -20,10 +20,12 @@ import {
   getBankrollFundingUnavailableReason,
   getInitialAppView,
   getMarketHeatRowsRefreshMs,
+  getPredictPortfolioRefreshMs,
   parseStoredStakeAmount,
   resolveSelectedProfileWalletForNav,
   selectActiveFeedExpiryDate,
   shouldAutoRefreshMarketHeatRows,
+  shouldAutoRefreshPredictPortfolio,
   shouldAutoRefreshWalletLeaderboards,
   shouldShowAccountSummary,
   type ShareCardState,
@@ -290,6 +292,22 @@ describe("mobile app navigation", () => {
     expect(shouldAutoRefreshWalletLeaderboards("feed")).toBe(false);
     expect(shouldAutoRefreshWalletLeaderboards("trade")).toBe(false);
     expect(shouldAutoRefreshWalletLeaderboards("portfolio")).toBe(false);
+  });
+
+  test("auto-refreshes portfolio data faster while expired rows are pending settlement", () => {
+    expect(shouldAutoRefreshPredictPortfolio("portfolio")).toBe(true);
+    expect(shouldAutoRefreshPredictPortfolio("feed")).toBe(false);
+    expect(shouldAutoRefreshPredictPortfolio("trade")).toBe(false);
+    expect(shouldAutoRefreshPredictPortfolio("leaderboards")).toBe(false);
+    expect(shouldAutoRefreshPredictPortfolio("profile")).toBe(false);
+
+    expect(getPredictPortfolioRefreshMs("portfolio")).toBe(5000);
+    expect(
+      getPredictPortfolioRefreshMs("portfolio", {
+        hasPendingExpiredPosition: true,
+      }),
+    ).toBe(2000);
+    expect(getPredictPortfolioRefreshMs("feed")).toBeNull();
   });
 
   test("groups trade expirations by date with consistent market counts", () => {
