@@ -43,10 +43,11 @@ describe("mobile shell CSS", () => {
     const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
 
     expect(css).toContain(".bottom-nav .bottom-nav-trade-action");
-    expect(css).toContain("linear-gradient(145deg, #a78bfa 0%, #7c3aed 48%, #6246ea 100%)");
-    expect(css).toContain("linear-gradient(145deg, #c4b5fd 0%, #8b5cf6 42%, #5a35f0 100%)");
+    expect(css).toContain("background: var(--hh-accent);");
+    expect(css).toContain("background: var(--hh-accent-strong);");
     expect(css).not.toContain("#ffb000");
     expect(css).not.toContain("#ff6b2b");
+    expect(css).not.toContain("radial-gradient(circle at 32% 22%");
   });
 
   test("uses compact chart controls for the embedded trade chart", async () => {

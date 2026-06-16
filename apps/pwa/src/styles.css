@@ -3281,26 +3281,20 @@ button:disabled {
   margin: -16px 0 -14px;
   border-radius: 999px;
   color: #ffffff;
-  background:
-    radial-gradient(circle at 32% 22%, rgba(255, 255, 255, 0.54), transparent 24%),
-    linear-gradient(145deg, #a78bfa 0%, #7c3aed 48%, #6246ea 100%);
+  background: var(--hh-accent);
   box-shadow:
-    0 18px 36px rgba(98, 70, 234, 0.34),
     0 0 0 7px color-mix(in srgb, var(--hh-surface) 94%, transparent),
-    inset 0 -2px 9px rgba(33, 18, 92, 0.28);
+    0 10px 24px color-mix(in srgb, var(--hh-accent) 24%, transparent);
   transform: translateY(3px);
 }
 
 .bottom-nav .bottom-nav-trade-action[aria-pressed="true"] {
   color: #ffffff;
-  background:
-    radial-gradient(circle at 32% 22%, rgba(255, 255, 255, 0.6), transparent 24%),
-    linear-gradient(145deg, #c4b5fd 0%, #8b5cf6 42%, #5a35f0 100%);
+  background: var(--hh-accent-strong);
   box-shadow:
-    0 20px 42px rgba(109, 74, 255, 0.48),
     0 0 0 7px color-mix(in srgb, var(--hh-surface) 94%, transparent),
     0 0 0 11px color-mix(in srgb, var(--hh-accent) 14%, transparent),
-    inset 0 -2px 9px rgba(33, 18, 92, 0.3);
+    0 10px 24px color-mix(in srgb, var(--hh-accent) 26%, transparent);
 }
 
 .bottom-nav .bottom-nav-trade-action .bottom-nav-icon {
