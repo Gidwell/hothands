@@ -550,7 +550,7 @@ describe("MarketHeatPreview component", () => {
         rows={rows}
         sourceLabel="Live Testnet"
         sortMode="latest"
-        selectedExpiryDate={null}
+        selectedExpiryDate="2026-06-12"
         expiryOptions={[
           {
             count: rows.length,
@@ -573,7 +573,6 @@ describe("MarketHeatPreview component", () => {
         showMoreLabel="Show more"
         selectedRowId={null}
         onAmountSet={() => undefined}
-        onAllExpiriesSelect={() => undefined}
         onExpiryChange={() => undefined}
         onShowExpiredChange={() => undefined}
         onShowMore={() => undefined}
@@ -584,11 +583,11 @@ describe("MarketHeatPreview component", () => {
     );
 
     expect(html).toContain('aria-label="Feed expiration dates"');
-    expect(html).toContain('data-testid="feed-expiry-all"');
+    expect(html).not.toContain('data-testid="feed-expiry-all"');
     expect(html).toContain('data-testid="feed-expiry-2026-06-12"');
     expect(html).toContain('data-testid="feed-expiry-2026-06-19"');
-    expect(html).toContain("All");
-    expect(html).toContain("2 dates");
+    expect(html).not.toContain(">All<");
+    expect(html).not.toContain("2 dates");
     expect(html).toContain("Jun 12");
     expect(html).toContain("Fri · 1 market");
     expect(html).toContain("Jun 19");

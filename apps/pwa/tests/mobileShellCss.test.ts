@@ -31,12 +31,24 @@ describe("mobile shell CSS", () => {
   test("keeps mobile portfolio history rows inside the viewport", async () => {
     const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
 
-    expect(css).toContain("minmax(88px, 1.18fr) minmax(56px, 0.75fr) minmax(38px, 0.5fr)");
-    expect(css).toContain("minmax(42px, 0.56fr) minmax(36px, 0.48fr)");
+    expect(css).toContain("minmax(68px, 0.86fr) minmax(46px, 0.58fr) minmax(40px, 0.48fr)");
+    expect(css).toContain("minmax(48px, 0.56fr) minmax(44px, 0.5fr)");
     expect(css).toContain(".portfolio-history-pnl {\n    min-width: 0;");
-    expect(css).toContain(".portfolio-history-table-head span:nth-child(4)::after");
-    expect(css).toContain('content: "Return";');
-    expect(css).toContain('content: "P/L";');
+    expect(css).toContain(".portfolio-table-cell-positive");
+    expect(css).toContain(".portfolio-table-cell-negative");
+    expect(css).toContain(".portfolio-history-pnl-positive strong");
+    expect(css).toContain(".portfolio-history-pnl-negative strong");
+    expect(css).toContain(".portfolio-row > .portfolio-action-cell");
+    expect(css).toContain(".portfolio-history-row > :nth-child(4)");
+    expect(css).toContain("grid-template-columns: minmax(0, 1fr) 44px 46px 66px;");
+    expect(css).toContain(".portfolio-row > .portfolio-table-cell:nth-child(5)");
+    expect(css).toContain("grid-column: 4;");
+    expect(css).toContain(
+      ".portfolio-history-table-head span:nth-child(4),\n  .portfolio-history-table-head span:nth-child(5) {\n    text-align: right;",
+    );
+    expect(css).not.toContain(
+      ".portfolio-history-table-head span:nth-child(4),\n  .portfolio-history-table-head span:nth-child(5) {\n    font-size: 0;",
+    );
   });
 
   test("keeps the primary trade action in the purple design system", async () => {

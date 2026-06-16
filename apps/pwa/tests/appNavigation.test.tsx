@@ -22,6 +22,7 @@ import {
   getMarketHeatRowsRefreshMs,
   parseStoredStakeAmount,
   resolveSelectedProfileWalletForNav,
+  selectActiveFeedExpiryDate,
   shouldAutoRefreshMarketHeatRows,
   shouldAutoRefreshWalletLeaderboards,
   shouldShowAccountSummary,
@@ -343,6 +344,30 @@ describe("mobile app navigation", () => {
         value: "2026-06-19",
       },
     ]);
+  });
+
+  test("defaults feed expiration filters to the earliest available date", () => {
+    const expiryOptions = [
+      {
+        count: 2,
+        expiryMs: new Date(2026, 5, 10, 9).getTime(),
+        label: "Today",
+        sublabel: "2 markets",
+        value: "2026-06-10",
+      },
+      {
+        count: 1,
+        expiryMs: new Date(2026, 5, 12, 1).getTime(),
+        label: "Jun 12",
+        sublabel: "Fri · 1 market",
+        value: "2026-06-12",
+      },
+    ];
+
+    expect(selectActiveFeedExpiryDate(null, expiryOptions)).toBe("2026-06-10");
+    expect(selectActiveFeedExpiryDate("2026-06-12", expiryOptions)).toBe("2026-06-12");
+    expect(selectActiveFeedExpiryDate("2026-06-19", expiryOptions)).toBe("2026-06-10");
+    expect(selectActiveFeedExpiryDate(null, [])).toBeNull();
   });
 
   test("parses the persisted stake amount safely", () => {
@@ -906,7 +931,9 @@ describe("mobile app navigation", () => {
           {
             actionLabel: "Redeem",
             closeValueLabel: "$2.41",
+            closeValueAtomic: "2410000",
             closeValueStatusLabel: "Quoted now",
+            costBasisAtomic: "1800000",
             costBasisLabel: "$1.80",
             direction: "UP",
             expiry: 1_779_159_800,
@@ -931,7 +958,9 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain("portfolio-countdown-live");
     expect(html).not.toContain(">Live</em>");
-    expect(html).toContain("<strong>30m left</strong><small>Open · Quoted now</small>");
+    expect(html).toContain("<strong>30m</strong>");
+    expect(html).not.toContain("<small>Open</small>");
+    expect(html).not.toContain("Quoted now");
     expect(html).not.toContain("<strong>Jun 12, 2026, 5:30 PM</strong>");
   });
 
@@ -989,7 +1018,9 @@ describe("mobile app navigation", () => {
           {
             actionLabel: "Redeem",
             closeValueLabel: "$2.41",
+            closeValueAtomic: "2410000",
             closeValueStatusLabel: "Quoted now",
+            costBasisAtomic: "1800000",
             costBasisLabel: "$1.80",
             direction: "UP",
             copiedFromLabel: "Copied from 0xfeed...cafe",
@@ -1009,7 +1040,9 @@ describe("mobile app navigation", () => {
           },
           {
             actionLabel: "Claim",
+            claimValueAtomic: "0",
             claimValueLabel: "$0",
+            costBasisAtomic: "2500000",
             costBasisLabel: "$2.50",
             direction: "DOWN",
             expiry: 1_779_000_000,
@@ -1040,12 +1073,18 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Redeem");
     expect(html).toContain("Claim");
     expect(html).toContain("$65,000.00");
-    expect(html).toContain("Est. close");
-    expect(html).toContain("Quoted now");
+    expect(html).toContain("Position</span>");
+    expect(html).toContain("Now</span>");
+    expect(html).toContain("Max</span>");
+    expect(html).not.toContain("Est. close");
+    expect(html).not.toContain("Max payout");
+    expect(html).not.toContain("Quoted now");
     expect(html).toContain("Copied from 0xfeed...cafe");
+    expect(html).toContain('portfolio-table-cell-positive">$2.41</span>');
+    expect(html).toContain('portfolio-table-cell-negative">$0</span>');
     expect(html).toContain("$2.41");
     expect(html).toContain("$4");
-    expect(html).toContain("No payout");
+    expect(html).not.toContain("No payout");
     expect(html).toContain("$65,100.00");
   });
 
@@ -1130,7 +1169,7 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("No payout");
+    expect(html).not.toContain("No payout");
     expect(html).toContain("Dismiss</button>");
     expect(html).not.toContain("Claim</button>");
   });
@@ -1169,16 +1208,18 @@ describe("mobile app navigation", () => {
     expect(html).toContain('data-testid="portfolio-history-tab"');
     expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('data-testid="portfolio-history"');
-    expect(html).toContain("Trade history");
-    expect(html).toContain("BTC/USD");
+    expect(html).not.toContain("Trade history");
+    expect(html).toContain("Position</span>");
     expect(html).toContain("$65,000.00");
-    expect(html).toContain("Redeemed");
+    expect(html).not.toContain("Redeemed");
     expect(html).toContain("Cost</span>");
     expect(html).toContain("$2");
     expect(html).toContain("Payout</span>");
     expect(html).toContain("$3.25");
     expect(html).toContain("PNL</span>");
     expect(html).toContain('<strong>+$1.25</strong>');
+    expect(html).toContain('portfolio-table-cell-positive">$3.25</span>');
+    expect(html).toContain("portfolio-history-pnl-positive");
     expect(html).not.toContain("PNL</small>");
     expect(html).not.toContain("$123.45");
   });
@@ -1238,8 +1279,9 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain("portfolio-countdown-live");
-    expect(html).toContain("<strong>8h left</strong><small>Open</small>");
-    expect(html).toContain('<span class="portfolio-table-cell">-</span>');
+    expect(html).toContain("<strong>8h</strong>");
+    expect(html).not.toContain("<small>Open</small>");
+    expect(html).toContain('<span class="portfolio-table-cell portfolio-table-cell-flat">-</span>');
     expect(html).toContain('<div class="portfolio-history-pnl portfolio-history-pnl-flat"><strong>-</strong></div>');
     expect(html).not.toContain(">Pending<");
     expect(html).not.toContain("<strong>Open</strong>");
@@ -1278,7 +1320,8 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain("portfolio-countdown-live");
-    expect(html).toContain("<strong>2m left</strong><small>Open</small>");
+    expect(html).toContain("<strong>2m</strong>");
+    expect(html).not.toContain("<small>Open</small>");
     expect(html).not.toContain("<strong>May 18, 2026, 9:46 PM</strong>");
     expect(html).not.toContain("1d left");
   });
@@ -1315,7 +1358,7 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("<small>Expired</small>");
+    expect(html).not.toContain("<small>Expired</small>");
     expect(html).not.toContain("Expired · Expired");
     expect(html).toContain("Pending");
     expect(html).toContain("Claim</button>");
@@ -1353,7 +1396,7 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("Est. close");
+    expect(html).toContain("Now");
     expect(html).toContain("Unavailable");
     expect(html).not.toContain("Checking");
   });

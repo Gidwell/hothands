@@ -4269,6 +4269,10 @@ button:disabled {
   grid-template-columns: minmax(104px, 1.08fr) repeat(3, minmax(0, 1fr));
 }
 
+.account-summary-portfolio {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .account-summary-main,
 .account-summary-stats {
   display: contents;
@@ -4295,6 +4299,23 @@ button:disabled {
 
 .account-summary-stats div:last-child {
   border-right: 0;
+}
+
+.account-summary-portfolio .account-pnl,
+.account-summary-portfolio .account-value,
+.account-summary-portfolio .account-summary-stats div {
+  border-right: 1px solid var(--hh-line);
+  border-bottom: 1px solid var(--hh-line);
+}
+
+.account-summary-portfolio .account-value,
+.account-summary-portfolio .account-funding-cell {
+  border-right: 0;
+}
+
+.account-summary-portfolio .account-stake-cell,
+.account-summary-portfolio .account-funding-cell {
+  border-bottom: 0;
 }
 
 .account-pnl p,
@@ -5097,8 +5118,8 @@ button:disabled {
 
 .portfolio-table-head {
   grid-template-columns:
-    minmax(94px, 1.35fr) minmax(60px, 0.9fr) minmax(38px, 0.52fr)
-    minmax(64px, 0.82fr) minmax(64px, 0.82fr) minmax(52px, 0.62fr);
+    minmax(68px, 0.86fr) minmax(44px, 0.54fr) minmax(42px, 0.48fr)
+    minmax(46px, 0.54fr) minmax(40px, 0.44fr) minmax(62px, 0.58fr);
   gap: 4px;
   padding: 0 8px;
 }
@@ -5107,11 +5128,11 @@ button:disabled {
 .portfolio-history-row {
   display: grid;
   grid-template-columns:
-    minmax(94px, 1.35fr) minmax(60px, 0.9fr) minmax(38px, 0.52fr)
-    minmax(64px, 0.82fr) minmax(64px, 0.82fr) minmax(52px, 0.62fr);
+    minmax(68px, 0.86fr) minmax(44px, 0.54fr) minmax(42px, 0.48fr)
+    minmax(46px, 0.54fr) minmax(40px, 0.44fr) minmax(62px, 0.58fr);
   gap: 4px;
   align-items: center;
-  min-height: 58px;
+  min-height: 54px;
   padding: 8px;
   border-left: 2px solid var(--hh-up);
 }
@@ -5119,8 +5140,23 @@ button:disabled {
 .portfolio-history-table-head,
 .portfolio-history-row {
   grid-template-columns:
-    minmax(96px, 1.55fr) minmax(62px, 1fr) minmax(40px, 0.62fr)
-    minmax(48px, 0.72fr) minmax(54px, 0.82fr);
+    minmax(68px, 0.86fr) minmax(46px, 0.58fr) minmax(40px, 0.48fr)
+    minmax(48px, 0.56fr) minmax(44px, 0.5fr);
+}
+
+.portfolio-table-head span:nth-child(6),
+.portfolio-row > .portfolio-action-cell {
+  justify-self: end;
+  text-align: right;
+}
+
+.portfolio-history-table-head span:nth-child(4),
+.portfolio-history-table-head span:nth-child(5),
+.portfolio-history-row > :nth-child(4),
+.portfolio-history-row > :nth-child(5) {
+  justify-self: end;
+  width: 100%;
+  text-align: right;
 }
 
 .portfolio-history-row-negative,
@@ -5134,6 +5170,13 @@ button:disabled {
   gap: 8px;
   align-items: center;
   min-width: 0;
+}
+
+.portfolio-position-cell {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  align-content: center;
+  gap: 3px;
 }
 
 .portfolio-market-cell > div,
@@ -5162,9 +5205,17 @@ button:disabled {
 .portfolio-table-cell,
 .portfolio-history-pnl strong {
   color: var(--hh-text);
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 900;
   line-height: 1.05;
+}
+
+.portfolio-position-cell strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .portfolio-market-cell small,
@@ -5188,11 +5239,11 @@ button:disabled {
 .portfolio-side-down {
   display: inline-grid;
   place-items: center;
-  min-width: 30px;
-  min-height: 26px;
-  padding: 0 7px;
-  border-radius: 6px;
-  font-size: 0.62rem;
+  min-width: 36px;
+  min-height: 20px;
+  padding: 0;
+  border-radius: 5px;
+  font-size: 0.58rem;
   font-weight: 950;
   line-height: 1;
   text-align: center;
@@ -5206,16 +5257,41 @@ button:disabled {
   white-space: nowrap;
 }
 
+.portfolio-table-cell-positive {
+  color: var(--hh-up);
+}
+
+.portfolio-table-cell-negative {
+  color: var(--hh-down);
+}
+
+.portfolio-table-cell-flat {
+  color: var(--hh-muted);
+}
+
+.portfolio-history-pnl-positive strong {
+  color: var(--hh-up);
+}
+
+.portfolio-history-pnl-negative strong {
+  color: var(--hh-down);
+}
+
+.portfolio-history-pnl-flat strong {
+  color: var(--hh-muted);
+}
+
 .portfolio-action-cell {
   display: flex;
   justify-content: flex-end;
   min-width: 0;
+  width: 100%;
 }
 
 .portfolio-row-action {
   width: 100%;
   min-width: 0;
-  max-width: 58px;
+  max-width: 66px;
   min-height: 28px;
   padding: 0 5px;
   border-radius: 6px;
@@ -5241,7 +5317,33 @@ button:disabled {
   }
 
   .portfolio-row {
-    grid-template-columns: minmax(0, 1fr) minmax(58px, 0.62fr) minmax(52px, auto);
+    grid-template-columns: minmax(0, 1fr) 44px 46px 66px;
+    grid-template-rows: repeat(2, minmax(0, auto));
+  }
+
+  .portfolio-row > .portfolio-position-cell {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .portfolio-row > .portfolio-expiry-cell {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .portfolio-row > .portfolio-table-cell:nth-child(3) {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .portfolio-row > .portfolio-table-cell:nth-child(4) {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .portfolio-row > .portfolio-table-cell:nth-child(5) {
+    grid-column: 3;
+    grid-row: 2;
   }
 
   .portfolio-expiry-cell {
@@ -5254,7 +5356,7 @@ button:disabled {
   }
 
   .portfolio-action-cell {
-    grid-column: 3;
+    grid-column: 4;
     grid-row: 1 / span 2;
     align-self: center;
   }
@@ -5670,21 +5772,21 @@ button:disabled {
 
 @media (max-width: 430px) {
   .portfolio-table-head {
-    grid-template-columns: minmax(116px, 1.8fr) 70px 52px 64px 66px 56px;
-    gap: 6px;
+    grid-template-columns: minmax(68px, 0.86fr) 44px 42px 46px 40px 62px;
+    gap: 4px;
   }
 
   .portfolio-row,
   .portfolio-history-row {
-    grid-template-columns: minmax(116px, 1.8fr) 70px 52px 64px 66px 56px;
-    gap: 6px;
+    grid-template-columns: minmax(68px, 0.86fr) 44px 42px 46px 40px 62px;
+    gap: 4px;
   }
 
   .portfolio-history-table-head,
   .portfolio-history-row {
     grid-template-columns:
-      minmax(88px, 1.18fr) minmax(56px, 0.75fr) minmax(38px, 0.5fr)
-      minmax(42px, 0.56fr) minmax(36px, 0.48fr);
+      minmax(68px, 0.86fr) minmax(46px, 0.58fr) minmax(40px, 0.48fr)
+      minmax(48px, 0.56fr) minmax(44px, 0.5fr);
     gap: 4px;
   }
 
@@ -5696,21 +5798,7 @@ button:disabled {
 
   .portfolio-history-table-head span:nth-child(4),
   .portfolio-history-table-head span:nth-child(5) {
-    font-size: 0;
     text-align: right;
-  }
-
-  .portfolio-history-table-head span:nth-child(4)::after,
-  .portfolio-history-table-head span:nth-child(5)::after {
-    font-size: 0.56rem;
-  }
-
-  .portfolio-history-table-head span:nth-child(4)::after {
-    content: "Return";
-  }
-
-  .portfolio-history-table-head span:nth-child(5)::after {
-    content: "P/L";
   }
 
   .portfolio-history-pnl {

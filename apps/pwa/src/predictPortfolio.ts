@@ -47,6 +47,7 @@ export type PredictPortfolioPosition = {
   maxPayoutLabel: string;
   costBasisAtomic: string;
   costBasisLabel: string;
+  closeValueAtomic?: string;
   closeValueLabel?: string;
   closeValueStatusLabel?: "Quoted now";
   claimValueAtomic?: string;
@@ -885,6 +886,7 @@ function applyCloseQuote(
 
   return {
     ...position,
+    closeValueAtomic: quote.redeemPayout,
     closeValueLabel: formatDusdcBalance(quote.redeemPayout),
     closeValueStatusLabel: "Quoted now",
   };

@@ -637,7 +637,7 @@ const tradeExpiryWeekdayFormatter = new Intl.DateTimeFormat("en-US", {
   weekday: "short",
 });
 
-type TradeExpiryOption = {
+export type TradeExpiryOption = {
   count: number;
   expiryMs: number;
   label: string;
@@ -750,6 +750,20 @@ export function buildTradeExpiryOptions(
       value,
     }))
     .sort((left, right) => left.expiryMs - right.expiryMs);
+}
+
+export function selectActiveFeedExpiryDate(
+  selectedExpiryDate: string | null,
+  expiryOptions: TradeExpiryOption[],
+): string | null {
+  if (
+    selectedExpiryDate &&
+    expiryOptions.some((option) => option.value === selectedExpiryDate)
+  ) {
+    return selectedExpiryDate;
+  }
+
+  return expiryOptions[0]?.value ?? null;
 }
 
 function selectTradeMarketsForExpiry(
@@ -3004,12 +3018,10 @@ function PortfolioHistoryList({
   emptyLabel,
   items,
   testId = "portfolio-history",
-  title = "Trade history",
 }: {
   emptyLabel: string;
   items: PredictPortfolioHistoryItem[];
   testId?: string;
-  title?: string;
 }) {
   const [visibleCount, setVisibleCount] = useState(PORTFOLIO_HISTORY_PAGE_SIZE);
 
@@ -3022,9 +3034,8 @@ function PortfolioHistoryList({
 
   return (
     <div className="portfolio-history" data-testid={testId}>
-      <p className="portfolio-history-title">{title}</p>
       <div className="portfolio-table-head portfolio-history-table-head" aria-hidden="true">
-        <span>Market / side</span>
+        <span>Position</span>
         <span>Closed</span>
         <span>Cost</span>
         <span>Payout</span>
@@ -3033,6 +3044,7 @@ function PortfolioHistoryList({
       {visibleItems.map((item) => {
         const isOpen = item.statusLabel === "Open";
         const timeLabel = isOpen && item.timeLabel ? item.timeLabel : item.expiryTimeLabel;
+        const displayTimeLabel = isOpen ? compactPortfolioExpiryLabel(timeLabel) : timeLabel;
         const isLiveCountdown = isOpen && isLiveCountdownLabel(timeLabel);
         const payoutLabel = isOpen ? "-" : item.payoutLabel;
         const pnlLabel = isOpen ? "-" : item.pnlLabel;
@@ -3042,25 +3054,23 @@ function PortfolioHistoryList({
             className={`portfolio-history-row portfolio-history-row-${item.pnlTone}`}
             key={item.id}
           >
-            <div className="portfolio-market-cell">
+            <div className="portfolio-market-cell portfolio-position-cell">
+              <strong>{item.strikeLabel}</strong>
               <span className={item.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
                 {item.direction}
               </span>
-              <div>
-                <strong>BTC/USD</strong>
-                <small>{item.strikeLabel}</small>
-              </div>
             </div>
             <div
               className={`portfolio-expiry-cell${
                 isLiveCountdown ? " portfolio-countdown-live" : ""
               }`}
             >
-              <strong>{timeLabel}</strong>
-              <small>{item.statusLabel}</small>
+              <strong>{displayTimeLabel}</strong>
             </div>
             <span className="portfolio-table-cell">{item.costLabel}</span>
-            <span className="portfolio-table-cell">{payoutLabel}</span>
+            <span className={`portfolio-table-cell portfolio-table-cell-${item.pnlTone}`}>
+              {payoutLabel}
+            </span>
             <div className={`portfolio-history-pnl portfolio-history-pnl-${item.pnlTone}`}>
               <strong>{pnlLabel}</strong>
             </div>
@@ -3083,6 +3093,34 @@ function PortfolioHistoryList({
       ) : null}
     </div>
   );
+}
+
+function portfolioValueTone(
+  valueAtomic: string | undefined,
+  costBasisAtomic: string | undefined,
+): "positive" | "negative" | "flat" {
+  if (!valueAtomic || !costBasisAtomic) {
+    return "flat";
+  }
+
+  try {
+    const value = BigInt(valueAtomic);
+    const cost = BigInt(costBasisAtomic);
+    if (value > cost) {
+      return "positive";
+    }
+    if (value < cost) {
+      return "negative";
+    }
+  } catch {
+    return "flat";
+  }
+
+  return "flat";
+}
+
+function compactPortfolioExpiryLabel(label: string): string {
+  return label.replace(/\s+left$/i, "");
 }
 
 export function PortfolioPanel({
@@ -3158,11 +3196,11 @@ export function PortfolioPanel({
       {activeTab === "positions" && positions.length ? (
         <div className="portfolio-list">
           <div className="portfolio-table-head" aria-hidden="true">
-            <span>Market / side</span>
+            <span>Position</span>
             <span>Exp</span>
             <span>Cost</span>
-            <span>Est. close</span>
-            <span>Max payout</span>
+            <span>Now</span>
+            <span>Max</span>
             <span />
           </div>
           {positions.map((position) => {
@@ -3175,19 +3213,17 @@ export function PortfolioPanel({
                 : position.timeLabel;
             const isLiveCountdown = !isExpired && isLiveCountdownLabel(timeLabel);
             const primaryTimeLabel = isExpired ? position.expiryTimeLabel : timeLabel;
-            const statusSummary = [
-              statusLabel,
-              !isExpired && position.closeValueStatusLabel ? position.closeValueStatusLabel : null,
-              isExpired && position.outcomeLabel ? position.outcomeLabel : null,
-            ]
-              .filter(Boolean)
-              .join(" · ");
+            const displayTimeLabel = isExpired
+              ? primaryTimeLabel
+              : compactPortfolioExpiryLabel(primaryTimeLabel);
             const isDismissible = isExpired && position.dismissible;
             const actionLabel = isExpired
               ? isDismissible
                 ? "Dismiss"
                 : "Claim"
               : position.actionLabel;
+            const nowValueAtomic = isExpired ? position.claimValueAtomic : position.closeValueAtomic;
+            const nowValueTone = portfolioValueTone(nowValueAtomic, position.costBasisAtomic);
             const actionPosition = isExpired
               ? {
                   ...position,
@@ -3200,30 +3236,26 @@ export function PortfolioPanel({
 
             return (
               <article className="portfolio-row" key={position.id}>
-                <div className="portfolio-market-cell">
+                <div className="portfolio-market-cell portfolio-position-cell">
+                  <strong>{position.strikeLabel}</strong>
                   <span className={position.direction === "UP" ? "portfolio-side-up" : "portfolio-side-down"}>
                     {position.direction}
                   </span>
-                  <div>
-                    <strong>BTC/USD</strong>
-                    <small>Strike {position.strikeLabel}</small>
-                    {position.copiedFromLabel ? (
-                      <small className="portfolio-copy-source-badge">
-                        {position.copiedFromLabel}
-                      </small>
-                    ) : null}
-                  </div>
+                  {position.copiedFromLabel ? (
+                    <small className="portfolio-copy-source-badge">
+                      {position.copiedFromLabel}
+                    </small>
+                  ) : null}
                 </div>
                 <div
                   className={`portfolio-expiry-cell${
                     isLiveCountdown ? " portfolio-countdown-live" : ""
                   }`}
                 >
-                  <strong>{primaryTimeLabel}</strong>
-                  <small>{statusSummary}</small>
+                  <strong>{displayTimeLabel}</strong>
                 </div>
                 <span className="portfolio-table-cell">{position.costBasisLabel}</span>
-                <span className="portfolio-table-cell">
+                <span className={`portfolio-table-cell portfolio-table-cell-${nowValueTone}`}>
                   {isExpired
                     ? position.claimValueLabel ?? (status === "loading" ? "Checking" : "Pending")
                     : position.closeValueLabel ?? (status === "loading" ? "Checking" : "Unavailable")}
@@ -3510,7 +3542,6 @@ export function ProfilePanel({
           emptyLabel={profileHistoryEmptyLabel}
           items={profileHistoryItems}
           testId="profile-trade-history"
-          title="Trade history"
         />
       ) : null}
       <form
@@ -4180,7 +4211,6 @@ export function MarketHeatPreview({
   testId = "market-heat-preview",
   walletConnected = false,
   onAmountSet,
-  onAllExpiriesSelect = () => undefined,
   onEmptyAction,
   onExpiryChange = () => undefined,
   onShowExpiredChange,
@@ -4218,7 +4248,6 @@ export function MarketHeatPreview({
   testId?: string;
   walletConnected?: boolean;
   onAmountSet: (amount: number) => void;
-  onAllExpiriesSelect?: () => void;
   onEmptyAction?: () => void;
   onExpiryChange?: (expiryDate: string) => void;
   onShowExpiredChange: (showExpired: boolean) => void;
@@ -4659,10 +4688,7 @@ export function MarketHeatPreview({
         {showControls ? (
           <div className="market-heat-controls">
             <TradeExpiryRail
-              allSelected={!selectedExpiryDate}
               ariaLabel="Feed expiration dates"
-              includeAllOption
-              onAllSelect={onAllExpiriesSelect}
               options={expiryOptions}
               selectedExpiryDate={selectedExpiryDate}
               testIdPrefix="feed-expiry"
@@ -4876,7 +4902,9 @@ export function AccountSummary({
 
   return (
     <section
-      className={`account-summary account-summary-${visiblePnlTone}`}
+      className={`account-summary account-summary-${visiblePnlTone}${
+        isPortfolioSummary ? " account-summary-portfolio" : ""
+      }`}
       aria-label="Account summary"
       data-testid="session-pnl"
     >
@@ -5458,11 +5486,10 @@ export function App() {
     spotPriceLabel: tradeMarketPriceLabel,
   });
   const tradeExpiryOptions = buildTradeExpiryOptions(allTradeMarketRows, marketHeatNowMs);
-  const activeFeedExpiryDate =
-    selectedFeedExpiryDate &&
-    tradeExpiryOptions.some((option) => option.value === selectedFeedExpiryDate)
-      ? selectedFeedExpiryDate
-      : null;
+  const activeFeedExpiryDate = selectActiveFeedExpiryDate(
+    selectedFeedExpiryDate,
+    tradeExpiryOptions,
+  );
   const expiryFilteredMarketHeatRows = selectMarketHeatRowsForExpiry(
     feedModeMarketHeatRows,
     activeFeedExpiryDate,
@@ -7165,11 +7192,6 @@ export function App() {
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
     setMarketHeatIntent((state) => closeMarketHeatIntent(state));
   };
-  const handleFeedAllExpiriesSelect = () => {
-    setSelectedFeedExpiryDate(null);
-    setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
-    setMarketHeatIntent((state) => closeMarketHeatIntent(state));
-  };
   const handleFeedExpiryChange = (expiryDate: string) => {
     setSelectedFeedExpiryDate(expiryDate);
     setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
@@ -7960,7 +7982,6 @@ export function App() {
       testId={testId}
       walletConnected={Boolean(currentAccount)}
       onAmountSet={handleAmountSet}
-      onAllExpiriesSelect={handleFeedAllExpiriesSelect}
       onEmptyAction={isFollowingFeedMode ? handleFeedEmptyAction : undefined}
       onExpiryChange={handleFeedExpiryChange}
       onShowExpiredChange={handleMarketHeatShowExpiredChange}
