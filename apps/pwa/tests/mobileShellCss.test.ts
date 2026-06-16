@@ -43,8 +43,16 @@ describe("mobile shell CSS", () => {
     const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
 
     expect(css).toContain(".bottom-nav .bottom-nav-trade-action");
+    expect(css).toContain(".bottom-nav .bottom-nav-trade-action::before");
+    expect(css).toContain(".bottom-nav .bottom-nav-trade-action::after");
     expect(css).toContain("background: var(--hh-accent);");
     expect(css).toContain("background: var(--hh-accent-strong);");
+    expect(css).toContain("background: conic-gradient(");
+    expect(css).toContain("#ff5bd8");
+    expect(css).toContain("@media (prefers-reduced-motion: no-preference)");
+    expect(css).toContain("animation: trade-action-heat 3.8s ease-in-out infinite;");
+    expect(css).toContain("will-change: opacity, transform;");
+    expect(css).toContain("@keyframes trade-action-heat");
     expect(css).not.toContain("#ffb000");
     expect(css).not.toContain("#ff6b2b");
     expect(css).not.toContain("radial-gradient(circle at 32% 22%");

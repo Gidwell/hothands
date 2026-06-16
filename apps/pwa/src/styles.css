@@ -3274,6 +3274,7 @@ button:disabled {
 .bottom-nav .bottom-nav-trade-action {
   position: relative;
   z-index: 2;
+  isolation: isolate;
   justify-self: center;
   width: 72px;
   height: 72px;
@@ -3288,21 +3289,92 @@ button:disabled {
   transform: translateY(3px);
 }
 
+.bottom-nav .bottom-nav-trade-action::before {
+  position: absolute;
+  inset: -10px;
+  z-index: 0;
+  border-radius: 999px;
+  background: conic-gradient(
+    from -40deg,
+    color-mix(in srgb, #ff5bd8 42%, var(--hh-accent)) 0deg 20deg,
+    transparent 58deg,
+    color-mix(in srgb, #ff5bd8 46%, var(--hh-accent)) 94deg,
+    transparent 138deg,
+    color-mix(in srgb, var(--hh-accent) 54%, transparent) 194deg,
+    transparent 248deg,
+    color-mix(in srgb, #ff5bd8 40%, var(--hh-accent)) 306deg,
+    transparent 350deg 360deg
+  );
+  content: "";
+  filter: blur(11px);
+  opacity: 0.24;
+  pointer-events: none;
+  transform: scale(0.98) rotate(-8deg);
+  transform-origin: 50% 50%;
+}
+
+.bottom-nav .bottom-nav-trade-action::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: var(--hh-accent);
+  content: "";
+}
+
 .bottom-nav .bottom-nav-trade-action[aria-pressed="true"] {
   color: #ffffff;
   background: var(--hh-accent-strong);
   box-shadow:
     0 0 0 7px color-mix(in srgb, var(--hh-surface) 94%, transparent),
-    0 0 0 11px color-mix(in srgb, var(--hh-accent) 14%, transparent),
     0 10px 24px color-mix(in srgb, var(--hh-accent) 26%, transparent);
 }
 
+.bottom-nav .bottom-nav-trade-action[aria-pressed="true"]::before {
+  inset: -12px;
+  opacity: 0.46;
+  transform: scale(1.02) rotate(-5deg);
+}
+
+.bottom-nav .bottom-nav-trade-action[aria-pressed="true"]::after {
+  background: var(--hh-accent-strong);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .bottom-nav .bottom-nav-trade-action[aria-pressed="true"]::before {
+    animation: trade-action-heat 3.8s ease-in-out infinite;
+    will-change: opacity, transform;
+  }
+}
+
+@keyframes trade-action-heat {
+  0%,
+  100% {
+    opacity: 0.38;
+    transform: translate3d(0, 0, 0) scale(0.98) rotate(-10deg);
+  }
+
+  44% {
+    opacity: 0.52;
+    transform: translate3d(1px, -1px, 0) scale(1.05) rotate(8deg);
+  }
+
+  72% {
+    opacity: 0.44;
+    transform: translate3d(-1px, 1px, 0) scale(1.01) rotate(-2deg);
+  }
+}
+
 .bottom-nav .bottom-nav-trade-action .bottom-nav-icon {
+  position: relative;
+  z-index: 2;
   width: 24px;
   height: 24px;
 }
 
 .bottom-nav .bottom-nav-trade-action span {
+  position: relative;
+  z-index: 2;
   font-size: 0.66rem;
   font-weight: 950;
 }
