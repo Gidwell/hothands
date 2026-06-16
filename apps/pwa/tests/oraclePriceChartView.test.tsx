@@ -6,8 +6,10 @@ import {
   getOraclePriceChartGridLineOptions,
   getInitialOraclePriceChartView,
   getOraclePriceChartMinBarSpacing,
+  getOraclePriceChartRangeOptions,
   OraclePriceChartCard,
   OraclePriceChartModal,
+  OraclePriceChartPanel,
   shouldAutoFitOraclePriceChart,
 } from "../src/OraclePriceChart";
 import type { OraclePriceChart } from "../src/oraclePriceChartModel";
@@ -99,6 +101,62 @@ describe("OraclePriceChartModal", () => {
     expect(html).toContain('data-testid="oracle-chart-settlement-toggle"');
     expect(html).toContain("Settlement");
     expect(html).toContain("UP $66,950");
+  });
+
+  test("disables chart range buttons that exceed the available oracle history", () => {
+    const shortHistoryChart: OraclePriceChart = {
+      ...readyChart,
+      points: [
+        {
+          price: 66_960,
+          timestampMs: 1_779_158_000_000,
+        },
+        {
+          price: 66_978.22,
+          timestampMs: 1_779_158_900_000,
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(<OraclePriceChartPanel chart={shortHistoryChart} />);
+
+    expect(html).toContain('data-testid="oracle-chart-range-1H"');
+    expect(html).toContain('data-testid="oracle-chart-range-4H" disabled=""');
+    expect(html).toContain('data-testid="oracle-chart-range-24H" disabled=""');
+    expect(html).toContain('aria-pressed="true" data-testid="oracle-chart-range-1H"');
+  });
+
+  test("keeps longer chart ranges selectable when enough history exists", () => {
+    const dayPlusHistory = [
+      {
+        price: 66_100,
+        timestampMs: 1_779_000_000_000,
+      },
+      {
+        price: 66_978.22,
+        timestampMs: 1_779_090_000_000,
+      },
+    ];
+
+    expect(getOraclePriceChartRangeOptions(dayPlusHistory)).toEqual([
+      {
+        available: true,
+        key: "1H",
+        label: "1h",
+        seconds: 60 * 60,
+      },
+      {
+        available: true,
+        key: "4H",
+        label: "4h",
+        seconds: 4 * 60 * 60,
+      },
+      {
+        available: true,
+        key: "24H",
+        label: "24h",
+        seconds: 24 * 60 * 60,
+      },
+    ]);
   });
 
   test("shows muted TradingView attribution inside the expanded chart", () => {

@@ -68,6 +68,10 @@ const ORACLE_PRICE_CHART_RANGES: {
   { key: "24H", label: "24h", seconds: 24 * 60 * 60 },
 ];
 
+type OraclePriceChartRangeOption = (typeof ORACLE_PRICE_CHART_RANGES)[number] & {
+  available: boolean;
+};
+
 type OraclePriceChartInitialView =
   | {
       mode: "fit-content";
@@ -196,8 +200,10 @@ export function OraclePriceChartModal({
   const [showSettlementLines, setShowSettlementLines] = useState(true);
   const hasChart = chart?.status === "ready" && chart.points.length >= 2;
   const visibleMarketContext = showSettlementLines ? marketContext : null;
+  const rangeOptions = getOraclePriceChartRangeOptions(chart?.points ?? []);
+  const selectedRangeKey = getSelectableOraclePriceChartRangeKey(rangeOptions, rangeKey);
   const activeRange =
-    ORACLE_PRICE_CHART_RANGES.find((range) => range.key === rangeKey) ??
+    ORACLE_PRICE_CHART_RANGES.find((range) => range.key === selectedRangeKey) ??
     ORACLE_PRICE_CHART_RANGES[1];
   const heading = marketContext
     ? `${chart?.marketLabel ?? "BTC/USD"} market chart`
@@ -205,6 +211,12 @@ export function OraclePriceChartModal({
   const detail = marketContext
     ? `${marketContext.selectedSide} ${marketContext.selectedStrikeLabel} resolves ${marketContext.expiryLabel}.`
     : "DeepBook oracle settlement feed.";
+
+  useEffect(() => {
+    if (selectedRangeKey !== rangeKey) {
+      setRangeKey(selectedRangeKey);
+    }
+  }, [rangeKey, selectedRangeKey]);
 
   return (
     <div className="oracle-chart-modal" role="dialog" aria-modal="true" aria-labelledby="oracle-chart-title">
@@ -224,13 +236,16 @@ export function OraclePriceChartModal({
         </div>
         <div className="oracle-chart-toolbar" aria-label="Oracle chart controls">
           <div className="oracle-chart-range-controls" aria-label="Oracle chart range">
-            {ORACLE_PRICE_CHART_RANGES.map((range) => (
+            {rangeOptions.map((range) => (
               <button
                 type="button"
-                aria-pressed={range.key === rangeKey}
+                aria-disabled={!range.available}
+                aria-pressed={range.key === selectedRangeKey}
                 data-testid={`oracle-chart-range-${range.key}`}
+                disabled={!range.available}
                 key={range.key}
                 onClick={() => setRangeKey(range.key)}
+                title={range.available ? undefined : `${range.label} needs more price history`}
               >
                 {range.label}
               </button>
@@ -254,7 +269,7 @@ export function OraclePriceChartModal({
               points={chart.points}
               fitResetKey={buildOraclePriceChartFitResetKey({
                 oracleId: chart.oracleId,
-                rangeKey,
+                rangeKey: selectedRangeKey,
               })}
               height={320}
               marketContext={visibleMarketContext}
@@ -290,9 +305,17 @@ export function OraclePriceChartPanel({
 }) {
   const [rangeKey, setRangeKey] = useState<OraclePriceChartRangeKey>("4H");
   const hasChart = chart?.status === "ready" && chart.points.length >= 2;
+  const rangeOptions = getOraclePriceChartRangeOptions(chart?.points ?? []);
+  const selectedRangeKey = getSelectableOraclePriceChartRangeKey(rangeOptions, rangeKey);
   const activeRange =
-    ORACLE_PRICE_CHART_RANGES.find((range) => range.key === rangeKey) ??
+    ORACLE_PRICE_CHART_RANGES.find((range) => range.key === selectedRangeKey) ??
     ORACLE_PRICE_CHART_RANGES[1];
+
+  useEffect(() => {
+    if (selectedRangeKey !== rangeKey) {
+      setRangeKey(selectedRangeKey);
+    }
+  }, [rangeKey, selectedRangeKey]);
 
   return (
     <section
@@ -306,13 +329,16 @@ export function OraclePriceChartPanel({
           <strong>{chart?.latestPriceLabel ?? "No price yet"}</strong>
         </div>
         <div className="oracle-chart-range-controls" aria-label="Oracle chart range">
-          {ORACLE_PRICE_CHART_RANGES.map((range) => (
+          {rangeOptions.map((range) => (
             <button
               type="button"
-              aria-pressed={range.key === rangeKey}
+              aria-disabled={!range.available}
+              aria-pressed={range.key === selectedRangeKey}
               data-testid={`oracle-chart-range-${range.key}`}
+              disabled={!range.available}
               key={range.key}
               onClick={() => setRangeKey(range.key)}
+              title={range.available ? undefined : `${range.label} needs more price history`}
             >
               {range.label}
             </button>
@@ -325,7 +351,7 @@ export function OraclePriceChartPanel({
             points={chart.points}
             fitResetKey={buildOraclePriceChartFitResetKey({
               oracleId: chart.oracleId,
-              rangeKey,
+              rangeKey: selectedRangeKey,
             })}
             height={198}
             marketContext={marketContext}
@@ -348,6 +374,55 @@ export function buildOraclePriceChartFitResetKey({
   rangeKey?: OraclePriceChartRangeKey;
 }): string {
   return rangeKey ? `${oracleId}:${rangeKey}` : oracleId;
+}
+
+export function getOraclePriceChartRangeOptions(
+  points: OraclePriceChartPoint[],
+): OraclePriceChartRangeOption[] {
+  const historySpanSeconds = getOraclePriceChartHistorySpanSeconds(points);
+
+  return ORACLE_PRICE_CHART_RANGES.map((range, index) => ({
+    ...range,
+    available: index === 0 || historySpanSeconds >= range.seconds,
+  }));
+}
+
+function getSelectableOraclePriceChartRangeKey(
+  rangeOptions: OraclePriceChartRangeOption[],
+  preferredRangeKey: OraclePriceChartRangeKey,
+): OraclePriceChartRangeKey {
+  const preferredOption = rangeOptions.find((range) => range.key === preferredRangeKey);
+  if (preferredOption?.available) {
+    return preferredOption.key;
+  }
+
+  let largestAvailableRange: OraclePriceChartRangeOption | null = null;
+  for (const range of rangeOptions) {
+    if (range.available) {
+      largestAvailableRange = range;
+    }
+  }
+
+  return largestAvailableRange?.key ?? ORACLE_PRICE_CHART_RANGES[0].key;
+}
+
+function getOraclePriceChartHistorySpanSeconds(points: OraclePriceChartPoint[]): number {
+  if (points.length < 2) {
+    return 0;
+  }
+
+  let firstTimestampMs = Number.POSITIVE_INFINITY;
+  let lastTimestampMs = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    firstTimestampMs = Math.min(firstTimestampMs, point.timestampMs);
+    lastTimestampMs = Math.max(lastTimestampMs, point.timestampMs);
+  }
+
+  if (!Number.isFinite(firstTimestampMs) || !Number.isFinite(lastTimestampMs)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor((lastTimestampMs - firstTimestampMs) / 1_000));
 }
 
 function LightweightOraclePriceChart({

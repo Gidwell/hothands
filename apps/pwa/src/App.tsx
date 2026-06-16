@@ -6281,7 +6281,7 @@ export function App() {
     if (
       !shouldLoadOraclePriceChartHistory({
         apiBaseUrl: realtimeApiBaseUrl,
-        isOpen: isOracleChartOpen,
+        isOpen: isOracleChartOpen || activeView === "trade",
         oracleId: activeChartOracleId,
       })
     ) {
@@ -6325,10 +6325,15 @@ export function App() {
     return () => {
       isCurrent = false;
     };
-  }, [activeChartOracleId, isOracleChartOpen, realtimeApiBaseUrl]);
+  }, [activeChartOracleId, activeView, isOracleChartOpen, realtimeApiBaseUrl]);
 
   useEffect(() => {
-    if (!realtimeApiBaseUrl || !activeChartOracleId || isOracleChartOpen) {
+    if (
+      !realtimeApiBaseUrl ||
+      !activeChartOracleId ||
+      isOracleChartOpen ||
+      activeView === "trade"
+    ) {
       return undefined;
     }
 
@@ -6369,7 +6374,7 @@ export function App() {
     return () => {
       isCurrent = false;
     };
-  }, [activeChartOracleId, isOracleChartOpen, realtimeApiBaseUrl]);
+  }, [activeChartOracleId, activeView, isOracleChartOpen, realtimeApiBaseUrl]);
 
   useEffect(() => {
     if (!activeChartOracleId) {
@@ -7718,7 +7723,7 @@ export function App() {
             <OraclePriceChartCard
               chart={oraclePriceChart}
               fallbackPriceLabel={marketHeatPreview.marketPrice.priceLabel}
-              onOpen={() => setIsOracleChartOpen(true)}
+              onOpen={() => handleBottomNavViewChange("trade")}
             />
           )}
           <WalletStatusBar
