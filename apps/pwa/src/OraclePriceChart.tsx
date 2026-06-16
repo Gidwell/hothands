@@ -327,7 +327,7 @@ export function OraclePriceChartPanel({
               oracleId: chart.oracleId,
               rangeKey,
             })}
-            height={240}
+            height={198}
             marketContext={marketContext}
             nowMs={nowMs}
             rangeSeconds={activeRange.seconds}

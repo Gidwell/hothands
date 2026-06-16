@@ -38,4 +38,23 @@ describe("mobile shell CSS", () => {
     expect(css).toContain('content: "Return";');
     expect(css).toContain('content: "P/L";');
   });
+
+  test("keeps the primary trade action in the purple design system", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+
+    expect(css).toContain(".bottom-nav .bottom-nav-trade-action");
+    expect(css).toContain("linear-gradient(145deg, #a78bfa 0%, #7c3aed 48%, #6246ea 100%)");
+    expect(css).toContain("linear-gradient(145deg, #c4b5fd 0%, #8b5cf6 42%, #5a35f0 100%)");
+    expect(css).not.toContain("#ffb000");
+    expect(css).not.toContain("#ff6b2b");
+  });
+
+  test("uses compact chart controls for the embedded trade chart", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+
+    expect(css).toContain(".oracle-chart-panel .oracle-chart-range-controls");
+    expect(css).toContain(".oracle-expanded-chart.oracle-chart-panel-visual");
+    expect(css).toContain("border-radius: 999px;");
+    expect(css).toContain("min-height: 198px;");
+  });
 });
