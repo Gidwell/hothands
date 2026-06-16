@@ -5673,26 +5673,31 @@ button:disabled {
 }
 
 .wallet-leaderboard-table-head {
-  column-gap: 6px;
-  padding: 0 9px;
+  column-gap: 8px;
+  padding: 0 10px;
 }
 
 .wallet-leaderboard-row {
   display: grid;
-  column-gap: 6px;
+  column-gap: 8px;
   align-items: center;
   min-height: 46px;
-  padding: 7px 9px;
+  padding: 7px 10px;
 }
 
 .wallet-leaderboard-table-head-pnl,
 .wallet-leaderboard-row-pnl {
-  grid-template-columns: 28px minmax(104px, 1.6fr) 62px 54px 32px 48px 42px;
+  grid-template-columns: 28px minmax(96px, 1fr) 72px 64px 40px 46px;
 }
 
 .wallet-leaderboard-table-head-streaks,
 .wallet-leaderboard-row-streaks {
-  grid-template-columns: 28px minmax(84px, 1.25fr) 54px 58px 54px 30px 46px 38px;
+  grid-template-columns: 28px minmax(84px, 0.9fr) 58px 68px 58px 36px 48px;
+}
+
+.wallet-leaderboard-table-head-streaks-current,
+.wallet-leaderboard-row-streaks-current {
+  grid-template-columns: 28px minmax(96px, 1fr) 58px 68px 58px 36px;
 }
 
 .wallet-leaderboard-main,
@@ -5742,6 +5747,13 @@ button:disabled {
   text-align: left;
 }
 
+.wallet-leaderboard-profile-button strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wallet-leaderboard-core small,
 .wallet-leaderboard-metrics small {
   display: none;
@@ -5755,6 +5767,33 @@ button:disabled {
   font-size: 0.62rem;
   font-weight: 900;
   line-height: 1.05;
+}
+
+.wallet-leaderboard-core-positive strong,
+.wallet-leaderboard-pnl.wallet-leaderboard-pnl-positive {
+  color: var(--hh-up);
+}
+
+.wallet-leaderboard-core-negative strong,
+.wallet-leaderboard-pnl.wallet-leaderboard-pnl-negative {
+  color: var(--hh-down);
+}
+
+.wallet-leaderboard-core-flat strong,
+.wallet-leaderboard-pnl.wallet-leaderboard-pnl-flat {
+  color: var(--hh-muted);
+}
+
+.wallet-leaderboard-streak.wallet-leaderboard-streak-positive {
+  color: var(--hh-up);
+}
+
+.wallet-leaderboard-streak.wallet-leaderboard-streak-negative {
+  color: var(--hh-down);
+}
+
+.wallet-leaderboard-streak.wallet-leaderboard-streak-flat {
+  color: var(--hh-muted);
 }
 
 .wallet-leaderboard-main small {
@@ -5811,19 +5850,24 @@ button:disabled {
 
   .wallet-leaderboard-table-head,
   .wallet-leaderboard-row {
-    column-gap: 4px;
+    column-gap: 6px;
     padding-right: 7px;
     padding-left: 7px;
   }
 
   .wallet-leaderboard-table-head-pnl,
   .wallet-leaderboard-row-pnl {
-    grid-template-columns: 26px minmax(84px, 1.4fr) 56px 48px 28px 42px 34px;
+    grid-template-columns: 26px minmax(78px, 0.9fr) 60px 52px 32px 40px;
   }
 
   .wallet-leaderboard-table-head-streaks,
   .wallet-leaderboard-row-streaks {
-    grid-template-columns: 26px minmax(70px, 1.18fr) 48px 52px 48px 28px 40px 32px;
+    grid-template-columns: 26px minmax(66px, 0.8fr) 50px 58px 52px 30px 40px;
+  }
+
+  .wallet-leaderboard-table-head-streaks-current,
+  .wallet-leaderboard-row-streaks-current {
+    grid-template-columns: 26px minmax(78px, 0.9fr) 50px 58px 52px 30px;
   }
 }
 

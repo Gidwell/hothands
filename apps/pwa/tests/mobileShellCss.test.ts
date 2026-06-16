@@ -51,6 +51,18 @@ describe("mobile shell CSS", () => {
     );
   });
 
+  test("keeps mobile wallet leaderboard columns balanced", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+
+    expect(css).toContain("grid-template-columns: 26px minmax(78px, 0.9fr) 60px 52px 32px 40px;");
+    expect(css).toContain("grid-template-columns: 26px minmax(66px, 0.8fr) 50px 58px 52px 30px 40px;");
+    expect(css).toContain("grid-template-columns: 26px minmax(78px, 0.9fr) 50px 58px 52px 30px;");
+    expect(css).toContain(".wallet-leaderboard-streak-positive");
+    expect(css).toContain(".wallet-leaderboard-streak-negative");
+    expect(css).toContain(".wallet-leaderboard-profile-button strong");
+    expect(css).toContain("text-overflow: ellipsis;");
+  });
+
   test("keeps the primary trade action in the purple design system", async () => {
     const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
 
