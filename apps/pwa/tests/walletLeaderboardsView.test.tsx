@@ -75,6 +75,9 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain("Open</small>2");
     expect(html).not.toContain("Closed</small>5");
     expect(html).toContain("Streak</small>2W");
+    expect(html).toContain(
+      "wallet-leaderboard-streak wallet-leaderboard-streak-positive",
+    );
     expect(html).not.toContain("Streak</small>2 wins");
     expect(html).not.toContain("Top PnL");
     expect(html).not.toContain(">Last</span>");
@@ -134,6 +137,9 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain("0xdddd...0004");
     expect(html).toContain("PNL</small><strong>-$9.50");
     expect(html).toContain("wallet-leaderboard-core wallet-leaderboard-core-negative");
+    expect(html).toContain(
+      "wallet-leaderboard-streak wallet-leaderboard-streak-negative",
+    );
     expect(html).not.toContain("0xaaaa...0001");
   });
 
@@ -203,6 +209,9 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain("PNL</small>+$12.35");
     expect(html).toContain("Win Rate</small>80%");
     expect(html).toContain("Current</small>2W");
+    expect(html).toContain(
+      "wallet-leaderboard-streak wallet-leaderboard-streak-positive",
+    );
     expect(html).not.toContain("Current</small>2 wins");
     expect(html).not.toContain("Win Streak</small><strong>3 wins");
     expect(html).not.toContain(">Wins</span>");

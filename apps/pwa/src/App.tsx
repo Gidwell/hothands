@@ -3708,6 +3708,20 @@ function walletLeaderboardMetricTone(
   }
 }
 
+function walletLeaderboardCurrentStreakTone(
+  entry: WalletLeaderboardEntry,
+): WalletLeaderboardTone {
+  if (entry.currentStreakType === "win") {
+    return "positive";
+  }
+
+  if (entry.currentStreakType === "loss") {
+    return "negative";
+  }
+
+  return "flat";
+}
+
 function formatWalletLeaderboardWinRate(entry: WalletLeaderboardEntry): string {
   const settledCount = entry.winCount + entry.lossCount;
   if (settledCount <= 0) {
@@ -4133,6 +4147,7 @@ export function WalletLeaderboardsPanel({
               entry.currentStreakType,
               entry.currentStreakLength,
             );
+            const currentStreakTone = walletLeaderboardCurrentStreakTone(entry);
 
             return (
               <article
@@ -4183,7 +4198,9 @@ export function WalletLeaderboardsPanel({
                     {entry.openCount}
                   </span>
                   {showCurrentStreakMetric ? (
-                    <span>
+                    <span
+                      className={`wallet-leaderboard-streak wallet-leaderboard-streak-${currentStreakTone}`}
+                    >
                       <small>
                         {activeBoardDefinition.key === "streaks" ? "Current" : "Streak"}
                       </small>
