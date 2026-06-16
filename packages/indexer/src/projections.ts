@@ -652,25 +652,12 @@ function projectTraderHeat(
   const lossPenalty = 0.75 ** currentLossStreak;
   const baseSkill =
     0.5 * edgeScore + 0.3 * profitScore + 0.2 * consistencyScore;
-  const recentPnl = decisions
-    .filter(
-      (decision) => (nowMs - decision.resolvedAtMs) / ONE_DAY_MS <= 7,
-    )
-    .reduce((sum, decision) => sum + decision.pnl, 0);
-  const skillScore = applyHeatSkillGuardrails({
-    skillScore: Math.round(
-      100 * baseSkill * confidence * freshness * lossPenalty,
-    ),
-    currentLossStreak,
-    recentPnl,
-    edgeZ,
-    decisionCount,
-  });
-  const hotScore = calibrateHeatScore(skillScore, {
-    currentLossStreak,
-    recentPnl,
-    edgeZ,
-  });
+  const skillScore = clampScore(
+    Math.round(100 * baseSkill * confidence * freshness * lossPenalty),
+    0,
+    99,
+  );
+  const hotScore = calibrateHeatScore(skillScore);
   const components = {
     edge: Math.round(edgeScore * 100),
     profit: Math.round(profitScore * 100),
@@ -844,52 +831,12 @@ function traderHeatCurrentStreak(decisions: TraderHeatDecision[]): {
   return { currentStreakType, currentStreakLength };
 }
 
-function applyHeatSkillGuardrails({
-  skillScore,
-  currentLossStreak,
-  recentPnl,
-  edgeZ,
-  decisionCount,
-}: {
-  skillScore: number;
-  currentLossStreak: number;
-  recentPnl: number;
-  edgeZ: number;
-  decisionCount: number;
-}): number {
-  let nextScore = clampScore(skillScore, 0, 99);
-
-  if (decisionCount === 0) {
-    nextScore = Math.min(nextScore, 15);
-  }
-  if (currentLossStreak >= 4 && recentPnl < 0) {
-    nextScore = Math.min(nextScore, 20);
-  }
-  if (recentPnl < 0 && edgeZ < 0) {
-    nextScore = Math.min(nextScore, 35);
-  }
-
-  return nextScore;
-}
-
-function calibrateHeatScore(
-  skillScore: number,
-  {
-    currentLossStreak,
-    recentPnl,
-    edgeZ,
-  }: { currentLossStreak: number; recentPnl: number; edgeZ: number },
-): number {
-  let heatScore = Math.round(100 / (1 + Math.exp(-(skillScore - 28) / 9)));
-
-  if (currentLossStreak >= 4 && recentPnl < 0) {
-    heatScore = Math.min(heatScore, 20);
-  }
-  if (recentPnl < 0 && edgeZ < 0) {
-    heatScore = Math.min(heatScore, 35);
-  }
-
-  return clampScore(heatScore, 0, 99);
+function calibrateHeatScore(skillScore: number): number {
+  return clampScore(
+    Math.round(100 / (1 + Math.exp(-(skillScore - 28) / 9))),
+    0,
+    99,
+  );
 }
 
 function getTraderHeatAccumulator(
