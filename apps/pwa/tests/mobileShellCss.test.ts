@@ -66,4 +66,13 @@ describe("mobile shell CSS", () => {
     expect(css).toContain("border-radius: 999px;");
     expect(css).toContain("min-height: 198px;");
   });
+
+  test("keeps the trade chart sticky above the strike ladder", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+
+    expect(css).toContain(".trade-oracle-chart-panel {");
+    expect(css).toContain("position: sticky;");
+    expect(css).toContain("top: 8px;");
+    expect(css).toContain("z-index: 8;");
+  });
 });

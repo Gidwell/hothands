@@ -3616,6 +3616,12 @@ button:disabled {
   line-height: 1;
 }
 
+.trade-oracle-chart-panel {
+  position: sticky;
+  top: 8px;
+  z-index: 8;
+}
+
 .trade-ticket-panel {
   gap: 8px;
   padding: 9px;
