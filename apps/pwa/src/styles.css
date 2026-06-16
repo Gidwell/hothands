@@ -4441,6 +4441,14 @@ button:disabled {
   justify-self: start;
 }
 
+.market-heat-head-wallet {
+  display: grid;
+  grid-template-columns: 33px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
 .market-heat-info-trigger {
   display: inline-flex;
   align-items: center;
@@ -4475,10 +4483,11 @@ button:disabled {
 
 .market-heat-info-tooltip {
   position: absolute;
-  right: -4px;
+  left: 0;
   top: calc(100% + 7px);
   z-index: 6;
-  width: min(216px, calc(100vw - 40px));
+  width: min(232px, calc(100vw - 52px));
+  max-width: calc(100vw - 52px);
   padding: 8px 9px;
   border: 1px solid color-mix(in srgb, var(--hh-line) 78%, var(--hh-accent));
   border-radius: 8px;
@@ -4489,7 +4498,19 @@ button:disabled {
   font-weight: 850;
   letter-spacing: 0;
   line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
   text-transform: none;
+  transform: translateY(-2px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.market-heat-head-heat:hover .market-heat-info-tooltip,
+.market-heat-head-heat:focus-within .market-heat-info-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .market-heat-list-compact .market-heat-row {
@@ -4514,6 +4535,40 @@ button:disabled {
   width: 27px;
   height: 27px;
   font-size: 0.68rem;
+}
+
+.market-heat-score-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 33px;
+  height: 31px;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--hh-accent) 26%, var(--hh-line));
+  border-radius: 9px;
+  color: var(--hh-accent);
+  background: var(--hh-accent-soft);
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.market-heat-score-badge-hot {
+  border-color: color-mix(in srgb, var(--hh-accent) 76%, var(--hh-line));
+  color: #ffffff;
+  background: var(--hh-accent);
+}
+
+.market-heat-score-badge-warm {
+  border-color: color-mix(in srgb, var(--hh-accent) 42%, var(--hh-line));
+  color: var(--hh-accent);
+  background: var(--hh-accent-soft);
+}
+
+.market-heat-score-badge-cool,
+.market-heat-score-badge-empty {
+  border-color: var(--hh-line);
+  color: var(--hh-muted);
+  background: var(--hh-surface-2);
 }
 
 .market-heat-compact-wallet {

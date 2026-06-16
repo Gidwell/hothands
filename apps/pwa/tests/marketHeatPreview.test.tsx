@@ -628,12 +628,14 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain(">Strike</span>");
     expect(html).not.toContain(">Expiration</span>");
     expect(html).toContain("0xbbbb...0000");
-    expect(html).toContain("wallet-identicon");
+    expect(html).toContain("market-heat-head-wallet");
+    expect(html).toContain("market-heat-score-badge");
+    expect(html).not.toContain("wallet-identicon");
     expect(html).not.toContain("+$22.23 · 12 wins · just now");
     expect(html).toContain("market-heat-identity-meta");
     expect(html).toContain("just now");
-    expect(html).toContain("market-heat-heat-pill");
-    expect(html).toContain("🔥 94");
+    expect(html).not.toContain("market-heat-heat-pill");
+    expect(html).not.toContain("🔥 94");
     expect(html).toContain("market-heat-compact-position");
     expect(html).toContain('<span>$7,100</span><strong class="direction-pill direction-pill-up">UP</strong>');
     expect(html).toContain("market-heat-entry-price");
@@ -695,12 +697,11 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Live expiry countdown");
     expect(html).not.toContain(">Live</small>");
     expect(html).toContain(
-      "How hot this wallet has been lately, based on ROI, streaks, and activity.",
+      "0-100 recent trader score. Fresh wins, PnL, streaks, and activity matter most.",
     );
-    expect(html).not.toContain("market-heat-info");
-    expect(html).not.toContain('data-testid="market-heat-info-trigger"');
-    expect(html).not.toContain('aria-label="What does Heat mean?"');
-    expect(html).toContain("aria-label=\"Heat 94.");
+    expect(html).toContain("market-heat-info");
+    expect(html).toContain('data-testid="market-heat-info-trigger"');
+    expect(html).toContain("aria-label=\"Heat 94 out of 100.");
     expect(html).toContain("94");
     expect(html).not.toContain("Cost</small>");
     expect(html).not.toContain("Expiry</small>");

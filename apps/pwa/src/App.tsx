@@ -185,7 +185,7 @@ type MarketHeatIdentityMode = "wallet" | "market";
 type ThemeMode = "light" | "dark";
 const APP_VIEW_VALUES: AppView[] = ["feed", "trade", "leaderboards", "portfolio", "profile"];
 const MARKET_HEAT_DESCRIPTION =
-  "How hot this wallet has been lately, based on ROI, streaks, and activity.";
+  "0-100 recent trader score. Fresh wins, PnL, streaks, and activity matter most.";
 export type MarketHeatSwipeAction = "none" | "select" | "copy" | "fade";
 export type MarketHeatSwipeHintMode = "both" | "copy" | "fade";
 type MarketHeatSwipePreview = {
@@ -1355,6 +1355,40 @@ function WalletIdenticon({
           }}
         />
       ))}
+    </span>
+  );
+}
+
+function MarketHeatScoreBadge({
+  heatScore,
+  heatScoreLabel,
+}: {
+  heatScore: number;
+  heatScoreLabel: string;
+}) {
+  const hasScore = heatScoreLabel !== "-" && Number.isFinite(heatScore);
+  const roundedScore = hasScore ? Math.round(heatScore) : null;
+  const displayLabel = roundedScore === null ? "--" : String(roundedScore);
+  const tone =
+    roundedScore === null
+      ? "empty"
+      : roundedScore >= 70
+        ? "hot"
+        : roundedScore >= 35
+          ? "warm"
+          : "cool";
+  const ariaLabel =
+    roundedScore === null
+      ? `Heat unavailable. ${MARKET_HEAT_DESCRIPTION}`
+      : `Heat ${roundedScore} out of 100. ${MARKET_HEAT_DESCRIPTION}`;
+
+  return (
+    <span
+      className={`market-heat-score-badge market-heat-score-badge-${tone}`}
+      aria-label={ariaLabel}
+      title={MARKET_HEAT_DESCRIPTION}
+    >
+      {displayLabel}
     </span>
   );
 }
@@ -4259,27 +4293,19 @@ export function MarketHeatPreview({
     const rowIdentityTitle = identityMode === "market" ? row.pairLabel : row.displayName;
     const rowIdentityDetail = row.statusLabel;
     const walletProfileLabel = `Open ${row.displayName} profile`;
-    const heatPill =
-      identityMode === "wallet" && row.heatScoreLabel !== "-" ? (
-        <span
-          className="market-heat-heat-pill"
-          aria-label={`Heat ${row.heatScoreLabel}. ${MARKET_HEAT_DESCRIPTION}`}
-          title={MARKET_HEAT_DESCRIPTION}
-        >
-          🔥 {row.heatScoreLabel}
-        </span>
-      ) : null;
     const walletProfileContent = (
       <>
         {identityMode === "wallet" ? (
-          <WalletIdenticon compact displayName={row.displayName} wallet={row.wallet} />
+          <MarketHeatScoreBadge
+            heatScore={row.heatScore}
+            heatScoreLabel={row.heatScoreLabel}
+          />
         ) : null}
         <div className="market-heat-compact-identity">
           <div className="market-heat-identity-heading">
             <strong>{rowIdentityTitle}</strong>
           </div>
           <div className="market-heat-identity-meta">
-            {heatPill}
             <span>{rowIdentityDetail}</span>
           </div>
           {copyAttributionLabel ? (
@@ -4621,7 +4647,30 @@ export function MarketHeatPreview({
       ) : null}
       {rows.length > 0 ? (
         <div className="market-heat-table-head">
-          <span aria-hidden="true">{identityMode === "market" ? "Market" : "Wallet"}</span>
+          {identityMode === "market" ? (
+            <span aria-hidden="true">Market</span>
+          ) : (
+            <span className="market-heat-head-wallet">
+              <span className="market-heat-head-heat">
+                <button
+                  type="button"
+                  className="market-heat-info-trigger"
+                  aria-label={MARKET_HEAT_DESCRIPTION}
+                  data-testid="market-heat-info-trigger"
+                  title={MARKET_HEAT_DESCRIPTION}
+                >
+                  Heat
+                  <span className="market-heat-info" aria-hidden="true">
+                    i
+                  </span>
+                </button>
+                <span className="market-heat-info-tooltip" role="tooltip">
+                  {MARKET_HEAT_DESCRIPTION}
+                </span>
+              </span>
+              <span aria-hidden="true">Wallet</span>
+            </span>
+          )}
           <span aria-hidden="true">Position</span>
           <span aria-hidden="true">Expires</span>
           <span aria-hidden="true">Entry</span>
