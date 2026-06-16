@@ -69,6 +69,7 @@ import {
   loadMarketHeatPreview,
   loadMarketHeatPriceSnapshot,
   preserveMarketHeatAvailableMarketStrikes,
+  selectFeedMarketHeatRows,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
   type MarketHeatIntentMode,
@@ -5465,9 +5466,7 @@ export function App() {
   );
   const effectiveMarketHeatSortMode: MarketHeatSortMode =
     marketHeatSortMode === "following" ? "latest" : marketHeatSortMode;
-  const allVisibleMarketHeatRows = selectVisibleMarketHeatRows(marketHeatPreview.rows, {
-    diversifyWallets: true,
-    intervalLabel: null,
+  const allVisibleMarketHeatRows = selectFeedMarketHeatRows(marketHeatPreview.rows, {
     limit: Number.MAX_SAFE_INTEGER,
     nowMs: marketHeatNowMs,
     showExpired: marketHeatShowExpired,

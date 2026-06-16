@@ -1002,6 +1002,27 @@ export function selectVisibleMarketHeatRows(
     : sortedRows.slice(0, limit);
 }
 
+export function selectFeedMarketHeatRows(
+  rows: MarketHeatPreviewRow[],
+  {
+    limit = Number.MAX_SAFE_INTEGER,
+    nowMs = Date.now(),
+    showExpired = false,
+    sortMode,
+  }: Pick<SelectVisibleMarketHeatRowsOptions, "nowMs" | "showExpired" | "sortMode"> & {
+    limit?: number;
+  },
+): MarketHeatPreviewRow[] {
+  return selectVisibleMarketHeatRows(rows, {
+    diversifyWallets: false,
+    intervalLabel: null,
+    limit,
+    nowMs,
+    showExpired,
+    sortMode,
+  });
+}
+
 function diversifyMarketHeatRowsByWallet(
   rows: MarketHeatPreviewRow[],
   limit: number,

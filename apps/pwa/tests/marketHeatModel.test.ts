@@ -13,6 +13,7 @@ import {
   preserveMarketHeatAvailableMarketStrikes,
   buildTradeMarketLadder,
   buildTradeMarketForMarketHeatRow,
+  selectFeedMarketHeatRows,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
   sortMarketHeatRows,
@@ -1870,6 +1871,82 @@ describe("market heat preview model", () => {
         sortMode: "latest",
       }).map((row) => row.id),
     ).toEqual(["same-wallet-newest", "other-wallet-third", "third-wallet-fourth"]);
+  });
+
+  test("keeps multiple feed positions from a hot wallet together", () => {
+    const nowMs = 1_779_165_000_000;
+    const preview = buildMarketHeatPreview(
+      [
+        {
+          id: "same-wallet-newest",
+          wallet: "0x1111222233334444555566667777888899990000",
+          manager: "manager-a",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_000,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs,
+          heatScore: 90,
+          status: "copy_ready",
+        },
+        {
+          id: "same-wallet-second",
+          wallet: "0x1111222233334444555566667777888899990000",
+          manager: "manager-a",
+          market: "BTC-USD",
+          side: "DOWN",
+          strike: 70_100,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs - 1_000,
+          heatScore: 89,
+          status: "copy_ready",
+        },
+        {
+          id: "other-wallet-third",
+          wallet: "0x2222333344445555666677778888999900001111",
+          manager: "manager-b",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_200,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs - 2_000,
+          heatScore: 20,
+          status: "copy_ready",
+        },
+        {
+          id: "third-wallet-fourth",
+          wallet: "0x3333444455556666777788889999000011112222",
+          manager: "manager-c",
+          market: "BTC-USD",
+          side: "UP",
+          strike: 70_300,
+          expiryMs: nowMs + 60_000,
+          intervalLabel: "15m",
+          observedAtMs: nowMs - 3_000,
+          heatScore: 10,
+          status: "copy_ready",
+        },
+      ],
+      8,
+      { nowMs },
+    );
+
+    expect(
+      selectFeedMarketHeatRows(preview.rows, {
+        limit: 4,
+        nowMs,
+        showExpired: false,
+        sortMode: "heat",
+      }).map((row) => row.id),
+    ).toEqual([
+      "same-wallet-newest",
+      "same-wallet-second",
+      "other-wallet-third",
+      "third-wallet-fourth",
+    ]);
   });
 
   test("builds and applies market duration filters across feed and trade markets", () => {
