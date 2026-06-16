@@ -833,9 +833,70 @@ describe("testnet market heat endpoint", () => {
     });
   });
 
+  test("returns targeted wallet performance from an injected reader", async () => {
+    const wallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000bb";
+    const response = await worker.fetch(
+      new Request(`https://api.hot-hands.test/testnet/wallet-performance?wallet=${wallet}`),
+      {
+        indexerReader: {
+          ...createIndexedMarketHeatReader(),
+          listPositionSummaries: async ({ owner } = {}) => [
+            {
+              id: "position-target-win",
+              owner: owner ?? wallet,
+              managerId: "manager-target",
+              oracleId: "btc-indexed-long",
+              expiryMs: 1_779_158_400_000,
+              strike: 72_000_000_000,
+              isUp: true,
+              mintedQuantity: 2,
+              redeemedQuantity: 2,
+              openQuantity: 0,
+              cost: 1_000_000,
+              payout: 2_400_000,
+              realizedPnl: 1_400_000,
+              lastEventMs: 1_779_070_000_000,
+              status: "closed"
+            }
+          ].filter((position) => owner === undefined || position.owner === owner)
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+
+    const body = await response.json();
+    expect(body.source).toBe("indexed_testnet");
+    expect(body.entry).toMatchObject({
+      wallet,
+      totalPnl: 1_400_000,
+      closedCount: 1,
+      winCount: 1,
+      currentStreakType: "win",
+      currentStreakLength: 1
+    });
+    expect(body.entry.heatScore).toBeGreaterThan(0);
+  });
+
   test("requires an indexer reader for worker wallet leaderboards", async () => {
     const response = await worker.fetch(
       new Request("https://api.hot-hands.test/testnet/wallet-leaderboards"),
+      {} as Env
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "indexer_unavailable"
+    });
+  });
+
+  test("requires an indexer reader for worker targeted wallet performance", async () => {
+    const response = await worker.fetch(
+      new Request(
+        "https://api.hot-hands.test/testnet/wallet-performance?wallet=0x00000000000000000000000000000000000000000000000000000000000000bb"
+      ),
       {} as Env
     );
 

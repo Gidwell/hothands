@@ -25,7 +25,9 @@ import {
 import { createIndexerReadersFromDatabaseUrl } from "./indexer-readers";
 import {
   getTestnetWalletLeaderboards,
-  parseWalletLeaderboardRequest
+  getTestnetWalletPerformance,
+  parseWalletLeaderboardRequest,
+  parseWalletPerformanceRequest
 } from "./wallet-leaderboards";
 
 interface BunServer {
@@ -83,7 +85,8 @@ const TESTNET_DEV_SERVER_ROUTES = [
   "/testnet/portfolio-events",
   "/testnet/quote",
   "/testnet/redeem-quote",
-  "/testnet/wallet-leaderboards"
+  "/testnet/wallet-leaderboards",
+  "/testnet/wallet-performance"
 ];
 
 const JSON_HEADERS = {
@@ -245,6 +248,33 @@ export function createTestnetDevServerFetch({
           {
             error: "wallet_leaderboards_failed",
             message: error instanceof Error ? error.message : "Unable to load wallet leaderboards."
+          },
+          400
+        );
+      }
+    }
+
+    if (url.pathname === "/testnet/wallet-performance") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      if (!indexerReader) {
+        return json({ error: "indexer_unavailable" }, 503);
+      }
+
+      try {
+        return json(
+          await getTestnetWalletPerformance({
+            reader: indexerReader,
+            ...parseWalletPerformanceRequest(url)
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "wallet_performance_failed",
+            message: error instanceof Error ? error.message : "Unable to load wallet performance."
           },
           400
         );

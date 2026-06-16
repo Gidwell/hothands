@@ -1,11 +1,65 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildWalletLeaderboards,
+  loadWalletPerformanceEntry,
   loadWalletLeaderboards,
   selectWalletLeaderboardEntries,
 } from "../src/walletLeaderboards";
 
 describe("wallet leaderboards model", () => {
+  test("loads targeted wallet performance from the API", async () => {
+    const wallet = "0xfeed222233334444555566667777888899990071";
+    const calls: string[] = [];
+    const snapshot = await loadWalletPerformanceEntry({
+      apiBaseUrl: "https://api.hot-hands.test/",
+      wallet,
+      useHotHandsProfileNames: true,
+      fetcher: async (url) => {
+        calls.push(String(url));
+
+        if (String(url).includes("/app/profiles")) {
+          return Response.json({
+            profiles: [
+              {
+                wallet,
+                displayName: "darius",
+              },
+            ],
+          });
+        }
+
+        return Response.json({
+          source: "indexed_testnet",
+          wallet,
+          entry: {
+            wallet,
+            totalPnl: 12_345_678,
+            winCount: 4,
+            lossCount: 1,
+            closedCount: 5,
+            heatScore: 71,
+            longestWinningStreak: 3,
+            longestLosingStreak: 1,
+            currentStreakType: "win",
+            currentStreakLength: 2,
+            lastSettledAtMs: 1_779_165_600_000,
+          },
+        });
+      },
+    });
+
+    expect(calls).toEqual([
+      `https://api.hot-hands.test/testnet/wallet-performance?wallet=${wallet}`,
+      `https://api.hot-hands.test/app/profiles?wallet=${wallet}`,
+    ]);
+    expect(snapshot.entry).toMatchObject({
+      wallet,
+      displayName: "darius",
+      heatScore: 71,
+      currentStreakLabel: "2 wins",
+    });
+  });
+
   test("loads indexed testnet wallet leaderboards from the API", async () => {
     const calls: string[] = [];
     const snapshot = await loadWalletLeaderboards({

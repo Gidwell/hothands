@@ -52,6 +52,12 @@ export type WalletLeaderboardsApiResponse = {
   leaderboards?: Partial<Record<WalletLeaderboardBoardKey, WalletLeaderboardApiEntry[]>>;
 };
 
+export type WalletPerformanceApiResponse = {
+  source?: unknown;
+  wallet?: unknown;
+  entry?: WalletLeaderboardApiEntry | null;
+};
+
 export type WalletLeaderboardEntry = {
   rank: number;
   wallet: string;
@@ -84,6 +90,12 @@ export type WalletLeaderboardsSnapshot = {
   leaderboards: Record<WalletLeaderboardBoardKey, WalletLeaderboardEntry[]>;
 };
 
+export type WalletPerformanceSnapshot = {
+  sourceLabel: string;
+  wallet: string | null;
+  entry: WalletLeaderboardEntry | null;
+};
+
 export type BuildWalletLeaderboardsOptions = {
   timeZone?: string;
   walletDisplayNames?: WalletDisplayNamesByAddress;
@@ -96,6 +108,15 @@ export type LoadWalletLeaderboardsOptions = BuildWalletLeaderboardsOptions & {
   useDemoDisplayNames?: boolean;
   useHotHandsProfileNames?: boolean;
   useMainnetSuinsNames?: boolean;
+};
+
+export type LoadWalletPerformanceEntryOptions = BuildWalletLeaderboardsOptions & {
+  apiBaseUrl?: string;
+  fetcher?: typeof fetch;
+  nowMs?: number;
+  useHotHandsProfileNames?: boolean;
+  useMainnetSuinsNames?: boolean;
+  wallet: string | null;
 };
 
 export const WALLET_LEADERBOARD_BOARDS: WalletLeaderboardBoardDefinition[] = [
@@ -162,6 +183,60 @@ export async function loadWalletLeaderboards({
   return buildWalletLeaderboards(payload, { timeZone, walletDisplayNames });
 }
 
+export async function loadWalletPerformanceEntry({
+  apiBaseUrl,
+  fetcher = fetch,
+  timeZone,
+  useHotHandsProfileNames = false,
+  useMainnetSuinsNames = false,
+  wallet,
+}: LoadWalletPerformanceEntryOptions): Promise<WalletPerformanceSnapshot> {
+  const trimmedWallet = wallet?.trim() ?? "";
+  if (!apiBaseUrl || !trimmedWallet) {
+    return {
+      sourceLabel: "Awaiting API",
+      wallet: trimmedWallet || null,
+      entry: null,
+    };
+  }
+
+  const response = await fetcher(buildWalletPerformanceUrl(apiBaseUrl, trimmedWallet));
+  if (!response.ok) {
+    throw new Error(`Wallet performance failed with ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const payloadWallet =
+    isRecord(payload) && typeof payload.wallet === "string"
+      ? payload.wallet
+      : trimmedWallet;
+  const wallets = collectWalletPerformanceWallets(payload, payloadWallet);
+  const hotHandsProfileDisplayNames = useHotHandsProfileNames
+    ? await loadHotHandsProfileNames({
+        apiBaseUrl,
+        fetcher,
+        wallets,
+      }).catch(() => ({}))
+    : {};
+  const mainnetWalletDisplayNames = useMainnetSuinsNames
+    ? await loadMainnetSuinsNames({
+        apiBaseUrl,
+        fetcher,
+        wallets,
+      }).catch(() => ({}))
+    : {};
+  const walletDisplayNames = {
+    ...mainnetWalletDisplayNames,
+    ...hotHandsProfileDisplayNames,
+  };
+
+  return buildWalletPerformanceEntrySnapshot(payload, {
+    timeZone,
+    wallet: payloadWallet,
+    walletDisplayNames,
+  });
+}
+
 export function buildWalletLeaderboards(
   response?: WalletLeaderboardsApiResponse,
   { timeZone, walletDisplayNames = {} }: BuildWalletLeaderboardsOptions = {},
@@ -202,6 +277,30 @@ export function buildWalletLeaderboards(
       highestPnl: buildEntries(leaderboards.highestPnl, timeZone, walletDisplayNames),
       worstPnl: buildEntries(leaderboards.worstPnl, timeZone, walletDisplayNames),
     },
+  };
+}
+
+export function buildWalletPerformanceEntrySnapshot(
+  response?: WalletPerformanceApiResponse,
+  {
+    timeZone,
+    wallet = null,
+    walletDisplayNames = {},
+  }: BuildWalletLeaderboardsOptions & { wallet?: string | null } = {},
+): WalletPerformanceSnapshot {
+  const source = typeof response?.source === "string" ? response.source : undefined;
+  const entry =
+    response?.entry && isRecord(response.entry)
+      ? buildEntry(response.entry, 1, timeZone, walletDisplayNames)
+      : null;
+
+  return {
+    sourceLabel: formatSourceLabel(source),
+    wallet:
+      typeof response?.wallet === "string"
+        ? response.wallet
+        : wallet,
+    entry,
   };
 }
 
@@ -277,6 +376,12 @@ function buildWalletLeaderboardsUrl(apiBaseUrl: string): string {
   return `${apiBaseUrl.replace(/\/+$/, "")}/testnet/wallet-leaderboards`;
 }
 
+function buildWalletPerformanceUrl(apiBaseUrl: string, wallet: string): string {
+  const url = new URL(`${apiBaseUrl.replace(/\/+$/, "")}/testnet/wallet-performance`);
+  url.searchParams.set("wallet", wallet);
+  return url.toString();
+}
+
 function collectLeaderboardWallets(response: unknown): string[] {
   if (!isRecord(response) || !isRecord(response.leaderboards)) {
     return [];
@@ -299,6 +404,21 @@ function collectLeaderboardWallets(response: unknown): string[] {
   }
 
   return wallets;
+}
+
+function collectWalletPerformanceWallets(
+  response: unknown,
+  fallbackWallet: string,
+): string[] {
+  if (!isRecord(response) || !isRecord(response.entry)) {
+    return fallbackWallet ? [fallbackWallet] : [];
+  }
+
+  return typeof response.entry.wallet === "string"
+    ? [response.entry.wallet]
+    : fallbackWallet
+      ? [fallbackWallet]
+      : [];
 }
 
 function cloneEmptyLeaderboards(): Record<WalletLeaderboardBoardKey, WalletLeaderboardEntry[]> {

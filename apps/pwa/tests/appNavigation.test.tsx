@@ -239,6 +239,9 @@ describe("mobile app navigation", () => {
           <WalletHeaderControl
             accountAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
             connectionStatus="connected"
+            displayName="darius"
+            heatScore={71}
+            heatScoreLabel="71"
             readOnly={false}
             walletCount={1}
             onConnect={() => undefined}
@@ -249,7 +252,9 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain('data-testid="wallet-address"');
-    expect(html).toContain("0x0000...00aa");
+    expect(html).toContain("darius");
+    expect(html).toContain("market-heat-score-badge-hot");
+    expect(html).toContain("Heat 71 out of 100");
     expect(html).toContain("Connected");
   });
 

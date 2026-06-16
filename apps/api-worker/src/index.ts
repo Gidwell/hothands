@@ -42,7 +42,9 @@ import {
 } from "./predict-quote";
 import {
   getTestnetWalletLeaderboards,
-  parseWalletLeaderboardRequest
+  getTestnetWalletPerformance,
+  parseWalletLeaderboardRequest,
+  parseWalletPerformanceRequest
 } from "./wallet-leaderboards";
 
 export interface Env {
@@ -201,6 +203,33 @@ export default {
           {
             error: "wallet_leaderboards_failed",
             message: error instanceof Error ? error.message : "Unable to load wallet leaderboards."
+          },
+          400
+        );
+      }
+    }
+
+    if (url.pathname === "/testnet/wallet-performance") {
+      if (request.method !== "GET") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+
+      if (!env.indexerReader) {
+        return json({ error: "indexer_unavailable" }, 503);
+      }
+
+      try {
+        return json(
+          await getTestnetWalletPerformance({
+            reader: env.indexerReader,
+            ...parseWalletPerformanceRequest(url)
+          })
+        );
+      } catch (error) {
+        return json(
+          {
+            error: "wallet_performance_failed",
+            message: error instanceof Error ? error.message : "Unable to load wallet performance."
           },
           400
         );

@@ -95,7 +95,7 @@ describe("MarketHeatPreview component", () => {
       <MarketHeatPreview
         rows={[row]}
         sourceLabel="Live Testnet"
-        sortMode="latest"
+        sortMode="heat"
         selectedRowId={null}
         showExpired={false}
         canShowMore={false}
@@ -161,7 +161,14 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("We&#x27;ll watch this wallet and prepare the next mint for your signature");
     expect(html).not.toContain("Manager 0xaaaa...0000");
     expect(html).not.toContain("Hot Hands prepares the transaction");
-    expect(html).toContain('data-testid="market-heat-sort-latest"');
+    const heatSortIndex = html.indexOf('data-testid="market-heat-sort-heat"');
+    const followingSortIndex = html.indexOf('data-testid="market-heat-sort-following"');
+    const latestSortIndex = html.indexOf('data-testid="market-heat-sort-latest"');
+    expect(heatSortIndex).toBeGreaterThan(-1);
+    expect(followingSortIndex).toBeGreaterThan(heatSortIndex);
+    expect(latestSortIndex).toBeGreaterThan(followingSortIndex);
+    expect(html).toContain('data-testid="market-heat-sort-heat"');
+    expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('data-testid="market-heat-show-expired"');
     expect(html).toContain("Expired");
     expect(html).toContain('aria-pressed="true"');

@@ -4159,7 +4159,11 @@ button:disabled {
 
 .wallet-header-button-connected {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   padding-right: 32px;
+  text-align: left;
   color: var(--hh-text);
   border-color: var(--hh-line);
   background: var(--hh-surface);
@@ -4184,6 +4188,62 @@ button:disabled {
 .wallet-header-button span {
   color: var(--hh-up);
   font-size: 0.72rem;
+}
+
+.wallet-header-identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  gap: 7px;
+  color: var(--hh-text);
+}
+
+.wallet-header-copy {
+  display: grid;
+  justify-items: start;
+  min-width: 0;
+  gap: 2px;
+  color: var(--hh-text);
+}
+
+.wallet-header-copy strong {
+  max-width: 86px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--hh-text);
+}
+
+.wallet-header-button-connected .wallet-header-identity,
+.wallet-header-button-connected .wallet-header-copy,
+.wallet-header-button-connected .wallet-header-copy strong {
+  color: var(--hh-text);
+}
+
+.wallet-header-status {
+  color: var(--hh-up);
+}
+
+.wallet-header-heat-badge {
+  width: 30px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+}
+
+.wallet-header-button .wallet-header-heat-badge.market-heat-score-badge-hot {
+  color: #ffffff;
+}
+
+.wallet-header-button .wallet-header-heat-badge.market-heat-score-badge-warm {
+  color: var(--hh-accent);
+}
+
+.wallet-header-button .wallet-header-heat-badge.market-heat-score-badge-cool,
+.wallet-header-button .wallet-header-heat-badge.market-heat-score-badge-empty {
+  color: var(--hh-muted);
 }
 
 .oracle-mini-chart {

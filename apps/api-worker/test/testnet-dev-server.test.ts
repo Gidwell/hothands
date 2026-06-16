@@ -894,6 +894,68 @@ describe("testnet API dev server harness", () => {
     });
   });
 
+  test("serves targeted wallet performance outside leaderboard rank slices", async () => {
+    const wallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000aa";
+    const fetchHandler = createTestnetDevServerFetch({
+      indexerReader: createTestIndexerReader({
+        listPositionSummaries: async ({ owner } = {}) => [
+          {
+            id: "target-win-1",
+            owner: owner ?? wallet,
+            managerId: "manager-target",
+            oracleId: "btc-indexed",
+            expiryMs: 1_779_158_400_000,
+            strike: 72_000_000_000,
+            isUp: true,
+            mintedQuantity: 1,
+            redeemedQuantity: 1,
+            openQuantity: 0,
+            cost: 100_000,
+            payout: 300_000,
+            realizedPnl: 200_000,
+            lastEventMs: 1_779_070_700_000,
+            status: "closed" as const,
+          },
+        ].filter((position) => owner === undefined || position.owner === owner),
+      })
+    });
+
+    const response = await fetchHandler(
+      new Request(`http://127.0.0.1:8789/testnet/wallet-performance?wallet=${wallet}`)
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+
+    expect(body.source).toBe("indexed_testnet");
+    expect(body.wallet).toBe(wallet);
+    expect(body.entry).toMatchObject({
+      wallet,
+      totalPnl: 200_000,
+      closedCount: 1,
+      winCount: 1,
+      currentStreakType: "win",
+      currentStreakLength: 1,
+    });
+    expect(body.entry.heatScore).toBeGreaterThan(0);
+  });
+
+  test("requires an indexer reader for targeted wallet performance", async () => {
+    const fetchHandler = createTestnetDevServerFetch();
+
+    const response = await fetchHandler(
+      new Request(
+        "http://127.0.0.1:8789/testnet/wallet-performance?wallet=0x00000000000000000000000000000000000000000000000000000000000000aa"
+      )
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "indexer_unavailable",
+    });
+  });
+
   test("requires an indexer reader for wallet leaderboards", async () => {
     const fetchHandler = createTestnetDevServerFetch();
 

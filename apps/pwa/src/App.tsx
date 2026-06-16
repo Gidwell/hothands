@@ -103,6 +103,7 @@ import {
 } from "./shareCards";
 import {
   buildWalletLeaderboards,
+  loadWalletPerformanceEntry,
   loadWalletLeaderboards,
   selectWalletLeaderboardEntries,
   WALLET_LEADERBOARD_BOARDS,
@@ -113,6 +114,7 @@ import {
   type WalletLeaderboardSortDirection,
   type WalletLeaderboardTone,
   type WalletLeaderboardsSnapshot,
+  type WalletPerformanceSnapshot,
 } from "./walletLeaderboards";
 import {
   clearStoredWalletAuthSession,
@@ -428,6 +430,10 @@ type PredictPortfolioState = {
 type WalletLeaderboardsStatus = "idle" | "loading" | "ready" | "error";
 type WalletLeaderboardsState = {
   snapshot: WalletLeaderboardsSnapshot;
+  status: WalletLeaderboardsStatus;
+};
+type WalletPerformanceState = {
+  snapshot: WalletPerformanceSnapshot;
   status: WalletLeaderboardsStatus;
 };
 type ProfileHistoryStatus = "idle" | "loading" | "ready" | "error";
@@ -1360,14 +1366,18 @@ function WalletIdenticon({
 }
 
 function MarketHeatScoreBadge({
+  className = "",
   heatScore,
   heatScoreLabel,
 }: {
-  heatScore: number;
-  heatScoreLabel: string;
+  className?: string;
+  heatScore?: number | null;
+  heatScoreLabel?: string | null;
 }) {
-  const hasScore = heatScoreLabel !== "-" && Number.isFinite(heatScore);
-  const roundedScore = hasScore ? Math.round(heatScore) : null;
+  const normalizedLabel = heatScoreLabel ?? "-";
+  const numericHeatScore = typeof heatScore === "number" ? heatScore : Number.NaN;
+  const hasScore = normalizedLabel !== "-" && Number.isFinite(numericHeatScore);
+  const roundedScore = hasScore ? Math.round(numericHeatScore) : null;
   const displayLabel = roundedScore === null ? "--" : String(roundedScore);
   const tone =
     roundedScore === null
@@ -1384,7 +1394,7 @@ function MarketHeatScoreBadge({
 
   return (
     <span
-      className={`market-heat-score-badge market-heat-score-badge-${tone}`}
+      className={`market-heat-score-badge market-heat-score-badge-${tone}${className ? ` ${className}` : ""}`}
       aria-label={ariaLabel}
       title={MARKET_HEAT_DESCRIPTION}
     >
@@ -1922,6 +1932,8 @@ type WalletHeaderControlProps = {
   accountAddress: string | null;
   connectionStatus: string;
   displayName?: string | null;
+  heatScore?: number | null;
+  heatScoreLabel?: string | null;
   readOnly?: boolean;
   walletChoices?: WalletChoice[];
   walletChooserOpen?: boolean;
@@ -1946,6 +1958,8 @@ export function WalletHeaderControl({
   accountAddress,
   connectionStatus,
   displayName = null,
+  heatScore = null,
+  heatScoreLabel = null,
   readOnly = false,
   walletChoices = [],
   walletChooserOpen = false,
@@ -1966,6 +1980,8 @@ export function WalletHeaderControl({
           : "Connect wallet";
 
   if (isConnected) {
+    const displayLabel = displayName?.trim() || formatWalletAddress(accountAddress);
+
     return (
       <button
         type="button"
@@ -1975,10 +1991,19 @@ export function WalletHeaderControl({
         disabled={readOnly}
         onClick={readOnly ? undefined : onDisconnect}
       >
-        <strong data-testid="wallet-address">
-          {displayName?.trim() || formatWalletAddress(accountAddress)}
-        </strong>
-        <span>{readOnly ? "Read-only" : "Connected"}</span>
+        <span className="wallet-header-identity">
+          <MarketHeatScoreBadge
+            className="wallet-header-heat-badge"
+            heatScore={heatScore}
+            heatScoreLabel={heatScoreLabel}
+          />
+          <span className="wallet-header-copy">
+            <strong data-testid="wallet-address">{displayLabel}</strong>
+            <span className="wallet-header-status">
+              {readOnly ? "Read-only" : "Connected"}
+            </span>
+          </span>
+        </span>
       </button>
     );
   }
@@ -3640,6 +3665,11 @@ const PROFILE_LEADERBOARD_SEARCH_ORDER: WalletLeaderboardBoardKey[] = [
   "longestLosingStreak",
 ];
 
+type WalletHeatScoreSummary = {
+  heatScore: number;
+  heatScoreLabel: string;
+};
+
 function findWalletLeaderboardEntry(
   snapshot: WalletLeaderboardsSnapshot,
   wallet: string | null,
@@ -3659,6 +3689,61 @@ function findWalletLeaderboardEntry(
   }
 
   return null;
+}
+
+function findWalletHeatScoreSummary(
+  snapshot: WalletLeaderboardsSnapshot,
+  rows: MarketHeatPreviewRow[],
+  wallet: string | null,
+  walletPerformanceEntry?: Pick<WalletLeaderboardEntry, "heatScore"> | null,
+): WalletHeatScoreSummary | null {
+  const normalizedWallet = wallet?.toLowerCase();
+  if (!normalizedWallet) {
+    return null;
+  }
+
+  if (
+    walletPerformanceEntry &&
+    Number.isFinite(walletPerformanceEntry.heatScore) &&
+    walletPerformanceEntry.heatScore > 0
+  ) {
+    return {
+      heatScore: walletPerformanceEntry.heatScore,
+      heatScoreLabel: String(Math.round(walletPerformanceEntry.heatScore)),
+    };
+  }
+
+  const leaderboardEntry = findWalletLeaderboardEntry(snapshot, wallet);
+  if (
+    leaderboardEntry &&
+    Number.isFinite(leaderboardEntry.heatScore) &&
+    leaderboardEntry.heatScore > 0
+  ) {
+    return {
+      heatScore: leaderboardEntry.heatScore,
+      heatScoreLabel: String(Math.round(leaderboardEntry.heatScore)),
+    };
+  }
+
+  const ratedRows = rows.filter(
+    (row) =>
+      row.wallet.toLowerCase() === normalizedWallet &&
+      row.heatScoreLabel !== "-" &&
+      Number.isFinite(row.heatScore),
+  );
+
+  if (!ratedRows.length) {
+    return null;
+  }
+
+  const hottestRow = ratedRows.reduce((bestRow, row) =>
+    row.heatScore > bestRow.heatScore ? row : bestRow,
+  );
+
+  return {
+    heatScore: hottestRow.heatScore,
+    heatScoreLabel: hottestRow.heatScoreLabel || String(Math.round(hottestRow.heatScore)),
+  };
 }
 
 export function buildProfileHeatStat(
@@ -4587,14 +4672,6 @@ export function MarketHeatPreview({
               <div className="market-heat-sort" aria-label="Market heat sort">
                 <button
                   type="button"
-                  aria-pressed={sortMode === "latest"}
-                  data-testid="market-heat-sort-latest"
-                  onClick={() => onSortModeChange("latest")}
-                >
-                  Latest
-                </button>
-                <button
-                  type="button"
                   aria-pressed={sortMode === "heat"}
                   data-testid="market-heat-sort-heat"
                   onClick={() => onSortModeChange("heat")}
@@ -4608,6 +4685,14 @@ export function MarketHeatPreview({
                   onClick={() => onSortModeChange("following")}
                 >
                   Following
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={sortMode === "latest"}
+                  data-testid="market-heat-sort-latest"
+                  onClick={() => onSortModeChange("latest")}
+                >
+                  Latest
                 </button>
               </div>
               <button
@@ -5075,6 +5160,24 @@ export function App() {
       snapshot: buildWalletLeaderboards(),
       status: "idle",
     }));
+  const [connectedWalletPerformanceState, setConnectedWalletPerformanceState] =
+    useState<WalletPerformanceState>(() => ({
+      snapshot: {
+        sourceLabel: "Awaiting API",
+        wallet: null,
+        entry: null,
+      },
+      status: "idle",
+    }));
+  const [profileWalletPerformanceState, setProfileWalletPerformanceState] =
+    useState<WalletPerformanceState>(() => ({
+      snapshot: {
+        sourceLabel: "Awaiting API",
+        wallet: null,
+        entry: null,
+      },
+      status: "idle",
+    }));
   const [activeWalletLeaderboard, setActiveWalletLeaderboard] =
     useState<WalletLeaderboardPanelBoardKey>("pnl");
   const [walletLeaderboardSortDirection, setWalletLeaderboardSortDirection] =
@@ -5119,7 +5222,7 @@ export function App() {
   const oraclePriceChartRef = useRef<OraclePriceChart | null>(null);
   const [isOracleChartOpen, setIsOracleChartOpen] = useState(false);
   const [marketHeatSortMode, setMarketHeatSortMode] =
-    useState<MarketHeatFeedMode>("latest");
+    useState<MarketHeatFeedMode>("heat");
   const [marketHeatShowExpired, setMarketHeatShowExpired] = useState(false);
   const [selectedFeedExpiryDate, setSelectedFeedExpiryDate] = useState<string | null>(null);
   const [selectedTradeExpiryDate, setSelectedTradeExpiryDate] = useState<string | null>(null);
@@ -5489,15 +5592,38 @@ export function App() {
       : null;
   const connectedWalletDisplayName =
     connectedWalletProfile?.displayName?.trim() || formatWalletAddress(connectedAccountAddress);
+  const connectedWalletPerformanceEntry =
+    connectedAccountAddress &&
+    connectedWalletPerformanceState.snapshot.wallet?.toLowerCase() ===
+      connectedAccountAddress.toLowerCase()
+      ? connectedWalletPerformanceState.snapshot.entry
+      : null;
+  const connectedWalletHeatScore = findWalletHeatScoreSummary(
+    walletLeaderboardsState.snapshot,
+    marketHeatPreview.rows,
+    connectedAccountAddress,
+    connectedWalletPerformanceEntry,
+  );
   const activeProfileWalletAddress =
     selectedProfileWallet?.wallet ?? connectedAccountAddress ?? null;
   const isOwnActiveProfileWallet =
     Boolean(activeProfileWalletAddress && connectedAccountAddress) &&
     activeProfileWalletAddress?.toLowerCase() === connectedAccountAddress?.toLowerCase();
-  const activeProfileLeaderboardEntry = findWalletLeaderboardEntry(
-    walletLeaderboardsState.snapshot,
-    activeProfileWalletAddress,
-  );
+  const profileWalletPerformanceEntry =
+    activeProfileWalletAddress &&
+    profileWalletPerformanceState.snapshot.wallet?.toLowerCase() ===
+      activeProfileWalletAddress.toLowerCase()
+      ? profileWalletPerformanceState.snapshot.entry
+      : null;
+  const targetedActiveProfileLeaderboardEntry = isOwnActiveProfileWallet
+    ? connectedWalletPerformanceEntry
+    : profileWalletPerformanceEntry;
+  const activeProfileLeaderboardEntry =
+    targetedActiveProfileLeaderboardEntry ??
+    findWalletLeaderboardEntry(
+      walletLeaderboardsState.snapshot,
+      activeProfileWalletAddress,
+    );
   const allProfilePositionRows = activeProfileWalletAddress
     ? selectVisibleMarketHeatRows(marketHeatPreview.rows, {
         intervalLabel: null,
@@ -6256,6 +6382,156 @@ export function App() {
       }
     };
   }, [activeView, marketHeatShowExpired, previewMode, realtimeApiBaseUrl]);
+
+  useEffect(() => {
+    const wallet = connectedAccountAddress?.trim() ?? "";
+    if (!wallet) {
+      setConnectedWalletPerformanceState({
+        snapshot: {
+          sourceLabel: "Awaiting API",
+          wallet: null,
+          entry: null,
+        },
+        status: "idle",
+      });
+      return undefined;
+    }
+
+    let isCurrent = true;
+    let isRefreshing = false;
+
+    const refreshWalletPerformance = async () => {
+      if (isRefreshing) {
+        return;
+      }
+
+      isRefreshing = true;
+      setConnectedWalletPerformanceState((state) => ({
+        ...state,
+        status: state.status === "ready" ? "ready" : "loading",
+      }));
+
+      try {
+        const snapshot = await loadWalletPerformanceEntry({
+          apiBaseUrl: realtimeApiBaseUrl,
+          wallet,
+          useHotHandsProfileNames: true,
+          useMainnetSuinsNames: true,
+        });
+
+        if (isCurrent) {
+          setConnectedWalletPerformanceState({
+            snapshot,
+            status: "ready",
+          });
+        }
+      } catch {
+        if (isCurrent) {
+          setConnectedWalletPerformanceState((state) => ({
+            ...state,
+            status: "error",
+          }));
+        }
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    void refreshWalletPerformance();
+
+    if (!realtimeApiBaseUrl) {
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    const refreshTimer = window.setInterval(
+      refreshWalletPerformance,
+      WALLET_LEADERBOARDS_REFRESH_MS,
+    );
+
+    return () => {
+      isCurrent = false;
+      window.clearInterval(refreshTimer);
+    };
+  }, [connectedAccountAddress, realtimeApiBaseUrl]);
+
+  useEffect(() => {
+    const wallet =
+      activeView === "profile" && activeProfileWalletAddress && !isOwnActiveProfileWallet
+        ? activeProfileWalletAddress
+        : "";
+
+    if (!wallet) {
+      setProfileWalletPerformanceState({
+        snapshot: {
+          sourceLabel: "Awaiting API",
+          wallet: null,
+          entry: null,
+        },
+        status: "idle",
+      });
+      return undefined;
+    }
+
+    let isCurrent = true;
+    let isRefreshing = false;
+
+    const refreshWalletPerformance = async () => {
+      if (isRefreshing) {
+        return;
+      }
+
+      isRefreshing = true;
+      setProfileWalletPerformanceState((state) => ({
+        ...state,
+        status: state.status === "ready" ? "ready" : "loading",
+      }));
+
+      try {
+        const snapshot = await loadWalletPerformanceEntry({
+          apiBaseUrl: realtimeApiBaseUrl,
+          wallet,
+          useHotHandsProfileNames: true,
+          useMainnetSuinsNames: true,
+        });
+
+        if (isCurrent) {
+          setProfileWalletPerformanceState({
+            snapshot,
+            status: "ready",
+          });
+        }
+      } catch {
+        if (isCurrent) {
+          setProfileWalletPerformanceState((state) => ({
+            ...state,
+            status: "error",
+          }));
+        }
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    void refreshWalletPerformance();
+
+    if (!realtimeApiBaseUrl) {
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    const refreshTimer = window.setInterval(
+      refreshWalletPerformance,
+      WALLET_LEADERBOARDS_REFRESH_MS,
+    );
+
+    return () => {
+      isCurrent = false;
+      window.clearInterval(refreshTimer);
+    };
+  }, [activeProfileWalletAddress, activeView, isOwnActiveProfileWallet, realtimeApiBaseUrl]);
 
   useEffect(() => {
     if (!shouldAutoRefreshWalletLeaderboards(activeView)) {
@@ -7758,6 +8034,8 @@ export function App() {
                 accountAddress={connectedAccountAddress}
                 connectionStatus={isReadOnlyWalletView ? "readonly" : walletConnection.status}
                 displayName={connectedWalletDisplayName}
+                heatScore={connectedWalletHeatScore?.heatScore}
+                heatScoreLabel={connectedWalletHeatScore?.heatScoreLabel}
                 readOnly={isReadOnlyWalletView}
                 walletChoices={wallets}
                 walletChooserOpen={isWalletChooserOpen}
