@@ -5687,12 +5687,17 @@ button:disabled {
 
 .wallet-leaderboard-table-head-pnl,
 .wallet-leaderboard-row-pnl {
-  grid-template-columns: 28px minmax(104px, 1.6fr) 62px 54px 32px 48px 42px;
+  grid-template-columns: 28px minmax(116px, 1.7fr) 66px 58px 34px 42px;
 }
 
 .wallet-leaderboard-table-head-streaks,
 .wallet-leaderboard-row-streaks {
-  grid-template-columns: 28px minmax(84px, 1.25fr) 54px 58px 54px 30px 46px 38px;
+  grid-template-columns: 28px minmax(96px, 1.3fr) 54px 62px 54px 32px 44px;
+}
+
+.wallet-leaderboard-table-head-streaks-current,
+.wallet-leaderboard-row-streaks-current {
+  grid-template-columns: 28px minmax(116px, 1.5fr) 54px 62px 54px 32px;
 }
 
 .wallet-leaderboard-main,
@@ -5757,6 +5762,21 @@ button:disabled {
   line-height: 1.05;
 }
 
+.wallet-leaderboard-core-positive strong,
+.wallet-leaderboard-pnl.wallet-leaderboard-pnl-positive {
+  color: var(--hh-up);
+}
+
+.wallet-leaderboard-core-negative strong,
+.wallet-leaderboard-pnl.wallet-leaderboard-pnl-negative {
+  color: var(--hh-down);
+}
+
+.wallet-leaderboard-core-flat strong,
+.wallet-leaderboard-pnl.wallet-leaderboard-pnl-flat {
+  color: var(--hh-muted);
+}
+
 .wallet-leaderboard-main small {
   font-size: 0.54rem;
   line-height: 1.05;
@@ -5818,12 +5838,17 @@ button:disabled {
 
   .wallet-leaderboard-table-head-pnl,
   .wallet-leaderboard-row-pnl {
-    grid-template-columns: 26px minmax(84px, 1.4fr) 56px 48px 28px 42px 34px;
+    grid-template-columns: 26px minmax(96px, 1.48fr) 56px 48px 28px 34px;
   }
 
   .wallet-leaderboard-table-head-streaks,
   .wallet-leaderboard-row-streaks {
-    grid-template-columns: 26px minmax(70px, 1.18fr) 48px 52px 48px 28px 40px 32px;
+    grid-template-columns: 26px minmax(76px, 1.2fr) 48px 52px 48px 28px 34px;
+  }
+
+  .wallet-leaderboard-table-head-streaks-current,
+  .wallet-leaderboard-row-streaks-current {
+    grid-template-columns: 26px minmax(96px, 1.42fr) 48px 52px 48px 28px;
   }
 }
 

@@ -3630,16 +3630,30 @@ function walletLeaderboardMetricValue(
 ): string {
   switch (board) {
     case "longestWinningStreak":
-      return entry.longestWinningStreakLabel;
+      return formatWalletLeaderboardStreakCode("win", entry.longestWinningStreak);
     case "longestLosingStreak":
-      return entry.longestLosingStreakLabel;
+      return formatWalletLeaderboardStreakCode("loss", entry.longestLosingStreak);
     case "currentWinningStreak":
     case "currentLosingStreak":
-      return entry.currentStreakLabel;
+      return formatWalletLeaderboardStreakCode(
+        entry.currentStreakType,
+        entry.currentStreakLength,
+      );
     case "highestPnl":
     case "worstPnl":
       return entry.totalPnlLabel;
   }
+}
+
+function formatWalletLeaderboardStreakCode(
+  type: WalletLeaderboardEntry["currentStreakType"],
+  count: number,
+): string {
+  if (count <= 0 || type === "none") {
+    return "-";
+  }
+
+  return `${count}${type === "win" ? "W" : "L"}`;
 }
 
 function walletLeaderboardEffectiveBoard(
@@ -3669,9 +3683,8 @@ function walletLeaderboardMetricLabel(board: WalletLeaderboardBoardKey): string 
     case "longestLosingStreak":
       return "Lose Streak";
     case "currentWinningStreak":
-      return "Current Wins";
     case "currentLosingStreak":
-      return "Current Losses";
+      return "Current";
     case "highestPnl":
     case "worstPnl":
       return "PNL";
@@ -3693,12 +3706,6 @@ function walletLeaderboardMetricTone(
     case "worstPnl":
       return entry.totalPnlTone;
   }
-}
-
-function compactWalletLeaderboardLastLabel(label: string): string {
-  const withoutZone = label.replace(/\s(?:UTC|GMT|PDT|PST|EDT|EST|CDT|CST|MDT|MST).*/, "");
-  const [datePart] = withoutZone.split(",");
-  return datePart.trim() || label;
 }
 
 function formatWalletLeaderboardWinRate(entry: WalletLeaderboardEntry): string {
@@ -3996,21 +4003,6 @@ function buildProfileStatSummaryFromHistory(
   };
 }
 
-function walletLeaderboardListLabel(
-  board: WalletLeaderboardPanelBoardKey,
-  sortDirection: WalletLeaderboardSortDirection,
-  rangeMode: WalletLeaderboardRangeMode,
-): string {
-  if (board === "pnl") {
-    return sortDirection === "best" ? "Top PnL" : "Worst PnL";
-  }
-
-  const streakType = sortDirection === "best" ? "Win" : "Lose";
-  return rangeMode === "current"
-    ? `Current ${streakType} Streaks`
-    : `${streakType} Streaks`;
-}
-
 export function WalletLeaderboardsPanel({
   activeBoard,
   rangeMode = "allTime",
@@ -4044,11 +4036,9 @@ export function WalletLeaderboardsPanel({
   );
   const coreMetricLabel = walletLeaderboardMetricLabel(effectiveBoard);
   const entries = selectWalletLeaderboardEntries(snapshot, effectiveBoard);
-  const listLabel = walletLeaderboardListLabel(
-    activeBoardDefinition.key,
-    sortDirection,
-    effectiveRangeMode,
-  );
+  const isCurrentStreakBoard =
+    activeBoardDefinition.key === "streaks" && effectiveRangeMode === "current";
+  const showCurrentStreakMetric = !isCurrentStreakBoard;
   const emptyLabel =
     status === "loading"
       ? "Loading wallet leaderboards..."
@@ -4121,7 +4111,9 @@ export function WalletLeaderboardsPanel({
       {entries.length ? (
         <div className="wallet-leaderboard-list">
           <div
-            className={`wallet-leaderboard-table-head wallet-leaderboard-table-head-${activeBoardDefinition.key}`}
+            className={`wallet-leaderboard-table-head wallet-leaderboard-table-head-${activeBoardDefinition.key}${
+              isCurrentStreakBoard ? " wallet-leaderboard-table-head-streaks-current" : ""
+            }`}
             aria-hidden="true"
           >
             <span>Rank</span>
@@ -4130,16 +4122,23 @@ export function WalletLeaderboardsPanel({
             {activeBoardDefinition.key === "streaks" ? <span>PNL</span> : null}
             <span>Win Rate</span>
             <span>Open</span>
-            <span>{activeBoardDefinition.key === "streaks" ? "Current" : "Streak"}</span>
-            <span>Last</span>
+            {showCurrentStreakMetric ? (
+              <span>{activeBoardDefinition.key === "streaks" ? "Current" : "Streak"}</span>
+            ) : null}
           </div>
           {entries.map((entry) => {
             const coreMetricValue = walletLeaderboardMetricValue(entry, effectiveBoard);
             const coreMetricTone = walletLeaderboardMetricTone(entry, effectiveBoard);
+            const currentStreakValue = formatWalletLeaderboardStreakCode(
+              entry.currentStreakType,
+              entry.currentStreakLength,
+            );
 
             return (
               <article
-                className={`wallet-leaderboard-row wallet-leaderboard-row-${activeBoardDefinition.key} wallet-leaderboard-row-${entry.totalPnlTone}`}
+                className={`wallet-leaderboard-row wallet-leaderboard-row-${activeBoardDefinition.key} wallet-leaderboard-row-${entry.totalPnlTone}${
+                  isCurrentStreakBoard ? " wallet-leaderboard-row-streaks-current" : ""
+                }`}
                 data-testid="wallet-leaderboard-row"
                 key={`${effectiveBoard}-${entry.wallet}-${entry.rank}`}
               >
@@ -4157,7 +4156,6 @@ export function WalletLeaderboardsPanel({
                     }
                   >
                     <strong>{entry.displayName}</strong>
-                    <small>{listLabel}</small>
                   </button>
                   <div
                     className={`wallet-leaderboard-core wallet-leaderboard-core-${coreMetricTone}`}
@@ -4169,7 +4167,9 @@ export function WalletLeaderboardsPanel({
                 </div>
                 <div className="wallet-leaderboard-metrics">
                   {activeBoardDefinition.key === "pnl" ? null : (
-                    <span>
+                    <span
+                      className={`wallet-leaderboard-pnl wallet-leaderboard-pnl-${entry.totalPnlTone}`}
+                    >
                       <small>PNL</small>
                       {entry.totalPnlLabel}
                     </span>
@@ -4182,16 +4182,14 @@ export function WalletLeaderboardsPanel({
                     <small>Open</small>
                     {entry.openCount}
                   </span>
-                  <span>
-                    <small>Current</small>
-                    {entry.currentStreakLabel}
-                  </span>
-                  <span>
-                    <small>Last</small>
-                    <span title={entry.lastSettledLabel}>
-                      {compactWalletLeaderboardLastLabel(entry.lastSettledLabel)}
+                  {showCurrentStreakMetric ? (
+                    <span>
+                      <small>
+                        {activeBoardDefinition.key === "streaks" ? "Current" : "Streak"}
+                      </small>
+                      {currentStreakValue}
                     </span>
-                  </span>
+                  ) : null}
                 </div>
               </article>
             );
