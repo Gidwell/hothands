@@ -172,8 +172,6 @@ const PORTFOLIO_DATA_REFRESH_MS = 5_000;
 const PORTFOLIO_PENDING_DATA_REFRESH_MS = 2_000;
 const PORTFOLIO_TIME_REFRESH_MS = 1_000;
 const PORTFOLIO_HISTORY_PAGE_SIZE = 8;
-const TRADE_LADDER_VISIBLE_STRIKE_COUNT = 13;
-const TRADE_LADDER_BELOW_TARGET_COUNT = 6;
 const DEPOSIT_AMOUNT_DEFAULT = 25;
 const TOAST_LIMIT = 3;
 const TOAST_TIMEOUT_MS = 4_500;
@@ -393,9 +391,14 @@ function buildCopyAttributionLabelForRows(
 export type TradeSide = "UP" | "DOWN";
 export type TradeMarketSelection = {
   marketId: string;
+  profile?: TradeStrikeOption["profile"];
   strike: number;
   strikeLabel: string;
   strikeRaw: number;
+  targetPrice?: number;
+  payoutMultiple?: number;
+  upEstimatedPrice?: number;
+  downEstimatedPrice?: number;
 };
 type TradeQuoteStatus = "idle" | "loading" | "ready" | "error";
 export type WalletTransactionStatus = "idle" | "pending" | "success" | "error";
@@ -651,128 +654,88 @@ export function resolveMarketHeatSwipeAction(
   return deltaX < 0 ? "fade" : "copy";
 }
 
-const TRADE_EXPIRY_DAY_MS = 24 * 60 * 60_000;
-const tradeExpiryDateFormatter = new Intl.DateTimeFormat("en-US", {
-  day: "numeric",
-  month: "short",
-});
-const tradeExpiryWeekdayFormatter = new Intl.DateTimeFormat("en-US", {
-  weekday: "short",
-});
-
 export type TradeExpiryOption = {
   count: number;
   expiryMs: number;
   label: string;
+  marketId?: string;
+  oracleId?: string;
   sublabel: string;
   value: string;
 };
 
-function tradeExpiryDateKey(expiryMs: number): string {
-  const date = new Date(expiryMs);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+type TradeMarketBucketValue = "15m" | "1h" | "1d";
 
-  return `${year}-${month}-${day}`;
-}
+const TRADE_MARKET_BUCKETS: readonly {
+  label: string;
+  value: TradeMarketBucketValue;
+}[] = [
+  { label: "15m", value: "15m" },
+  { label: "1h", value: "1h" },
+  { label: "1d", value: "1d" },
+];
 
-function tradeExpiryDayStartMs(expiryMs: number): number {
-  const date = new Date(expiryMs);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
-
-function formatTradeExpiryHorizon(expiryMs: number, nowMs: number): string {
-  const dayDelta = Math.round(
-    (tradeExpiryDayStartMs(expiryMs) - tradeExpiryDayStartMs(nowMs)) / TRADE_EXPIRY_DAY_MS,
-  );
-
-  if (dayDelta === 0) {
-    return "Today";
-  }
-
-  if (dayDelta === 1) {
-    return "Tomorrow";
-  }
-
-  if (dayDelta > 1 && dayDelta < 7) {
-    return tradeExpiryWeekdayFormatter.format(expiryMs);
-  }
-
-  if (dayDelta > 0 && dayDelta % 7 === 0 && dayDelta <= 28) {
-    const weeks = dayDelta / 7;
-    return weeks === 1 ? "1 week" : `${weeks} weeks`;
-  }
-
-  return "";
-}
-
-function formatTradeExpiryLabel(expiryMs: number, nowMs: number): string {
-  const horizon = formatTradeExpiryHorizon(expiryMs, nowMs);
-  return horizon === "Today"
-    ? horizon
-    : tradeExpiryDateFormatter.format(expiryMs);
-}
-
-function formatTradeExpirySublabel(
-  expiryMs: number,
-  count: number,
+function selectTradeMarketForBucket(
+  marketRows: TradeMarketLadderRow[],
+  bucket: TradeMarketBucketValue,
   nowMs: number,
-): string {
-  const horizon = formatTradeExpiryHorizon(expiryMs, nowMs);
-  const countSummary = count === 1 ? "1 market" : `${count} markets`;
-  const parts: string[] = [];
+): TradeMarketLadderRow | null {
+  const activeRows = marketRows
+    .filter((marketRow) => marketRow.expiryMs > nowMs)
+    .sort(sortTradeMarketCards);
 
-  if (horizon && horizon !== "Today" && horizon !== "Tomorrow") {
-    parts.push(horizon);
+  if (bucket === "15m") {
+    const cutoffMs = nowMs + 15 * 60_000;
+    return activeRows.find((marketRow) => marketRow.expiryMs <= cutoffMs) ?? null;
   }
 
-  parts.push(countSummary);
+  if (bucket === "1h") {
+    return activeRows.find((marketRow) => isHourlyExpiry(marketRow.expiryMs)) ?? null;
+  }
 
-  return parts.join(" · ");
+  return activeRows.find((marketRow) => isDailyExpiry(marketRow.expiryMs)) ?? null;
+}
+
+const tradeBucketTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  hour: "2-digit",
+  hourCycle: "h23",
+  minute: "2-digit",
+  timeZone: "America/Los_Angeles",
+});
+
+function getTradeBucketPacificTimeParts(expiryMs: number): { hour: number; minute: number } {
+  const parts = tradeBucketTimeFormatter.formatToParts(expiryMs);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+
+  return { hour, minute };
+}
+
+function isHourlyExpiry(expiryMs: number): boolean {
+  return getTradeBucketPacificTimeParts(expiryMs).minute === 0;
+}
+
+function isDailyExpiry(expiryMs: number): boolean {
+  const { hour, minute } = getTradeBucketPacificTimeParts(expiryMs);
+  return hour === 1 && minute === 0;
 }
 
 export function buildTradeExpiryOptions(
   marketRows: TradeMarketLadderRow[],
   nowMs: number,
 ): TradeExpiryOption[] {
-  const expiriesByDate = new Map<
-    string,
-    {
-      count: number;
-      earliestExpiryMs: number;
-    }
-  >();
+  return TRADE_MARKET_BUCKETS.map((bucket) => {
+    const market = selectTradeMarketForBucket(marketRows, bucket.value, nowMs);
 
-  for (const marketRow of marketRows) {
-    if (marketRow.expiryMs <= nowMs) {
-      continue;
-    }
-
-    const value = tradeExpiryDateKey(marketRow.expiryMs);
-    const existing = expiriesByDate.get(value);
-
-    if (existing) {
-      existing.count += 1;
-      existing.earliestExpiryMs = Math.min(existing.earliestExpiryMs, marketRow.expiryMs);
-      continue;
-    }
-
-    expiriesByDate.set(value, {
-      count: 1,
-      earliestExpiryMs: marketRow.expiryMs,
-    });
-  }
-
-  return [...expiriesByDate.entries()]
-    .map(([value, expiry]) => ({
-      count: expiry.count,
-      expiryMs: expiry.earliestExpiryMs,
-      label: formatTradeExpiryLabel(expiry.earliestExpiryMs, nowMs),
-      sublabel: formatTradeExpirySublabel(expiry.earliestExpiryMs, expiry.count, nowMs),
-      value,
-    }))
-    .sort((left, right) => left.expiryMs - right.expiryMs);
+    return {
+      count: market ? 1 : 0,
+      expiryMs: market?.expiryMs ?? 0,
+      label: bucket.label,
+      ...(market ? { marketId: market.id, oracleId: market.oracleId } : {}),
+      sublabel: market ? formatTradeTimeOptionLabel(market.expiryTimeLabel) : "No market",
+      value: bucket.value,
+    };
+  });
 }
 
 export function selectActiveFeedExpiryDate(
@@ -786,29 +749,55 @@ export function selectActiveFeedExpiryDate(
     return selectedExpiryDate;
   }
 
-  return expiryOptions[0]?.value ?? null;
+  return expiryOptions.find((option) => option.marketId)?.value ?? expiryOptions[0]?.value ?? null;
 }
 
 function selectTradeMarketsForExpiry(
   marketRows: TradeMarketLadderRow[],
   expiryDate: string | null,
+  expiryOptions: TradeExpiryOption[] = [],
 ): TradeMarketLadderRow[] {
   if (!expiryDate) {
     return marketRows;
   }
 
-  return marketRows.filter((marketRow) => tradeExpiryDateKey(marketRow.expiryMs) === expiryDate);
+  const selectedOption = expiryOptions.find((option) => option.value === expiryDate);
+  if (!selectedOption) {
+    return marketRows;
+  }
+
+  if (!selectedOption.marketId) {
+    return [];
+  }
+
+  return marketRows.filter((marketRow) => marketRow.id === selectedOption.marketId);
 }
 
 function selectMarketHeatRowsForExpiry(
   rows: MarketHeatPreviewRow[],
   expiryDate: string | null,
+  expiryOptions: TradeExpiryOption[] = [],
 ): MarketHeatPreviewRow[] {
   if (!expiryDate) {
     return rows;
   }
 
-  return rows.filter((row) => tradeExpiryDateKey(row.expiryMs) === expiryDate);
+  const selectedOption = expiryOptions.find((option) => option.value === expiryDate);
+  if (!selectedOption) {
+    return rows;
+  }
+
+  if (!selectedOption.marketId) {
+    return [];
+  }
+
+  return rows.filter((row) => {
+    if (selectedOption.oracleId && row.oracleId === selectedOption.oracleId) {
+      return true;
+    }
+
+    return row.expiryMs === selectedOption.expiryMs;
+  });
 }
 
 function formatUsdValue(amount: number): string {
@@ -851,15 +840,25 @@ function parseTradeStrikeInputValue(value: string): number | null {
 function buildTradeMarketSelection(marketId: string, option: TradeStrikeOption): TradeMarketSelection {
   return {
     marketId,
+    ...(option.profile === undefined ? {} : { profile: option.profile }),
     strike: option.strike,
     strikeLabel: option.strikeLabel,
     strikeRaw: option.strikeRaw,
+    ...(option.targetPrice === undefined ? {} : { targetPrice: option.targetPrice }),
+    ...(option.payoutMultiple === undefined ? {} : { payoutMultiple: option.payoutMultiple }),
+    ...(option.upEstimatedPrice === undefined ? {} : { upEstimatedPrice: option.upEstimatedPrice }),
+    ...(option.downEstimatedPrice === undefined ? {} : { downEstimatedPrice: option.downEstimatedPrice }),
   };
 }
 
-function getTradeStrikeOptions(row: TradeMarketLadderRow): TradeStrikeOption[] {
+function getTradeStrikeOptions(
+  row: TradeMarketLadderRow,
+  side: TradeSide | null = null,
+): TradeStrikeOption[] {
   if (row.strikeOptions?.length) {
-    return row.strikeOptions;
+    return side
+      ? row.strikeOptions.filter((option) => option.side === undefined || option.side === side)
+      : row.strikeOptions;
   }
 
   return [
@@ -874,21 +873,31 @@ function getTradeStrikeOptions(row: TradeMarketLadderRow): TradeStrikeOption[] {
 function getTradeStrikeOptionsForSelection(
   row: TradeMarketLadderRow,
   selection: TradeMarketSelection | null,
+  side: TradeSide | null = null,
 ): TradeStrikeOption[] {
-  const options = getTradeStrikeOptions(row);
+  const options = getTradeStrikeOptions(row, side);
   if (
     !selection ||
     selection.marketId !== row.id ||
-    options.some((option) => option.strikeRaw === selection.strikeRaw)
+    options.some(
+      (option) =>
+        option.strikeRaw === selection.strikeRaw &&
+        (option.profile ?? null) === (selection.profile ?? null),
+    )
   ) {
     return options;
   }
 
   return [
     {
+      ...(selection.profile === undefined ? {} : { profile: selection.profile }),
       strike: selection.strike,
       strikeLabel: selection.strikeLabel,
       strikeRaw: selection.strikeRaw,
+      ...(selection.targetPrice === undefined ? {} : { targetPrice: selection.targetPrice }),
+      ...(selection.payoutMultiple === undefined ? {} : { payoutMultiple: selection.payoutMultiple }),
+      ...(selection.upEstimatedPrice === undefined ? {} : { upEstimatedPrice: selection.upEstimatedPrice }),
+      ...(selection.downEstimatedPrice === undefined ? {} : { downEstimatedPrice: selection.downEstimatedPrice }),
     },
     ...options,
   ];
@@ -925,6 +934,7 @@ export function buildTradeQuoteKey(
 type TradeLadderDisplayRow = {
   key: string;
   market: TradeMarketLadderRow;
+  option: TradeStrikeOption;
   selection: TradeMarketSelection;
 };
 
@@ -933,11 +943,13 @@ function buildTradeLadderDisplayRows({
   marketPriceLabel,
   marketRows,
   selectedMarketId,
+  selectedSide,
 }: {
   customStrike?: TradeMarketSelection | null;
   marketPriceLabel?: string | null;
   marketRows: TradeMarketLadderRow[];
   selectedMarketId: string;
+  selectedSide: TradeSide;
 }): {
   baseSelectedMarket: TradeMarketLadderRow | null;
   ladderRows: TradeLadderDisplayRow[];
@@ -963,19 +975,19 @@ function buildTradeLadderDisplayRows({
       : baseSelectedMarket
     : null;
   const selectedCustomStrike = activeCustomStrike;
-  const targetStrike =
-    parseTradeStrikeInputValue(marketPriceLabel ?? "") ??
-    selectedCustomStrike?.strike ??
-    selectedMarket?.strike ??
-    null;
   const selectedLadderKey =
     selectedMarket && selectedCustomStrike
-      ? `${selectedMarket.pairLabel}:${selectedMarket.intervalLabel}:${selectedMarket.timeRemainingLabel}:${selectedCustomStrike.strikeLabel}`
+      ? tradeLadderDisplayKey(
+          selectedMarket.id,
+          selectedSide,
+          selectedCustomStrike,
+        )
       : null;
   const allLadderRows = marketRows.reduce<TradeLadderDisplayRow[]>((rows, baseMarket) => {
     const strikeOptions = getTradeStrikeOptionsForSelection(
       baseMarket,
       baseMarket.id === baseSelectedMarket?.id ? selectedCustomStrike : null,
+      selectedSide,
     );
 
     for (const option of strikeOptions) {
@@ -983,8 +995,8 @@ function buildTradeLadderDisplayRows({
       const market =
         applyCustomStrikeToTradeMarket(baseMarket, selection, marketPriceLabel ?? "") ??
         baseMarket;
-      const key = `${market.pairLabel}:${market.intervalLabel}:${market.timeRemainingLabel}:${selection.strikeLabel}`;
-      const candidate = { key, market, selection };
+      const key = tradeLadderDisplayKey(baseMarket.id, selectedSide, selection);
+      const candidate = { key, market, option, selection };
       const existingIndex = rows.findIndex((row) => row.key === key);
 
       if (existingIndex === -1) {
@@ -996,11 +1008,7 @@ function buildTradeLadderDisplayRows({
 
     return rows;
   }, []);
-  const ladderRows = selectVisibleTradeLadderRows(
-    allLadderRows,
-    targetStrike,
-    selectedLadderKey,
-  );
+  const ladderRows = allLadderRows.sort(compareTradeLadderDisplayRows);
 
   return {
     baseSelectedMarket,
@@ -1009,6 +1017,14 @@ function buildTradeLadderDisplayRows({
     selectedLadderKey,
     selectedMarket,
   };
+}
+
+function tradeLadderDisplayKey(
+  marketId: string,
+  side: TradeSide,
+  selection: Pick<TradeMarketSelection, "profile" | "strikeRaw">,
+): string {
+  return `${marketId}:${side}:${selection.profile ?? "custom"}:${selection.strikeRaw}`;
 }
 
 function buildOraclePriceChartMarketContext({
@@ -1042,6 +1058,7 @@ function buildOraclePriceChartMarketContext({
     const options = getTradeStrikeOptionsForSelection(
       row,
       row.id === selectedMarket.id ? selectedStrike : null,
+      selectedSide,
     );
 
     for (const option of options) {
@@ -1078,81 +1095,30 @@ function buildOraclePriceChartMarketContext({
   };
 }
 
-function selectVisibleTradeLadderRows(
-  rows: TradeLadderDisplayRow[],
-  targetStrike: number | null,
-  selectedLadderKey: string | null,
-): TradeLadderDisplayRow[] {
-  if (rows.length <= TRADE_LADDER_VISIBLE_STRIKE_COUNT) {
-    return rows;
-  }
-
-  const sortedRows = [...rows].sort(compareTradeLadderDisplayRows);
-  const fallbackTarget = sortedRows[Math.floor(sortedRows.length / 2)]?.selection.strike ?? null;
-  const target =
-    targetStrike !== null && Number.isFinite(targetStrike) ? targetStrike : fallbackTarget;
-  const belowTarget = sortedRows.filter((row) => row.selection.strike < (target ?? 0));
-  const atOrAboveTarget = sortedRows.filter((row) => row.selection.strike >= (target ?? 0));
-  const selectedRows: TradeLadderDisplayRow[] = [
-    ...belowTarget.slice(-TRADE_LADDER_BELOW_TARGET_COUNT),
-    ...atOrAboveTarget.slice(
-      0,
-      TRADE_LADDER_VISIBLE_STRIKE_COUNT - TRADE_LADDER_BELOW_TARGET_COUNT,
-    ),
-  ];
-  const selectedKeys = new Set(selectedRows.map((row) => row.key));
-  const backfillRows = [
-    ...belowTarget.slice(0, -TRADE_LADDER_BELOW_TARGET_COUNT).reverse(),
-    ...atOrAboveTarget.slice(
-      TRADE_LADDER_VISIBLE_STRIKE_COUNT - TRADE_LADDER_BELOW_TARGET_COUNT,
-    ),
-  ];
-
-  for (const row of backfillRows) {
-    if (selectedRows.length >= TRADE_LADDER_VISIBLE_STRIKE_COUNT) {
-      break;
-    }
-
-    if (selectedKeys.has(row.key)) {
-      continue;
-    }
-
-    selectedKeys.add(row.key);
-    selectedRows.push(row);
-  }
-
-  const selectedRow = selectedLadderKey
-    ? sortedRows.find((row) => row.key === selectedLadderKey)
-    : undefined;
-  if (selectedRow && !selectedKeys.has(selectedRow.key)) {
-    const replaceIndex = selectedRows.reduce(
-      (furthestIndex, row, index) => {
-        const currentDistance = Math.abs(row.selection.strike - (target ?? row.selection.strike));
-        const furthestDistance = Math.abs(
-          selectedRows[furthestIndex].selection.strike -
-            (target ?? selectedRows[furthestIndex].selection.strike),
-        );
-
-        return currentDistance >= furthestDistance ? index : furthestIndex;
-      },
-      0,
-    );
-
-    selectedRows[replaceIndex] = selectedRow;
-  }
-
-  return selectedRows.sort(compareTradeLadderDisplayRows);
-}
-
 function compareTradeLadderDisplayRows(
   left: TradeLadderDisplayRow,
   right: TradeLadderDisplayRow,
 ): number {
   return (
+    tradeRiskProfileOrder(left.selection.profile) -
+      tradeRiskProfileOrder(right.selection.profile) ||
     left.selection.strike - right.selection.strike ||
     left.selection.strikeRaw - right.selection.strikeRaw ||
     left.key.localeCompare(right.key)
   );
+}
+
+function tradeRiskProfileOrder(profile: TradeMarketSelection["profile"]): number {
+  switch (profile) {
+    case "standard":
+      return 0;
+    case "conservative":
+      return 1;
+    case "risky":
+      return 2;
+    default:
+      return 3;
+  }
 }
 
 function applyCustomStrikeToTradeMarket(
@@ -1172,7 +1138,7 @@ function applyCustomStrikeToTradeMarket(
     strike: customStrike.strike,
     strikeLabel: customStrike.strikeLabel,
     strikeRaw: customStrike.strikeRaw,
-    ...selectTradeMarketStrikePrices(market, customStrike.strikeRaw, isBaseStrike),
+    ...selectTradeMarketStrikePrices(market, customStrike, isBaseStrike),
     moneynessLabel:
       spot === null
         ? market.moneynessLabel
@@ -1182,9 +1148,20 @@ function applyCustomStrikeToTradeMarket(
 
 function selectTradeMarketStrikePrices(
   market: TradeMarketLadderRow,
-  strikeRaw: number,
+  customStrike: TradeMarketSelection,
   isBaseStrike: boolean,
 ): Pick<TradeMarketLadderRow, "up" | "down"> {
+  if (
+    customStrike.upEstimatedPrice !== undefined &&
+    customStrike.downEstimatedPrice !== undefined
+  ) {
+    return {
+      up: withEstimatedPrice(market.up, customStrike.upEstimatedPrice),
+      down: withEstimatedPrice(market.down, customStrike.downEstimatedPrice),
+    };
+  }
+
+  const strikeRaw = customStrike.strikeRaw;
   const indicativeUp = computeOracleIndicativeUpPrice(market.pricingModel, strikeRaw);
 
   if (indicativeUp !== undefined) {
@@ -1225,19 +1202,56 @@ function formatTradeMoneyness(delta: number): string {
   return `${prefix}${formatUsdValue(Math.abs(delta))} vs spot`;
 }
 
-function formatTradeSidePrice(sideSummary: TradeMarketLadderRow["up"] | null | undefined): string {
-  if (
-    sideSummary?.estimatedPrice === undefined ||
-    !Number.isFinite(sideSummary.estimatedPrice)
-  ) {
-    return "Quote";
+function tradeRiskProfileLabel(profile: TradeMarketSelection["profile"]): string {
+  switch (profile) {
+    case "standard":
+      return "Standard";
+    case "conservative":
+      return "Conservative";
+    case "risky":
+      return "Risky";
+    default:
+      return "Custom";
   }
-
-  return `$${sideSummary.estimatedPrice.toFixed(2)}`;
 }
 
-function formatTradeQuotePrice(quote: TradeQuote): string {
-  return `$${quote.effectivePrice.toFixed(2)}`;
+function tradeRiskProfileDescription(profile: TradeMarketSelection["profile"]): string {
+  switch (profile) {
+    case "standard":
+      return "Balanced odds";
+    case "conservative":
+      return "Higher chance";
+    case "risky":
+      return "Long shot";
+    default:
+      return "Selected strike";
+  }
+}
+
+function formatTradeRiskPayout(selection: TradeMarketSelection, side: TradeSide): string {
+  const estimatedPrice =
+    side === "DOWN" ? selection.downEstimatedPrice : selection.upEstimatedPrice;
+  const payoutMultiple =
+    estimatedPrice !== undefined && Number.isFinite(estimatedPrice) && estimatedPrice > 0
+      ? 1 / estimatedPrice
+      : selection.payoutMultiple ??
+        (selection.targetPrice && selection.targetPrice > 0
+          ? 1 / selection.targetPrice
+          : null);
+
+  if (!payoutMultiple || !Number.isFinite(payoutMultiple)) {
+    return "Payout";
+  }
+
+  const formatted =
+    Math.abs(payoutMultiple - Math.round(payoutMultiple)) < 0.05
+      ? Math.round(payoutMultiple).toLocaleString("en-US")
+      : payoutMultiple.toLocaleString("en-US", {
+          maximumFractionDigits: 1,
+          minimumFractionDigits: 1,
+        });
+
+  return `${formatted}x payout`;
 }
 
 function usdAmountInputValue(amount: number): string {
@@ -2418,46 +2432,6 @@ function formatTradeTimeOptionLabel(expiryTimeLabel: string): string {
   return timeParts.length ? timeParts.join(",").trim() : expiryTimeLabel;
 }
 
-function TradeTimeRail({
-  marketRows,
-  selectedMarketId,
-  onMarketTimeChange,
-  onMarketChange,
-}: {
-  marketRows: TradeMarketLadderRow[];
-  selectedMarketId: string;
-  onMarketTimeChange?: (marketId: string) => void;
-  onMarketChange: (selection: TradeMarketSelection) => void;
-}) {
-  if (!marketRows.length) {
-    return null;
-  }
-
-  return (
-    <div className="trade-time-rail" aria-label="Trade expiration times">
-      {marketRows.map((marketRow) => (
-        <button
-          type="button"
-          aria-pressed={marketRow.id === selectedMarketId}
-          data-testid={`trade-time-${marketDurationTestId(marketRow.id)}`}
-          key={marketRow.id}
-          onClick={() => {
-            if (onMarketTimeChange) {
-              onMarketTimeChange(marketRow.id);
-              return;
-            }
-
-            onMarketChange(buildTradeMarketSelectionFromRow(marketRow));
-          }}
-        >
-          <strong>{formatTradeTimeOptionLabel(marketRow.expiryTimeLabel)}</strong>
-          <small>{formatMarketHeatExpiresLabel(marketRow.timeRemainingLabel)}</small>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function sortTradeMarketCards(
   left: TradeMarketLadderRow,
   right: TradeMarketLadderRow,
@@ -2514,21 +2488,12 @@ function TradeMarketCard({
     marketPriceLabel,
     marketRows: [marketRow],
     selectedMarketId: marketRow.id,
+    selectedSide,
   });
   const cardMarket = selectedMarket ?? marketRow;
-  const spotPrice = marketPriceLabel ? parseTradeStrikeInputValue(marketPriceLabel) : null;
-  const spotLineIndex =
-    spotPrice === null
-      ? -1
-      : ladderRows.findIndex((row) => row.selection.strike >= spotPrice);
-  const normalizedSpotLineIndex =
-    spotPrice === null || ladderRows.length === 0
-      ? -1
-      : spotLineIndex === -1
-        ? ladderRows.length
-        : spotLineIndex;
   const selectedQuoteStatus = isSelectedMarket ? quoteStatus : "idle";
-  const selectedQuote = isSelectedMarket ? quote : null;
+  void quote;
+  void marketPriceLabel;
 
   return (
     <div className="trade-ticket-panel trade-options-chain" data-testid="trade-market-card">
@@ -2558,44 +2523,38 @@ function TradeMarketCard({
         </button>
       </div>
 
-      <div className="trade-chain-list" aria-label={`${selectedSide} strike prices`}>
+      <div className="trade-chain-list" aria-label={`${selectedSide} payout profiles`}>
         <div className="trade-chain-heading">
-          <span>Strike</span>
-          <span>Price</span>
+          <span>Profile</span>
+          <span>Payout</span>
         </div>
         {ladderRows.length ? (
-          ladderRows.map(({ key, market, selection }, index) => {
+          ladderRows.map(({ key, selection }) => {
             const isSelectedStrike = isSelectedMarket && key === selectedLadderKey;
-            const sideSummary = selectedSide === "UP" ? market.up : market.down;
-            const rowQuote =
-              isSelectedStrike &&
-              selectedQuoteStatus === "ready" &&
-              selectedQuote?.side === selectedSide
-                ? selectedQuote
-                : null;
-            const rowPriceLabel = rowQuote
-              ? formatTradeQuotePrice(rowQuote)
-              : formatTradeSidePrice(sideSummary);
+            const profileLabel = tradeRiskProfileLabel(selection.profile);
+            const profileDescription = tradeRiskProfileDescription(selection.profile);
+            const payoutLabel = formatTradeRiskPayout(selection, selectedSide);
+            const profileKey = selection.profile ?? "custom";
 
             return (
               <div className="trade-chain-row-wrap" key={key}>
-                {index === normalizedSpotLineIndex ? (
-                  <div className="trade-spot-line">Oracle price {marketPriceLabel}</div>
-                ) : null}
                 <button
                   type="button"
                   className={`trade-chain-row trade-chain-row-${selectedSide.toLowerCase()} ${
                     isSelectedStrike ? "selected" : ""
                   }`}
-                  aria-label={`Trade ${selectedSide} ${selection.strikeLabel}`}
+                  aria-label={`Trade ${profileKey} payout profile`}
                   aria-pressed={isSelectedStrike}
                   onClick={() => onMarketChange(selection)}
                 >
                   <span className="trade-chain-strike">
-                    <strong>{selection.strikeLabel}</strong>
+                    <strong>{profileLabel}</strong>
+                    <small>
+                      {selectedSide} {selection.strikeLabel} · {profileDescription}
+                    </small>
                   </span>
                   <span className="trade-chain-price">
-                    <strong>{rowPriceLabel}</strong>
+                    <strong>{payoutLabel}</strong>
                   </span>
                 </button>
                 {isSelectedStrike ? (
@@ -2604,10 +2563,12 @@ function TradeMarketCard({
                       <div>
                         <span>Selected</span>
                         <strong>
-                          {selectedSide} {selection.strikeLabel}
+                          {selectedSide} {profileLabel}
                         </strong>
                       </div>
-                      <small>{cardMarket.expiryTimeLabel}</small>
+                      <small>
+                        {selection.strikeLabel} · {payoutLabel}
+                      </small>
                     </div>
                     <CopyAmountControls
                       ariaLabel="Trade spend amounts"
@@ -2682,11 +2643,6 @@ function TradeMarketCard({
         ) : (
           <div className="trade-ladder-empty">No active markets</div>
         )}
-        {normalizedSpotLineIndex === ladderRows.length ? (
-          <div className="trade-spot-line trade-spot-line-standalone">
-            Oracle price {marketPriceLabel}
-          </div>
-        ) : null}
       </div>
     </div>
   );
@@ -2713,7 +2669,6 @@ export function TradeTicket({
   onAmountSet,
   onExpiryChange = () => undefined,
   onMarketChange,
-  onMarketTimeChange = () => undefined,
   onSideChange,
   onWalletSubmit,
 }: {
@@ -2737,7 +2692,6 @@ export function TradeTicket({
   onAmountSet: (amount: number) => void;
   onExpiryChange?: (expiryDate: string) => void;
   onMarketChange: (selection: TradeMarketSelection) => void;
-  onMarketTimeChange?: (marketId: string) => void;
   onSideChange: (side: TradeSide) => void;
   onWalletSubmit: () => void;
 }) {
@@ -2748,6 +2702,7 @@ export function TradeTicket({
     marketPriceLabel,
     marketRows,
     selectedMarketId,
+    selectedSide,
   });
   const selectedSideSummary = selectedMarket
     ? selectedSide === "UP"
@@ -2805,12 +2760,6 @@ export function TradeTicket({
         selectedExpiryDate={selectedExpiryDate}
         onExpiryChange={onExpiryChange}
       />
-      <TradeTimeRail
-        marketRows={displayedMarketRows}
-        selectedMarketId={activeMarketRow?.id ?? selectedMarketId}
-        onMarketChange={onMarketChange}
-        onMarketTimeChange={onMarketTimeChange}
-      />
       {shouldRenderOracleChart ? (
         <OraclePriceChartPanel
           chart={oracleChart}
@@ -2844,7 +2793,7 @@ export function TradeTicket({
           <div className="trade-ticket-title-row">
             <div className="trade-ticket-title">
               <p>Up/Down</p>
-              <strong>BTC strike ladder</strong>
+              <strong>BTC payout profiles</strong>
             </div>
             <span className="trade-duration-pill">No markets</span>
           </div>
@@ -4231,7 +4180,6 @@ export function MarketHeatPreview({
   identityMode = "wallet",
   selectedExpiryDate = null,
   showControls = true,
-  showExpired,
   showEmptyAction = true,
   emptyTitle,
   emptyDetail,
@@ -4251,7 +4199,6 @@ export function MarketHeatPreview({
   onAmountSet,
   onEmptyAction,
   onExpiryChange = () => undefined,
-  onShowExpiredChange,
   onShowMore,
   onSortModeChange,
   onWalletSubmit,
@@ -4268,7 +4215,7 @@ export function MarketHeatPreview({
   identityMode?: MarketHeatIdentityMode;
   selectedExpiryDate?: string | null;
   showControls?: boolean;
-  showExpired: boolean;
+  showExpired?: boolean;
   showEmptyAction?: boolean;
   emptyTitle?: string;
   emptyDetail?: string;
@@ -4288,7 +4235,7 @@ export function MarketHeatPreview({
   onAmountSet: (amount: number) => void;
   onEmptyAction?: () => void;
   onExpiryChange?: (expiryDate: string) => void;
-  onShowExpiredChange: (showExpired: boolean) => void;
+  onShowExpiredChange?: (showExpired: boolean) => void;
   onShowMore: () => void;
   onSortModeChange: (sortMode: MarketHeatFeedMode) => void;
   onWalletSubmit: (rowId: string, mode?: MarketHeatIntentMode) => void;
@@ -4390,11 +4337,10 @@ export function MarketHeatPreview({
     onSelectRow(row.id, "copy");
   };
 
-  const resolvedEmptyTitle =
-    emptyTitle ?? (showExpired ? "No positions for this filter" : "No live positions right now");
+  const resolvedEmptyTitle = emptyTitle ?? "No live positions right now";
   const resolvedEmptyDetail =
     emptyDetail ??
-    (showExpired ? "Try another expiration." : "Show expired to review recent testnet activity.");
+    "Fresh 15m, 1h, and 1d calls will appear here as traders mint positions.";
   const headingAriaLabel = sourceLabel ? `${title}, ${sourceLabel} BTC markets` : title;
   const headingTitle = sourceLabel ? `${sourceLabel} BTC markets` : title;
   const renderMarketHeatTradeRow = (row: MarketHeatPreviewRow) => {
@@ -4759,16 +4705,6 @@ export function MarketHeatPreview({
                   Latest
                 </button>
               </div>
-              <button
-                type="button"
-                className="market-heat-expired-toggle"
-                aria-label={showExpired ? "Hide expired positions" : "Show expired positions"}
-                aria-pressed={showExpired}
-                data-testid="market-heat-show-expired"
-                onClick={() => onShowExpiredChange(!showExpired)}
-              >
-                Expired
-              </button>
             </div>
           </div>
         ) : null}
@@ -4777,19 +4713,12 @@ export function MarketHeatPreview({
         <div className="market-heat-empty" data-testid="market-heat-empty">
           <strong>{resolvedEmptyTitle}</strong>
           <span>{resolvedEmptyDetail}</span>
-          {!showExpired && showEmptyAction ? (
+          {showEmptyAction && onEmptyAction ? (
             <button
               type="button"
-              onClick={() => {
-                if (onEmptyAction) {
-                  onEmptyAction();
-                  return;
-                }
-
-                onShowExpiredChange(true);
-              }}
+              onClick={onEmptyAction}
             >
-              {emptyActionLabel ?? "Show expired"}
+              {emptyActionLabel ?? "Explore leaders"}
             </button>
           ) : null}
         </div>
@@ -5289,7 +5218,6 @@ export function App() {
   const [isOracleChartOpen, setIsOracleChartOpen] = useState(false);
   const [marketHeatSortMode, setMarketHeatSortMode] =
     useState<MarketHeatFeedMode>("heat");
-  const [marketHeatShowExpired, setMarketHeatShowExpired] = useState(false);
   const [selectedFeedExpiryDate, setSelectedFeedExpiryDate] = useState<string | null>(null);
   const [selectedTradeExpiryDate, setSelectedTradeExpiryDate] = useState<string | null>(null);
   const [marketHeatVisibleLimit, setMarketHeatVisibleLimit] =
@@ -5506,7 +5434,7 @@ export function App() {
   const allVisibleMarketHeatRows = selectFeedMarketHeatRows(marketHeatPreview.rows, {
     limit: Number.MAX_SAFE_INTEGER,
     nowMs: marketHeatNowMs,
-    showExpired: marketHeatShowExpired,
+    showExpired: false,
     sortMode: effectiveMarketHeatSortMode,
   });
   const feedModeMarketHeatRows =
@@ -5529,16 +5457,17 @@ export function App() {
   const expiryFilteredMarketHeatRows = selectMarketHeatRowsForExpiry(
     feedModeMarketHeatRows,
     activeFeedExpiryDate,
+    tradeExpiryOptions,
   );
   const sortedMarketHeatRows = expiryFilteredMarketHeatRows.slice(0, marketHeatVisibleLimit);
-  const activeTradeExpiryDate =
-    selectedTradeExpiryDate &&
-    tradeExpiryOptions.some((option) => option.value === selectedTradeExpiryDate)
-      ? selectedTradeExpiryDate
-      : tradeExpiryOptions[0]?.value ?? null;
+  const activeTradeExpiryDate = selectActiveFeedExpiryDate(
+    selectedTradeExpiryDate,
+    tradeExpiryOptions,
+  );
   const tradeMarketRows = selectTradeMarketsForExpiry(
     allTradeMarketRows,
     activeTradeExpiryDate,
+    tradeExpiryOptions,
   );
   const baseSelectedTradeMarket =
     tradeMarketRows.find((marketRow) => marketRow.id === selectedTradeMarketId) ??
@@ -6374,7 +6303,7 @@ export function App() {
       try {
         const preview = await loadMarketHeatPreview({
           apiBaseUrl: realtimeApiBaseUrl,
-          includeExpired: marketHeatShowExpired,
+          includeExpired: false,
           useHotHandsProfileNames: true,
           useMainnetSuinsNames: true,
         });
@@ -6400,7 +6329,7 @@ export function App() {
       try {
         const preview = await loadMarketHeatPriceSnapshot(marketHeatPreviewRef.current, {
           apiBaseUrl: realtimeApiBaseUrl,
-          includeExpired: marketHeatShowExpired,
+          includeExpired: false,
           useHotHandsProfileNames: true,
           useMainnetSuinsNames: true,
         });
@@ -6422,7 +6351,7 @@ export function App() {
       try {
         const preview = await loadMarketHeatFeedUpdates(marketHeatPreviewRef.current, {
           apiBaseUrl: realtimeApiBaseUrl,
-          includeExpired: marketHeatShowExpired,
+          includeExpired: false,
           useHotHandsProfileNames: true,
           useMainnetSuinsNames: true,
         });
@@ -6468,7 +6397,7 @@ export function App() {
         window.clearInterval(rowsRefreshTimer);
       }
     };
-  }, [activeView, marketHeatShowExpired, previewMode, realtimeApiBaseUrl]);
+  }, [activeView, previewMode, realtimeApiBaseUrl]);
 
   useEffect(() => {
     const wallet = connectedAccountAddress?.trim() ?? "";
@@ -7268,9 +7197,10 @@ export function App() {
   const handleTradeExpiryChange = (expiryDate: string) => {
     setTradeQuoteRequested(false);
     setSelectedTradeExpiryDate(expiryDate);
-    const nextMarket = allTradeMarketRows.find(
-      (marketRow) => tradeExpiryDateKey(marketRow.expiryMs) === expiryDate,
-    );
+    const selectedOption = tradeExpiryOptions.find((option) => option.value === expiryDate);
+    const nextMarket = selectedOption?.marketId
+      ? allTradeMarketRows.find((marketRow) => marketRow.id === selectedOption.marketId)
+      : null;
 
     if (nextMarket) {
       setSelectedTradeMarketId(nextMarket.id);
@@ -7282,11 +7212,9 @@ export function App() {
         const { [nextMarket.id]: _clearedStrike, ...remainingSelections } = state;
         return remainingSelections;
       });
+    } else {
+      setSelectedTradeMarketId(null);
     }
-  };
-  const handleMarketHeatShowExpiredChange = (showExpired: boolean) => {
-    setMarketHeatShowExpired(showExpired);
-    setMarketHeatVisibleLimit(MARKET_HEAT_PAGE_SIZE);
   };
   const handleMarketHeatShowMore = () => {
     setMarketHeatVisibleLimit((limit) => limit + MARKET_HEAT_PAGE_SIZE);
@@ -7495,18 +7423,14 @@ export function App() {
     void handleDepositBankroll();
   };
   const handleTradeSideChange = (side: TradeSide) => {
-    setTradeQuoteRequested(true);
-    setTradeSide(side);
-  };
-  const handleTradeTimeChange = (marketId: string) => {
     setTradeQuoteRequested(false);
-    setSelectedTradeMarketId(marketId);
+    setTradeSide(side);
     setCustomTradeStrikes((state) => {
-      if (!state[marketId]) {
+      if (!selectedTradeMarketId || !state[selectedTradeMarketId]) {
         return state;
       }
 
-      const { [marketId]: _clearedStrike, ...remainingSelections } = state;
+      const { [selectedTradeMarketId]: _clearedStrike, ...remainingSelections } = state;
       return remainingSelections;
     });
   };
@@ -8036,7 +7960,6 @@ export function App() {
       emptyDetail={isFollowingFeedMode ? followingFeedEmptyDetail : undefined}
       emptyTitle={isFollowingFeedMode ? followingFeedEmptyTitle : undefined}
       expiryOptions={tradeExpiryOptions}
-      showExpired={marketHeatShowExpired}
       showEmptyAction={isFollowingFeedMode ? true : undefined}
       canShowMore={marketHeatRemainingCount > 0}
       selectedMode={activeMarketHeatIntentMode}
@@ -8052,7 +7975,6 @@ export function App() {
       onAmountSet={handleAmountSet}
       onEmptyAction={isFollowingFeedMode ? handleFeedEmptyAction : undefined}
       onExpiryChange={handleFeedExpiryChange}
-      onShowExpiredChange={handleMarketHeatShowExpiredChange}
       onShowMore={handleMarketHeatShowMore}
       onSortModeChange={handleMarketHeatSortModeChange}
       onWalletSubmit={handleMarketHeatWalletSubmit}
@@ -8085,7 +8007,6 @@ export function App() {
       onAmountSet={handleAmountSet}
       onExpiryChange={handleTradeExpiryChange}
       onMarketChange={handleTradeMarketChange}
-      onMarketTimeChange={handleTradeTimeChange}
       onSideChange={handleTradeSideChange}
       onWalletSubmit={handleTradeWalletSubmit}
     />

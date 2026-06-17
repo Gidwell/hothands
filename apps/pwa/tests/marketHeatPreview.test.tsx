@@ -169,8 +169,7 @@ describe("MarketHeatPreview component", () => {
     expect(latestSortIndex).toBeGreaterThan(followingSortIndex);
     expect(html).toContain('data-testid="market-heat-sort-heat"');
     expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('data-testid="market-heat-show-expired"');
-    expect(html).toContain("Expired");
+    expect(html).not.toContain('data-testid="market-heat-show-expired"');
     expect(html).toContain('aria-pressed="true"');
     expect(html).not.toContain("Ready for your wallet signature");
   });
@@ -454,7 +453,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Wallet request started");
   });
 
-  test("explains an empty live feed without hiding the expired-position toggle", () => {
+  test("explains an empty live feed without an expired-position action", () => {
     const html = renderToStaticMarkup(
       <MarketHeatPreview
         rows={[]}
@@ -476,8 +475,11 @@ describe("MarketHeatPreview component", () => {
 
     expect(html).toContain('data-testid="market-heat-empty"');
     expect(html).toContain("No live positions right now");
-    expect(html).toContain("Show expired to review recent testnet activity.");
-    expect(html).toContain('data-testid="market-heat-show-expired"');
+    expect(html).toContain(
+      "Fresh 15m, 1h, and 1d calls will appear here as traders mint positions.",
+    );
+    expect(html).not.toContain("Show expired");
+    expect(html).not.toContain('data-testid="market-heat-show-expired"');
   });
 
   test("renders the following feed segment and leaders empty action", () => {
@@ -543,28 +545,39 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Show 2 more");
   });
 
-  test("renders feed expiration date buttons", () => {
+  test("renders canonical feed market bucket buttons", () => {
     const rows = buildMarketHeatPreview(watchingOnlyRows, 1).rows;
     const html = renderToStaticMarkup(
       <MarketHeatPreview
         rows={rows}
         sourceLabel="Live Testnet"
         sortMode="latest"
-        selectedExpiryDate="2026-06-12"
+        selectedExpiryDate="15m"
         expiryOptions={[
           {
             count: rows.length,
             expiryMs: 1_781_227_200_000,
-            label: "Jun 12",
-            sublabel: "Fri · 1 market",
-            value: "2026-06-12",
+            label: "15m",
+            marketId: "market-15m",
+            oracleId: "oracle-15m",
+            sublabel: "12:55 PDT",
+            value: "15m",
           },
           {
-            count: 2,
-            expiryMs: 1_781_832_000_000,
-            label: "Jun 19",
-            sublabel: "2 markets",
-            value: "2026-06-19",
+            count: 1,
+            expiryMs: 1_781_227_500_000,
+            label: "1h",
+            marketId: "market-hourly",
+            oracleId: "oracle-hourly",
+            sublabel: "13:00 PDT",
+            value: "1h",
+          },
+          {
+            count: 0,
+            expiryMs: 0,
+            label: "1d",
+            sublabel: "No market",
+            value: "1d",
           },
         ]}
         showExpired={false}
@@ -584,14 +597,17 @@ describe("MarketHeatPreview component", () => {
 
     expect(html).toContain('aria-label="Feed expiration dates"');
     expect(html).not.toContain('data-testid="feed-expiry-all"');
-    expect(html).toContain('data-testid="feed-expiry-2026-06-12"');
-    expect(html).toContain('data-testid="feed-expiry-2026-06-19"');
+    expect(html).toContain('data-testid="feed-expiry-15m"');
+    expect(html).toContain('data-testid="feed-expiry-1h"');
+    expect(html).toContain('data-testid="feed-expiry-1d"');
     expect(html).not.toContain(">All<");
     expect(html).not.toContain("2 dates");
-    expect(html).toContain("Jun 12");
-    expect(html).toContain("Fri · 1 market");
-    expect(html).toContain("Jun 19");
-    expect(html).toContain("2 markets");
+    expect(html).toContain("15m");
+    expect(html).toContain("12:55 PDT");
+    expect(html).toContain("1h");
+    expect(html).toContain("13:00 PDT");
+    expect(html).toContain("1d");
+    expect(html).toContain("No market");
     expect(html).not.toContain('data-testid="market-duration-all"');
     expect(html).toContain('aria-pressed="true"');
   });

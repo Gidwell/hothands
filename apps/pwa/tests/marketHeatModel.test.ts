@@ -835,19 +835,29 @@ describe("market heat preview model", () => {
       minStrikeRaw: 50_000_000_000,
       tickSizeRaw: 1_000_000,
     });
-    expect(market.strikeOptions?.length).toBeGreaterThanOrEqual(9);
+    expect(market.strikeOptions).toHaveLength(6);
     expect(market.strikeOptions?.some((option) => option.strike < 71_000)).toBe(true);
     expect(market.strikeOptions?.some((option) => option.strike > 71_000)).toBe(true);
     expect(market.strikeOptions?.every((option) => option.strikeRaw % 1_000_000 === 0)).toBe(true);
+    expect(
+      market.strikeOptions?.map((option) => `${option.side}:${option.profile}`),
+    ).toEqual([
+      "UP:standard",
+      "UP:conservative",
+      "UP:risky",
+      "DOWN:standard",
+      "DOWN:conservative",
+      "DOWN:risky",
+    ]);
 
-    const priceSteps = market.strikeOptions
-      ?.map((option) => computeOracleIndicativeUpPrice(market.pricingModel, option.strikeRaw))
-      .filter((price): price is number => price !== undefined) ?? [];
-    const adjacentPriceDeltas = priceSteps
-      .slice(1)
-      .map((price, index) => Math.abs(price - priceSteps[index]));
+    const profileDistances = market.strikeOptions?.map((option) => {
+      const upPrice = computeOracleIndicativeUpPrice(market.pricingModel, option.strikeRaw);
+      const sidePrice = option.side === "DOWN" && upPrice !== undefined ? 1 - upPrice : upPrice;
 
-    expect(adjacentPriceDeltas.every((delta) => delta >= 0.05 && delta <= 0.1)).toBe(true);
+      return Math.abs((sidePrice ?? 0) - (option.targetPrice ?? 0));
+    }) ?? [];
+
+    expect(profileDistances.every((distance) => distance <= 0.12)).toBe(true);
   });
 
   test("overlays mainnet SuiNS names on market heat rows when requested", async () => {
@@ -1329,19 +1339,58 @@ describe("market heat preview model", () => {
         distinctStrikeCount: 2,
         strikeOptions: [
           {
-            strike: 70_900,
-            strikeRaw: 70_900_000_000,
-            strikeLabel: "$70,900",
-          },
-          {
-            strike: 71_000,
-            strikeRaw: 71_000_000_000,
-            strikeLabel: "$71,000",
-          },
-          {
+            profile: "standard",
+            side: "UP",
             strike: 71_100,
             strikeRaw: 71_100_000_000,
             strikeLabel: "$71,100",
+            targetPrice: 0.5,
+            payoutMultiple: 2,
+          },
+          {
+            profile: "conservative",
+            side: "UP",
+            strike: 71_000,
+            strikeRaw: 71_000_000_000,
+            strikeLabel: "$71,000",
+            targetPrice: 2 / 3,
+            payoutMultiple: 1.5,
+          },
+          {
+            profile: "risky",
+            side: "UP",
+            strike: 71_100,
+            strikeRaw: 71_100_000_000,
+            strikeLabel: "$71,100",
+            targetPrice: 0.25,
+            payoutMultiple: 4,
+          },
+          {
+            profile: "standard",
+            side: "DOWN",
+            strike: 71_100,
+            strikeRaw: 71_100_000_000,
+            strikeLabel: "$71,100",
+            targetPrice: 0.5,
+            payoutMultiple: 2,
+          },
+          {
+            profile: "conservative",
+            side: "DOWN",
+            strike: 71_100,
+            strikeRaw: 71_100_000_000,
+            strikeLabel: "$71,100",
+            targetPrice: 2 / 3,
+            payoutMultiple: 1.5,
+          },
+          {
+            profile: "risky",
+            side: "DOWN",
+            strike: 70_900,
+            strikeRaw: 70_900_000_000,
+            strikeLabel: "$70,900",
+            targetPrice: 0.25,
+            payoutMultiple: 4,
           },
         ],
         volumeUsd: 23.75,

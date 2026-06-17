@@ -231,10 +231,18 @@ export type TradeMarketSideSummary = {
 };
 
 export type TradeStrikeOption = {
+  profile?: TradeRiskProfile;
+  side?: TradeQuoteSide;
   strike: number;
   strikeRaw: number;
   strikeLabel: string;
+  targetPrice?: number;
+  payoutMultiple?: number;
+  upEstimatedPrice?: number;
+  downEstimatedPrice?: number;
 };
+
+export type TradeRiskProfile = "standard" | "conservative" | "risky";
 
 export type TradeMarketLadderRow = {
   id: string;
@@ -305,6 +313,15 @@ const TRADE_SYNTHETIC_STRIKE_STEPS_PER_SIDE = 12;
 const TRADE_TARGET_SYNTHETIC_PRICE_STEP = 0.075;
 const TRADE_FALLBACK_DISPLAY_STRIKE_STEP_USD = 500;
 const TRADE_MAX_SYNTHETIC_SEARCH_TICKS = 50_000;
+const TRADE_RISK_PROFILES: readonly {
+  profile: TradeRiskProfile;
+  targetPrice: number;
+  payoutMultiple: number;
+}[] = [
+  { profile: "standard", targetPrice: 0.5, payoutMultiple: 2 },
+  { profile: "conservative", targetPrice: 2 / 3, payoutMultiple: 1.5 },
+  { profile: "risky", targetPrice: 0.25, payoutMultiple: 4 },
+];
 const CAPTURED_ROW_BASE_AGE_MS = 5 * 60_000;
 const CAPTURED_ROW_AGE_STEP_MS = 15 * 60_000;
 const CAPTURED_MARKET_PRICE: MarketHeatPriceInput = {
@@ -702,6 +719,19 @@ function buildTradeStrikeOptions(
   market: MarketHeatAvailableMarket,
   activityRows: MarketHeatPreviewRow[],
 ): TradeStrikeOption[] {
+  const riskProfileOptions = buildRiskProfileTradeStrikeOptions(market);
+  if (riskProfileOptions.length) {
+    return riskProfileOptions;
+  }
+
+  const fallbackRiskProfileOptions = buildFallbackRiskProfileTradeStrikeOptions(
+    market,
+    activityRows,
+  );
+  if (fallbackRiskProfileOptions.length) {
+    return fallbackRiskProfileOptions;
+  }
+
   const byStrikeRaw = new Map<number, TradeStrikeOption>();
   const addOption = (strike: number, strikeRaw = Math.round(strike * 1_000_000)) => {
     if (!Number.isFinite(strike) || strike <= 0 || !Number.isFinite(strikeRaw) || strikeRaw <= 0) {
@@ -716,9 +746,6 @@ function buildTradeStrikeOptions(
   };
 
   addOption(market.strike, market.strikeRaw);
-  for (const option of buildSyntheticTradeStrikeOptions(market)) {
-    addOption(option.strike, option.strikeRaw);
-  }
   for (const row of activityRows) {
     addOption(row.strike, row.strikeRaw);
   }
@@ -728,6 +755,168 @@ function buildTradeStrikeOptions(
       left.strike - right.strike ||
       left.strikeRaw - right.strikeRaw,
   );
+}
+
+function buildRiskProfileTradeStrikeOptions(
+  market: MarketHeatAvailableMarket,
+): TradeStrikeOption[] {
+  if (!market.pricingModel) {
+    return [];
+  }
+
+  type PricedTradeStrikeOption = TradeStrikeOption & {
+    downEstimatedPrice: number;
+    upEstimatedPrice: number;
+  };
+
+  const candidates = uniqueTradeStrikeCandidates(
+    [
+      {
+        strike: market.strike,
+        strikeRaw: market.strikeRaw,
+        strikeLabel: market.strikeLabel,
+      },
+      ...buildSyntheticTradeStrikeOptions(market),
+    ],
+    market,
+  )
+    .map((option): PricedTradeStrikeOption | null => {
+      const up = computeOracleIndicativeUpPrice(market.pricingModel, option.strikeRaw);
+      if (up === undefined) {
+        return null;
+      }
+
+      return {
+        ...option,
+        upEstimatedPrice: up,
+        downEstimatedPrice: roundPrice(Math.max(0, Math.min(1, 1 - up))),
+      };
+    })
+    .filter((option): option is PricedTradeStrikeOption => option !== null);
+
+  if (!candidates.length) {
+    return [];
+  }
+
+  const options: TradeStrikeOption[] = [];
+  for (const side of ["UP", "DOWN"] as const) {
+    for (const profile of TRADE_RISK_PROFILES) {
+      const targetUpPrice =
+        side === "UP" ? profile.targetPrice : 1 - profile.targetPrice;
+      const bestCandidate = candidates.reduce((best, candidate) => {
+        const bestDistance = Math.abs((best.upEstimatedPrice ?? 0) - targetUpPrice);
+        const candidateDistance = Math.abs(
+          (candidate.upEstimatedPrice ?? 0) - targetUpPrice,
+        );
+
+        return candidateDistance < bestDistance ? candidate : best;
+      }, candidates[0]);
+
+      options.push({
+        ...bestCandidate,
+        profile: profile.profile,
+        side,
+        targetPrice: profile.targetPrice,
+        payoutMultiple: profile.payoutMultiple,
+      });
+    }
+  }
+
+  return options;
+}
+
+function buildFallbackRiskProfileTradeStrikeOptions(
+  market: MarketHeatAvailableMarket,
+  activityRows: MarketHeatPreviewRow[],
+): TradeStrikeOption[] {
+  const candidates = uniqueTradeStrikeCandidates(
+    [
+      {
+        strike: market.strike,
+        strikeRaw: market.strikeRaw,
+        strikeLabel: market.strikeLabel,
+      },
+      ...buildSyntheticTradeStrikeOptions(market),
+      ...activityRows.map((row) => ({
+        strike: row.strike,
+        strikeRaw: row.strikeRaw ?? Math.round(row.strike * 1_000_000),
+        strikeLabel: formatStrike(row.strike),
+      })),
+    ],
+    market,
+  );
+
+  if (!candidates.length) {
+    return [];
+  }
+
+  const sorted = [...candidates].sort(
+    (left, right) =>
+      left.strikeRaw - right.strikeRaw ||
+      left.strike - right.strike,
+  );
+  const baseIndex = Math.max(
+    0,
+    sorted.findIndex((option) => option.strikeRaw === market.strikeRaw),
+  );
+  const pick = (offset: number) =>
+    sorted[Math.max(0, Math.min(sorted.length - 1, baseIndex + offset))] ?? sorted[0];
+  const profileOffsets: Record<TradeRiskProfile, number> = {
+    conservative: -1,
+    standard: 0,
+    risky: 2,
+  };
+  const options: TradeStrikeOption[] = [];
+
+  for (const side of ["UP", "DOWN"] as const) {
+    for (const profile of TRADE_RISK_PROFILES) {
+      const signedOffset =
+        side === "UP"
+          ? profileOffsets[profile.profile]
+          : -profileOffsets[profile.profile];
+      const option = pick(signedOffset);
+
+      options.push({
+        ...option,
+        profile: profile.profile,
+        side,
+        targetPrice: profile.targetPrice,
+        payoutMultiple: profile.payoutMultiple,
+      });
+    }
+  }
+
+  return options;
+}
+
+function uniqueTradeStrikeCandidates(
+  options: TradeStrikeOption[],
+  market: Pick<MarketHeatAvailableMarket, "strike" | "strikeRaw">,
+): TradeStrikeOption[] {
+  const byStrikeRaw = new Map<number, TradeStrikeOption>();
+
+  for (const option of options) {
+    if (
+      !Number.isFinite(option.strikeRaw) ||
+      option.strikeRaw <= 0 ||
+      !Number.isFinite(option.strike) ||
+      option.strike <= 0
+    ) {
+      continue;
+    }
+
+    byStrikeRaw.set(option.strikeRaw, option);
+  }
+
+  if (!byStrikeRaw.has(market.strikeRaw)) {
+    byStrikeRaw.set(market.strikeRaw, {
+      strike: market.strike,
+      strikeRaw: market.strikeRaw,
+      strikeLabel: formatStrike(market.strike),
+    });
+  }
+
+  return [...byStrikeRaw.values()];
 }
 
 function buildSyntheticTradeStrikeOptions(

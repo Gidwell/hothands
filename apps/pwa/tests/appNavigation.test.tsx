@@ -310,81 +310,107 @@ describe("mobile app navigation", () => {
     expect(getPredictPortfolioRefreshMs("feed")).toBeNull();
   });
 
-  test("groups trade expirations by date with consistent market counts", () => {
-    const nowMs = new Date(2026, 5, 9, 12).getTime();
-    const tomorrowMs = new Date(2026, 5, 10, 9).getTime();
-    const jun12EarlyMs = new Date(2026, 5, 12, 1).getTime();
-    const jun12LaterMs = new Date(2026, 5, 12, 5).getTime();
-    const jun19Ms = new Date(2026, 5, 19, 1).getTime();
+  test("builds three canonical market bucket pills", () => {
+    const nowMs = new Date("2026-06-10T12:45:00-07:00").getTime();
+    const fifteenMinuteMs = new Date("2026-06-10T12:55:00-07:00").getTime();
+    const hourlyMs = new Date("2026-06-10T13:00:00-07:00").getTime();
+    const dailyMs = new Date("2026-06-11T01:00:00-07:00").getTime();
 
     expect(
       buildTradeExpiryOptions(
         [
           tradeMarketRowFixture({
-            expiryMs: tomorrowMs,
-            intervalLabel: "15m",
+            id: "market-15m",
+            oracleId: "oracle-15m",
+            expiryMs: fifteenMinuteMs,
+            expiryTimeLabel: "Jun 10, 12:55 PDT",
           }),
           tradeMarketRowFixture({
-            expiryMs: jun12EarlyMs,
-            intervalLabel: "23d",
+            id: "market-hourly",
+            oracleId: "oracle-hourly",
+            expiryMs: hourlyMs,
+            expiryTimeLabel: "Jun 10, 13:00 PDT",
           }),
           tradeMarketRowFixture({
-            expiryMs: jun12LaterMs,
-            intervalLabel: "28d",
-          }),
-          tradeMarketRowFixture({
-            expiryMs: jun19Ms,
-            intervalLabel: "27d",
+            id: "market-daily",
+            oracleId: "oracle-daily",
+            expiryMs: dailyMs,
+            expiryTimeLabel: "Jun 11, 01:00 PDT",
           }),
         ],
         nowMs,
       ),
     ).toEqual([
-      {
-        count: 1,
-        expiryMs: tomorrowMs,
-        label: "Jun 10",
-        sublabel: "1 market",
-        value: "2026-06-10",
-      },
-      {
-        count: 2,
-        expiryMs: jun12EarlyMs,
-        label: "Jun 12",
-        sublabel: "Fri · 2 markets",
-        value: "2026-06-12",
-      },
-      {
-        count: 1,
-        expiryMs: jun19Ms,
-        label: "Jun 19",
-        sublabel: "1 market",
-        value: "2026-06-19",
-      },
+      expect.objectContaining({
+        label: "15m",
+        marketId: "market-15m",
+        oracleId: "oracle-15m",
+        sublabel: "12:55 PDT",
+        value: "15m",
+      }),
+      expect.objectContaining({
+        label: "1h",
+        marketId: "market-hourly",
+        oracleId: "oracle-hourly",
+        sublabel: "13:00 PDT",
+        value: "1h",
+      }),
+      expect.objectContaining({
+        label: "1d",
+        marketId: "market-daily",
+        oracleId: "oracle-daily",
+        sublabel: "01:00 PDT",
+        value: "1d",
+      }),
     ]);
   });
 
-  test("defaults feed expiration filters to the earliest available date", () => {
+  test("lets canonical bucket pills point to the same market when expiries line up", () => {
+    const nowMs = new Date("2026-06-10T00:50:00-07:00").getTime();
+    const dailyAndHourlyMs = new Date("2026-06-10T01:00:00-07:00").getTime();
+    const options = buildTradeExpiryOptions(
+      [
+        tradeMarketRowFixture({
+          id: "market-all-buckets",
+          oracleId: "oracle-all-buckets",
+          expiryMs: dailyAndHourlyMs,
+          expiryTimeLabel: "Jun 10, 01:00 PDT",
+        }),
+      ],
+      nowMs,
+    );
+
+    expect(options.map((option) => option.value)).toEqual(["15m", "1h", "1d"]);
+    expect(options.map((option) => option.marketId)).toEqual([
+      "market-all-buckets",
+      "market-all-buckets",
+      "market-all-buckets",
+    ]);
+  });
+
+  test("defaults feed expiration filters to the first bucket with a market", () => {
     const expiryOptions = [
       {
-        count: 2,
-        expiryMs: new Date(2026, 5, 10, 9).getTime(),
-        label: "Today",
-        sublabel: "2 markets",
-        value: "2026-06-10",
+        count: 0,
+        expiryMs: 0,
+        label: "15m",
+        sublabel: "No market",
+        value: "15m",
       },
       {
         count: 1,
-        expiryMs: new Date(2026, 5, 12, 1).getTime(),
-        label: "Jun 12",
-        sublabel: "Fri · 1 market",
-        value: "2026-06-12",
+        expiryMs: new Date(2026, 5, 10, 13).getTime(),
+        label: "1h",
+        marketId: "hourly-market",
+        oracleId: "hourly-oracle",
+        sublabel: "13:00 PDT",
+        value: "1h",
       },
     ];
 
-    expect(selectActiveFeedExpiryDate(null, expiryOptions)).toBe("2026-06-10");
-    expect(selectActiveFeedExpiryDate("2026-06-12", expiryOptions)).toBe("2026-06-12");
-    expect(selectActiveFeedExpiryDate("2026-06-19", expiryOptions)).toBe("2026-06-10");
+    expect(selectActiveFeedExpiryDate(null, expiryOptions)).toBe("1h");
+    expect(selectActiveFeedExpiryDate("15m", expiryOptions)).toBe("15m");
+    expect(selectActiveFeedExpiryDate("1d", expiryOptions)).toBe("1h");
     expect(selectActiveFeedExpiryDate(null, [])).toBeNull();
   });
 
@@ -1534,22 +1560,33 @@ describe("mobile app navigation", () => {
         }}
         expiryOptions={[
           {
-            count: 2,
+            count: 1,
             expiryMs: 1_779_165_900_000,
-            label: "May 18",
-            sublabel: "15m, 2h",
-            value: "2026-05-18",
+            label: "15m",
+            marketId: "btc-15m-71000",
+            oracleId: "0xoracle15",
+            sublabel: "21:45 PDT",
+            value: "15m",
           },
           {
             count: 1,
-            expiryMs: 1_779_179_400_000,
-            label: "May 19",
-            sublabel: "Tomorrow · 4h",
-            value: "2026-05-19",
+            expiryMs: 1_779_172_200_000,
+            label: "1h",
+            marketId: "btc-2h-72000",
+            oracleId: "0xoracle2h",
+            sublabel: "23:30 PDT",
+            value: "1h",
+          },
+          {
+            count: 0,
+            expiryMs: 0,
+            label: "1d",
+            sublabel: "No market",
+            value: "1d",
           },
         ]}
         selectedMarketId="btc-2h-72000"
-        selectedExpiryDate="2026-05-18"
+        selectedExpiryDate="1h"
         selectedSide="UP"
         oracleChart={readyOracleChartFixture}
         oracleChartMarketContext={{
@@ -1581,12 +1618,14 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain('aria-label="Trade market duration"');
     expect(html).not.toContain('data-testid="trade-duration-all"');
     expect(html).toContain('aria-label="Trade expiration dates"');
-    expect(html).toContain('data-testid="trade-expiry-2026-05-18"');
-    expect(html).toContain('data-testid="trade-expiry-2026-05-19"');
-    expect(html).toContain("May 18");
-    expect(html).toContain("May 19");
+    expect(html).toContain('data-testid="trade-expiry-15m"');
+    expect(html).toContain('data-testid="trade-expiry-1h"');
+    expect(html).toContain('data-testid="trade-expiry-1d"');
+    expect(html).toContain("15m");
+    expect(html).toContain("1h");
+    expect(html).toContain("1d");
     expect(html).toContain('data-testid="trade-oracle-chart-panel"');
-    expect(html.indexOf('data-testid="trade-expiry-2026-05-18"')).toBeLessThan(
+    expect(html.indexOf('data-testid="trade-expiry-15m"')).toBeLessThan(
       html.indexOf('data-testid="trade-oracle-chart-panel"'),
     );
     expect(html.indexOf('data-testid="trade-oracle-chart-panel"')).toBeLessThan(
@@ -1597,18 +1636,16 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("Range");
     expect(html).not.toContain('aria-label="Trade product type"');
     expect(html).toContain("BTC/USD");
-    expect(html).toContain('aria-label="Trade expiration times"');
-    expect(html).toContain("21:45 PDT");
+    expect(html).not.toContain('aria-label="Trade expiration times"');
     expect(html).toContain("23:30 PDT");
     expect(html).toContain('aria-label="Trade side"');
     expect(html).toContain('data-testid="trade-side-up"');
     expect(html).toContain('data-testid="trade-side-down"');
-    expect(html).toContain('aria-label="UP strike prices"');
+    expect(html).toContain('aria-label="UP payout profiles"');
     expect(html).not.toContain('aria-label="Up Down strike ladder"');
     expect(html).toContain("UP");
     expect(html).toContain("DOWN");
-    expect(html).toContain("15m");
-    expect(html).toContain('aria-label="Trade UP $72,000"');
+    expect(html).toContain('aria-label="Trade custom payout profile"');
     expect(html).not.toContain('aria-label="Trade DOWN $72,000"');
     expect(html).toContain("2h");
     expect(html).toContain("Selected");
@@ -1628,7 +1665,7 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain('data-testid="predict-manager-object-id"');
   });
 
-  test("renders available strike options as ladder rows", () => {
+  test("renders three payout profile choices instead of a full strike list", () => {
     const html = renderToStaticMarkup(
       <TradeTicket
         marketRows={[
@@ -1654,14 +1691,31 @@ describe("mobile app navigation", () => {
             volumeLabel: "$42.25",
             strikeOptions: [
               {
+                profile: "standard",
                 strike: 71_000,
                 strikeRaw: 71_000_000_000,
                 strikeLabel: "$71,000",
+                targetPrice: 0.5,
+                upEstimatedPrice: 0.48,
+                downEstimatedPrice: 0.52,
               },
               {
+                profile: "conservative",
                 strike: 71_050,
                 strikeRaw: 71_050_000_000,
                 strikeLabel: "$71,050",
+                targetPrice: 0.67,
+                upEstimatedPrice: 0.62,
+                downEstimatedPrice: 0.38,
+              },
+              {
+                profile: "risky",
+                strike: 71_120,
+                strikeRaw: 71_120_000_000,
+                strikeLabel: "$71,120",
+                targetPrice: 0.25,
+                upEstimatedPrice: 0.28,
+                downEstimatedPrice: 0.72,
               },
             ],
             up: {
@@ -1684,9 +1738,14 @@ describe("mobile app navigation", () => {
         selectedSide="UP"
         customStrike={{
           marketId: "btc-15m-71000",
+          profile: "conservative",
           strike: 71_050,
           strikeRaw: 71_050_000_000,
           strikeLabel: "$71,050",
+          targetPrice: 0.67,
+          payoutMultiple: 1.5,
+          upEstimatedPrice: 0.62,
+          downEstimatedPrice: 0.38,
         }}
         onAmountSet={() => undefined}
         onMarketChange={() => undefined}
@@ -1695,16 +1754,24 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain('aria-label="Trade UP $71,000"');
-    expect(html).not.toContain('aria-label="Trade DOWN $71,000"');
-    expect(html).toContain('aria-label="Trade UP $71,050"');
-    expect(html).not.toContain('aria-label="Trade DOWN $71,050"');
-    expect(html).toContain("UP $71,050");
+    expect(html).toContain('aria-label="Trade standard payout profile"');
+    expect(html).toContain('aria-label="Trade conservative payout profile"');
+    expect(html).toContain('aria-label="Trade risky payout profile"');
+    expect(html).toContain("Standard");
+    expect(html).toContain("Conservative");
+    expect(html).toContain("Risky");
+    expect(html).toContain("2.1x payout");
+    expect(html).toContain("1.6x payout");
+    expect(html).toContain("3.6x payout");
+    expect(html).toContain("$71,000");
+    expect(html).toContain("$71,050");
+    expect(html).toContain("$71,120");
     expect(html).not.toContain("Wins if BTC settles");
     expect(html).not.toContain("vs spot");
-    expect(html).toContain("$0.40");
+    expect(html).not.toContain("$0.40");
     expect(html).not.toContain("Pays $250");
-    expect(html).toContain("Est. payout</small>Quote needed");
+    expect(html).toContain("Est. payout</small>$161.29");
+    expect(html).toContain("Max profit</small>+$61.29");
     expect(html).not.toContain("Est. payout</small>$250");
     expect(html).not.toContain('data-testid="trade-strike-select"');
     expect(html).not.toContain('data-testid="trade-custom-strike"');
@@ -1721,14 +1788,25 @@ describe("mobile app navigation", () => {
             strikeRaw: 62_000_000_000,
             strikeOptions: [
               {
+                profile: "standard",
                 strike: 62_000,
                 strikeLabel: "$62,000",
                 strikeRaw: 62_000_000_000,
+                targetPrice: 0.5,
               },
               {
+                profile: "conservative",
                 strike: 62_100,
                 strikeLabel: "$62,100",
                 strikeRaw: 62_100_000_000,
+                targetPrice: 0.67,
+              },
+              {
+                profile: "risky",
+                strike: 62_200,
+                strikeLabel: "$62,200",
+                strikeRaw: 62_200_000_000,
+                targetPrice: 0.25,
               },
             ],
           }),
@@ -1743,15 +1821,16 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain('aria-label="Trade UP $62,000"');
-    expect(html).toContain('aria-label="Trade UP $62,100"');
+    expect(html).toContain('aria-label="Trade standard payout profile"');
+    expect(html).toContain('aria-label="Trade conservative payout profile"');
+    expect(html).toContain('aria-label="Trade risky payout profile"');
     expect(html).not.toContain('aria-label="Selected position"');
     expect(html).not.toContain("Spend</small>");
     expect(html).not.toContain('data-testid="trade-wallet-submit"');
     expect(html).not.toContain("trade-chain-row-up selected");
   });
 
-  test("renders same-day trade markets as separate expiry cards", () => {
+  test("renders only the selected market for a canonical bucket", () => {
     const earlyMarket = tradeMarketRowFixture({
       id: "btc-jun12-0100",
       expiryMs: new Date(2026, 5, 12, 1).getTime(),
@@ -1800,15 +1879,14 @@ describe("mobile app navigation", () => {
     );
 
     expect(html.match(/data-testid="trade-market-card"/g) ?? []).toHaveLength(1);
-    expect(html).toContain('aria-label="Trade expiration times"');
-    expect(html.indexOf("01:00 PDT")).toBeLessThan(
-      html.indexOf("05:00 PDT"),
-    );
-    expect(html).toContain('aria-label="Trade UP $62,000"');
-    expect(html).not.toContain('aria-label="Trade UP $63,000"');
+    expect(html).not.toContain('aria-label="Trade expiration times"');
+    expect(html).toContain("01:00 PDT");
+    expect(html).not.toContain("05:00 PDT");
+    expect(html).toContain("UP $62,000");
+    expect(html).not.toContain("UP $63,000");
   });
 
-  test("keeps a broader trade ladder window around the active strike", () => {
+  test("keeps payout profile choices compact around the active market", () => {
     const html = renderToStaticMarkup(
       <TradeTicket
         marketRows={[
@@ -1832,13 +1910,32 @@ describe("mobile app navigation", () => {
             distinctStrikeCount: 6,
             volumeUsd: 120,
             volumeLabel: "$120",
-            strikeOptions: [70_000, 71_000, 72_000, 73_000, 74_000, 75_000].map(
-              (strike) => ({
-                strike,
-                strikeRaw: strike * 1_000_000,
-                strikeLabel: `$${strike.toLocaleString("en-US")}`,
-              }),
-            ),
+            strikeOptions: [
+              {
+                profile: "standard",
+                strike: 73_000,
+                strikeRaw: 73_000_000_000,
+                strikeLabel: "$73,000",
+                targetPrice: 0.5,
+                payoutMultiple: 2,
+              },
+              {
+                profile: "conservative",
+                strike: 72_500,
+                strikeRaw: 72_500_000_000,
+                strikeLabel: "$72,500",
+                targetPrice: 0.67,
+                payoutMultiple: 1.5,
+              },
+              {
+                profile: "risky",
+                strike: 73_750,
+                strikeRaw: 73_750_000_000,
+                strikeLabel: "$73,750",
+                targetPrice: 0.25,
+                payoutMultiple: 4,
+              },
+            ],
             up: {
               walletCount: 2,
               tradeCount: 6,
@@ -1858,9 +1955,12 @@ describe("mobile app navigation", () => {
         selectedSide="UP"
         customStrike={{
           marketId: "btc-15m-73000",
+          profile: "standard",
           strike: 73_000,
           strikeRaw: 73_000_000_000,
           strikeLabel: "$73,000",
+          targetPrice: 0.5,
+          payoutMultiple: 2,
         }}
         onAmountSet={() => undefined}
         onMarketChange={() => undefined}
@@ -1869,15 +1969,16 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain('aria-label="Trade UP $70,000"');
-    expect(html).toContain('aria-label="Trade UP $71,000"');
-    expect(html).toContain('aria-label="Trade UP $72,000"');
-    expect(html).toContain('aria-label="Trade UP $73,000"');
-    expect(html).toContain('aria-label="Trade UP $74,000"');
-    expect(html).toContain('aria-label="Trade UP $75,000"');
+    expect(html).toContain('aria-label="Trade standard payout profile"');
+    expect(html).toContain('aria-label="Trade conservative payout profile"');
+    expect(html).toContain('aria-label="Trade risky payout profile"');
+    expect(html.match(/aria-label="Trade [^"]+ payout profile"/g) ?? []).toHaveLength(3);
+    expect(html).toContain("2x payout");
+    expect(html).toContain("1.5x payout");
+    expect(html).toContain("4x payout");
   });
 
-  test("keeps the oracle price marker visible when spot is above the ladder slice", () => {
+  test("keeps the payout profile picker free of oracle price divider rows", () => {
     const html = renderToStaticMarkup(
       <TradeTicket
         marketPriceLabel="$76,000"
@@ -1939,10 +2040,9 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("Oracle price $76,000");
-    expect(html.indexOf('aria-label="Trade DOWN $74,000"')).toBeLessThan(
-      html.indexOf("Oracle price $76,000"),
-    );
+    expect(html).toContain("UP $73,000");
+    expect(html).not.toContain("Oracle price $76,000");
+    expect(html).not.toContain("trade-spot-line");
   });
 
   test("keeps the selected strike option visible when live strike options refresh", () => {
@@ -2006,9 +2106,9 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain('aria-label="Trade UP $71,050"');
-    expect(html).toContain('aria-label="Trade UP $71,100"');
+    expect(html).toContain('aria-label="Trade custom payout profile"');
     expect(html).toContain("UP $71,050");
+    expect(html).toContain("UP $71,100");
     expect(html).not.toContain("<option");
   });
 
@@ -2222,7 +2322,7 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain("Spend</small>$25");
-    expect(html).toContain("$0.50");
+    expect(html).not.toContain("$0.50");
     expect(html).not.toContain("Pays $49.96");
     expect(html).toContain("Est. payout</small>$49.96");
     expect(html).toContain("Max profit</small>+$24.98");

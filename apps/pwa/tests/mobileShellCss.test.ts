@@ -91,12 +91,24 @@ describe("mobile shell CSS", () => {
     expect(css).toContain("min-height: 198px;");
   });
 
-  test("keeps the trade chart sticky above the strike ladder", async () => {
+  test("keeps the trade chart sticky above the payout profiles", async () => {
     const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
 
     expect(css).toContain(".trade-oracle-chart-panel {");
     expect(css).toContain("position: sticky;");
     expect(css).toContain("top: 8px;");
     expect(css).toContain("z-index: 8;");
+  });
+
+  test("lets the feed market bucket rail use the full mobile width before scrolling", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+
+    expect(css).toContain(".market-heat-heading {");
+    expect(css).toContain("grid-template-columns: minmax(0, 1fr);");
+    expect(css).toContain("width: 100%;");
+    expect(css).toContain(".market-heat-controls {");
+    expect(css).toContain(".market-heat-controls > .trade-expiry-rail {");
+    expect(css).toContain("overflow-x: auto;");
+    expect(css).toContain("overflow-y: visible;");
   });
 });

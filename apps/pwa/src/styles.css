@@ -1511,22 +1511,6 @@ button:disabled {
   border-top: 1px solid #edf2f7;
 }
 
-.trade-spot-line {
-  grid-column: 1 / -1;
-  margin: -6px -7px 0;
-  padding: 4px 8px;
-  color: #07813f;
-  background: #ecfdf3;
-  font-size: 0.62rem;
-  font-weight: 950;
-  text-align: center;
-}
-
-.trade-spot-line-standalone {
-  margin: 0;
-  border-top: 1px solid #edf2f7;
-}
-
 .trade-ladder-side {
   display: grid;
   gap: 2px;
@@ -2046,8 +2030,12 @@ button:disabled {
 
 .market-heat-heading {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   align-items: start;
+  justify-content: stretch;
+  justify-items: stretch;
+  width: 100%;
 }
 
 .market-heat-heading-title {
@@ -2072,11 +2060,16 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
   gap: 6px;
+  width: 100%;
   min-width: 0;
 }
 
 .market-heat-controls > .trade-expiry-rail {
   grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .market-duration-toggle {
@@ -2114,28 +2107,6 @@ button:disabled {
   flex: none;
   width: 100%;
   margin-top: -2px;
-}
-
-.market-heat-expired-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 30px;
-  padding: 0 11px;
-  border: 1px solid #dbe4ef;
-  border-radius: 8px;
-  color: #667085;
-  background: #ffffff;
-  font-size: 0.68rem;
-  font-weight: 850;
-  white-space: nowrap;
-}
-
-.market-heat-expired-toggle[aria-pressed="true"] {
-  color: #111827;
-  border-color: color-mix(in srgb, #6246ea 42%, #dbe4ef);
-  background: color-mix(in srgb, #ffffff 90%, #6246ea);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #6246ea 25%, transparent);
 }
 
 .market-heat-secondary-controls {
@@ -3427,18 +3398,10 @@ button:disabled {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 42%, transparent);
 }
 
-.market-heat-expired-toggle,
 .market-heat-show-more {
   border-color: var(--hh-line);
   color: var(--hh-muted);
   background: var(--hh-surface);
-}
-
-.market-heat-expired-toggle[aria-pressed="true"] {
-  border-color: color-mix(in srgb, var(--hh-accent) 58%, var(--hh-line));
-  color: var(--hh-accent);
-  background: color-mix(in srgb, var(--hh-surface) 94%, var(--hh-accent));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 42%, transparent);
 }
 
 .market-heat-list,
@@ -3563,57 +3526,6 @@ button:disabled {
   color: var(--hh-accent);
   background: var(--hh-accent-soft);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 22%, transparent);
-}
-
-.trade-time-rail {
-  display: flex;
-  gap: 8px;
-  max-width: 100%;
-  margin-top: -3px;
-  padding: 0 0 6px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
-}
-
-.trade-time-rail::-webkit-scrollbar {
-  display: none;
-}
-
-.trade-time-rail button {
-  display: grid;
-  flex: 0 0 auto;
-  min-width: 78px;
-  min-height: 36px;
-  align-content: center;
-  gap: 2px;
-  padding: 6px 9px;
-  border: 1px solid var(--hh-line);
-  border-radius: 8px;
-  color: var(--hh-muted);
-  background: var(--hh-surface);
-  text-align: left;
-  scroll-snap-align: start;
-}
-
-.trade-time-rail button[aria-pressed="true"] {
-  border-color: var(--hh-accent);
-  color: var(--hh-accent);
-  background: var(--hh-accent-soft);
-}
-
-.trade-time-rail strong {
-  color: var(--hh-text);
-  font-size: 0.74rem;
-  line-height: 1;
-}
-
-.trade-time-rail small {
-  color: inherit;
-  font-size: 0.54rem;
-  font-weight: 950;
-  line-height: 1;
 }
 
 .trade-oracle-chart-panel {
@@ -3818,15 +3730,6 @@ button:disabled {
 }
 
 .trade-ladder-row {
-  border-color: var(--hh-line);
-}
-
-.trade-spot-line {
-  color: var(--hh-up);
-  background: var(--hh-up-soft);
-}
-
-.trade-spot-line-standalone {
   border-color: var(--hh-line);
 }
 
@@ -4491,12 +4394,6 @@ button:disabled {
 
 .market-heat-secondary-controls {
   align-items: center;
-}
-
-.market-heat-expired-toggle {
-  min-height: 38px;
-  padding: 0 12px;
-  border-radius: 8px;
 }
 
 .market-heat-table-head,
