@@ -595,7 +595,7 @@ describe("MarketHeatPreview component", () => {
       />,
     );
 
-    expect(html).toContain('aria-label="Feed expiration dates"');
+    expect(html).toContain('aria-label="Feed markets"');
     expect(html).not.toContain('data-testid="feed-expiry-all"');
     expect(html).toContain('data-testid="feed-expiry-15m"');
     expect(html).toContain('data-testid="feed-expiry-1h"');
@@ -610,6 +610,47 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("No market");
     expect(html).not.toContain('data-testid="market-duration-all"');
     expect(html).toContain('aria-pressed="true"');
+  });
+
+  test("can hide the old feed title and expiry rail while keeping sort controls", () => {
+    const rows = buildMarketHeatPreview(watchingOnlyRows, 1).rows;
+    const html = renderToStaticMarkup(
+      <MarketHeatPreview
+        rows={rows}
+        sourceLabel="Live Testnet"
+        sortMode="heat"
+        selectedExpiryDate="15m"
+        expiryOptions={[
+          {
+            count: rows.length,
+            expiryMs: 1_781_227_200_000,
+            label: "15m",
+            marketId: "market-15m",
+            oracleId: "oracle-15m",
+            sublabel: "12:55 PDT",
+            value: "15m",
+          },
+        ]}
+        showExpiryControls={false}
+        showHeading={false}
+        showExpired={false}
+        canShowMore={false}
+        copyAmount={25}
+        showMoreLabel="Show more"
+        selectedRowId={null}
+        onAmountSet={() => undefined}
+        onExpiryChange={() => undefined}
+        onShowExpiredChange={() => undefined}
+        onShowMore={() => undefined}
+        onSortModeChange={() => undefined}
+        onWalletSubmit={() => undefined}
+        onSelectRow={() => undefined}
+      />,
+    );
+
+    expect(html).not.toContain(">Alpha Feed</p>");
+    expect(html).not.toContain('data-testid="feed-expiry-15m"');
+    expect(html).toContain('data-testid="market-heat-sort-heat"');
   });
 
   test("renders compact feed rows for faster scanning", () => {
@@ -640,11 +681,12 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("market-heat-row-compact");
     expect(html).not.toContain("market-heat-density-toggle");
     expect(html).not.toContain("Expanded");
+    expect(html).toContain("Markets");
     expect(html).toContain("Wallet");
     expect(html).toContain("Position");
     expect(html).toContain("Expires");
     expect(html).toContain("Entry");
-    expect(html).toContain("Now");
+    expect(html).toContain("ROI");
     expect(html).not.toContain("Entry / Now");
     expect(html).not.toContain(">Direction</span>");
     expect(html).not.toContain(">Strike</span>");

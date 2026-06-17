@@ -1209,7 +1209,7 @@ function tradeRiskProfileLabel(profile: TradeMarketSelection["profile"]): string
     case "conservative":
       return "Conservative";
     case "risky":
-      return "Risky";
+      return "High payout";
     default:
       return "Custom";
   }
@@ -1500,6 +1500,29 @@ function isLiveCountdownLabel(label: string | null | undefined): boolean {
 
 function formatMarketHeatExpiresLabel(label: string): string {
   return label.replace(/\s+left$/i, "");
+}
+
+function formatMarketHeatRoiLabel(
+  entryPrice: number | undefined,
+  currentPrice: number | undefined,
+): string {
+  if (
+    entryPrice === undefined ||
+    currentPrice === undefined ||
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(currentPrice) ||
+    entryPrice <= 0
+  ) {
+    return "--";
+  }
+
+  const roundedRoi = Math.round(((currentPrice - entryPrice) / entryPrice) * 100);
+
+  if (Object.is(roundedRoi, -0) || roundedRoi === 0) {
+    return "0%";
+  }
+
+  return `${roundedRoi > 0 ? "+" : ""}${roundedRoi}%`;
 }
 
 function parsePnlAtomicLabel(item: PredictPortfolioHistoryItem): number | null {
@@ -2432,6 +2455,10 @@ function formatTradeTimeOptionLabel(expiryTimeLabel: string): string {
   return timeParts.length ? timeParts.join(",").trim() : expiryTimeLabel;
 }
 
+function formatTradeSideHelp(side: TradeSide): string {
+  return side === "UP" ? "Profit above strike" : "Profit below strike";
+}
+
 function sortTradeMarketCards(
   left: TradeMarketLadderRow,
   right: TradeMarketLadderRow,
@@ -2448,16 +2475,19 @@ function TradeMarketCard({
   canSubmitTrade,
   copyAmount,
   customStrike = null,
+  expiryOptions,
   isSelectedMarket,
   marketPriceLabel = null,
   marketRow,
   quote = null,
   quoteStatus = "idle",
   returnPreview,
+  selectedExpiryDate,
   selectedSide,
   tradeWalletButtonLabel,
   walletActionPending = false,
   onAmountSet,
+  onExpiryChange,
   onMarketChange,
   onSideChange,
   onWalletSubmit,
@@ -2465,16 +2495,19 @@ function TradeMarketCard({
   canSubmitTrade: boolean;
   copyAmount: number;
   customStrike?: TradeMarketSelection | null;
+  expiryOptions: TradeExpiryOption[];
   isSelectedMarket: boolean;
   marketPriceLabel?: string | null;
   marketRow: TradeMarketLadderRow;
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
   returnPreview: ReturnPreview | null;
+  selectedExpiryDate: string | null;
   selectedSide: TradeSide;
   tradeWalletButtonLabel: string;
   walletActionPending?: boolean;
   onAmountSet: (amount: number) => void;
+  onExpiryChange: (expiryDate: string) => void;
   onMarketChange: (selection: TradeMarketSelection) => void;
   onSideChange: (side: TradeSide) => void;
   onWalletSubmit: () => void;
@@ -2498,12 +2531,25 @@ function TradeMarketCard({
   return (
     <div className="trade-ticket-panel trade-options-chain" data-testid="trade-market-card">
       <div className="trade-chain-summary">
-        <div>
-          <small>{cardMarket.pairLabel}</small>
+        <div className="trade-chain-summary-heading">
+          <strong>Choose market</strong>
+        </div>
+        <div className="trade-chain-summary-expiry">
+          <TradeExpiryRail
+            options={expiryOptions}
+            selectedExpiryDate={selectedExpiryDate}
+            onExpiryChange={onExpiryChange}
+          />
+        </div>
+        <div className="trade-chain-summary-market">
+          <small>Market Ends</small>
           <strong>{cardMarket.expiryTimeLabel}</strong>
         </div>
       </div>
 
+      <div className="trade-step-heading">
+        <strong>Choose direction</strong>
+      </div>
       <div className="trade-side-toggle" aria-label="Trade side">
         <button
           type="button"
@@ -2511,7 +2557,8 @@ function TradeMarketCard({
           data-testid="trade-side-up"
           onClick={() => onSideChange("UP")}
         >
-          UP
+          <strong>UP</strong>
+          <small>{formatTradeSideHelp("UP")}</small>
         </button>
         <button
           type="button"
@@ -2519,13 +2566,18 @@ function TradeMarketCard({
           data-testid="trade-side-down"
           onClick={() => onSideChange("DOWN")}
         >
-          DOWN
+          <strong>DOWN</strong>
+          <small>{formatTradeSideHelp("DOWN")}</small>
         </button>
       </div>
 
+      <div className="trade-step-heading">
+        <strong>Pick your strike</strong>
+      </div>
       <div className="trade-chain-list" aria-label={`${selectedSide} payout profiles`}>
         <div className="trade-chain-heading">
           <span>Profile</span>
+          <span>Strike</span>
           <span>Payout</span>
         </div>
         {ladderRows.length ? (
@@ -2534,7 +2586,12 @@ function TradeMarketCard({
             const profileLabel = tradeRiskProfileLabel(selection.profile);
             const profileDescription = tradeRiskProfileDescription(selection.profile);
             const payoutLabel = formatTradeRiskPayout(selection, selectedSide);
-            const profileKey = selection.profile ?? "custom";
+            const profileKey =
+              selection.profile === "risky" ? "high payout" : selection.profile ?? "custom";
+            const profileAriaLabel =
+              selection.profile === "risky"
+                ? `${profileKey} profile`
+                : `${profileKey} payout profile`;
 
             return (
               <div className="trade-chain-row-wrap" key={key}>
@@ -2543,18 +2600,21 @@ function TradeMarketCard({
                   className={`trade-chain-row trade-chain-row-${selectedSide.toLowerCase()} ${
                     isSelectedStrike ? "selected" : ""
                   }`}
-                  aria-label={`Trade ${profileKey} payout profile`}
+                  aria-label={`Trade ${profileAriaLabel}`}
                   aria-pressed={isSelectedStrike}
                   onClick={() => onMarketChange(selection)}
                 >
                   <span className="trade-chain-strike">
                     <strong>{profileLabel}</strong>
-                    <small>
-                      {selectedSide} {selection.strikeLabel} · {profileDescription}
-                    </small>
+                    <small>{profileDescription}</small>
+                  </span>
+                  <span className="trade-chain-strike-price">
+                    <strong>{selection.strikeLabel}</strong>
+                    <small>Strike</small>
                   </span>
                   <span className="trade-chain-price">
                     <strong>{payoutLabel}</strong>
+                    <small>Est. payout</small>
                   </span>
                 </button>
                 {isSelectedStrike ? (
@@ -2753,13 +2813,7 @@ export function TradeTicket({
     <section className="trade-ticket" aria-label="Trade" data-testid={testId}>
       <div className="section-heading">
         <p>Trade</p>
-        <span>{selectedMarket?.pairLabel ?? "BTC/USD"}</span>
       </div>
-      <TradeExpiryRail
-        options={expiryOptions}
-        selectedExpiryDate={selectedExpiryDate}
-        onExpiryChange={onExpiryChange}
-      />
       {shouldRenderOracleChart ? (
         <OraclePriceChartPanel
           chart={oracleChart}
@@ -2774,16 +2828,19 @@ export function TradeTicket({
           canSubmitTrade={canSubmitTrade}
           copyAmount={copyAmount}
           customStrike={customStrike}
+          expiryOptions={expiryOptions}
           isSelectedMarket={true}
           marketPriceLabel={marketPriceLabel}
           marketRow={activeMarketRow}
           quote={quote}
           quoteStatus={quoteStatus}
           returnPreview={returnPreview}
+          selectedExpiryDate={selectedExpiryDate}
           selectedSide={selectedSide}
           tradeWalletButtonLabel={tradeWalletButtonLabel}
           walletActionPending={walletActionPending}
           onAmountSet={onAmountSet}
+          onExpiryChange={onExpiryChange}
           onMarketChange={onMarketChange}
           onSideChange={onSideChange}
           onWalletSubmit={onWalletSubmit}
@@ -4200,6 +4257,8 @@ export function MarketHeatPreview({
   identityMode = "wallet",
   selectedExpiryDate = null,
   showControls = true,
+  showExpiryControls = true,
+  showHeading = true,
   showEmptyAction = true,
   emptyTitle,
   emptyDetail,
@@ -4235,6 +4294,8 @@ export function MarketHeatPreview({
   identityMode?: MarketHeatIdentityMode;
   selectedExpiryDate?: string | null;
   showControls?: boolean;
+  showExpiryControls?: boolean;
+  showHeading?: boolean;
   showExpired?: boolean;
   showEmptyAction?: boolean;
   emptyTitle?: string;
@@ -4363,6 +4424,7 @@ export function MarketHeatPreview({
     "Fresh 15m, 1h, and 1d calls will appear here as traders mint positions.";
   const headingAriaLabel = sourceLabel ? `${title}, ${sourceLabel} BTC markets` : title;
   const headingTitle = sourceLabel ? `${sourceLabel} BTC markets` : title;
+  const shouldRenderHeading = showHeading || showControls;
   const renderMarketHeatTradeRow = (row: MarketHeatPreviewRow) => {
     const isSelected = row.id === selectedRowId;
     const rowIntentMode = isSelected ? selectedMode : "copy";
@@ -4435,7 +4497,7 @@ export function MarketHeatPreview({
     const durationLabel = formatMarketHeatExpiresLabel(row.timeRemainingLabel ?? row.expiryTimeLabel);
     const isLiveCountdown = isLiveCountdownLabel(row.timeRemainingLabel);
     const entryPriceLabel = row.entryPriceLabel ?? "--";
-    const currentPriceLabel = row.currentPriceLabel ?? "--";
+    const roiLabel = formatMarketHeatRoiLabel(row.entryPrice, row.currentPrice);
     const entryNowTone = row.entryNowTone ?? "unknown";
     const handleMarketHeatRowClick = (event: SyntheticEvent<HTMLElement>) => {
       if (swipedRowRef.current === row.id) {
@@ -4659,9 +4721,9 @@ export function MarketHeatPreview({
           </div>
           <div
             className={`market-heat-current-price market-heat-current-price-${entryNowTone}`}
-            aria-label={`Now ${currentPriceLabel}`}
+            aria-label={roiLabel === "--" ? "ROI unavailable" : `ROI ${roiLabel}`}
           >
-            <strong>{currentPriceLabel}</strong>
+            <strong>{roiLabel}</strong>
           </div>
           <ChevronIcon
             className={`market-heat-compact-chevron ${
@@ -4679,56 +4741,69 @@ export function MarketHeatPreview({
       aria-label={ariaLabel}
       data-testid={testId}
     >
-      <div className="section-heading market-heat-heading">
-        <div className="market-heat-heading-title">
-          <p
-            aria-label={headingAriaLabel}
-            title={headingTitle}
-          >
-            {title}
-          </p>
-          {subtitle ? <small className="market-heat-subtitle">{subtitle}</small> : null}
-        </div>
-        {showControls ? (
-          <div className="market-heat-controls">
-            <TradeExpiryRail
-              ariaLabel="Feed expiration dates"
-              options={expiryOptions}
-              selectedExpiryDate={selectedExpiryDate}
-              testIdPrefix="feed-expiry"
-              onExpiryChange={onExpiryChange}
-            />
-            <div className="market-heat-secondary-controls">
-              <div className="market-heat-sort" aria-label="Market heat sort">
-                <button
-                  type="button"
-                  aria-pressed={sortMode === "heat"}
-                  data-testid="market-heat-sort-heat"
-                  onClick={() => onSortModeChange("heat")}
-                >
-                  Heat
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={sortMode === "following"}
-                  data-testid="market-heat-sort-following"
-                  onClick={() => onSortModeChange("following")}
-                >
-                  Following
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={sortMode === "latest"}
-                  data-testid="market-heat-sort-latest"
-                  onClick={() => onSortModeChange("latest")}
-                >
-                  Latest
-                </button>
+      {shouldRenderHeading ? (
+        <div
+          className={`section-heading market-heat-heading${
+            showHeading ? "" : " market-heat-heading-controls-only"
+          }`}
+        >
+          {showHeading ? (
+            <div className="market-heat-heading-title">
+              <p
+                aria-label={headingAriaLabel}
+                title={headingTitle}
+              >
+                {title}
+              </p>
+              {subtitle ? <small className="market-heat-subtitle">{subtitle}</small> : null}
+            </div>
+          ) : null}
+          {showControls ? (
+            <div className="market-heat-controls">
+              {showExpiryControls ? (
+                <div className="market-heat-expiry-group">
+                  <small>Markets</small>
+                  <TradeExpiryRail
+                    ariaLabel="Feed markets"
+                    options={expiryOptions}
+                    selectedExpiryDate={selectedExpiryDate}
+                    testIdPrefix="feed-expiry"
+                    onExpiryChange={onExpiryChange}
+                  />
+                </div>
+              ) : null}
+              <div className="market-heat-secondary-controls">
+                <div className="market-heat-sort" aria-label="Market heat sort">
+                  <button
+                    type="button"
+                    aria-pressed={sortMode === "heat"}
+                    data-testid="market-heat-sort-heat"
+                    onClick={() => onSortModeChange("heat")}
+                  >
+                    Heat
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={sortMode === "following"}
+                    data-testid="market-heat-sort-following"
+                    onClick={() => onSortModeChange("following")}
+                  >
+                    Following
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={sortMode === "latest"}
+                    data-testid="market-heat-sort-latest"
+                    onClick={() => onSortModeChange("latest")}
+                  >
+                    Latest
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      ) : null}
       {rows.length === 0 ? (
         <div className="market-heat-empty" data-testid="market-heat-empty">
           <strong>{resolvedEmptyTitle}</strong>
@@ -4772,7 +4847,7 @@ export function MarketHeatPreview({
           <span aria-hidden="true">Position</span>
           <span aria-hidden="true">Expires</span>
           <span aria-hidden="true">Entry</span>
-          <span aria-hidden="true">Now</span>
+          <span aria-hidden="true">ROI</span>
           <span aria-hidden="true" />
         </div>
       ) : null}
@@ -7981,6 +8056,8 @@ export function App() {
       emptyTitle={isFollowingFeedMode ? followingFeedEmptyTitle : undefined}
       expiryOptions={tradeExpiryOptions}
       showEmptyAction={isFollowingFeedMode ? true : undefined}
+      title="Hot Feed"
+      subtitle="Find traders with real momentum."
       canShowMore={marketHeatRemainingCount > 0}
       selectedMode={activeMarketHeatIntentMode}
       selectedRowId={marketHeatIntent.selectedRowId}

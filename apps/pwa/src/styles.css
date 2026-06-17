@@ -171,11 +171,37 @@ button:disabled {
 
 .oracle-mini-chart-copy {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.oracle-mini-chart-token {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f7931a;
+}
+
+.oracle-mini-chart-token img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.oracle-mini-chart-copy-text {
+  display: grid;
   gap: 2px;
   min-width: 0;
 }
 
-.oracle-mini-chart-copy span {
+.oracle-mini-chart-copy-text span {
   color: #667085;
   font-size: 0.68rem;
   font-weight: 950;
@@ -562,20 +588,47 @@ button:disabled {
   align-items: center;
 }
 
-.oracle-chart-panel-header > div:first-child {
+.oracle-chart-panel-market {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.oracle-chart-panel-token {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f7931a;
+  box-shadow: inset 0 -7px 14px rgba(142, 74, 0, 0.18);
+}
+
+.oracle-chart-panel-token img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.oracle-chart-panel-market > div {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
 
-.oracle-chart-panel-header span {
+.oracle-chart-panel-market > div > span {
   color: #667085;
   font-size: 0.66rem;
   font-weight: 950;
   text-transform: uppercase;
 }
 
-.oracle-chart-panel-header strong {
+.oracle-chart-panel-market strong {
   overflow: hidden;
   color: #111827;
   font-size: 1.14rem;
@@ -2048,13 +2101,15 @@ button:disabled {
 }
 
 .market-heat-heading-title p {
-  cursor: help;
+  cursor: default;
+  font-size: 1.5rem;
+  line-height: 0.98;
 }
 
 .market-heat-subtitle {
   margin-top: 3px;
   color: var(--hh-muted);
-  font-size: 0.74rem;
+  font-size: 0.78rem;
   font-weight: 800;
   line-height: 1.25;
 }
@@ -2068,12 +2123,46 @@ button:disabled {
   min-width: 0;
 }
 
-.market-heat-controls > .trade-expiry-rail {
+.market-heat-expiry-group {
   grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
   width: 100%;
   min-width: 0;
+}
+
+.market-heat-expiry-group > small {
+  color: var(--hh-muted);
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.market-heat-expiry-group > .trade-expiry-rail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
   overflow-x: auto;
   overflow-y: visible;
+}
+
+.market-heat-expiry-group .trade-expiry-option {
+  flex: 1 1 0;
+  min-height: 54px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.market-heat-expiry-group .trade-expiry-option small {
+  display: none;
+}
+
+.market-heat-expiry-group .trade-expiry-option strong {
+  font-size: 0.98rem;
 }
 
 .market-duration-toggle {
@@ -2999,7 +3088,7 @@ button:disabled {
 .trader-identity p,
 .inline-copy-summary p,
 .spectator-copy span,
-.oracle-mini-chart-copy span,
+.oracle-mini-chart-copy-text span,
 .oracle-mini-chart-copy em,
 .trade-ticket-title p,
 .trade-ticket-stats small,
@@ -3538,58 +3627,141 @@ button:disabled {
   z-index: 8;
 }
 
+.trade-oracle-chart-panel .oracle-expanded-chart.oracle-chart-panel-visual {
+  min-height: 180px;
+}
+
 .trade-ticket-panel {
-  gap: 8px;
-  padding: 9px;
+  gap: 7px;
+  padding: 8px;
 }
 
 .trade-options-chain {
   overflow: hidden;
 }
 
-.trade-chain-summary {
-  display: grid;
+.trade-step-heading {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
 }
 
-.trade-chain-summary div {
+.trade-step-heading strong {
+  color: var(--hh-text);
+  font-size: 0.98rem;
+  font-weight: 950;
+  line-height: 1.05;
+}
+
+.trade-chain-summary {
   display: grid;
-  gap: 3px;
+  gap: 7px;
+  align-items: stretch;
+}
+
+.trade-chain-summary-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   min-width: 0;
 }
 
-.trade-chain-summary small {
+.trade-chain-summary-heading strong {
+  color: var(--hh-text);
+  font-size: 0.98rem;
+  font-weight: 950;
+  line-height: 1.05;
+}
+
+.trade-chain-summary-market,
+.trade-chain-summary-expiry {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.trade-chain-summary-market small,
+.trade-chain-summary-expiry > small {
   color: var(--hh-muted);
   font-size: 0.64rem;
   font-weight: 950;
   text-transform: uppercase;
 }
 
-.trade-chain-summary strong {
+.trade-chain-summary-market strong {
   overflow: hidden;
   color: var(--hh-text);
-  font-size: 1rem;
+  font-size: 0.9rem;
   line-height: 1.08;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.trade-chain-summary-expiry .trade-expiry-rail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0;
+  overflow: visible;
+}
+
+.trade-chain-summary-expiry .trade-expiry-option {
+  min-height: 44px;
+  min-width: 0;
+  padding: 7px;
+  text-align: center;
+}
+
+.trade-chain-summary-expiry .trade-expiry-option small {
+  display: none;
+}
+
+.trade-chain-summary-expiry .trade-expiry-option strong {
+  font-size: 0.92rem;
+}
+
 .trade-side-toggle {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  border-radius: 999px;
-  background: var(--hh-surface-2);
+  gap: 8px;
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
 }
 
 .trade-side-toggle button {
-  min-height: 32px;
-  border-radius: 999px;
+  display: grid;
+  min-height: 56px;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
   color: var(--hh-muted);
   background: transparent;
   font-size: 0.78rem;
   font-weight: 950;
+  text-align: center;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.trade-side-toggle button strong {
+  font-size: 0.94rem;
+  line-height: 1.05;
+}
+
+.trade-side-toggle button small {
+  color: currentColor;
+  font-size: 0.62rem;
+  font-weight: 850;
+  line-height: 1.15;
+  opacity: 0.86;
 }
 
 .trade-side-toggle button[aria-pressed="true"] {
@@ -3598,12 +3770,36 @@ button:disabled {
   box-shadow: 0 6px 16px rgba(34, 48, 64, 0.1);
 }
 
+.trade-side-toggle [data-testid="trade-side-up"] {
+  color: var(--hh-up);
+  border-color: color-mix(in srgb, var(--hh-up-line) 42%, transparent);
+  background: color-mix(in srgb, var(--hh-up-soft) 52%, var(--hh-surface));
+}
+
 .trade-side-toggle [data-testid="trade-side-up"][aria-pressed="true"] {
   color: var(--hh-up);
+  border-color: var(--hh-up-line);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--hh-up-soft) 72%, var(--hh-surface)),
+    var(--hh-up-soft)
+  );
+}
+
+.trade-side-toggle [data-testid="trade-side-down"] {
+  color: var(--hh-down);
+  border-color: color-mix(in srgb, var(--hh-down-line) 42%, transparent);
+  background: color-mix(in srgb, var(--hh-down-soft) 52%, var(--hh-surface));
 }
 
 .trade-side-toggle [data-testid="trade-side-down"][aria-pressed="true"] {
   color: var(--hh-down);
+  border-color: var(--hh-down-line);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--hh-down-soft) 72%, var(--hh-surface)),
+    var(--hh-down-soft)
+  );
 }
 
 .trade-chain-list {
@@ -3616,7 +3812,7 @@ button:disabled {
 .trade-chain-heading,
 .trade-chain-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(64px, auto);
+  grid-template-columns: minmax(0, 1.18fr) minmax(76px, 0.82fr) minmax(76px, 0.88fr);
   gap: 8px;
   align-items: center;
 }
@@ -3630,6 +3826,10 @@ button:disabled {
   font-weight: 950;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+}
+
+.trade-chain-heading span:nth-child(2) {
+  text-align: center;
 }
 
 .trade-chain-heading span:last-child {
@@ -3664,6 +3864,7 @@ button:disabled {
 }
 
 .trade-chain-strike,
+.trade-chain-strike-price,
 .trade-chain-price {
   display: grid;
   gap: 2px;
@@ -3671,6 +3872,7 @@ button:disabled {
 }
 
 .trade-chain-strike strong,
+.trade-chain-strike-price strong,
 .trade-chain-price strong {
   overflow: hidden;
   color: var(--hh-text);
@@ -3682,6 +3884,7 @@ button:disabled {
 }
 
 .trade-chain-strike small,
+.trade-chain-strike-price small,
 .trade-chain-price small {
   overflow: hidden;
   color: var(--hh-muted);
@@ -3690,6 +3893,11 @@ button:disabled {
   line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.trade-chain-strike-price {
+  justify-items: center;
+  text-align: center;
 }
 
 .trade-chain-price {
@@ -3916,11 +4124,11 @@ button:disabled {
   box-shadow: none;
 }
 
-.app-shell[data-theme="dark"] .oracle-chart-panel-header span {
+.app-shell[data-theme="dark"] .oracle-chart-panel-market > div > span {
   color: var(--hh-muted);
 }
 
-.app-shell[data-theme="dark"] .oracle-chart-panel-header strong {
+.app-shell[data-theme="dark"] .oracle-chart-panel-market strong {
   color: var(--hh-text);
 }
 
@@ -4356,8 +4564,40 @@ button:disabled {
   line-height: 1;
 }
 
+.market-heat-list-compact {
+  gap: 14px;
+}
+
+.market-heat-heading {
+  gap: 12px;
+  margin-top: 3px;
+}
+
+.market-heat-heading-title {
+  gap: 4px;
+}
+
+.market-heat-heading-title p {
+  color: var(--hh-text);
+  font-size: 1.5rem;
+  line-height: 0.96;
+}
+
+.market-heat-subtitle {
+  margin-top: 0;
+  font-size: 0.82rem;
+}
+
+.market-heat-expiry-group {
+  gap: 7px;
+}
+
 .market-heat-controls {
   gap: 10px;
+}
+
+.market-heat-heading-controls-only {
+  gap: 0;
 }
 
 .market-duration-toggle,
@@ -4398,6 +4638,40 @@ button:disabled {
 
 .market-heat-secondary-controls {
   align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.market-heat-secondary-controls .market-heat-sort {
+  display: grid;
+  flex: 0 1 372px;
+  grid-template-columns: repeat(3, minmax(98px, 1fr));
+  gap: 7px;
+  width: min(86%, 372px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.market-heat-secondary-controls .market-heat-sort button {
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid var(--hh-line);
+  border-radius: 8px;
+  color: var(--hh-muted);
+  background: var(--hh-surface);
+  font-size: 0.86rem;
+  font-weight: 950;
+}
+
+.market-heat-secondary-controls .market-heat-sort button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--hh-accent) 68%, var(--hh-line));
+  border-radius: 8px;
+  color: var(--hh-accent);
+  background: var(--hh-accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 28%, transparent);
 }
 
 .market-heat-table-head,

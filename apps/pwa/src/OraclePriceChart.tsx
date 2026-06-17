@@ -31,6 +31,8 @@ const COMPACT_CHART_DEFAULT_WINDOW_SECONDS = 15 * 60;
 const EXPANDED_CHART_DEFAULT_WINDOW_SECONDS = 4 * 60 * 60;
 const EXPIRY_AXIS_PADDING_SECONDS = 15 * 60;
 const DEFAULT_ORACLE_CHART_GRID_COLOR = "rgba(102, 112, 133, 0.12)";
+const BITCOIN_ASSET_IMAGE_URL =
+  "https://coin-images.coingecko.com/coins/images/1/large/bitcoin.png?1696501400";
 
 export type OraclePriceChartRangeKey = "1H" | "4H" | "24H";
 
@@ -103,8 +105,13 @@ export function OraclePriceChartCard({
       onClick={onOpen}
     >
       <span className="oracle-mini-chart-copy">
-        <span>BTC/USD</span>
-        <strong>{priceLabel}</strong>
+        <span className="oracle-mini-chart-token" aria-hidden="true">
+          <img src={BITCOIN_ASSET_IMAGE_URL} alt="" loading="lazy" decoding="async" />
+        </span>
+        <span className="oracle-mini-chart-copy-text">
+          <span>BTC/USD</span>
+          <strong>{priceLabel}</strong>
+        </span>
       </span>
       {hasChart ? (
         <div className="oracle-mini-chart-visual">
@@ -324,9 +331,14 @@ export function OraclePriceChartPanel({
       aria-label="BTC/USD oracle chart"
     >
       <div className="oracle-chart-panel-header">
-        <div>
-          <span>{chart?.marketLabel ?? "BTC/USD"}</span>
-          <strong>{chart?.latestPriceLabel ?? "No price yet"}</strong>
+        <div className="oracle-chart-panel-market">
+          <span className="oracle-chart-panel-token" aria-hidden="true">
+            <img src={BITCOIN_ASSET_IMAGE_URL} alt="" loading="lazy" decoding="async" />
+          </span>
+          <div>
+            <span>{chart?.marketLabel ?? "BTC/USD"}</span>
+            <strong>{chart?.latestPriceLabel ?? "No price yet"}</strong>
+          </div>
         </div>
         <div className="oracle-chart-range-controls" aria-label="Oracle chart range">
           {rangeOptions.map((range) => (

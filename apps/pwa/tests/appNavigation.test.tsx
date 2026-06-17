@@ -1625,11 +1625,18 @@ describe("mobile app navigation", () => {
     expect(html).toContain("1h");
     expect(html).toContain("1d");
     expect(html).toContain('data-testid="trade-oracle-chart-panel"');
-    expect(html.indexOf('data-testid="trade-expiry-15m"')).toBeLessThan(
-      html.indexOf('data-testid="trade-oracle-chart-panel"'),
-    );
     expect(html.indexOf('data-testid="trade-oracle-chart-panel"')).toBeLessThan(
       html.indexOf('data-testid="trade-market-card"'),
+    );
+    expect(html).toContain("Choose market");
+    expect(html.indexOf("Choose market")).toBeLessThan(
+      html.indexOf('data-testid="trade-expiry-15m"'),
+    );
+    expect(html.indexOf('data-testid="trade-market-card"')).toBeLessThan(
+      html.indexOf('data-testid="trade-expiry-15m"'),
+    );
+    expect(html.indexOf('data-testid="trade-expiry-15m"')).toBeLessThan(
+      html.indexOf("Market Ends"),
     );
     expect(html).toContain('data-testid="oracle-chart-range-4H"');
     expect(html).not.toContain("Up/Down");
@@ -1637,6 +1644,7 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain('aria-label="Trade product type"');
     expect(html).toContain("BTC/USD");
     expect(html).not.toContain('aria-label="Trade expiration times"');
+    expect(html).toContain("Market Ends");
     expect(html).toContain("23:30 PDT");
     expect(html).toContain('aria-label="Trade side"');
     expect(html).toContain('data-testid="trade-side-up"');
@@ -1756,10 +1764,10 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain('aria-label="Trade standard payout profile"');
     expect(html).toContain('aria-label="Trade conservative payout profile"');
-    expect(html).toContain('aria-label="Trade risky payout profile"');
+    expect(html).toContain('aria-label="Trade high payout profile"');
     expect(html).toContain("Standard");
     expect(html).toContain("Conservative");
-    expect(html).toContain("Risky");
+    expect(html).toContain("High payout");
     expect(html).toContain("2.1x payout");
     expect(html).toContain("1.6x payout");
     expect(html).toContain("3.6x payout");
@@ -1823,7 +1831,7 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain('aria-label="Trade standard payout profile"');
     expect(html).toContain('aria-label="Trade conservative payout profile"');
-    expect(html).toContain('aria-label="Trade risky payout profile"');
+    expect(html).toContain('aria-label="Trade high payout profile"');
     expect(html).not.toContain('aria-label="Selected position"');
     expect(html).not.toContain("Spend</small>");
     expect(html).not.toContain('data-testid="trade-wallet-submit"');
@@ -1882,8 +1890,8 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain('aria-label="Trade expiration times"');
     expect(html).toContain("01:00 PDT");
     expect(html).not.toContain("05:00 PDT");
-    expect(html).toContain("UP $62,000");
-    expect(html).not.toContain("UP $63,000");
+    expect(html).toContain("$62,000");
+    expect(html).not.toContain("$63,000");
   });
 
   test("keeps payout profile choices compact around the active market", () => {
@@ -1971,7 +1979,7 @@ describe("mobile app navigation", () => {
 
     expect(html).toContain('aria-label="Trade standard payout profile"');
     expect(html).toContain('aria-label="Trade conservative payout profile"');
-    expect(html).toContain('aria-label="Trade risky payout profile"');
+    expect(html).toContain('aria-label="Trade high payout profile"');
     expect(html.match(/aria-label="Trade [^"]+ payout profile"/g) ?? []).toHaveLength(3);
     expect(html).toContain("2x payout");
     expect(html).toContain("1.5x payout");
@@ -2040,7 +2048,9 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("UP $73,000");
+    expect(html).toContain("Pick your strike");
+    expect(html).toContain("Selected strike");
+    expect(html).toContain("$73,000");
     expect(html).not.toContain("Oracle price $76,000");
     expect(html).not.toContain("trade-spot-line");
   });
@@ -2107,8 +2117,8 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain('aria-label="Trade custom payout profile"');
-    expect(html).toContain("UP $71,050");
-    expect(html).toContain("UP $71,100");
+    expect(html).toContain("$71,050");
+    expect(html).toContain("$71,100");
     expect(html).not.toContain("<option");
   });
 
