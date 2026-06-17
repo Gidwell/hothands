@@ -1503,29 +1503,6 @@ function formatMarketHeatExpiresLabel(label: string): string {
   return label.replace(/\s+left$/i, "");
 }
 
-function formatMarketHeatRoiLabel(
-  entryPrice: number | undefined,
-  currentPrice: number | undefined,
-): string {
-  if (
-    entryPrice === undefined ||
-    currentPrice === undefined ||
-    !Number.isFinite(entryPrice) ||
-    !Number.isFinite(currentPrice) ||
-    entryPrice <= 0
-  ) {
-    return "--";
-  }
-
-  const roundedRoi = Math.round(((currentPrice - entryPrice) / entryPrice) * 100);
-
-  if (Object.is(roundedRoi, -0) || roundedRoi === 0) {
-    return "0%";
-  }
-
-  return `${roundedRoi > 0 ? "+" : ""}${roundedRoi}%`;
-}
-
 function parsePnlAtomicLabel(item: PredictPortfolioHistoryItem): number | null {
   if (!item.pnlAtomic) {
     return null;
@@ -4518,7 +4495,7 @@ export function MarketHeatPreview({
     const durationLabel = formatMarketHeatExpiresLabel(row.timeRemainingLabel ?? row.expiryTimeLabel);
     const isLiveCountdown = isLiveCountdownLabel(row.timeRemainingLabel);
     const entryPriceLabel = row.entryPriceLabel ?? "--";
-    const roiLabel = formatMarketHeatRoiLabel(row.entryPrice, row.currentPrice);
+    const currentPriceLabel = row.currentPriceLabel ?? "--";
     const entryNowTone = row.entryNowTone ?? "unknown";
     const handleMarketHeatRowClick = (event: SyntheticEvent<HTMLElement>) => {
       if (swipedRowRef.current === row.id) {
@@ -4742,9 +4719,9 @@ export function MarketHeatPreview({
           </div>
           <div
             className={`market-heat-current-price market-heat-current-price-${entryNowTone}`}
-            aria-label={roiLabel === "--" ? "ROI unavailable" : `ROI ${roiLabel}`}
+            aria-label={currentPriceLabel === "--" ? "Now unavailable" : `Now ${currentPriceLabel}`}
           >
-            <strong>{roiLabel}</strong>
+            <strong>{currentPriceLabel}</strong>
           </div>
           <ChevronIcon
             className={`market-heat-compact-chevron ${
@@ -4868,7 +4845,7 @@ export function MarketHeatPreview({
           <span aria-hidden="true">Position</span>
           <span aria-hidden="true">Expires</span>
           <span aria-hidden="true">Entry</span>
-          <span aria-hidden="true">ROI</span>
+          <span aria-hidden="true">Now</span>
           <span aria-hidden="true" />
         </div>
       ) : null}
