@@ -63,6 +63,12 @@ describe("mobile shell CSS", () => {
     expect(css).toContain("text-overflow: ellipsis;");
   });
 
+  test("keeps wallet leaderboard board tabs on one row", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+
+    expect(css).toContain(".wallet-leaderboard-tabs {\n  grid-template-columns: repeat(3, minmax(0, 1fr));");
+  });
+
   test("keeps the primary trade action in the purple design system", async () => {
     const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
 

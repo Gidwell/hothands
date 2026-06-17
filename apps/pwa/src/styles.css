@@ -915,6 +915,10 @@ button:disabled {
   background: #eef3f8;
 }
 
+.wallet-leaderboard-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .portfolio-tabs button,
 .wallet-leaderboard-tabs button,
 .wallet-leaderboard-range-modes button {
