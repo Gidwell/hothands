@@ -90,6 +90,7 @@ export type WalletPerformanceEntry = {
 };
 
 export type WalletPerformanceLeaderboards = {
+  heat: WalletPerformanceEntry[];
   longestWinningStreak: WalletPerformanceEntry[];
   longestLosingStreak: WalletPerformanceEntry[];
   currentWinningStreak: WalletPerformanceEntry[];
@@ -297,19 +298,25 @@ export function buildWalletPerformanceLeaderboards(
   const entries = buildWalletPerformanceEntries(positions, { nowMs, oracles });
 
   return {
-    longestWinningStreak: applyLimit(
+    heat: applyEntryLimit(
+      entries
+        .filter((entry) => Number.isFinite(entry.heatScore) && entry.heatScore > 0)
+        .sort(compareByHeat),
+      limit,
+    ),
+    longestWinningStreak: applyEntryLimit(
       entries
         .filter((entry) => entry.longestWinningStreak > 0)
         .sort(compareByWinningStreak),
       limit,
     ),
-    longestLosingStreak: applyLimit(
+    longestLosingStreak: applyEntryLimit(
       entries
         .filter((entry) => entry.longestLosingStreak > 0)
         .sort(compareByLosingStreak),
       limit,
     ),
-    currentWinningStreak: applyLimit(
+    currentWinningStreak: applyEntryLimit(
       entries
         .filter(
           (entry) =>
@@ -318,7 +325,7 @@ export function buildWalletPerformanceLeaderboards(
         .sort(compareByCurrentWinningStreak),
       limit,
     ),
-    currentLosingStreak: applyLimit(
+    currentLosingStreak: applyEntryLimit(
       entries
         .filter(
           (entry) =>
@@ -327,8 +334,8 @@ export function buildWalletPerformanceLeaderboards(
         .sort(compareByCurrentLosingStreak),
       limit,
     ),
-    highestPnl: applyLimit([...entries].sort(compareByHighestPnl), limit),
-    worstPnl: applyLimit([...entries].sort(compareByWorstPnl), limit),
+    highestPnl: applyEntryLimit([...entries].sort(compareByHighestPnl), limit),
+    worstPnl: applyEntryLimit([...entries].sort(compareByWorstPnl), limit),
   };
 }
 
@@ -900,6 +907,13 @@ function applyLimit<T>(values: T[], limit?: number): T[] {
   return values.slice(0, normalizedLimit);
 }
 
+function applyEntryLimit(
+  values: WalletPerformanceEntry[],
+  limit?: number,
+): WalletPerformanceEntry[] {
+  return applyLimit(values, limit).map((entry) => ({ ...entry }));
+}
+
 function compareTraderHeatDecisionsOldestFirst(
   left: TraderHeatDecision,
   right: TraderHeatDecision,
@@ -935,6 +949,10 @@ function clampRatio(value: number, min: number, max: number): number {
 }
 
 function clampScore(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
   const clamped = Math.max(min, Math.min(max, value));
 
   return Object.is(clamped, -0) ? 0 : clamped;
@@ -1022,6 +1040,18 @@ function compareByCurrentLosingStreak(
     right.currentStreakLength - left.currentStreakLength ||
     left.totalPnl - right.totalPnl ||
     right.lastSettledAtMs - left.lastSettledAtMs ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByHeat(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    right.heatScore - left.heatScore ||
+    right.lastSeenMs - left.lastSeenMs ||
+    right.totalPnl - left.totalPnl ||
     left.wallet.localeCompare(right.wallet)
   );
 }

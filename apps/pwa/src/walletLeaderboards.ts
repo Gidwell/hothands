@@ -9,6 +9,7 @@ import {
 import { formatUtcTimeZoneText } from "./timeZoneLabels";
 
 export type WalletLeaderboardBoardKey =
+  | "heat"
   | "longestWinningStreak"
   | "longestLosingStreak"
   | "currentWinningStreak"
@@ -16,7 +17,7 @@ export type WalletLeaderboardBoardKey =
   | "highestPnl"
   | "worstPnl";
 
-export type WalletLeaderboardPanelBoardKey = "pnl" | "streaks";
+export type WalletLeaderboardPanelBoardKey = "heat" | "pnl" | "streaks";
 export type WalletLeaderboardSortDirection = "best" | "worst";
 
 export type WalletLeaderboardRangeMode = "allTime" | "current";
@@ -121,6 +122,10 @@ export type LoadWalletPerformanceEntryOptions = BuildWalletLeaderboardsOptions &
 
 export const WALLET_LEADERBOARD_BOARDS: WalletLeaderboardBoardDefinition[] = [
   {
+    key: "heat",
+    label: "Heat",
+  },
+  {
     key: "pnl",
     label: "PnL",
   },
@@ -131,6 +136,7 @@ export const WALLET_LEADERBOARD_BOARDS: WalletLeaderboardBoardDefinition[] = [
 ];
 
 const EMPTY_LEADERBOARDS: Record<WalletLeaderboardBoardKey, WalletLeaderboardEntry[]> = {
+  heat: [],
   longestWinningStreak: [],
   longestLosingStreak: [],
   currentWinningStreak: [],
@@ -251,31 +257,39 @@ export function buildWalletLeaderboards(
     };
   }
 
+  const builtLeaderboards = {
+    heat: buildEntries(leaderboards.heat, timeZone, walletDisplayNames),
+    longestWinningStreak: buildEntries(
+      leaderboards.longestWinningStreak,
+      timeZone,
+      walletDisplayNames,
+    ),
+    longestLosingStreak: buildEntries(
+      leaderboards.longestLosingStreak,
+      timeZone,
+      walletDisplayNames,
+    ),
+    currentWinningStreak: buildEntries(
+      leaderboards.currentWinningStreak,
+      timeZone,
+      walletDisplayNames,
+    ),
+    currentLosingStreak: buildEntries(
+      leaderboards.currentLosingStreak,
+      timeZone,
+      walletDisplayNames,
+    ),
+    highestPnl: buildEntries(leaderboards.highestPnl, timeZone, walletDisplayNames),
+    worstPnl: buildEntries(leaderboards.worstPnl, timeZone, walletDisplayNames),
+  };
+
   return {
     sourceLabel: formatSourceLabel(source),
     leaderboards: {
-      longestWinningStreak: buildEntries(
-        leaderboards.longestWinningStreak,
-        timeZone,
-        walletDisplayNames,
-      ),
-      longestLosingStreak: buildEntries(
-        leaderboards.longestLosingStreak,
-        timeZone,
-        walletDisplayNames,
-      ),
-      currentWinningStreak: buildEntries(
-        leaderboards.currentWinningStreak,
-        timeZone,
-        walletDisplayNames,
-      ),
-      currentLosingStreak: buildEntries(
-        leaderboards.currentLosingStreak,
-        timeZone,
-        walletDisplayNames,
-      ),
-      highestPnl: buildEntries(leaderboards.highestPnl, timeZone, walletDisplayNames),
-      worstPnl: buildEntries(leaderboards.worstPnl, timeZone, walletDisplayNames),
+      ...builtLeaderboards,
+      heat: builtLeaderboards.heat.length
+        ? builtLeaderboards.heat
+        : buildDerivedHeatLeaders(builtLeaderboards),
     },
   };
 }
@@ -319,6 +333,42 @@ function buildEntries(
   return (entries ?? [])
     .map((entry, index) => buildEntry(entry, index + 1, timeZone, walletDisplayNames))
     .filter((entry): entry is WalletLeaderboardEntry => entry !== null)
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+}
+
+function buildDerivedHeatLeaders(
+  leaderboards: Record<WalletLeaderboardBoardKey, WalletLeaderboardEntry[]>,
+): WalletLeaderboardEntry[] {
+  const entriesByWallet = new Map<string, WalletLeaderboardEntry>();
+
+  for (const entries of Object.values(leaderboards)) {
+    for (const entry of entries) {
+      if (entry.heatScore <= 0) {
+        continue;
+      }
+
+      const walletKey = entry.wallet.toLowerCase();
+      const existing = entriesByWallet.get(walletKey);
+      if (
+        !existing ||
+        entry.heatScore > existing.heatScore ||
+        (entry.heatScore === existing.heatScore &&
+          (entry.lastSeenMs ?? 0) > (existing.lastSeenMs ?? 0))
+      ) {
+        entriesByWallet.set(walletKey, entry);
+      }
+    }
+  }
+
+  return [...entriesByWallet.values()]
+    .sort(
+      (left, right) =>
+        right.heatScore - left.heatScore ||
+        (right.lastSeenMs ?? 0) - (left.lastSeenMs ?? 0) ||
+        right.totalPnl - left.totalPnl ||
+        left.wallet.localeCompare(right.wallet),
+    )
+    .slice(0, 25)
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
 }
 
@@ -423,6 +473,7 @@ function collectWalletPerformanceWallets(
 
 function cloneEmptyLeaderboards(): Record<WalletLeaderboardBoardKey, WalletLeaderboardEntry[]> {
   return {
+    heat: [...EMPTY_LEADERBOARDS.heat],
     longestWinningStreak: [...EMPTY_LEADERBOARDS.longestWinningStreak],
     longestLosingStreak: [...EMPTY_LEADERBOARDS.longestLosingStreak],
     currentWinningStreak: [...EMPTY_LEADERBOARDS.currentWinningStreak],

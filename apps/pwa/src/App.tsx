@@ -3578,6 +3578,8 @@ function walletLeaderboardMetricValue(
   board: WalletLeaderboardBoardKey,
 ): string {
   switch (board) {
+    case "heat":
+      return String(Math.round(entry.heatScore));
     case "longestWinningStreak":
       return formatWalletLeaderboardStreakCode("win", entry.longestWinningStreak);
     case "longestLosingStreak":
@@ -3610,6 +3612,10 @@ function walletLeaderboardEffectiveBoard(
   sortDirection: WalletLeaderboardSortDirection,
   rangeMode: WalletLeaderboardRangeMode,
 ): WalletLeaderboardBoardKey {
+  if (board === "heat") {
+    return "heat";
+  }
+
   if (board === "pnl") {
     return sortDirection === "best" ? "highestPnl" : "worstPnl";
   }
@@ -3627,6 +3633,8 @@ function walletLeaderboardEffectiveBoard(
 
 function walletLeaderboardMetricLabel(board: WalletLeaderboardBoardKey): string {
   switch (board) {
+    case "heat":
+      return "Heat";
     case "longestWinningStreak":
       return "Win Streak";
     case "longestLosingStreak":
@@ -3645,6 +3653,12 @@ function walletLeaderboardMetricTone(
   board: WalletLeaderboardBoardKey,
 ): WalletLeaderboardTone {
   switch (board) {
+    case "heat":
+      return entry.heatScore >= 70
+        ? "positive"
+        : entry.heatScore <= 25
+          ? "negative"
+          : "flat";
     case "longestWinningStreak":
     case "currentWinningStreak":
       return "positive";
@@ -3681,6 +3695,7 @@ function formatWalletLeaderboardWinRate(entry: WalletLeaderboardEntry): string {
 }
 
 const PROFILE_LEADERBOARD_SEARCH_ORDER: WalletLeaderboardBoardKey[] = [
+  "heat",
   "highestPnl",
   "currentWinningStreak",
   "longestWinningStreak",
@@ -4002,6 +4017,7 @@ export function WalletLeaderboardsPanel({
   const isCurrentStreakBoard =
     activeBoardDefinition.key === "streaks" && effectiveRangeMode === "current";
   const showCurrentStreakMetric = !isCurrentStreakBoard;
+  const showPnlMetric = activeBoardDefinition.key !== "pnl";
   const emptyLabel =
     status === "loading"
       ? "Loading wallet leaderboards..."
@@ -4082,7 +4098,7 @@ export function WalletLeaderboardsPanel({
             <span>Rank</span>
             <span>Wallet</span>
             <span>{coreMetricLabel}</span>
-            {activeBoardDefinition.key === "streaks" ? <span>PNL</span> : null}
+            {showPnlMetric ? <span>PNL</span> : null}
             <span>Win Rate</span>
             <span>Open</span>
             {showCurrentStreakMetric ? (
@@ -4130,14 +4146,14 @@ export function WalletLeaderboardsPanel({
                   </div>
                 </div>
                 <div className="wallet-leaderboard-metrics">
-                  {activeBoardDefinition.key === "pnl" ? null : (
+                  {showPnlMetric ? (
                     <span
                       className={`wallet-leaderboard-pnl wallet-leaderboard-pnl-${entry.totalPnlTone}`}
                     >
                       <small>PNL</small>
                       {entry.totalPnlLabel}
                     </span>
-                  )}
+                  ) : null}
                   <span>
                     <small>Win Rate</small>
                     {formatWalletLeaderboardWinRate(entry)}
@@ -5174,7 +5190,7 @@ export function App() {
       status: "idle",
     }));
   const [activeWalletLeaderboard, setActiveWalletLeaderboard] =
-    useState<WalletLeaderboardPanelBoardKey>("pnl");
+    useState<WalletLeaderboardPanelBoardKey>("heat");
   const [walletLeaderboardSortDirection, setWalletLeaderboardSortDirection] =
     useState<WalletLeaderboardSortDirection>("best");
   const [walletLeaderboardRangeMode, setWalletLeaderboardRangeMode] =

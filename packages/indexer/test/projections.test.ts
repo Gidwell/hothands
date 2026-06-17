@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildWalletPerformanceEntries,
   buildWalletPerformanceLeaderboards,
   buildLatestTradeFeedProjection,
   buildTraderHeatProjection,
@@ -444,6 +445,27 @@ describe("Predict durable projections", () => {
       currentStreakType: "loss",
       currentStreakLength: 1,
     });
+
+    const expectedHeatLeaders = buildWalletPerformanceEntries(positions, {
+      nowMs: 20_000,
+    })
+      .filter((entry) => Number.isFinite(entry.heatScore) && entry.heatScore > 0)
+      .sort(
+        (left, right) =>
+          right.heatScore - left.heatScore ||
+          right.lastSeenMs - left.lastSeenMs ||
+          left.wallet.localeCompare(right.wallet),
+      )
+      .slice(0, 2)
+      .map((entry) => entry.wallet);
+
+    expect(leaderboards.heat.map((entry) => entry.wallet)).toEqual(expectedHeatLeaders);
+    expect(leaderboards.heat).toHaveLength(2);
+    expect(
+      leaderboards.heat.map(
+        (entry) => Number.isFinite(entry.heatScore) && entry.heatScore > 0,
+      ),
+    ).toEqual([true, true]);
   });
 
   test("counts settled expired open positions in wallet leaderboard PnL", () => {

@@ -4,11 +4,27 @@ import { WalletLeaderboardsPanel } from "../src/App";
 import { buildWalletLeaderboards } from "../src/walletLeaderboards";
 
 describe("WalletLeaderboardsPanel component", () => {
-  test("renders PnL and Streaks sections with best/worst sorting", () => {
+  test("renders Heat, PnL, and Streaks sections with best/worst sorting", () => {
     const snapshot = buildWalletLeaderboards(
       {
         source: "indexed_testnet",
         leaderboards: {
+          heat: [
+            {
+              wallet: "0xbbbb222233334444555566667777888899990002",
+              totalPnl: 3_450_000,
+              openCount: 1,
+              winCount: 3,
+              lossCount: 1,
+              closedCount: 4,
+              heatScore: 89,
+              longestWinningStreak: 3,
+              longestLosingStreak: 1,
+              currentStreakType: "win",
+              currentStreakLength: 3,
+              lastSettledAtMs: 1_779_165_900_000,
+            },
+          ],
           longestWinningStreak: [],
           longestLosingStreak: [],
           highestPnl: [
@@ -45,10 +61,12 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain('data-testid="wallet-leaderboards-view"');
     expect(html).toContain("Wallet Leaders");
     expect(html).not.toContain("Indexed Testnet");
+    expect(html).toContain('data-testid="wallet-leaderboard-tab-heat"');
     expect(html).toContain('data-testid="wallet-leaderboard-tab-pnl"');
     expect(html).toContain('data-testid="wallet-leaderboard-tab-streaks"');
     expect(html).not.toContain('data-testid="wallet-leaderboard-tab-highestPnl"');
     expect(html).not.toContain('data-testid="wallet-leaderboard-tab-longestWinningStreak"');
+    expect(html.indexOf(">Heat</button>")).toBeLessThan(html.indexOf(">PnL</button>"));
     expect(html.indexOf(">PnL</button>")).toBeLessThan(html.indexOf(">Streaks</button>"));
     expect(html).toContain('data-testid="wallet-leaderboard-sort-toggle"');
     expect(html).toContain('aria-label="Sort worst first"');
@@ -82,6 +100,70 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).not.toContain("Top PnL");
     expect(html).not.toContain(">Last</span>");
     expect(html).not.toContain("Last</small>");
+  });
+
+  test("shows current heat leaders as a top-25 wallet board", () => {
+    const snapshot = buildWalletLeaderboards(
+      {
+        source: "indexed_testnet",
+        leaderboards: {
+          heat: [
+            {
+              wallet: "0xbbbb222233334444555566667777888899990002",
+              totalPnl: 3_450_000,
+              openCount: 1,
+              winCount: 3,
+              lossCount: 1,
+              closedCount: 4,
+              heatScore: 89,
+              longestWinningStreak: 3,
+              longestLosingStreak: 1,
+              currentStreakType: "win",
+              currentStreakLength: 3,
+            },
+            {
+              wallet: "0xaaaa222233334444555566667777888899990001",
+              totalPnl: -1_250_000,
+              openCount: 2,
+              winCount: 1,
+              lossCount: 3,
+              closedCount: 4,
+              heatScore: 42,
+              longestWinningStreak: 1,
+              longestLosingStreak: 3,
+              currentStreakType: "loss",
+              currentStreakLength: 2,
+            },
+          ],
+          highestPnl: [],
+          worstPnl: [],
+          longestWinningStreak: [],
+          longestLosingStreak: [],
+          currentWinningStreak: [],
+          currentLosingStreak: [],
+        },
+      },
+      { timeZone: "America/Los_Angeles" },
+    );
+    const html = renderToStaticMarkup(
+      <WalletLeaderboardsPanel
+        activeBoard="heat"
+        sortDirection="best"
+        snapshot={snapshot}
+        status="ready"
+        onBoardChange={() => undefined}
+        onSortDirectionChange={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("wallet-leaderboard-table-head-heat");
+    expect(html).toContain("wallet-leaderboard-row-heat");
+    expect(html).toContain("Heat</small><strong>89");
+    expect(html).toContain("PNL</small>+$3.45");
+    expect(html).toContain("Win Rate</small>75%");
+    expect(html).toContain("Open</small>1");
+    expect(html).toContain("Streak</small>3W");
+    expect(html.indexOf("0xbbbb...0002")).toBeLessThan(html.indexOf("0xaaaa...0001"));
   });
 
   test("switches PnL sort between best and worst", () => {
