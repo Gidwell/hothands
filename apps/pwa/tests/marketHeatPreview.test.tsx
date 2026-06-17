@@ -560,7 +560,7 @@ describe("MarketHeatPreview component", () => {
             label: "15m",
             marketId: "market-15m",
             oracleId: "oracle-15m",
-            sublabel: "12:55 PDT",
+            sublabel: "10:00",
             value: "15m",
           },
           {
@@ -569,7 +569,7 @@ describe("MarketHeatPreview component", () => {
             label: "1h",
             marketId: "market-hourly",
             oracleId: "oracle-hourly",
-            sublabel: "13:00 PDT",
+            sublabel: "15:00",
             value: "1h",
           },
           {
@@ -603,9 +603,9 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain(">All<");
     expect(html).not.toContain("2 dates");
     expect(html).toContain("15m");
-    expect(html).toContain("12:55 PDT");
+    expect(html).toContain("10:00");
     expect(html).toContain("1h");
-    expect(html).toContain("13:00 PDT");
+    expect(html).toContain("15:00");
     expect(html).toContain("1d");
     expect(html).toContain("No market");
     expect(html).not.toContain('data-testid="market-duration-all"');

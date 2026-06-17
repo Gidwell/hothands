@@ -2158,7 +2158,12 @@ button:disabled {
 }
 
 .market-heat-expiry-group .trade-expiry-option small {
-  display: none;
+  display: block;
+  margin-top: 4px;
+  color: var(--hh-muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1;
 }
 
 .market-heat-expiry-group .trade-expiry-option strong {
@@ -4645,33 +4650,33 @@ button:disabled {
 
 .market-heat-secondary-controls .market-heat-sort {
   display: grid;
-  flex: 0 1 372px;
-  grid-template-columns: repeat(3, minmax(98px, 1fr));
-  gap: 7px;
-  width: min(86%, 372px);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  overflow: visible;
+  flex: 0 1 360px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  width: min(100%, 360px);
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--hh-line) 72%, transparent);
+  border-radius: 10px;
+  background: var(--hh-surface-2);
+  overflow: hidden;
 }
 
 .market-heat-secondary-controls .market-heat-sort button {
-  min-height: 46px;
-  padding: 0 13px;
-  border: 1px solid var(--hh-line);
-  border-radius: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
   color: var(--hh-muted);
-  background: var(--hh-surface);
+  background: transparent;
   font-size: 0.86rem;
   font-weight: 950;
 }
 
 .market-heat-secondary-controls .market-heat-sort button[aria-pressed="true"] {
-  border-color: color-mix(in srgb, var(--hh-accent) 68%, var(--hh-line));
-  border-radius: 8px;
+  border-radius: 7px;
   color: var(--hh-accent);
-  background: var(--hh-accent-soft);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 28%, transparent);
+  background: color-mix(in srgb, var(--hh-surface) 94%, var(--hh-accent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 48%, transparent);
 }
 
 .market-heat-table-head,

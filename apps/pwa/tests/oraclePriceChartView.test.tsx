@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { LineStyle } from "lightweight-charts";
+import { LineStyle, TickMarkType, type Time } from "lightweight-charts";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   buildOraclePriceChartFitResetKey,
@@ -7,6 +7,7 @@ import {
   getInitialOraclePriceChartView,
   getOraclePriceChartMinBarSpacing,
   getOraclePriceChartRangeOptions,
+  formatTickMarkLocalTime,
   OraclePriceChartCard,
   OraclePriceChartModal,
   OraclePriceChartPanel,
@@ -232,6 +233,17 @@ describe("OraclePriceChartModal", () => {
 
     expect(getOraclePriceChartMinBarSpacing({ compact: true })).toBeLessThanOrEqual(
       0.03,
+    );
+  });
+
+  test("formats intraday chart ticks with twenty-four hour time", () => {
+    const localAfternoon = Math.floor(
+      new Date(2026, 5, 10, 13, 5, 9).getTime() / 1000,
+    ) as Time;
+
+    expect(formatTickMarkLocalTime(localAfternoon, TickMarkType.Time)).toBe("13:05");
+    expect(formatTickMarkLocalTime(localAfternoon, TickMarkType.TimeWithSeconds)).toBe(
+      "13:05:09",
     );
   });
 

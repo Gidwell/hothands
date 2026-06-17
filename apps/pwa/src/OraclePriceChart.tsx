@@ -766,6 +766,7 @@ function formatCrosshairLocalTime(time: Time): string {
   return formatUtcTimeZoneText(new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
+    hourCycle: "h23",
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
@@ -773,7 +774,10 @@ function formatCrosshairLocalTime(time: Time): string {
   }).format(date));
 }
 
-function formatTickMarkLocalTime(time: Time, tickMarkType: TickMarkType): string | null {
+export function formatTickMarkLocalTime(
+  time: Time,
+  tickMarkType: TickMarkType,
+): string | null {
   const date = timeToDate(time);
   if (!date) {
     return null;
@@ -784,6 +788,7 @@ function formatTickMarkLocalTime(time: Time, tickMarkType: TickMarkType): string
     tickMarkType === TickMarkType.TimeWithSeconds
   ) {
     return new Intl.DateTimeFormat(undefined, {
+      hourCycle: "h23",
       hour: "numeric",
       minute: "2-digit",
       second: tickMarkType === TickMarkType.TimeWithSeconds ? "2-digit" : undefined,

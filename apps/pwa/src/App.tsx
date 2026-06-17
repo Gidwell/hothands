@@ -171,6 +171,7 @@ const WALLET_LEADERBOARDS_REFRESH_MS = 15_000;
 const PORTFOLIO_DATA_REFRESH_MS = 5_000;
 const PORTFOLIO_PENDING_DATA_REFRESH_MS = 2_000;
 const PORTFOLIO_TIME_REFRESH_MS = 1_000;
+const MARKET_BUCKET_COUNTDOWN_REFRESH_MS = 1_000;
 const PORTFOLIO_HISTORY_PAGE_SIZE = 8;
 const DEPOSIT_AMOUNT_DEFAULT = 25;
 const TOAST_LIMIT = 3;
@@ -732,7 +733,7 @@ export function buildTradeExpiryOptions(
       expiryMs: market?.expiryMs ?? 0,
       label: bucket.label,
       ...(market ? { marketId: market.id, oracleId: market.oracleId } : {}),
-      sublabel: market ? formatTradeTimeOptionLabel(market.expiryTimeLabel) : "No market",
+      sublabel: market ? formatTradeBucketCountdown(market.expiryMs, nowMs) : "No market",
       value: bucket.value,
     };
   });
@@ -2450,9 +2451,29 @@ function TradeExpiryRail({
   );
 }
 
-function formatTradeTimeOptionLabel(expiryTimeLabel: string): string {
-  const [, ...timeParts] = expiryTimeLabel.split(",");
-  return timeParts.length ? timeParts.join(",").trim() : expiryTimeLabel;
+function formatTradeBucketCountdown(expiryMs: number, nowMs: number): string {
+  const remainingSeconds = Math.max(0, Math.ceil((expiryMs - nowMs) / 1000));
+  if (remainingSeconds <= 0) {
+    return "Expired";
+  }
+
+  const seconds = remainingSeconds % 60;
+  const totalMinutes = Math.floor(remainingSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const totalHours = Math.floor(totalMinutes / 60);
+  const pad = (value: number) => String(value).padStart(2, "0");
+
+  if (totalHours <= 0) {
+    return `${minutes}:${pad(seconds)}`;
+  }
+
+  if (totalHours < 100) {
+    return `${totalHours}:${pad(minutes)}:${pad(seconds)}`;
+  }
+
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return `${days}d ${hours}:${pad(minutes)}:${pad(seconds)}`;
 }
 
 function formatTradeSideHelp(side: TradeSide): string {
@@ -5274,6 +5295,7 @@ export function App() {
     useState<WalletLeaderboardSortDirection>("best");
   const [walletLeaderboardRangeMode, setWalletLeaderboardRangeMode] =
     useState<WalletLeaderboardRangeMode>("allTime");
+  const [marketHeatClockMs, setMarketHeatClockMs] = useState(() => Date.now());
   const [portfolioNowMs, setPortfolioNowMs] = useState(() => Date.now());
   const [dismissedPortfolioPositionIds, setDismissedPortfolioPositionIds] = useState<Set<string>>(
     () => new Set(),
@@ -5519,7 +5541,7 @@ export function App() {
 
     return [...frozenTraders, ...newTraders];
   }, [frozenTraderOrder, replayTraders]);
-  const marketHeatNowMs = Date.now();
+  const marketHeatNowMs = marketHeatClockMs;
   const copyAttributionLabelsByRowId = useMemo(
     () => buildCopyAttributionLabelsByRowId(marketHeatPreview.rows, copyAttributions),
     [copyAttributions, marketHeatPreview.rows],
@@ -7000,6 +7022,19 @@ export function App() {
 
     return () => window.clearInterval(timer);
   }, [replayState.isPlaying, scenario]);
+
+  useEffect(() => {
+    if (activeView !== "feed" && activeView !== "trade" && activeView !== "profile") {
+      return undefined;
+    }
+
+    setMarketHeatClockMs(Date.now());
+    const timer = window.setInterval(() => {
+      setMarketHeatClockMs(Date.now());
+    }, MARKET_BUCKET_COUNTDOWN_REFRESH_MS);
+
+    return () => window.clearInterval(timer);
+  }, [activeView]);
 
   useEffect(() => {
     if (activeView !== "portfolio") {
