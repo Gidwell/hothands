@@ -4719,7 +4719,7 @@ export function MarketHeatPreview({
           </div>
           <div
             className={`market-heat-current-price market-heat-current-price-${entryNowTone}`}
-            aria-label={currentPriceLabel === "--" ? "Now unavailable" : `Now ${currentPriceLabel}`}
+            aria-label={currentPriceLabel === "--" ? "Live unavailable" : `Live ${currentPriceLabel}`}
           >
             <strong>{currentPriceLabel}</strong>
           </div>
@@ -4845,7 +4845,7 @@ export function MarketHeatPreview({
           <span aria-hidden="true">Position</span>
           <span aria-hidden="true">Expires</span>
           <span aria-hidden="true">Entry</span>
-          <span aria-hidden="true">Now</span>
+          <span aria-hidden="true">Live</span>
           <span aria-hidden="true" />
         </div>
       ) : null}
