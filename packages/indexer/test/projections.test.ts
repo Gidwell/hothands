@@ -466,6 +466,25 @@ describe("Predict durable projections", () => {
         (entry) => Number.isFinite(entry.heatScore) && entry.heatScore > 0,
       ),
     ).toEqual([true, true]);
+
+    const expectedWorstHeatLeaders = buildWalletPerformanceEntries(positions, {
+      nowMs: 20_000,
+    })
+      .filter((entry) => Number.isFinite(entry.heatScore))
+      .sort(
+        (left, right) =>
+          left.heatScore - right.heatScore ||
+          left.totalPnl - right.totalPnl ||
+          right.lastSeenMs - left.lastSeenMs ||
+          left.wallet.localeCompare(right.wallet),
+      )
+      .slice(0, 2)
+      .map((entry) => entry.wallet);
+
+    expect(leaderboards.worstHeat.map((entry) => entry.wallet)).toEqual(
+      expectedWorstHeatLeaders,
+    );
+    expect(leaderboards.worstHeat).toHaveLength(2);
   });
 
   test("counts settled expired open positions in wallet leaderboard PnL", () => {

@@ -3579,6 +3579,7 @@ function walletLeaderboardMetricValue(
 ): string {
   switch (board) {
     case "heat":
+    case "worstHeat":
       return String(Math.round(entry.heatScore));
     case "longestWinningStreak":
       return formatWalletLeaderboardStreakCode("win", entry.longestWinningStreak);
@@ -3613,7 +3614,7 @@ function walletLeaderboardEffectiveBoard(
   rangeMode: WalletLeaderboardRangeMode,
 ): WalletLeaderboardBoardKey {
   if (board === "heat") {
-    return "heat";
+    return sortDirection === "best" ? "heat" : "worstHeat";
   }
 
   if (board === "pnl") {
@@ -3634,6 +3635,7 @@ function walletLeaderboardEffectiveBoard(
 function walletLeaderboardMetricLabel(board: WalletLeaderboardBoardKey): string {
   switch (board) {
     case "heat":
+    case "worstHeat":
       return "Heat";
     case "longestWinningStreak":
       return "Win Streak";
@@ -3654,6 +3656,7 @@ function walletLeaderboardMetricTone(
 ): WalletLeaderboardTone {
   switch (board) {
     case "heat":
+    case "worstHeat":
       return entry.heatScore >= 70
         ? "positive"
         : entry.heatScore <= 25
@@ -3696,6 +3699,7 @@ function formatWalletLeaderboardWinRate(entry: WalletLeaderboardEntry): string {
 
 const PROFILE_LEADERBOARD_SEARCH_ORDER: WalletLeaderboardBoardKey[] = [
   "heat",
+  "worstHeat",
   "highestPnl",
   "currentWinningStreak",
   "longestWinningStreak",

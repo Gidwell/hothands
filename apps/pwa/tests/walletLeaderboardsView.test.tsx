@@ -135,6 +135,34 @@ describe("WalletLeaderboardsPanel component", () => {
               currentStreakLength: 2,
             },
           ],
+          worstHeat: [
+            {
+              wallet: "0xcccc222233334444555566667777888899990003",
+              totalPnl: -9_750_000,
+              openCount: 0,
+              winCount: 0,
+              lossCount: 4,
+              closedCount: 4,
+              heatScore: 6,
+              longestWinningStreak: 0,
+              longestLosingStreak: 4,
+              currentStreakType: "loss",
+              currentStreakLength: 4,
+            },
+            {
+              wallet: "0xaaaa222233334444555566667777888899990001",
+              totalPnl: -1_250_000,
+              openCount: 2,
+              winCount: 1,
+              lossCount: 3,
+              closedCount: 4,
+              heatScore: 42,
+              longestWinningStreak: 1,
+              longestLosingStreak: 3,
+              currentStreakType: "loss",
+              currentStreakLength: 2,
+            },
+          ],
           highestPnl: [],
           worstPnl: [],
           longestWinningStreak: [],
@@ -164,6 +192,26 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain("Open</small>1");
     expect(html).toContain("Streak</small>3W");
     expect(html.indexOf("0xbbbb...0002")).toBeLessThan(html.indexOf("0xaaaa...0001"));
+
+    const worstHtml = renderToStaticMarkup(
+      <WalletLeaderboardsPanel
+        activeBoard="heat"
+        sortDirection="worst"
+        snapshot={snapshot}
+        status="ready"
+        onBoardChange={() => undefined}
+        onSortDirectionChange={() => undefined}
+      />,
+    );
+
+    expect(worstHtml).toContain('aria-label="Sort best first"');
+    expect(worstHtml).toContain("↓");
+    expect(worstHtml).toContain("Heat</small><strong>6");
+    expect(worstHtml).toContain("0xcccc...0003");
+    expect(worstHtml.indexOf("0xcccc...0003")).toBeLessThan(
+      worstHtml.indexOf("0xaaaa...0001"),
+    );
+    expect(worstHtml).not.toContain("0xbbbb...0002");
   });
 
   test("switches PnL sort between best and worst", () => {

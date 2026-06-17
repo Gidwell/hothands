@@ -10,6 +10,7 @@ import { formatUtcTimeZoneText } from "./timeZoneLabels";
 
 export type WalletLeaderboardBoardKey =
   | "heat"
+  | "worstHeat"
   | "longestWinningStreak"
   | "longestLosingStreak"
   | "currentWinningStreak"
@@ -137,6 +138,7 @@ export const WALLET_LEADERBOARD_BOARDS: WalletLeaderboardBoardDefinition[] = [
 
 const EMPTY_LEADERBOARDS: Record<WalletLeaderboardBoardKey, WalletLeaderboardEntry[]> = {
   heat: [],
+  worstHeat: [],
   longestWinningStreak: [],
   longestLosingStreak: [],
   currentWinningStreak: [],
@@ -259,6 +261,7 @@ export function buildWalletLeaderboards(
 
   const builtLeaderboards = {
     heat: buildEntries(leaderboards.heat, timeZone, walletDisplayNames),
+    worstHeat: buildEntries(leaderboards.worstHeat, timeZone, walletDisplayNames),
     longestWinningStreak: buildEntries(
       leaderboards.longestWinningStreak,
       timeZone,
@@ -289,7 +292,10 @@ export function buildWalletLeaderboards(
       ...builtLeaderboards,
       heat: builtLeaderboards.heat.length
         ? builtLeaderboards.heat
-        : buildDerivedHeatLeaders(builtLeaderboards),
+        : buildDerivedHeatLeaders(builtLeaderboards, "best"),
+      worstHeat: builtLeaderboards.worstHeat.length
+        ? builtLeaderboards.worstHeat
+        : buildDerivedHeatLeaders(builtLeaderboards, "worst"),
     },
   };
 }
@@ -338,12 +344,17 @@ function buildEntries(
 
 function buildDerivedHeatLeaders(
   leaderboards: Record<WalletLeaderboardBoardKey, WalletLeaderboardEntry[]>,
+  direction: WalletLeaderboardSortDirection,
 ): WalletLeaderboardEntry[] {
   const entriesByWallet = new Map<string, WalletLeaderboardEntry>();
 
   for (const entries of Object.values(leaderboards)) {
     for (const entry of entries) {
-      if (entry.heatScore <= 0) {
+      if (!Number.isFinite(entry.heatScore)) {
+        continue;
+      }
+
+      if (direction === "best" && entry.heatScore <= 0) {
         continue;
       }
 
@@ -351,9 +362,13 @@ function buildDerivedHeatLeaders(
       const existing = entriesByWallet.get(walletKey);
       if (
         !existing ||
-        entry.heatScore > existing.heatScore ||
-        (entry.heatScore === existing.heatScore &&
-          (entry.lastSeenMs ?? 0) > (existing.lastSeenMs ?? 0))
+        (direction === "best"
+          ? entry.heatScore > existing.heatScore ||
+            (entry.heatScore === existing.heatScore &&
+              (entry.lastSeenMs ?? 0) > (existing.lastSeenMs ?? 0))
+          : entry.heatScore < existing.heatScore ||
+            (entry.heatScore === existing.heatScore &&
+              entry.totalPnl < existing.totalPnl))
       ) {
         entriesByWallet.set(walletKey, entry);
       }
@@ -363,10 +378,15 @@ function buildDerivedHeatLeaders(
   return [...entriesByWallet.values()]
     .sort(
       (left, right) =>
-        right.heatScore - left.heatScore ||
-        (right.lastSeenMs ?? 0) - (left.lastSeenMs ?? 0) ||
-        right.totalPnl - left.totalPnl ||
-        left.wallet.localeCompare(right.wallet),
+        direction === "best"
+          ? right.heatScore - left.heatScore ||
+            (right.lastSeenMs ?? 0) - (left.lastSeenMs ?? 0) ||
+            right.totalPnl - left.totalPnl ||
+            left.wallet.localeCompare(right.wallet)
+          : left.heatScore - right.heatScore ||
+            left.totalPnl - right.totalPnl ||
+            (right.lastSeenMs ?? 0) - (left.lastSeenMs ?? 0) ||
+            left.wallet.localeCompare(right.wallet),
     )
     .slice(0, 25)
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
@@ -474,6 +494,7 @@ function collectWalletPerformanceWallets(
 function cloneEmptyLeaderboards(): Record<WalletLeaderboardBoardKey, WalletLeaderboardEntry[]> {
   return {
     heat: [...EMPTY_LEADERBOARDS.heat],
+    worstHeat: [...EMPTY_LEADERBOARDS.worstHeat],
     longestWinningStreak: [...EMPTY_LEADERBOARDS.longestWinningStreak],
     longestLosingStreak: [...EMPTY_LEADERBOARDS.longestLosingStreak],
     currentWinningStreak: [...EMPTY_LEADERBOARDS.currentWinningStreak],

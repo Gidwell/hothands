@@ -91,6 +91,7 @@ export type WalletPerformanceEntry = {
 
 export type WalletPerformanceLeaderboards = {
   heat: WalletPerformanceEntry[];
+  worstHeat: WalletPerformanceEntry[];
   longestWinningStreak: WalletPerformanceEntry[];
   longestLosingStreak: WalletPerformanceEntry[];
   currentWinningStreak: WalletPerformanceEntry[];
@@ -302,6 +303,12 @@ export function buildWalletPerformanceLeaderboards(
       entries
         .filter((entry) => Number.isFinite(entry.heatScore) && entry.heatScore > 0)
         .sort(compareByHeat),
+      limit,
+    ),
+    worstHeat: applyEntryLimit(
+      entries
+        .filter((entry) => Number.isFinite(entry.heatScore))
+        .sort(compareByWorstHeat),
       limit,
     ),
     longestWinningStreak: applyEntryLimit(
@@ -1052,6 +1059,18 @@ function compareByHeat(
     right.heatScore - left.heatScore ||
     right.lastSeenMs - left.lastSeenMs ||
     right.totalPnl - left.totalPnl ||
+    left.wallet.localeCompare(right.wallet)
+  );
+}
+
+function compareByWorstHeat(
+  left: WalletPerformanceEntry,
+  right: WalletPerformanceEntry,
+): number {
+  return (
+    left.heatScore - right.heatScore ||
+    left.totalPnl - right.totalPnl ||
+    right.lastSeenMs - left.lastSeenMs ||
     left.wallet.localeCompare(right.wallet)
   );
 }
