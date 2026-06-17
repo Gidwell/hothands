@@ -4570,7 +4570,7 @@ button:disabled {
 }
 
 .market-heat-list-compact {
-  gap: 14px;
+  gap: 8px;
 }
 
 .market-heat-heading {
@@ -4650,30 +4650,30 @@ button:disabled {
 
 .market-heat-secondary-controls .market-heat-sort {
   display: grid;
-  flex: 0 1 360px;
+  flex: 0 1 320px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
-  width: min(100%, 360px);
-  padding: 4px;
+  width: min(100%, 320px);
+  padding: 3px;
   border: 1px solid color-mix(in srgb, var(--hh-line) 72%, transparent);
-  border-radius: 10px;
+  border-radius: 9px;
   background: var(--hh-surface-2);
   overflow: hidden;
 }
 
 .market-heat-secondary-controls .market-heat-sort button {
-  min-height: 40px;
-  padding: 0 10px;
+  min-height: 34px;
+  padding: 0 8px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   color: var(--hh-muted);
   background: transparent;
-  font-size: 0.86rem;
+  font-size: 0.78rem;
   font-weight: 950;
 }
 
 .market-heat-secondary-controls .market-heat-sort button[aria-pressed="true"] {
-  border-radius: 7px;
+  border-radius: 6px;
   color: var(--hh-accent);
   background: color-mix(in srgb, var(--hh-surface) 94%, var(--hh-accent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 48%, transparent);
@@ -4690,7 +4690,7 @@ button:disabled {
 .market-heat-table-head {
   position: relative;
   z-index: 3;
-  padding: 5px 9px 1px;
+  padding: 3px 9px 0;
   color: var(--hh-muted);
   font-size: 0.58rem;
   font-weight: 950;

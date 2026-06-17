@@ -114,12 +114,14 @@ describe("mobile shell CSS", () => {
     expect(css).toContain("width: 100%;");
     expect(css).toContain(".market-heat-heading-title p {\n  cursor: default;\n  font-size: 1.5rem;");
     expect(css).toContain(".market-heat-controls {");
-    expect(css).toContain("width: min(100%, 360px);");
+    expect(css).toContain(".market-heat-list-compact {\n  gap: 8px;");
+    expect(css).toContain("width: min(100%, 320px);");
     expect(css).toContain("grid-template-columns: repeat(3, minmax(0, 1fr));");
-    expect(css).toContain("min-height: 40px;");
-    expect(css).toContain("border-radius: 10px;");
+    expect(css).toContain("min-height: 34px;");
+    expect(css).toContain("border-radius: 9px;");
     expect(css).toContain("background: var(--hh-surface-2);");
-    expect(css).toContain("font-size: 0.86rem;");
+    expect(css).toContain("font-size: 0.78rem;");
+    expect(css).toContain("padding: 3px 9px 0;");
     expect(css).toContain(".market-heat-expiry-group > .trade-expiry-rail {");
     expect(css).toContain("overflow-x: auto;");
     expect(css).toContain("overflow-y: visible;");
