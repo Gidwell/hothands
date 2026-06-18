@@ -2158,7 +2158,7 @@ function durationMsFromIntervalLabel(intervalLabel: string): number {
 }
 
 function formatWallet(wallet: string): string {
-  return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
+  return wallet.startsWith("0x") ? `0x${wallet.slice(2, 7)}` : wallet.slice(0, 7);
 }
 
 function formatManager(manager: string): string {

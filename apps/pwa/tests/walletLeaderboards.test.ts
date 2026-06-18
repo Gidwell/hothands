@@ -166,7 +166,7 @@ describe("wallet leaderboards model", () => {
     expect(snapshot.leaderboards.longestWinningStreak[0]).toMatchObject({
       rank: 1,
       wallet: "0xaaaa222233334444555566667777888899990001",
-      displayName: "0xaaaa...0001",
+      displayName: "0xaaaa2",
       totalPnlLabel: "+$12.35",
       totalPnlTone: "positive",
       currentStreakLabel: "2 wins",
@@ -327,7 +327,7 @@ describe("wallet leaderboards model", () => {
 
     expect(selectWalletLeaderboardEntries(snapshot, "longestWinningStreak")).toHaveLength(1);
     expect(snapshot.leaderboards.longestWinningStreak[0]).toMatchObject({
-      displayName: "0xdddd...0004",
+      displayName: "0xdddd2",
       totalPnlLabel: "+$0.25",
       currentStreakLabel: "1 win",
       rank: 1,

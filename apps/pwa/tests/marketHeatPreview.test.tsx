@@ -694,7 +694,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain(">Direction</span>");
     expect(html).not.toContain(">Strike</span>");
     expect(html).not.toContain(">Expiration</span>");
-    expect(html).toContain("0xbbbb...0000");
+    expect(html).toContain("0xbbbb2");
     expect(html).toContain("market-heat-head-wallet");
     expect(html).toContain("market-heat-score-badge");
     expect(html).not.toContain("wallet-identicon");
@@ -712,7 +712,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("--");
     expect(html).not.toContain('data-testid="market-heat-share"');
     expect(html).toContain("data-testid=\"market-heat-wallet-profile\"");
-    expect(html).toContain("aria-label=\"Open 0xbbbb...0000 profile\"");
+    expect(html).toContain("aria-label=\"Open 0xbbbb2 profile\"");
     const [dedupedRow] = buildMarketHeatPreview(
       [
         {

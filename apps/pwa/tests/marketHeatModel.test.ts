@@ -41,7 +41,7 @@ describe("market heat preview model", () => {
         {
           id: "external-0x84d2",
           wallet: "0x84d2f193f73f9d5f2bb0fe47238bc8c2441b91af",
-          displayName: "0x84d2...91af",
+          displayName: "0x84d2f",
           manager: "Manager 0xb795...3125",
           pairLabel: "BTC/USD",
           side: "UP",
@@ -61,7 +61,7 @@ describe("market heat preview model", () => {
         {
           id: "external-0x28b7",
           wallet: "0x28b7a9cd430a1d7ec8c90f0cb74b212ad8934c10",
-          displayName: "0x28b7...4c10",
+          displayName: "0x28b7a",
           manager: "Manager 0x43af...e64",
           pairLabel: "BTC/USD",
           side: "DOWN",
@@ -81,7 +81,7 @@ describe("market heat preview model", () => {
         {
           id: "external-0x6f09",
           wallet: "0x6f098d1adf9c8b603452dc72cb9096da0c82aa35",
-          displayName: "0x6f09...aa35",
+          displayName: "0x6f098",
           manager: "Manager 0xc873...028a",
           pairLabel: "BTC/USD",
           side: "UP",
@@ -247,7 +247,7 @@ describe("market heat preview model", () => {
       detailLabel: "Next observed mint",
       signatureLabel: "We'll watch this wallet and prepare the next mint for your signature",
       statusLabel: "4h ago",
-      title: "Copy 0x28b7...4c10",
+      title: "Copy 0x28b7a",
     });
     expect(closeMarketHeatIntent(selected)).toEqual({ selectedRowId: null });
   });
@@ -273,7 +273,7 @@ describe("market heat preview model", () => {
       detailLabel: "Recent mint",
       signatureLabel: "Ready for your wallet signature",
       statusLabel: "just now",
-      title: "Fade 0x84d2...91af",
+      title: "Fade 0x84d2f",
     });
   });
 
@@ -288,7 +288,7 @@ describe("market heat preview model", () => {
       detailLabel: "Recent mint",
       signatureLabel: "Ready for your wallet signature",
       statusLabel: "just now",
-      title: "Copy 0x84d2...91af",
+      title: "Copy 0x84d2f",
     });
   });
 
@@ -394,7 +394,7 @@ describe("market heat preview model", () => {
     expect(preview.rows).toHaveLength(1);
     expect(preview.rows[0]).toMatchObject({
       id: "external-0x1111",
-      displayName: "0x1111...0000",
+      displayName: "0x11112",
       manager: "Manager 0xabcd...0001",
       pairLabel: "BTC/USD",
       side: "DOWN",
@@ -1036,7 +1036,7 @@ describe("market heat preview model", () => {
 
     expect(preview.rows[0]).toMatchObject({
       wallet,
-      displayName: "0x2222...1111",
+      displayName: "0x22223",
     });
     expect(preview.rows[0]?.displayNameSource).toBeUndefined();
   });

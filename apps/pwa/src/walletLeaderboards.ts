@@ -537,7 +537,7 @@ function formatSourceLabel(source: string | undefined): string {
 }
 
 function formatWallet(wallet: string): string {
-  return wallet.length > 14 ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : wallet;
+  return wallet.startsWith("0x") ? `0x${wallet.slice(2, 7)}` : wallet.slice(0, 7);
 }
 
 function formatSignedDusdc(value: number): string {
