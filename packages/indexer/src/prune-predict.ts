@@ -11,11 +11,13 @@ declare const process: {
 };
 
 export type PredictPruneCliOptions = {
+  activePriceRawRetentionMs: number;
   databaseUrl?: string;
   dryRun: boolean;
   batchOracleLimit: number;
   maxBatches: number;
   retentionMs: number;
+  includePriceCandles: boolean;
   includePrices: boolean;
   includeSvi: boolean;
   vacuum: boolean;
@@ -33,9 +35,20 @@ export type PredictPruneSeriesSummary = {
 export type PredictPruneSummary = {
   dryRun: boolean;
   cutoffMs: number;
+  priceCandles: PredictPrunePriceCandleSummary;
   prices: PredictPruneSeriesSummary;
   svi: PredictPruneSeriesSummary;
   vacuumedTables: string[];
+};
+
+export type PredictPrunePriceCandleSummary = {
+  tableName: "predict_oracle_price_candles_1m";
+  bucketMs: number;
+  candidateRawRows: number;
+  rawCutoffMs: number;
+  rawRowsDeleted: number;
+  rowsWritten: number;
+  skipped: boolean;
 };
 
 type ParsedArgs = {
@@ -45,6 +58,8 @@ type ParsedArgs = {
 
 const DEFAULT_BATCH_ORACLE_LIMIT = 100;
 const DEFAULT_MAX_BATCHES = 1;
+const PRICE_CANDLE_BUCKET_MS = 60_000;
+const DEFAULT_ACTIVE_PRICE_RAW_RETENTION_MS = 24 * 60 * 60_000;
 
 export function parsePredictPruneCliOptions({
   argv,
@@ -60,6 +75,11 @@ export function parsePredictPruneCliOptions({
     !(parsed.flags.has("write") || env.HOT_HANDS_INDEXER_PRUNE_WRITE === "true");
 
   return {
+    activePriceRawRetentionMs: nonNegativeInt(
+      lastValue(parsed, "price-candle-raw-retention-ms") ??
+        env.HOT_HANDS_INDEXER_PRICE_CANDLE_RAW_RETENTION_MS,
+      DEFAULT_ACTIVE_PRICE_RAW_RETENTION_MS,
+    ),
     databaseUrl: env.DATABASE_URL,
     dryRun,
     batchOracleLimit: positiveInt(
@@ -75,6 +95,9 @@ export function parsePredictPruneCliOptions({
       lastValue(parsed, "retention-ms") ?? env.HOT_HANDS_INDEXER_PRUNE_RETENTION_MS,
       0,
     ),
+    includePriceCandles:
+      !parsed.flags.has("skip-price-candles") &&
+      env.HOT_HANDS_INDEXER_PRICE_CANDLES !== "false",
     includePrices:
       !parsed.flags.has("skip-prices") &&
       env.HOT_HANDS_INDEXER_PRUNE_SKIP_PRICES !== "true",
@@ -93,6 +116,8 @@ export async function runDeepBookPredictPrune({
   maxBatches = DEFAULT_MAX_BATCHES,
   nowMs = Date.now(),
   retentionMs = 0,
+  activePriceRawRetentionMs = DEFAULT_ACTIVE_PRICE_RAW_RETENTION_MS,
+  includePriceCandles = true,
   includePrices = true,
   includeSvi = true,
   vacuum = false,
@@ -103,6 +128,8 @@ export async function runDeepBookPredictPrune({
   maxBatches?: number;
   nowMs?: number;
   retentionMs?: number;
+  activePriceRawRetentionMs?: number;
+  includePriceCandles?: boolean;
   includePrices?: boolean;
   includeSvi?: boolean;
   vacuum?: boolean;
@@ -130,6 +157,14 @@ export async function runDeepBookPredictPrune({
         dryRun,
       })
     : skippedSeries("predict_oracle_svi", batchOracleLimit);
+  const priceCandles = includePriceCandles
+    ? await rollupAndPruneActivePriceCandles({
+        execute,
+        nowMs,
+        rawRetentionMs: activePriceRawRetentionMs,
+        dryRun,
+      })
+    : skippedPriceCandles(nowMs, activePriceRawRetentionMs);
 
   const vacuumedTables: string[] = [];
   if (vacuum && !dryRun && prices.rowsDeleted > 0) {
@@ -145,9 +180,63 @@ export async function runDeepBookPredictPrune({
   return {
     dryRun,
     cutoffMs,
+    priceCandles,
     prices,
     svi,
     vacuumedTables,
+  };
+}
+
+async function rollupAndPruneActivePriceCandles({
+  execute,
+  nowMs,
+  rawRetentionMs,
+  dryRun,
+}: {
+  execute: SqlExecutor;
+  nowMs: number;
+  rawRetentionMs: number;
+  dryRun: boolean;
+}): Promise<PredictPrunePriceCandleSummary> {
+  const rawCutoffMs = Math.floor((nowMs - rawRetentionMs) / PRICE_CANDLE_BUCKET_MS) *
+    PRICE_CANDLE_BUCKET_MS;
+
+  if (rawCutoffMs <= 0) {
+    return {
+      ...skippedPriceCandles(nowMs, rawRetentionMs),
+      rawCutoffMs,
+    };
+  }
+
+  if (dryRun) {
+    const result = await execute(buildCountActiveRawPriceRowsForCandlesSql(), [rawCutoffMs, nowMs]);
+
+    return {
+      tableName: "predict_oracle_price_candles_1m",
+      bucketMs: PRICE_CANDLE_BUCKET_MS,
+      candidateRawRows: readCount(result),
+      rawCutoffMs,
+      rawRowsDeleted: 0,
+      rowsWritten: 0,
+      skipped: false,
+    };
+  }
+
+  const rowsWritten = rowsAffected(
+    await execute(buildUpsertActivePriceCandlesSql(), [rawCutoffMs, nowMs]),
+  );
+  const rawRowsDeleted = rowsAffected(
+    await execute(buildDeleteRolledActiveRawPricesSql(), [rawCutoffMs, nowMs]),
+  );
+
+  return {
+    tableName: "predict_oracle_price_candles_1m",
+    bucketMs: PRICE_CANDLE_BUCKET_MS,
+    candidateRawRows: 0,
+    rawCutoffMs,
+    rawRowsDeleted,
+    rowsWritten,
+    skipped: false,
   };
 }
 
@@ -261,6 +350,102 @@ function buildDeleteExpiredOracleBatchSql({
   ].join("\n");
 }
 
+function buildCountActiveRawPriceRowsForCandlesSql(): string {
+  return [
+    "select count(*)::bigint as row_count",
+    "from predict_oracle_prices p",
+    "join predict_oracles o on o.oracle_id = p.oracle_id",
+    "where o.expiry_ms > $2",
+    "  and p.timestamp_ms < $1",
+  ].join("\n");
+}
+
+function buildUpsertActivePriceCandlesSql(): string {
+  return [
+    "with raw_points as (",
+    "  select",
+    "    p.oracle_id,",
+    `    floor(p.timestamp_ms / ${PRICE_CANDLE_BUCKET_MS})::bigint * ${PRICE_CANDLE_BUCKET_MS} as bucket_ms,`,
+    "    p.spot,",
+    "    p.forward,",
+    "    p.checkpoint,",
+    "    p.timestamp_ms",
+    "  from predict_oracle_prices p",
+    "  join predict_oracles o on o.oracle_id = p.oracle_id",
+    "  where o.expiry_ms > $2",
+    "    and p.timestamp_ms < $1",
+    "), ranked as (",
+    "  select",
+    "    oracle_id,",
+    "    bucket_ms,",
+    "    first_value(spot) over bucket_asc as open,",
+    "    max(spot) over bucket_partition as high,",
+    "    min(spot) over bucket_partition as low,",
+    "    first_value(spot) over bucket_desc as close,",
+    "    first_value(forward) over bucket_asc as forward_open,",
+    "    max(forward) over bucket_partition as forward_high,",
+    "    min(forward) over bucket_partition as forward_low,",
+    "    first_value(forward) over bucket_desc as forward_close,",
+    "    count(*) over bucket_partition as sample_count,",
+    "    min(timestamp_ms) over bucket_partition as first_timestamp_ms,",
+    "    max(timestamp_ms) over bucket_partition as last_timestamp_ms,",
+    "    first_value(checkpoint) over bucket_asc as first_checkpoint,",
+    "    first_value(checkpoint) over bucket_desc as last_checkpoint,",
+    "    row_number() over bucket_asc as row_number",
+    "  from raw_points",
+    "  window",
+    "    bucket_partition as (partition by oracle_id, bucket_ms),",
+    "    bucket_asc as (partition by oracle_id, bucket_ms order by timestamp_ms asc),",
+    "    bucket_desc as (partition by oracle_id, bucket_ms order by timestamp_ms desc)",
+    ")",
+    "insert into predict_oracle_price_candles_1m (",
+    "  oracle_id, bucket_ms, open, high, low, close,",
+    "  forward_open, forward_high, forward_low, forward_close,",
+    "  sample_count, first_timestamp_ms, last_timestamp_ms, first_checkpoint, last_checkpoint, source",
+    ")",
+    "select",
+    "  oracle_id, bucket_ms, open, high, low, close,",
+    "  forward_open, forward_high, forward_low, forward_close,",
+    "  sample_count, first_timestamp_ms, last_timestamp_ms, first_checkpoint, last_checkpoint,",
+    "  'oracles/prices/candle_1m'",
+    "from ranked",
+    "where row_number = 1",
+    "on conflict (oracle_id, bucket_ms) do update set",
+    "  open = excluded.open,",
+    "  high = excluded.high,",
+    "  low = excluded.low,",
+    "  close = excluded.close,",
+    "  forward_open = excluded.forward_open,",
+    "  forward_high = excluded.forward_high,",
+    "  forward_low = excluded.forward_low,",
+    "  forward_close = excluded.forward_close,",
+    "  sample_count = excluded.sample_count,",
+    "  first_timestamp_ms = excluded.first_timestamp_ms,",
+    "  last_timestamp_ms = excluded.last_timestamp_ms,",
+    "  first_checkpoint = excluded.first_checkpoint,",
+    "  last_checkpoint = excluded.last_checkpoint,",
+    "  source = excluded.source,",
+    "  updated_at = now()",
+  ].join("\n");
+}
+
+function buildDeleteRolledActiveRawPricesSql(): string {
+  return [
+    "with candle_buckets as (",
+    "  select c.oracle_id, c.bucket_ms",
+    "  from predict_oracle_price_candles_1m c",
+    "  join predict_oracles o on o.oracle_id = c.oracle_id",
+    "  where o.expiry_ms > $2",
+    "    and c.bucket_ms < $1",
+    ")",
+    "delete from predict_oracle_prices p",
+    "using candle_buckets c",
+    "where p.oracle_id = c.oracle_id",
+    `  and floor(p.timestamp_ms / ${PRICE_CANDLE_BUCKET_MS})::bigint * ${PRICE_CANDLE_BUCKET_MS} = c.bucket_ms`,
+    "  and p.timestamp_ms < $1",
+  ].join("\n");
+}
+
 function skippedSeries(
   tableName: "predict_oracle_prices" | "predict_oracle_svi",
   batchOracleLimit: number,
@@ -272,6 +457,22 @@ function skippedSeries(
     candidateRows: 0,
     rowsDeleted: 0,
     stoppedBecause: "skipped",
+  };
+}
+
+function skippedPriceCandles(
+  nowMs: number,
+  rawRetentionMs: number,
+): PredictPrunePriceCandleSummary {
+  return {
+    tableName: "predict_oracle_price_candles_1m",
+    bucketMs: PRICE_CANDLE_BUCKET_MS,
+    candidateRawRows: 0,
+    rawCutoffMs: Math.floor((nowMs - rawRetentionMs) / PRICE_CANDLE_BUCKET_MS) *
+      PRICE_CANDLE_BUCKET_MS,
+    rawRowsDeleted: 0,
+    rowsWritten: 0,
+    skipped: true,
   };
 }
 
@@ -306,8 +507,8 @@ async function main() {
     throw new Error("DATABASE_URL is required for Predict pruning.");
   }
 
-  if (!cli.dryRun && !cli.includePrices && !cli.includeSvi) {
-    throw new Error("At least one of prices or SVI must be enabled.");
+  if (!cli.dryRun && !cli.includePrices && !cli.includeSvi && !cli.includePriceCandles) {
+    throw new Error("At least one prune target must be enabled.");
   }
 
   const client = createPostgresSqlClient({ databaseUrl: cli.databaseUrl });
@@ -316,9 +517,11 @@ async function main() {
     const summary = await runDeepBookPredictPrune({
       execute: client.execute,
       dryRun: cli.dryRun,
+      activePriceRawRetentionMs: cli.activePriceRawRetentionMs,
       batchOracleLimit: cli.batchOracleLimit,
       maxBatches: cli.maxBatches,
       retentionMs: cli.retentionMs,
+      includePriceCandles: cli.includePriceCandles,
       includePrices: cli.includePrices,
       includeSvi: cli.includeSvi,
       vacuum: cli.vacuum,
@@ -337,10 +540,23 @@ function formatPredictPruneSummary(summary: PredictPruneSummary): string {
     "DeepBook Predict prune complete.",
     `Mode: ${mode}`,
     `Cutoff: ${new Date(summary.cutoffMs).toISOString()} (${summary.cutoffMs})`,
+    formatPriceCandleSummary(summary.priceCandles),
     formatSeriesSummary(summary.prices),
     formatSeriesSummary(summary.svi),
     `Vacuumed: ${summary.vacuumedTables.length === 0 ? "none" : summary.vacuumedTables.join(", ")}`,
     "",
+  ].join("\n");
+}
+
+function formatPriceCandleSummary(summary: PredictPrunePriceCandleSummary): string {
+  return [
+    `${summary.tableName}:`,
+    `  skipped: ${summary.skipped}`,
+    `  raw cutoff: ${new Date(summary.rawCutoffMs).toISOString()} (${summary.rawCutoffMs})`,
+    `  bucket ms: ${summary.bucketMs}`,
+    `  candidate raw rows: ${summary.candidateRawRows}`,
+    `  candle rows written: ${summary.rowsWritten}`,
+    `  raw rows deleted: ${summary.rawRowsDeleted}`,
   ].join("\n");
 }
 

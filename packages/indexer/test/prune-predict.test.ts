@@ -8,10 +8,12 @@ import {
 describe("DeepBook Predict expired series pruning", () => {
   test("parses safe dry-run defaults and explicit write options", () => {
     expect(parsePredictPruneCliOptions({ argv: [], env: {} })).toMatchObject({
+      activePriceRawRetentionMs: 86_400_000,
       dryRun: true,
       batchOracleLimit: 100,
       maxBatches: 1,
       retentionMs: 0,
+      includePriceCandles: true,
       includePrices: true,
       includeSvi: true,
       vacuum: false,
@@ -26,17 +28,22 @@ describe("DeepBook Predict expired series pruning", () => {
           "--max-batches=9",
           "--retention-ms",
           "3600000",
+          "--price-candle-raw-retention-ms",
+          "43200000",
           "--skip-svi",
+          "--skip-price-candles",
           "--vacuum",
         ],
         env: { DATABASE_URL: "postgres://example" },
       }),
     ).toMatchObject({
+      activePriceRawRetentionMs: 43_200_000,
       databaseUrl: "postgres://example",
       dryRun: false,
       batchOracleLimit: 25,
       maxBatches: 9,
       retentionMs: 3_600_000,
+      includePriceCandles: false,
       includePrices: true,
       includeSvi: false,
       vacuum: true,
@@ -55,6 +62,7 @@ describe("DeepBook Predict expired series pruning", () => {
       nowMs: 1_800_000_000_000,
       batchOracleLimit: 25,
       dryRun: true,
+      includePriceCandles: false,
     });
 
     expect(summary.prices).toMatchObject({
@@ -97,6 +105,7 @@ describe("DeepBook Predict expired series pruning", () => {
       nowMs: 1_800_000_000_000,
       batchOracleLimit: 100,
       maxBatches: 3,
+      includePriceCandles: false,
     });
 
     expect(summary.prices).toMatchObject({
@@ -112,6 +121,48 @@ describe("DeepBook Predict expired series pruning", () => {
     expect(calls.map((call) => call.statement).join("\n")).not.toContain("predict_trade_events");
     expect(calls.map((call) => call.statement).join("\n")).not.toContain("predict_position_summaries");
     expect(calls.every((call) => call.params[0] === 1_800_000_000_000)).toBe(true);
+  });
+
+  test("write mode rolls active old raw prices into one-minute candles before deleting raw ticks", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      if (statement.includes("insert into predict_oracle_price_candles_1m")) {
+        return { rowCount: 3 };
+      }
+
+      if (statement.includes("delete from predict_oracle_prices") && statement.includes("candle_buckets")) {
+        return { rowCount: 180 };
+      }
+
+      return { rowCount: 0 };
+    };
+
+    const summary = await runDeepBookPredictPrune({
+      activePriceRawRetentionMs: 86_400_000,
+      dryRun: false,
+      execute,
+      includeSvi: false,
+      nowMs: 1_800_000_000_000,
+      retentionMs: 0,
+    });
+
+    expect(summary.priceCandles).toMatchObject({
+      bucketMs: 60_000,
+      rawCutoffMs: 1_799_913_600_000,
+      rowsWritten: 3,
+      rawRowsDeleted: 180,
+      skipped: false,
+    });
+    expect(calls.map((call) => call.statement).join("\n")).toContain(
+      "insert into predict_oracle_price_candles_1m",
+    );
+    expect(calls.map((call) => call.statement).join("\n")).not.toContain(
+      "delete from predict_trade_events",
+    );
+    expect(calls.map((call) => call.statement).join("\n")).not.toContain(
+      "delete from predict_position_summaries",
+    );
   });
 
   test("optional vacuum analyzes pruned tables after write batches", async () => {

@@ -37,7 +37,9 @@ export type DeepBookPredictLiveIndexerCliOptions = {
 };
 
 export type DeepBookPredictExpiredSeriesPruneOptions = {
+  activePriceRawRetentionMs: number;
   batchOracleLimit: number;
+  includePriceCandles: boolean;
   maxBatches: number;
   retentionMs: number;
   vacuum: boolean;
@@ -109,6 +111,7 @@ const DEFAULT_ORACLE_TRADE_LIMIT = 50;
 const DEFAULT_SVI_LIMIT = 1;
 const DEFAULT_PRUNE_BATCH_ORACLE_LIMIT = 100;
 const DEFAULT_PRUNE_MAX_BATCHES = 1;
+const DEFAULT_ACTIVE_PRICE_RAW_RETENTION_MS = 24 * 60 * 60_000;
 const DEFAULT_STARTUP_PRICE_BACKFILL_SAMPLE_MS = 1_000;
 const DEFAULT_STARTUP_PRICE_BACKFILL_WINDOW_MS = 60 * 60_000;
 const DEFAULT_STARTUP_PRICE_BACKFILL_CONCURRENCY = 2;
@@ -362,8 +365,13 @@ function createLiveIndexerJobs({
         const summary = await pruneExpiredSeries();
 
         return {
-          rowsFetched: summary.prices.batchesRun + summary.svi.batchesRun,
-          rowsWritten: summary.prices.rowsDeleted + summary.svi.rowsDeleted,
+          rowsFetched: summary.prices.batchesRun +
+            summary.svi.batchesRun +
+            (summary.priceCandles.skipped ? 0 : 1),
+          rowsWritten: summary.prices.rowsDeleted +
+            summary.svi.rowsDeleted +
+            summary.priceCandles.rowsWritten +
+            summary.priceCandles.rawRowsDeleted,
         };
       },
     });
@@ -714,6 +722,7 @@ function expectsValue(key: string): boolean {
     "oracles-poll-ms",
     "positions-poll-ms",
     "price-poll-ms",
+    "price-candle-raw-retention-ms",
     "prune-batch-oracle-limit",
     "prune-max-batches",
     "prune-retention-ms",
@@ -779,11 +788,19 @@ function parseExpiredSeriesPruneOptions(
   }
 
   return {
+    activePriceRawRetentionMs: nonNegativeInt(
+      lastValue(parsed, "price-candle-raw-retention-ms") ??
+        env.HOT_HANDS_INDEXER_PRICE_CANDLE_RAW_RETENTION_MS,
+      DEFAULT_ACTIVE_PRICE_RAW_RETENTION_MS,
+    ),
     batchOracleLimit: positiveInt(
       lastValue(parsed, "prune-batch-oracle-limit") ??
         env.HOT_HANDS_INDEXER_PRUNE_BATCH_ORACLE_LIMIT,
       DEFAULT_PRUNE_BATCH_ORACLE_LIMIT,
     ),
+    includePriceCandles:
+      !parsed.flags.has("skip-price-candles") &&
+      env.HOT_HANDS_INDEXER_PRICE_CANDLES !== "false",
     maxBatches: positiveInt(
       lastValue(parsed, "prune-max-batches") ??
         env.HOT_HANDS_INDEXER_PRUNE_MAX_BATCHES,

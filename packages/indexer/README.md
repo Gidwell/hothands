@@ -153,21 +153,27 @@ serves them behind a narrow local setup:
    `positions/minted` and `positions/redeemed` endpoints, so server-side
    position cursors should not be assumed until re-tested.
 
-   The live indexer also runs an expired-market maintenance job by default. It
-   deletes only `predict_oracle_prices` and `predict_oracle_svi` rows for
-   oracles whose `expiry_ms` is at or before the prune cutoff. It never deletes
-   `predict_trade_events`, `predict_position_summaries`, or `predict_oracles`,
-   so historic wallet and position data remains intact. The job runs every
-   minute by default and deletes at most 100 expired oracles per table per run.
-   Tune with `HOT_HANDS_INDEXER_MAINTENANCE_POLL_MS`,
+   The live indexer also runs chart-series maintenance by default. It deletes
+   only `predict_oracle_prices` and `predict_oracle_svi` rows for expired
+   oracles whose `expiry_ms` is at or before the prune cutoff. For active
+   oracles, it rolls raw price ticks older than 24h into
+   `predict_oracle_price_candles_1m`, then deletes those older raw ticks. The
+   candle rows preserve spot OHLC, forward-price OHLC, sample count, first/last
+   timestamps, and first/last checkpoints for future candlestick charts. It
+   never deletes `predict_trade_events`, `predict_position_summaries`, or
+   `predict_oracles`, so historic wallet and position data remains intact. The
+   job runs every minute by default and deletes at most 100 expired oracles per
+   table per run. Tune with `HOT_HANDS_INDEXER_MAINTENANCE_POLL_MS`,
    `HOT_HANDS_INDEXER_PRUNE_BATCH_ORACLE_LIMIT`,
-   `HOT_HANDS_INDEXER_PRUNE_MAX_BATCHES`, and
-   `HOT_HANDS_INDEXER_PRUNE_RETENTION_MS`; disable with
-   `HOT_HANDS_INDEXER_PRUNE_EXPIRED_SERIES=false`.
+   `HOT_HANDS_INDEXER_PRUNE_MAX_BATCHES`,
+   `HOT_HANDS_INDEXER_PRUNE_RETENTION_MS`, and
+   `HOT_HANDS_INDEXER_PRICE_CANDLE_RAW_RETENTION_MS`; disable expired-series
+   pruning with `HOT_HANDS_INDEXER_PRUNE_EXPIRED_SERIES=false` or candle rollup
+   with `HOT_HANDS_INDEXER_PRICE_CANDLES=false`.
 
-   The chart endpoint requests downsampled full-range history from
-   `predict_oracle_prices`, preserving the first and latest indexed points while
-   returning at most the requested point budget.
+   The chart endpoint requests downsampled full-range history from raw price
+   ticks plus one-minute candle closes, preserving the first and latest indexed
+   points while returning at most the requested point budget.
 
    To have the live indexer backfill chart depth before it begins normal polling,
    set `HOT_HANDS_INDEXER_STARTUP_PRICE_BACKFILL_DAYS` to the desired bounded
@@ -190,6 +196,10 @@ serves them behind a narrow local setup:
    bun run --cwd packages/indexer prune:predict -- --dry-run
    bun run --cwd packages/indexer prune:predict -- --write --max-batches 100 --vacuum
    ```
+
+   The manual prune command uses the same 24h active raw price retention by
+   default. Override with `--price-candle-raw-retention-ms <ms>` only for
+   emergency cleanup or diagnostics.
 
    Normal `VACUUM (ANALYZE)` makes deleted pages reusable by Postgres but may
    not immediately lower provider volume usage. If a deployed database is

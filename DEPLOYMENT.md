@@ -88,18 +88,27 @@ HOT_HANDS_INDEXER_RATE_LIMIT_BACKOFF_FLOOR_MS=5000
 Keep these enabled in production. Lowering them can make charts feel fresher for
 a few seconds, but it also risks longer 429 storms and more missed polls.
 
-The indexer also prunes expired oracle chart series by default. This controls
+The indexer also runs chart-series maintenance by default. This controls
 Postgres volume growth from `predict_oracle_prices` and `predict_oracle_svi`
-without touching historic wallet/position tables. Defaults:
+without touching historic wallet/position tables. It deletes expired oracle
+price/SVI series, and for still-active oracles it rolls raw price ticks older
+than 24h into one-minute OHLC candles before deleting those older raw ticks.
+Defaults:
 
 ```text
 HOT_HANDS_INDEXER_MAINTENANCE_POLL_MS=60000
 HOT_HANDS_INDEXER_PRUNE_BATCH_ORACLE_LIMIT=100
 HOT_HANDS_INDEXER_PRUNE_MAX_BATCHES=1
 HOT_HANDS_INDEXER_PRUNE_RETENTION_MS=0
+HOT_HANDS_INDEXER_PRICE_CANDLE_RAW_RETENTION_MS=86400000
+HOT_HANDS_INDEXER_PRICE_CANDLES=true
 ```
 
 Set `HOT_HANDS_INDEXER_PRUNE_EXPIRED_SERIES=false` only for diagnostics. Use
+`HOT_HANDS_INDEXER_PRICE_CANDLES=false` only if candle rollup itself is being
+debugged. The candle table keeps `open`, `high`, `low`, `close`,
+forward-price OHLC, sample count, first/last timestamps, and first/last
+checkpoints for future candlestick charts. Use
 `HOT_HANDS_INDEXER_PRUNE_VACUUM=true` sparingly; normal vacuum frees pages for
 reuse but does not necessarily reduce the provider volume meter immediately.
 
@@ -184,6 +193,10 @@ For a manual prune from a Railway service console:
 bun run --cwd packages/indexer prune:predict -- --dry-run
 bun run --cwd packages/indexer prune:predict -- --write --max-batches 100 --vacuum
 ```
+
+The manual prune command uses the same 24h active raw price retention by
+default. Override with `--price-candle-raw-retention-ms <ms>` for emergency
+cleanup only.
 
 If Postgres is already at the Railway volume limit, increase volume headroom
 before running large prune batches. Batched deletes stop future growth and

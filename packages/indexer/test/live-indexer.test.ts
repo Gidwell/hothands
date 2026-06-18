@@ -193,6 +193,8 @@ describe("DeepBook Predict live indexer", () => {
           "4",
           "--prune-retention-ms",
           "60000",
+          "--price-candle-raw-retention-ms",
+          "43200000",
           "--prune-vacuum",
         ],
         env: {
@@ -201,7 +203,9 @@ describe("DeepBook Predict live indexer", () => {
       }),
     ).toMatchObject({
       expiredSeriesPrune: {
+        activePriceRawRetentionMs: 43_200_000,
         batchOracleLimit: 25,
+        includePriceCandles: true,
         maxBatches: 4,
         retentionMs: 60_000,
         vacuum: true,
@@ -436,6 +440,15 @@ describe("DeepBook Predict live indexer", () => {
         return {
           dryRun: false,
           cutoffMs: nowMs,
+          priceCandles: {
+            tableName: "predict_oracle_price_candles_1m",
+            bucketMs: 60_000,
+            candidateRawRows: 0,
+            rawCutoffMs: nowMs - 86_400_000,
+            rawRowsDeleted: 180,
+            rowsWritten: 3,
+            skipped: false,
+          },
           prices: {
             tableName: "predict_oracle_prices",
             batchOracleLimit: 100,
@@ -474,8 +487,8 @@ describe("DeepBook Predict live indexer", () => {
     expect(summary.jobs.at(-1)).toMatchObject({
       jobName: "predict.maintenance.prune_expired_series",
       source: "postgres/expired-oracle-series",
-      rowsFetched: 2,
-      rowsWritten: 78,
+      rowsFetched: 3,
+      rowsWritten: 261,
       status: "ok",
     });
   });

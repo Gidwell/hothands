@@ -58,6 +58,55 @@ describe("Postgres Predict indexer reader", () => {
     ]);
   });
 
+  test("reads rolled one-minute candle closes alongside raw oracle prices", async () => {
+    const calls: SqlCall[] = [];
+    const execute: SqlQueryExecutor = async (statement, params = []) => {
+      calls.push({ statement, params });
+      return {
+        rows: [
+          {
+            event_id: "candle:1m:btc-15m:1779070800000",
+            oracle_id: "btc-15m",
+            spot: "70005000000",
+            forward: "70006000000",
+            checkpoint: 101,
+            timestamp_ms: 1_779_070_859_000,
+            source: "oracles/prices/candle_1m",
+          },
+          {
+            event_id: "price:latest",
+            oracle_id: "btc-15m",
+            spot: "70010000000",
+            forward: null,
+            checkpoint: 102,
+            timestamp_ms: 1_779_070_900_000,
+            source: "oracles/prices",
+          },
+        ],
+      };
+    };
+    const reader = createPostgresPredictIndexerReader({ execute });
+
+    const points = await reader.listOraclePrices({
+      oracleId: "btc-15m",
+      maxRawPoints: 50_000,
+    });
+
+    expect(points.map((point) => point.eventId)).toEqual([
+      "candle:1m:btc-15m:1779070800000",
+      "price:latest",
+    ]);
+    expect(points[0]).toMatchObject({
+      spot: 70_005_000_000,
+      forward: 70_006_000_000,
+      timestampMs: 1_779_070_859_000,
+      source: "oracles/prices/candle_1m",
+    });
+    expect(calls[0]?.statement).toContain("from predict_oracle_price_candles_1m");
+    expect(calls[0]?.statement).toContain("from predict_oracle_prices");
+    expect(calls[0]?.params).toEqual(["btc-15m", 50_000]);
+  });
+
   test("reads market heat inputs from indexed raw tables", async () => {
     const execute: SqlQueryExecutor = async (statement) => {
       if (statement.includes("from predict_oracles")) {

@@ -54,7 +54,7 @@ export type PredictOraclePricePoint = {
   forward?: number;
   checkpoint?: number;
   timestampMs: number;
-  source: "oracles/prices";
+  source: "oracles/prices" | "oracles/prices/candle_1m";
 };
 
 export type PredictOracleSviRow = {

@@ -207,16 +207,19 @@ export function createPostgresPredictIndexerReader({
       maxPoints,
     }) => {
       const params: SqlValue[] = [oracleId];
-      const filters = ["oracle_id = $1"];
+      const rawFilters = ["oracle_id = $1"];
+      const candleFilters = ["c.oracle_id = $1"];
 
       if (fromMs !== undefined) {
         params.push(fromMs);
-        filters.push(`timestamp_ms >= $${params.length}`);
+        rawFilters.push(`timestamp_ms >= $${params.length}`);
+        candleFilters.push(`c.last_timestamp_ms >= $${params.length}`);
       }
 
       if (toMs !== undefined) {
         params.push(toMs);
-        filters.push(`timestamp_ms <= $${params.length}`);
+        rawFilters.push(`timestamp_ms <= $${params.length}`);
+        candleFilters.push(`c.last_timestamp_ms <= $${params.length}`);
       }
 
       if (maxPoints !== undefined) {
@@ -224,13 +227,38 @@ export function createPostgresPredictIndexerReader({
         const maxPointsParam = `$${params.length}`;
         const result = await execute(
           [
-            "with filtered as (",
+            "with raw_points as (",
+            "  select event_id, oracle_id, spot, forward, checkpoint, timestamp_ms, source",
+            "  from predict_oracle_prices",
+            `  where ${rawFilters.join(" and ")}`,
+            "), candle_points as (",
+            "  select",
+            "    'candle:1m:' || c.oracle_id || ':' || c.bucket_ms as event_id,",
+            "    c.oracle_id,",
+            "    c.close as spot,",
+            "    c.forward_close as forward,",
+            "    c.last_checkpoint as checkpoint,",
+            "    c.last_timestamp_ms as timestamp_ms,",
+            "    c.source",
+            "  from predict_oracle_price_candles_1m c",
+            `  where ${candleFilters.join(" and ")}`,
+            "    and not exists (",
+            "      select 1",
+            "      from predict_oracle_prices p",
+            "      where p.oracle_id = c.oracle_id",
+            "        and p.timestamp_ms >= c.bucket_ms",
+            "        and p.timestamp_ms < c.bucket_ms + 60000",
+            "    )",
+            "), filtered as (",
+            "  select * from candle_points",
+            "  union all",
+            "  select * from raw_points",
+            "), numbered as (",
             "  select event_id, oracle_id, spot, forward, checkpoint, timestamp_ms, source,",
             "    row_number() over (order by timestamp_ms asc, event_id asc) as rn",
-            "  from predict_oracle_prices",
-            `  where ${filters.join(" and ")}`,
+            "  from filtered",
             "), stats as (",
-            "  select count(*)::bigint as total_count from filtered",
+            "  select count(*)::bigint as total_count from numbered",
             "), targets as (",
             "  select distinct greatest(",
             "    1,",
@@ -244,11 +272,11 @@ export function createPostgresPredictIndexerReader({
             `    greatest(least(${maxPointsParam}, stats.total_count)::int - 1, 0)`,
             "  ) as slot",
             ")",
-            "select filtered.event_id, filtered.oracle_id, filtered.spot, filtered.forward,",
-            "  filtered.checkpoint, filtered.timestamp_ms, filtered.source",
-            "from filtered",
-            "join targets on filtered.rn = targets.target_rn",
-            "order by filtered.timestamp_ms asc, filtered.event_id asc",
+            "select numbered.event_id, numbered.oracle_id, numbered.spot, numbered.forward,",
+            "  numbered.checkpoint, numbered.timestamp_ms, numbered.source",
+            "from numbered",
+            "join targets on numbered.rn = targets.target_rn",
+            "order by numbered.timestamp_ms asc, numbered.event_id asc",
           ].join("\n"),
           params,
         );
@@ -260,9 +288,35 @@ export function createPostgresPredictIndexerReader({
       params.push(normalizeLimit(maxRawPoints));
       const result = await execute(
         [
+          "with raw_points as (",
+          "  select event_id, oracle_id, spot, forward, checkpoint, timestamp_ms, source",
+          "  from predict_oracle_prices",
+          `  where ${rawFilters.join(" and ")}`,
+          "), candle_points as (",
+          "  select",
+          "    'candle:1m:' || c.oracle_id || ':' || c.bucket_ms as event_id,",
+          "    c.oracle_id,",
+          "    c.close as spot,",
+          "    c.forward_close as forward,",
+          "    c.last_checkpoint as checkpoint,",
+          "    c.last_timestamp_ms as timestamp_ms,",
+          "    c.source",
+          "  from predict_oracle_price_candles_1m c",
+          `  where ${candleFilters.join(" and ")}`,
+          "    and not exists (",
+          "      select 1",
+          "      from predict_oracle_prices p",
+          "      where p.oracle_id = c.oracle_id",
+          "        and p.timestamp_ms >= c.bucket_ms",
+          "        and p.timestamp_ms < c.bucket_ms + 60000",
+          "    )",
+          ")",
           "select event_id, oracle_id, spot, forward, checkpoint, timestamp_ms, source",
-          "from predict_oracle_prices",
-          `where ${filters.join(" and ")}`,
+          "from (",
+          "  select * from candle_points",
+          "  union all",
+          "  select * from raw_points",
+          ") filtered",
           "order by timestamp_ms asc, event_id asc",
           `limit $${params.length}`,
         ].join("\n"),
@@ -306,11 +360,30 @@ export function createPostgresPredictIndexerReader({
     getOraclePriceStats: async (oracleId) => {
       const result = await execute(
         [
+          "with raw_points as (",
+          "  select timestamp_ms",
+          "  from predict_oracle_prices",
+          "  where oracle_id = $1",
+          "), candle_points as (",
+          "  select c.last_timestamp_ms as timestamp_ms",
+          "  from predict_oracle_price_candles_1m c",
+          "  where c.oracle_id = $1",
+          "    and not exists (",
+          "      select 1",
+          "      from predict_oracle_prices p",
+          "      where p.oracle_id = c.oracle_id",
+          "        and p.timestamp_ms >= c.bucket_ms",
+          "        and p.timestamp_ms < c.bucket_ms + 60000",
+          "    )",
+          "), combined as (",
+          "  select timestamp_ms from candle_points",
+          "  union all",
+          "  select timestamp_ms from raw_points",
+          ")",
           "select count(*) as total_point_count,",
           "min(timestamp_ms) as start_timestamp_ms,",
           "max(timestamp_ms) as end_timestamp_ms",
-          "from predict_oracle_prices",
-          "where oracle_id = $1",
+          "from combined",
         ].join("\n"),
         [oracleId],
       );
@@ -425,6 +498,8 @@ function mapPositionSummaryRow(row: SqlRow): PredictPositionSummary {
 }
 
 function mapOraclePriceRow(row: SqlRow): PredictOraclePricePoint {
+  const source = requiredString(row.source, "source");
+
   return {
     eventId: requiredString(row.event_id, "event_id"),
     oracleId: requiredString(row.oracle_id, "oracle_id"),
@@ -434,7 +509,9 @@ function mapOraclePriceRow(row: SqlRow): PredictOraclePricePoint {
       ? {}
       : { checkpoint: optionalNumber(row.checkpoint) }),
     timestampMs: requiredNumber(row.timestamp_ms, "timestamp_ms"),
-    source: "oracles/prices",
+    source: source === "oracles/prices/candle_1m"
+      ? "oracles/prices/candle_1m"
+      : "oracles/prices",
   };
 }
 
