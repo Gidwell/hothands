@@ -5080,6 +5080,12 @@ button:disabled {
   font-weight: 950;
 }
 
+.market-heat-intent-mode div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .market-heat-intent-mode span:not(.market-heat-intent-side) {
   color: var(--hh-muted);
   font-size: 0.76rem;
@@ -5148,15 +5154,6 @@ button:disabled {
   line-height: 1.08;
 }
 
-.market-heat-intent-footer span:nth-child(2) strong {
-  color: var(--hh-up);
-}
-
-.market-heat-stake-label {
-  margin-top: 13px;
-  margin-bottom: 8px;
-}
-
 .inline-watch-panel .chip-row {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
@@ -5167,29 +5164,59 @@ button:disabled {
   border-radius: 7px;
 }
 
-.market-heat-intent-footer {
+.market-heat-trader-entry {
   display: grid;
-  grid-template-columns: 0.85fr 0.92fr 0.62fr 0.45fr 132px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 9px;
-  align-items: end;
   margin-top: 12px;
+  margin-bottom: 10px;
 }
 
-.market-heat-intent-footer span {
+.market-heat-trader-entry > span {
   display: grid;
-  gap: 2px;
+  gap: 4px;
+  min-height: 48px;
+  align-content: center;
+  padding: 7px;
+  border: 1px solid var(--hh-line);
+  border-radius: 8px;
+  background: var(--hh-surface-2);
 }
 
-.market-heat-intent-footer strong {
+.market-heat-trader-entry small {
+  color: var(--hh-muted);
+  font-size: 0.56rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.market-heat-trader-entry strong {
   color: var(--hh-text);
-  font-size: 0.74rem;
+  font-size: 0.78rem;
+  font-weight: 950;
+  line-height: 1.08;
 }
 
-.market-heat-intent-footer .wallet-submit-button {
-  min-height: 42px;
+.market-heat-position-value-up strong {
+  color: var(--hh-up);
+}
+
+.market-heat-position-value-down strong {
+  color: var(--hh-down);
+}
+
+.market-heat-copy-ticket {
+  display: grid;
+  gap: 8px;
+}
+
+.market-heat-ticket-metrics {
+  margin-top: 1px;
+}
+
+.market-heat-wallet-button {
   border-radius: 7px;
-  font-size: 0.7rem;
-  line-height: 1.05;
 }
 
 .bottom-nav {

@@ -848,6 +848,54 @@ function buildReturnPreviewFromQuote(quote: TradeQuote): ReturnPreview {
   };
 }
 
+function marketHeatRowCostUsd(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd">): number | null {
+  if (typeof row.costUsd === "number" && Number.isFinite(row.costUsd) && row.costUsd >= 0) {
+    return row.costUsd;
+  }
+
+  if (typeof row.cost === "number" && Number.isFinite(row.cost) && row.cost >= 0) {
+    return row.cost / 1_000_000;
+  }
+
+  return null;
+}
+
+function formatMarketHeatRowCost(row: Pick<MarketHeatPreviewRow, "cost" | "costUsd">): string {
+  const costUsd = marketHeatRowCostUsd(row);
+
+  return costUsd === null ? "--" : formatCopyAmount(costUsd);
+}
+
+function buildMarketHeatPositionValue(row: MarketHeatPreviewRow): {
+  label: string;
+  tone: "up" | "down" | "flat" | "unknown";
+} {
+  if (
+    typeof row.currentPrice !== "number" ||
+    !Number.isFinite(row.currentPrice) ||
+    typeof row.quantity !== "number" ||
+    !Number.isFinite(row.quantity) ||
+    row.quantity <= 0
+  ) {
+    return { label: "--", tone: "unknown" };
+  }
+
+  const quantityUsd = row.quantity / 1_000_000;
+  const valueUsd = row.currentPrice * quantityUsd;
+  const costUsd = marketHeatRowCostUsd(row);
+
+  if (costUsd === null) {
+    return { label: formatCopyAmount(valueUsd), tone: "unknown" };
+  }
+
+  const delta = valueUsd - costUsd;
+
+  return {
+    label: formatCopyAmount(valueUsd),
+    tone: delta > 0.005 ? "up" : delta < -0.005 ? "down" : "flat",
+  };
+}
+
 function parseTradeStrikeInputValue(value: string): number | null {
   const normalized = value.replace(/[$,\s]/g, "");
   if (!normalized) {
@@ -4476,12 +4524,12 @@ export function MarketHeatPreview({
     const isQuoteReady = Boolean(rowQuoteStatus === "ready" && rowQuote);
     const isQuoteError = rowQuoteStatus === "error";
     const quoteFallbackLabel = isQuoteError
-      ? "Quote unavailable — retry"
+      ? "Quote unavailable"
       : !hasUsableCopyAmount
         ? "Enter amount"
         : rowQuoteStatus === "loading"
-        ? "Loading quote..."
-        : "Live quote needed";
+        ? "Quoting..."
+        : "Quote needed";
     const walletSubmitCta = !walletConnected
       ? "Connect wallet first"
       : !hasUsableCopyAmount
@@ -4508,6 +4556,10 @@ export function MarketHeatPreview({
       swipeHintRowId === row.id && !swipePreviewForRow ? activeSwipeHintMode : null;
     const returnPreview = rowQuote ? buildReturnPreviewFromQuote(rowQuote) : null;
     const rowIdentityTitle = identityMode === "market" ? row.pairLabel : row.displayName;
+    const intentActorTitle = row.displayName;
+    const traderCostLabel = formatMarketHeatRowCost(row);
+    const traderEntryPriceLabel = row.entryPriceLabel ?? "--";
+    const traderValue = buildMarketHeatPositionValue(row);
     const rowIdentityDetail = row.statusLabel;
     const walletProfileLabel = `Open ${row.displayName} profile`;
     const walletProfileContent = (
@@ -4566,54 +4618,61 @@ export function MarketHeatPreview({
         onPointerUp={stopTrayPropagation}
       >
         <div className={`market-heat-intent-mode market-heat-intent-mode-${rowIntentMode}`}>
-          <strong>{rowIntentLabel}</strong>
+          <div>
+            <strong>
+              {rowIntentLabel} {intentActorTitle}
+            </strong>
+          </div>
           <span
             className={`direction-pill direction-pill-${rowIntentSide.toLowerCase()} market-heat-intent-side`}
           >
             {rowIntentSide}
           </span>
         </div>
-        <div className="market-heat-intent-targets" aria-label={`${rowIdentityTitle} intent`}>
+        <div
+          className="market-heat-trader-entry"
+          aria-label={`${intentActorTitle} original entry`}
+        >
           <span>
-            <small>{rowIntentMode === "fade" ? "Fade target" : "Target"}</small>
-            <strong>
-              {rowIntentSide === "UP" ? "Above" : "Below"}{" "}
-              {row.strikeLabel.replace(/^Strike\s+/, "")}
-            </strong>
-          </span>
-          <span>
-            <small>Expiry</small>
-            <strong>{row.expiryTimeLabel}</strong>
-          </span>
-        </div>
-        <div className="market-heat-stake-label">Stake amount</div>
-        <CopyAmountControls
-          ariaLabel="Quick spend amounts"
-          copyAmount={copyAmount}
-          onAmountSet={onAmountSet}
-          stopPropagation={true}
-        />
-        <div className="market-heat-intent-footer">
-          <span>
-            <small>Est. payout</small>
-            <strong>{returnPreview?.payoutLabel ?? quoteFallbackLabel}</strong>
-          </span>
-          <span>
-            <small>Max profit</small>
-            <strong>{returnPreview?.profitLabel ?? quoteFallbackLabel}</strong>
+            <small>Entry Price</small>
+            <strong>{traderEntryPriceLabel}</strong>
           </span>
           <span>
             <small>Cost</small>
-            <strong>{formatCopyAmount(copyAmount)}</strong>
+            <strong>{traderCostLabel}</strong>
           </span>
-          <span>
-            <small>Heat</small>
-            <strong>{row.heatScoreLabel}</strong>
+          <span
+            className={`market-heat-position-value market-heat-position-value-${traderValue.tone}`}
+          >
+            <small>Value</small>
+            <strong>{traderValue.label}</strong>
           </span>
+        </div>
+        <div className="market-heat-copy-ticket">
+          <CopyAmountControls
+            ariaLabel="Quick spend amounts"
+            copyAmount={copyAmount}
+            onAmountSet={onAmountSet}
+            stopPropagation={true}
+          />
+          <div className="trade-ticket-metrics market-heat-ticket-metrics">
+            <span>
+              <small>Spend</small>
+              {formatCopyAmount(copyAmount)}
+            </span>
+            <span className={returnPreview ? "" : "metric-muted"}>
+              <small>Est. payout</small>
+              {returnPreview?.payoutLabel ?? quoteFallbackLabel}
+            </span>
+            <span className={returnPreview ? "" : "metric-muted"}>
+              <small>Max profit</small>
+              {returnPreview?.profitLabel ?? quoteFallbackLabel}
+            </span>
+          </div>
           {isWalletSubmitReady ? (
             <button
               type="button"
-              className="wallet-submit-button"
+              className="trade-wallet-button market-heat-wallet-button"
               data-testid="market-heat-wallet-submit"
               disabled={
                 !walletConnected ||

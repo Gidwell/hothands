@@ -148,13 +148,13 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("<span>Captured BTC markets</span>");
     expect(html).not.toContain("Every call is onchain");
     expect(html).not.toContain("Copy the hot hands");
-    expect(html).toContain("Target</small>");
-    expect(html).toContain("Below $6,200");
-    expect(html).toContain("Expiry</small>");
+    expect(html).toContain("Entry Price</small>");
+    expect(html).toContain("Cost</small>");
+    expect(html).toContain("Value</small>");
     expect(html).not.toContain("Next observed mint");
     expect(html).not.toContain("Potential payout</small>");
     expect(html).not.toContain("at expiry");
-    expect(html).toContain("Stake amount");
+    expect(html).not.toContain("Stake amount");
     expect(html).toContain('data-testid="custom-copy-amount"');
     expect(html).toContain('aria-label="Custom copy amount"');
     expect(html).not.toContain("Copy now</strong>");
@@ -208,9 +208,17 @@ describe("MarketHeatPreview component", () => {
   });
 
   test("requires an explicit wallet handoff after selecting copy amount", () => {
-    const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
+    const [baseRow] = buildMarketHeatPreview(copyReadyRows, 1, {
       nowMs: 1_779_158_000_000,
     }).rows;
+    const row = {
+      ...baseRow,
+      cost: 4_000_000,
+      costUsd: 4,
+      currentPrice: 0.55,
+      currentPriceLabel: "$0.55",
+      quantity: 10_000_000,
+    };
     const html = renderToStaticMarkup(
       <MarketHeatPreview
         rows={[row]}
@@ -234,16 +242,18 @@ describe("MarketHeatPreview component", () => {
       />,
     );
 
-    expect(html).toContain("Target</small>");
-    expect(html).toContain("Above $7,100");
-    expect(html).toContain("Expiry</small>");
-    expect(html).toContain("Cost</small><strong>$375");
-    expect(html).toContain("Heat</small><strong>94");
+    expect(html).toContain("Copy 0xbbbb2");
+    expect(html).toContain("Entry Price</small><strong>$0.40");
+    expect(html).toContain("Cost</small><strong>$4");
+    expect(html).toContain("market-heat-position-value-up");
+    expect(html).toContain("Value</small><strong>$5.50");
+    expect(html).toContain("Spend</small>$375");
+    expect(html).not.toContain("Heat</small><strong>94");
     expect(html).not.toContain("Strike</small>");
     expect(html).not.toContain("at expiry");
     expect(html).not.toContain("Potential payout</small>");
-    expect(html).toContain("Est. payout</small><strong>$937.50");
-    expect(html).toContain("Max profit</small><strong>+$562.50");
+    expect(html).toContain("Est. payout</small>$937.50");
+    expect(html).toContain("Max profit</small>+$562.50");
     expect(html).toContain("direction-pill-up market-heat-intent-side");
     expect(html).not.toContain("Same side");
     expect(html).toContain('data-testid="market-heat-wallet-submit"');
@@ -253,9 +263,17 @@ describe("MarketHeatPreview component", () => {
   });
 
   test("renders fade intent as the opposite side of a feed row", () => {
-    const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
+    const [baseRow] = buildMarketHeatPreview(copyReadyRows, 1, {
       nowMs: 1_779_158_000_000,
     }).rows;
+    const row = {
+      ...baseRow,
+      cost: 4_000_000,
+      costUsd: 4,
+      currentPrice: 0.25,
+      currentPriceLabel: "$0.25",
+      quantity: 10_000_000,
+    };
     const html = renderToStaticMarkup(
       <MarketHeatPreview
         rows={[row]}
@@ -280,17 +298,19 @@ describe("MarketHeatPreview component", () => {
       />,
     );
 
-    expect(html).toContain("Fade");
+    expect(html).toContain("Fade 0xbbbb2");
     expect(html).toContain("market-heat-intent-side");
     expect(html).toContain("direction-pill-down");
     expect(html).toContain(">DOWN</span>");
     expect(html).not.toContain("Opposite side");
     expect(html).not.toContain("Same side");
-    expect(html).toContain("Fade target</small>");
-    expect(html).toContain("Below $7,100");
+    expect(html).toContain("Entry Price</small><strong>$0.40");
+    expect(html).toContain("Cost</small><strong>$4");
+    expect(html).toContain("market-heat-position-value-down");
+    expect(html).toContain("Value</small><strong>$2.50");
     expect(html).not.toContain("at expiry");
     expect(html).not.toContain("Potential payout</small>");
-    expect(html).toContain("Max profit</small><strong>+$562.50");
+    expect(html).toContain("Max profit</small>+$562.50");
     expect(html).not.toContain("Above $7,100");
     expect(html).not.toContain("Confirm transaction");
   });
@@ -340,10 +360,10 @@ describe("MarketHeatPreview component", () => {
       />,
     );
 
-    expect(html).toContain("Est. payout</small><strong>Loading quote...");
-    expect(html).toContain("Max profit</small><strong>Loading quote...");
-    expect(html).not.toContain("Est. payout</small><strong>$50");
-    expect(html).not.toContain("Max profit</small><strong>+$25");
+    expect(html).toContain("Est. payout</small>Quoting...");
+    expect(html).toContain("Max profit</small>Quoting...");
+    expect(html).not.toContain("Est. payout</small>$50");
+    expect(html).not.toContain("Max profit</small>+$25");
   });
 
   test("renders floor-score wallets without history as unrated heat", () => {
