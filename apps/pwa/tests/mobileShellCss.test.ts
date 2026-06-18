@@ -126,4 +126,18 @@ describe("mobile shell CSS", () => {
     expect(css).toContain("overflow-x: auto;");
     expect(css).toContain("overflow-y: visible;");
   });
+
+  test("keeps compact feed prices and ROI untruncated", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+    const numericCellBlock = css.match(
+      /\.market-heat-entry-price strong,\n\.market-heat-current-price strong,\n\.market-heat-roi strong \{[\s\S]*?\}/,
+    )?.[0];
+
+    expect(css).toContain("max-content max-content max-content 18px;");
+    expect(css).toContain("max-content max-content max-content 14px;");
+    expect(numericCellBlock).toContain("min-width: max-content;");
+    expect(numericCellBlock).toContain("overflow: visible;");
+    expect(numericCellBlock).toContain("text-overflow: clip;");
+    expect(numericCellBlock).not.toContain("text-overflow: ellipsis;");
+  });
 });
