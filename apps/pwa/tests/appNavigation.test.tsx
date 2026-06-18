@@ -13,6 +13,7 @@ import {
   WalletStatusBar,
   buildAppViewSearch,
   buildProfileHeatStat,
+  buildPortfolioPnlFromWalletPerformance,
   buildTradeExpiryOptions,
   buildTradeQuoteKey,
   filterMarketHeatRowsByFollowedWallets,
@@ -36,6 +37,7 @@ import {
   type TradeMarketLadderRow,
 } from "../src/marketHeatModel";
 import type { OraclePriceChart } from "../src/oraclePriceChartModel";
+import type { WalletLeaderboardEntry } from "../src/walletLeaderboards";
 
 function findElementByTestId(node: ReactNode, testId: string): ReactElement | null {
   if (Array.isArray(node)) {
@@ -673,6 +675,42 @@ describe("mobile app navigation", () => {
     const withdrawButton = findElementByTestId(tree, "portfolio-withdraw-bankroll");
     (withdrawButton?.props as { onClick?: () => void }).onClick?.();
     expect(withdrawOpened).toBe(true);
+  });
+
+  test("uses indexed wallet performance for all-time portfolio PNL", () => {
+    const entry: WalletLeaderboardEntry = {
+      rank: 1,
+      wallet: "0x29b8",
+      displayName: "darius",
+      totalCost: 360_863_276,
+      totalPayout: 360_642_713,
+      totalPnl: -220_563,
+      totalPnlLabel: "-$0.22",
+      totalPnlTone: "negative",
+      openCount: 0,
+      closedCount: 71,
+      winCount: 44,
+      lossCount: 27,
+      heatScore: 90,
+      longestWinningStreak: 12,
+      longestWinningStreakLabel: "12 wins",
+      longestLosingStreak: 4,
+      longestLosingStreakLabel: "4 losses",
+      currentStreakType: "win",
+      currentStreakLength: 5,
+      currentStreakLabel: "5 wins",
+      lastSettledAtMs: 1_781_737_207_132,
+      lastSettledLabel: "Jun 17, 15:00",
+      lastSeenMs: 1_781_737_225_326,
+    };
+
+    expect(buildPortfolioPnlFromWalletPerformance(entry)).toEqual({
+      costLabel: "$360.86",
+      payoutLabel: "$360.64",
+      pnlAtomic: "-220563",
+      pnlLabel: "-$0.22",
+      pnlTone: "negative",
+    });
   });
 
   test("renders bottom navigation tabs in primary product order", () => {

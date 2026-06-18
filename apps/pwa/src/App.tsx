@@ -561,6 +561,26 @@ const idlePredictPortfolioPnl: PredictPortfolioPnlSummary = {
   pnlLabel: "$0",
   pnlTone: "flat",
 };
+
+export function buildPortfolioPnlFromWalletPerformance(
+  entry: WalletLeaderboardEntry | null | undefined,
+): PredictPortfolioPnlSummary | null {
+  if (!entry) {
+    return null;
+  }
+
+  const totalCost = BigInt(Math.trunc(entry.totalCost));
+  const totalPayout = BigInt(Math.trunc(entry.totalPayout));
+
+  return {
+    costLabel: formatDusdcBalance(totalCost < 0n ? -totalCost : totalCost),
+    payoutLabel: formatDusdcBalance(totalPayout < 0n ? -totalPayout : totalPayout),
+    pnlAtomic: String(Math.trunc(entry.totalPnl)),
+    pnlLabel: entry.totalPnlLabel,
+    pnlTone: entry.totalPnlTone,
+  };
+}
+
 const PREDICT_MANAGER_STORAGE_KEY = "hot-hands-predict-manager-id";
 const DISMISSED_PORTFOLIO_STORAGE_KEY = "hot-hands-dismissed-portfolio-position-ids";
 const FOLLOWED_WALLETS_STORAGE_KEY = "hot-hands-followed-wallets";
@@ -6052,8 +6072,12 @@ export function App() {
         activeProfileHistoryStatus,
         activeProfileHeatStat,
       );
+  const indexedWalletPortfolioPnl = buildPortfolioPnlFromWalletPerformance(
+    connectedWalletPerformanceEntry,
+  );
   const visiblePortfolioPnl =
-    activePredictManagerObjectId && isPredictPortfolioStateCurrent
+    indexedWalletPortfolioPnl ??
+    (activePredictManagerObjectId && isPredictPortfolioStateCurrent
       ? predictPortfolioState.status === "ready"
         ? predictPortfolioState.pnl
         : predictPortfolioState.status === "loading"
@@ -6067,7 +6091,7 @@ export function App() {
                 pnlLabel: "$--",
               }
             : idlePredictPortfolioPnl
-      : idlePredictPortfolioPnl;
+      : idlePredictPortfolioPnl);
 
   useEffect(() => {
     return () => {
