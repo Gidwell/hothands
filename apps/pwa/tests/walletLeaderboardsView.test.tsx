@@ -82,7 +82,7 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).not.toContain("wallet-leaderboard-table-head-streaks");
     expect(html).toContain("#1");
     expect(html).toContain('data-testid="wallet-leaderboard-profile"');
-    expect(html).toContain("0xaaaa...0001");
+    expect(html).toContain("0xaaaa2");
     expect(html).toContain("+$12.35");
     expect(html).toContain("PNL</small><strong>+$12.35");
     expect(html).toContain("wallet-leaderboard-core wallet-leaderboard-core-positive");
@@ -191,7 +191,7 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain("Win Rate</small>75%");
     expect(html).toContain("Open</small>1");
     expect(html).toContain("Streak</small>3W");
-    expect(html.indexOf("0xbbbb...0002")).toBeLessThan(html.indexOf("0xaaaa...0001"));
+    expect(html.indexOf("0xbbbb2")).toBeLessThan(html.indexOf("0xaaaa2"));
 
     const worstHtml = renderToStaticMarkup(
       <WalletLeaderboardsPanel
@@ -207,11 +207,11 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(worstHtml).toContain('aria-label="Sort best first"');
     expect(worstHtml).toContain("↓");
     expect(worstHtml).toContain("Heat</small><strong>6");
-    expect(worstHtml).toContain("0xcccc...0003");
-    expect(worstHtml.indexOf("0xcccc...0003")).toBeLessThan(
-      worstHtml.indexOf("0xaaaa...0001"),
+    expect(worstHtml).toContain("0xcccc2");
+    expect(worstHtml.indexOf("0xcccc2")).toBeLessThan(
+      worstHtml.indexOf("0xaaaa2"),
     );
-    expect(worstHtml).not.toContain("0xbbbb...0002");
+    expect(worstHtml).not.toContain("0xbbbb2");
   });
 
   test("switches PnL sort between best and worst", () => {
@@ -264,13 +264,13 @@ describe("WalletLeaderboardsPanel component", () => {
     expect(html).toContain('aria-label="Sort best first"');
     expect(html).toContain("↓");
     expect(html).not.toContain("Worst PnL");
-    expect(html).toContain("0xdddd...0004");
+    expect(html).toContain("0xdddd2");
     expect(html).toContain("PNL</small><strong>-$9.50");
     expect(html).toContain("wallet-leaderboard-core wallet-leaderboard-core-negative");
     expect(html).toContain(
       "wallet-leaderboard-streak wallet-leaderboard-streak-negative",
     );
-    expect(html).not.toContain("0xaaaa...0001");
+    expect(html).not.toContain("0xaaaa2");
   });
 
   test("labels streak board primary metric by selected sort", () => {
@@ -430,16 +430,16 @@ describe("WalletLeaderboardsPanel component", () => {
 
     expect(winHtml).toContain('aria-pressed="true" data-testid="wallet-leaderboard-range-mode-current"');
     expect(winHtml).toContain('aria-label="Sort worst first"');
-    expect(winHtml).toContain("0xbbbb...0002");
+    expect(winHtml).toContain("0xbbbb2");
     expect(winHtml).toContain("Current</small><strong>2W");
     expect(winHtml).toContain('wallet-leaderboard-pnl wallet-leaderboard-pnl-positive');
     expect(winHtml).toContain("PNL</small>+$3.45");
     expect(winHtml).not.toContain("Current</small>2W");
     expect(winHtml).not.toContain("Current</small><strong>2 wins");
     expect(winHtml).not.toContain(">Last</span>");
-    expect(winHtml).not.toContain("0xaaaa...0001");
+    expect(winHtml).not.toContain("0xaaaa2");
     expect(lossHtml).toContain('aria-label="Sort best first"');
-    expect(lossHtml).toContain("0xcccc...0003");
+    expect(lossHtml).toContain("0xcccc2");
     expect(lossHtml).toContain("Current</small><strong>2L");
     expect(lossHtml).toContain('wallet-leaderboard-pnl wallet-leaderboard-pnl-negative');
     expect(lossHtml).toContain("PNL</small>-$4.20");
