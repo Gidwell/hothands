@@ -143,18 +143,26 @@ railway up --service hothands-indexer --detach --message "<deploy message>"
 Use `railway logs --service hothands-api` or
 `railway logs --service hothands-indexer` to watch startup and ingestion health.
 
+Railway services run `bun run indexer:migrate` before startup by default when
+`DATABASE_URL` is present. The migration runner uses a Postgres advisory lock,
+so deploying `hothands-api` and `hothands-indexer` close together does not race
+schema creation. Set `HOT_HANDS_RAILWAY_MIGRATE_ON_START=false` only for
+diagnostics.
+
 ### Production Backfills
 
-Run migrations first when schema files change:
+If a schema migration must be run manually, prefer running it inside the
+Railway service network. With SSH configured:
 
 ```bash
-railway run --service hothands-api -- bun run indexer:migrate
+railway ssh --service hothands-api -- bun run indexer:migrate
 ```
 
-`railway run` executes locally with Railway variables. Production Postgres uses
-the internal host `postgres.railway.internal`, so local one-off backfills cannot
-connect unless a public TCP proxy is configured. Prefer the indexer startup
-bootstrap variables above for chart history backfills.
+`railway run` executes locally with Railway variables. Production Postgres often
+uses the internal host `postgres.railway.internal`, so local one-off migrations
+or backfills cannot connect unless a public TCP proxy is configured. Prefer the
+startup migration path above and the indexer startup bootstrap variables for
+chart history backfills.
 
 For local or public-DB manual runs, the regular bounded Predict backfill is:
 

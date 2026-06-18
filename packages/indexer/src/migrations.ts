@@ -8,6 +8,7 @@ export type IndexerMigration = {
 const INDEXER_MIGRATION_FILES = [
   "0001_indexer_foundation.sql",
   "0002_app_social.sql",
+  "0003_price_candles_1m.sql",
 ];
 
 declare const Bun: {

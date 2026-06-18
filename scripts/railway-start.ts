@@ -12,6 +12,20 @@ if (!processName || !commands[processName]) {
   process.exit(1);
 }
 
+if (Bun.env.HOT_HANDS_RAILWAY_MIGRATE_ON_START !== "false" && Bun.env.DATABASE_URL) {
+  console.log("Running Hot Hands migrations before Railway service start.");
+  const migration = Bun.spawn(["bun", "run", "indexer:migrate"], {
+    env: Bun.env,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const migrationExit = await migration.exited;
+  if (migrationExit !== 0) {
+    process.exit(migrationExit);
+  }
+}
+
 const child = Bun.spawn(commands[processName], {
   env: Bun.env,
   stdin: "inherit",

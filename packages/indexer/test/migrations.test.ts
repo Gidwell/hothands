@@ -23,10 +23,12 @@ describe("Predict indexer migrations", () => {
     expect(migrations.map((migration) => migration.name)).toEqual([
       "0001_indexer_foundation.sql",
       "0002_app_social.sql",
+      "0003_price_candles_1m.sql",
     ]);
     expect(migrations[1]?.sql).toContain("create table if not exists app_wallet_sessions");
     expect(migrations[1]?.sql).toContain("create table if not exists app_copy_receipts");
     expect(migrations[1]?.sql).toContain("create table if not exists app_wallet_heat_snapshots");
+    expect(migrations[2]?.sql).toContain("create table if not exists predict_oracle_price_candles_1m");
   });
 
   test("splits migration files into executable SQL statements", () => {
