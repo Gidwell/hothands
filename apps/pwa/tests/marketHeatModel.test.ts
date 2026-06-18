@@ -198,6 +198,64 @@ describe("market heat preview model", () => {
     expect(market?.volumeUsd).toBe(37.5);
   });
 
+  test("keeps mint entry facts when a later live redeem row matches the same feed position", () => {
+    const nowMs = 1_779_071_200_000;
+    const preview = buildMarketHeatPreview(
+      [
+        {
+          id: "mint-original",
+          wallet: "0xredeemlive",
+          manager: "manager-live-redeem",
+          market: "BTC-USD",
+          oracleId: "btc-live-redeem",
+          side: "UP",
+          quantity: 10_000_000,
+          cost: 5_000_000,
+          strike: 64_000,
+          strikeRaw: 64_000_000_000,
+          expiryMs: 1_779_158_400_000,
+          intervalLabel: "15m",
+          observedAtMs: 1_779_070_000_000,
+          heatScore: 61,
+          status: "copy_ready",
+        },
+        {
+          id: "redeem-later",
+          wallet: "0xredeemlive",
+          manager: "manager-live-redeem",
+          market: "BTC-USD",
+          oracleId: "btc-live-redeem",
+          side: "UP",
+          quantity: 10_000_000,
+          cost: 8_000_000,
+          strike: 64_000,
+          strikeRaw: 64_000_000_000,
+          expiryMs: 1_779_158_400_000,
+          intervalLabel: "15m",
+          observedAtMs: 1_779_070_600_000,
+          heatScore: 64,
+          status: "watching",
+        },
+      ],
+      8,
+      { nowMs },
+    );
+
+    expect(preview.rows).toHaveLength(1);
+    expect(preview.rows[0]).toMatchObject({
+      id: "mint-original",
+      status: "copy_ready",
+      observedAtMs: 1_779_070_000_000,
+      statusLabel: "20m ago",
+      quantity: 10_000_000,
+      cost: 5_000_000,
+      costUsd: 5,
+      entryPrice: 0.5,
+      entryPriceLabel: "$0.50",
+      heatScore: 64,
+    });
+  });
+
   test("formats backend copy attribution summaries on feed rows", () => {
     const [row] = buildMarketHeatPreview(
       [

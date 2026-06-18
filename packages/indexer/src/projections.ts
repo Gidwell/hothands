@@ -155,7 +155,12 @@ export function buildLatestTradeFeedProjection(
       ? [...events]
       : events.filter((event) => event.expiryMs > hideExpiredAtMs);
 
-  return applyLimit(visibleEvents.sort(compareTradeEventsLatestFirst), limit);
+  return applyLimit(
+    visibleEvents
+      .filter((event) => event.kind === "mint")
+      .sort(compareTradeEventsLatestFirst),
+    limit,
+  );
 }
 
 export function buildTraderHeatProjection(

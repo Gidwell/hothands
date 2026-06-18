@@ -2272,6 +2272,12 @@ function mergeMarketHeatInputs(
   left: MarketHeatPreviewRowInput,
   right: MarketHeatPreviewRowInput,
 ): MarketHeatPreviewRowInput {
+  const copyReadyEntryMerge = mergeCopyReadyEntryWithWatchingRow(left, right);
+
+  if (copyReadyEntryMerge) {
+    return copyReadyEntryMerge;
+  }
+
   const newest = right.observedAtMs >= left.observedAtMs ? right : left;
   const oldest = newest === right ? left : right;
   const quantity = sumOptionalNonNegative(left.quantity, right.quantity);
@@ -2309,6 +2315,64 @@ function mergeMarketHeatInputs(
     delete merged.cost;
   } else {
     merged.cost = cost;
+  }
+
+  if (costUsd === undefined) {
+    delete merged.costUsd;
+  } else {
+    merged.costUsd = roundUsd(costUsd);
+  }
+
+  if (strikeRaw === undefined) {
+    delete merged.strikeRaw;
+  } else {
+    merged.strikeRaw = strikeRaw;
+  }
+
+  return merged;
+}
+
+function mergeCopyReadyEntryWithWatchingRow(
+  left: MarketHeatPreviewRowInput,
+  right: MarketHeatPreviewRowInput,
+): MarketHeatPreviewRowInput | null {
+  if (left.status === right.status) {
+    return null;
+  }
+
+  const entryRow =
+    left.status === "copy_ready" ? left : right.status === "copy_ready" ? right : null;
+  const activityRow = entryRow === left ? right : left;
+
+  if (!entryRow || activityRow.status !== "watching") {
+    return null;
+  }
+
+  const metadataRow = activityRow.observedAtMs >= entryRow.observedAtMs ? activityRow : entryRow;
+  const costUsd = normalizeCostUsd(entryRow);
+  const strikeRaw = optionalNonNegativeNumber(entryRow.strikeRaw ?? activityRow.strikeRaw);
+  const fillCount = Math.max(1, Math.floor(entryRow.fillCount ?? 1));
+  const merged: MarketHeatPreviewRowInput = {
+    ...entryRow,
+    heatScore: Math.max(left.heatScore, right.heatScore),
+    observedAtMs: entryRow.observedAtMs,
+    status: "copy_ready",
+    fillCount,
+  };
+  const walletStats = metadataRow.walletStats ?? entryRow.walletStats ?? activityRow.walletStats;
+  const copyAttribution =
+    metadataRow.copyAttribution ?? entryRow.copyAttribution ?? activityRow.copyAttribution;
+
+  if (walletStats === undefined) {
+    delete merged.walletStats;
+  } else {
+    merged.walletStats = walletStats;
+  }
+
+  if (copyAttribution === undefined) {
+    delete merged.copyAttribution;
+  } else {
+    merged.copyAttribution = copyAttribution;
   }
 
   if (costUsd === undefined) {

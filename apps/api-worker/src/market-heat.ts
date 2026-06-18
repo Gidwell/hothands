@@ -539,6 +539,7 @@ function selectLatestActivityRows(
   events: PredictNormalizedTradeEvent[]
 ): PredictNormalizedTradeEvent[] {
   return [...events]
+    .filter((event) => event.kind === "mint")
     .sort(compareEventsByLatest)
     .slice(0, LATEST_ACTIVITY_ROW_LIMIT);
 }
@@ -833,6 +834,7 @@ function mapIndexedOpenPositionToRow(
   oraclesById: Map<string, PredictOracleState>
 ): MarketHeatRow {
   const heatScore = normalizeHeatScore(heatByTrader.get(position.owner)?.hotScore ?? 0);
+  const openCost = estimateOpenPositionCost(position);
 
   return {
     id: `indexed-open-${position.id}`,
@@ -842,8 +844,8 @@ function mapIndexedOpenPositionToRow(
     oracleId: position.oracleId,
     side: position.isUp ? "UP" : "DOWN",
     quantity: position.openQuantity,
-    cost: position.cost,
-    costUsd: position.cost / 1_000_000,
+    cost: openCost,
+    costUsd: openCost / 1_000_000,
     strike: normalizeStrike(position.strike),
     strikeRaw: position.strike,
     expiryMs: position.expiryMs,
@@ -855,6 +857,16 @@ function mapIndexedOpenPositionToRow(
     heatScore,
     status: "copy_ready"
   };
+}
+
+function estimateOpenPositionCost(position: PredictPositionSummary): number {
+  if (position.mintedQuantity <= 0 || position.openQuantity >= position.mintedQuantity) {
+    return position.cost;
+  }
+
+  return Math.floor(
+    (position.cost * Math.max(0, position.openQuantity)) / position.mintedQuantity
+  );
 }
 
 function mapTradeEventMetrics(

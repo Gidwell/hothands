@@ -44,6 +44,33 @@ describe("Predict durable projections", () => {
     ).toEqual(["mint:cold-newest:0", "mint:hot-older:0"]);
   });
 
+  test("keeps latest feed anchored to mints when a position redeems while live", () => {
+    const events = [
+      tradeEvent({
+        eventId: "mint:live-position:0",
+        kind: "mint",
+        actor: "0xactive",
+        timestampMs: 10_000,
+        expiryMs: 20_000,
+        cost: 250_000,
+      }),
+      tradeEvent({
+        eventId: "redeem:live-position:0",
+        kind: "redeem",
+        actor: "0xactive",
+        timestampMs: 16_000,
+        expiryMs: 20_000,
+        cost: 900_000,
+      }),
+    ];
+
+    expect(
+      buildLatestTradeFeedProjection(events, {
+        hideExpiredAtMs: 18_000,
+      }).map((event) => event.eventId),
+    ).toEqual(["mint:live-position:0"]);
+  });
+
   test("scores recent prediction quality instead of absolute PnL alone", () => {
     const positions = [
       ...Array.from({ length: 6 }, (_, index) =>

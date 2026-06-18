@@ -733,6 +733,104 @@ describe("testnet market heat endpoint", () => {
     ]);
   });
 
+  test("keeps live redeemed indexed positions in feed with original mint entry facts", async () => {
+    const mintTimeMs = 1_779_070_000_000;
+    const redeemTimeMs = 1_779_070_600_000;
+    const projection = await getTestnetMarketHeat({
+      reader: {
+        ...createIndexedMarketHeatReader(),
+        listRecentTradeEvents: async () => [
+          indexedTradeEvent({
+            eventId: "redeem:live-position:1",
+            kind: "redeem",
+            actor: "0xredeemed-live",
+            trader: "0xredeemed-live",
+            managerId: "manager-redeemed-live",
+            oracleId: "btc-indexed-long",
+            strike: 64_000_000_000,
+            quantity: 10_000_000,
+            cost: 8_000_000,
+            timestampMs: redeemTimeMs
+          }),
+          indexedTradeEvent({
+            eventId: "mint:live-position:1",
+            kind: "mint",
+            actor: "0xredeemed-live",
+            trader: "0xredeemed-live",
+            managerId: "manager-redeemed-live",
+            oracleId: "btc-indexed-long",
+            strike: 64_000_000_000,
+            quantity: 10_000_000,
+            cost: 5_000_000,
+            timestampMs: mintTimeMs
+          })
+        ],
+        listPositionSummaries: async () => []
+      },
+      nowMs: 1_779_071_000_000
+    });
+
+    expect(projection.rows).toEqual([
+      expect.objectContaining({
+        wallet: "0xredeemed-live",
+        manager: "manager-redeemed-live",
+        status: "copy_ready",
+        observedAtMs: mintTimeMs,
+        quantity: 10_000_000,
+        cost: 5_000_000,
+        costUsd: 5,
+        strike: 64000,
+        strikeRaw: 64_000_000_000
+      })
+    ]);
+    expect(projection.rows[0]?.observedAtMs).not.toBe(redeemTimeMs);
+  });
+
+  test("uses remaining open cost for partially redeemed indexed open positions", async () => {
+    const projection = await getTestnetMarketHeat({
+      reader: {
+        ...createIndexedMarketHeatReader(),
+        listRecentTradeEvents: async () => [],
+        listPositionSummaries: async (options) => {
+          if (options?.status === "open") {
+            return [
+              {
+                id: "manager-partial:btc-indexed-long:1779158400000:64000000000:UP",
+                owner: "0xpartial-open",
+                managerId: "manager-partial",
+                oracleId: "btc-indexed-long",
+                expiryMs: 1_779_158_400_000,
+                strike: 64_000_000_000,
+                isUp: true,
+                mintedQuantity: 10_000_000,
+                redeemedQuantity: 4_000_000,
+                openQuantity: 6_000_000,
+                cost: 5_000_000,
+                payout: 3_000_000,
+                realizedPnl: 1_000_000,
+                lastEventMs: 1_779_070_600_000,
+                status: "open"
+              }
+            ];
+          }
+
+          return [];
+        }
+      },
+      nowMs: 1_779_071_000_000
+    });
+
+    expect(projection.rows).toEqual([
+      expect.objectContaining({
+        wallet: "0xpartial-open",
+        quantity: 6_000_000,
+        cost: 3_000_000,
+        costUsd: 3,
+        status: "copy_ready"
+      })
+    ]);
+  });
+
   test("scores feed rows from the deep wallet history window", async () => {
     const nowMs = 1_779_071_500_000;
     const wallet = "0xtrader-deep-hot";
