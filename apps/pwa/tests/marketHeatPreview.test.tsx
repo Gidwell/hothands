@@ -684,10 +684,10 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Markets");
     expect(html).toContain("Wallet");
     expect(html).toContain("Position");
-    expect(html).toContain("Expires");
+    expect(html).not.toContain(">Expires</span>");
     expect(html).toContain("Entry");
     expect(html).toContain("Live");
-    expect(html).not.toContain("ROI");
+    expect(html).toContain("ROI");
     expect(html).not.toContain("Entry / Now");
     expect(html).not.toContain("Entry / Live");
     expect(html).not.toContain(">Direction</span>");
@@ -754,13 +754,13 @@ describe("MarketHeatPreview component", () => {
     expect(dedupedHtml).not.toContain("market-heat-fill-child-row");
     expect(dedupedHtml).toContain("UP");
     expect(dedupedHtml).toContain("$7,100");
-    expect(dedupedHtml).toContain("3h");
+    expect(dedupedHtml).not.toContain("3h");
     expect(dedupedHtml).not.toContain("3h left");
     expect(html).toContain("UP");
     expect(html).toContain("$7,100");
-    expect(html).toContain("3h");
+    expect(html).not.toContain("3h");
     expect(html).not.toContain("3h left");
-    expect(html).toContain("market-heat-countdown-live");
+    expect(html).not.toContain("market-heat-countdown-live");
     expect(html).not.toContain("Live expiry countdown");
     expect(html).not.toContain(">Live</small>");
     expect(html).toContain(

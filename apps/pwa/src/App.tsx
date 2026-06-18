@@ -1519,8 +1519,27 @@ function isLiveCountdownLabel(label: string | null | undefined): boolean {
   return unit === "m" || value <= 24;
 }
 
-function formatMarketHeatExpiresLabel(label: string): string {
-  return label.replace(/\s+left$/i, "");
+function formatMarketHeatRoiLabel(
+  entryPrice: number | undefined,
+  currentPrice: number | undefined,
+): string {
+  if (
+    entryPrice === undefined ||
+    currentPrice === undefined ||
+    !Number.isFinite(entryPrice) ||
+    !Number.isFinite(currentPrice) ||
+    entryPrice <= 0
+  ) {
+    return "--";
+  }
+
+  const roundedRoi = Math.round(((currentPrice - entryPrice) / entryPrice) * 100);
+
+  if (Object.is(roundedRoi, -0) || roundedRoi === 0) {
+    return "0%";
+  }
+
+  return `${roundedRoi > 0 ? "+" : ""}${roundedRoi}%`;
 }
 
 function parsePnlAtomicLabel(item: PredictPortfolioHistoryItem): number | null {
@@ -4512,10 +4531,9 @@ export function MarketHeatPreview({
         </div>
       </>
     );
-    const durationLabel = formatMarketHeatExpiresLabel(row.timeRemainingLabel ?? row.expiryTimeLabel);
-    const isLiveCountdown = isLiveCountdownLabel(row.timeRemainingLabel);
     const entryPriceLabel = row.entryPriceLabel ?? "--";
     const currentPriceLabel = row.currentPriceLabel ?? "--";
+    const roiLabel = formatMarketHeatRoiLabel(row.entryPrice, row.currentPrice);
     const entryNowTone = row.entryNowTone ?? "unknown";
     const handleMarketHeatRowClick = (event: SyntheticEvent<HTMLElement>) => {
       if (swipedRowRef.current === row.id) {
@@ -4725,13 +4743,6 @@ export function MarketHeatPreview({
             </strong>
           </div>
           <div
-            className={`market-heat-compact-duration${
-              isLiveCountdown ? " market-heat-countdown-live" : ""
-            }`}
-          >
-            <strong>{durationLabel}</strong>
-          </div>
-          <div
             className="market-heat-entry-price"
             aria-label={`Entry ${entryPriceLabel}`}
           >
@@ -4742,6 +4753,12 @@ export function MarketHeatPreview({
             aria-label={currentPriceLabel === "--" ? "Live unavailable" : `Live ${currentPriceLabel}`}
           >
             <strong>{currentPriceLabel}</strong>
+          </div>
+          <div
+            className={`market-heat-roi market-heat-roi-${entryNowTone}`}
+            aria-label={roiLabel === "--" ? "ROI unavailable" : `ROI ${roiLabel}`}
+          >
+            <strong>{roiLabel}</strong>
           </div>
           <ChevronIcon
             className={`market-heat-compact-chevron ${
@@ -4863,9 +4880,9 @@ export function MarketHeatPreview({
             </span>
           )}
           <span aria-hidden="true">Position</span>
-          <span aria-hidden="true">Expires</span>
           <span aria-hidden="true">Entry</span>
           <span aria-hidden="true">Live</span>
+          <span aria-hidden="true">ROI</span>
           <span aria-hidden="true" />
         </div>
       ) : null}
