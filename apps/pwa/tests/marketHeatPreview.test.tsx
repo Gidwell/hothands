@@ -685,8 +685,9 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Wallet");
     expect(html).toContain("Position");
     expect(html).not.toContain(">Expires</span>");
-    expect(html).toContain("Entry");
-    expect(html).toContain("Live");
+    expect(html).not.toContain(">Entry</span>");
+    expect(html).not.toContain(">Live</span>");
+    expect(html).toContain("Price");
     expect(html).toContain("ROI");
     expect(html).not.toContain("Entry / Now");
     expect(html).not.toContain("Entry / Live");
@@ -704,10 +705,10 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("🔥 94");
     expect(html).toContain("market-heat-compact-position");
     expect(html).toContain('<span>$7,100</span><strong class="direction-pill direction-pill-up">UP</strong>');
-    expect(html).toContain("market-heat-entry-price");
+    expect(html).not.toContain("market-heat-entry-price");
     expect(html).toContain("market-heat-current-price");
-    expect(html).toContain("$0.40");
-    expect(html).toContain("Live unavailable");
+    expect(html).not.toContain("$0.40");
+    expect(html).toContain("Price unavailable");
     expect(html).toContain("--");
     expect(html).not.toContain('data-testid="market-heat-share"');
     expect(html).toContain("data-testid=\"market-heat-wallet-profile\"");

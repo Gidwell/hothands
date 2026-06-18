@@ -127,14 +127,14 @@ describe("mobile shell CSS", () => {
     expect(css).toContain("overflow-y: visible;");
   });
 
-  test("keeps compact feed prices and ROI untruncated", async () => {
+  test("keeps compact feed price and ROI untruncated", async () => {
     const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
     const numericCellBlock = css.match(
-      /\.market-heat-entry-price strong,\n\.market-heat-current-price strong,\n\.market-heat-roi strong \{[\s\S]*?\}/,
+      /\.market-heat-current-price strong,\n\.market-heat-roi strong \{[\s\S]*?\}/,
     )?.[0];
 
-    expect(css).toContain("max-content max-content max-content 18px;");
-    expect(css).toContain("max-content max-content max-content 14px;");
+    expect(css).toContain("minmax(48px, max-content) minmax(54px, max-content) 18px;");
+    expect(css).toContain("minmax(46px, max-content) minmax(52px, max-content) 14px;");
     expect(numericCellBlock).toContain("min-width: max-content;");
     expect(numericCellBlock).toContain("overflow: visible;");
     expect(numericCellBlock).toContain("text-overflow: clip;");

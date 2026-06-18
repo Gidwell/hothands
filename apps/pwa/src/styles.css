@@ -4682,8 +4682,9 @@ button:disabled {
 .market-heat-table-head,
 .market-heat-compact-row {
   display: grid;
-  grid-template-columns: minmax(96px, 1.28fr) minmax(60px, 0.62fr) max-content max-content max-content 18px;
-  gap: 6px;
+  grid-template-columns: minmax(116px, 0.86fr) minmax(80px, 0.62fr) minmax(48px, max-content) minmax(54px, max-content) 18px;
+  column-gap: 10px;
+  row-gap: 0;
   align-items: center;
 }
 
@@ -4949,11 +4950,15 @@ button:disabled {
 }
 
 .market-heat-table-head span:nth-child(2),
-.market-heat-table-head span:nth-child(3),
-.market-heat-table-head span:nth-child(4),
 .market-heat-table-head span:nth-child(5) {
   justify-self: start;
   text-align: left;
+}
+
+.market-heat-table-head span:nth-child(3),
+.market-heat-table-head span:nth-child(4) {
+  justify-self: end;
+  text-align: right;
 }
 
 .market-heat-compact-duration {
@@ -4965,27 +4970,22 @@ button:disabled {
   color: var(--hh-up);
 }
 
-.market-heat-entry-price,
 .market-heat-current-price,
 .market-heat-roi {
   display: flex;
   align-items: center;
-  justify-items: start;
+  justify-content: flex-end;
+  justify-items: end;
   min-width: max-content;
+  text-align: right;
 }
 
-.market-heat-entry-price strong,
 .market-heat-current-price strong,
 .market-heat-roi strong {
   min-width: max-content;
   overflow: visible;
   text-overflow: clip;
   white-space: nowrap;
-}
-
-.market-heat-entry-price strong {
-  color: var(--hh-text);
-  font-size: 0.78rem;
 }
 
 .market-heat-current-price strong {
@@ -5273,8 +5273,9 @@ button:disabled {
 @media (max-width: 430px) {
   .market-heat-table-head,
   .market-heat-compact-row {
-    grid-template-columns: minmax(96px, 1.42fr) minmax(50px, 0.5fr) max-content max-content max-content 14px;
-    gap: 5px;
+    grid-template-columns: minmax(104px, 0.86fr) minmax(74px, 0.62fr) minmax(46px, max-content) minmax(52px, max-content) 14px;
+    column-gap: 8px;
+    row-gap: 0;
   }
 
   .market-heat-intent-targets,

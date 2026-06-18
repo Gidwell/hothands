@@ -4531,7 +4531,6 @@ export function MarketHeatPreview({
         </div>
       </>
     );
-    const entryPriceLabel = row.entryPriceLabel ?? "--";
     const currentPriceLabel = row.currentPriceLabel ?? "--";
     const roiLabel = formatMarketHeatRoiLabel(row.entryPrice, row.currentPrice);
     const entryNowTone = row.entryNowTone ?? "unknown";
@@ -4743,14 +4742,8 @@ export function MarketHeatPreview({
             </strong>
           </div>
           <div
-            className="market-heat-entry-price"
-            aria-label={`Entry ${entryPriceLabel}`}
-          >
-            <strong>{entryPriceLabel}</strong>
-          </div>
-          <div
             className={`market-heat-current-price market-heat-current-price-${entryNowTone}`}
-            aria-label={currentPriceLabel === "--" ? "Live unavailable" : `Live ${currentPriceLabel}`}
+            aria-label={currentPriceLabel === "--" ? "Price unavailable" : `Price ${currentPriceLabel}`}
           >
             <strong>{currentPriceLabel}</strong>
           </div>
@@ -4880,8 +4873,7 @@ export function MarketHeatPreview({
             </span>
           )}
           <span aria-hidden="true">Position</span>
-          <span aria-hidden="true">Entry</span>
-          <span aria-hidden="true">Live</span>
+          <span aria-hidden="true">Price</span>
           <span aria-hidden="true">ROI</span>
           <span aria-hidden="true" />
         </div>
