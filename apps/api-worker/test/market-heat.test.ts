@@ -1435,6 +1435,37 @@ describe("testnet market heat endpoint", () => {
     });
   });
 
+  test("quotes close to the requested spend without intentionally exceeding it", async () => {
+    const inspectedQuantities: string[] = [];
+    const response = await worker.fetch(
+      new Request(
+        "https://api.hot-hands.test/testnet/quote?oracleId=0xabc123&expiry=1779158400000&strike=72000000000&side=UP&spendUsd=25&estimatedPrice=0.5"
+      ),
+      {
+        inspectPredictQuoteQuantity: async ({ quantity }) => {
+          inspectedQuantities.push(quantity.toString());
+
+          return {
+            cost: (quantity * 3n) / 5n,
+            redeemPayout: quantity / 2n
+          };
+        }
+      } as unknown as Env
+    );
+
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    expect(inspectedQuantities.length).toBeLessThanOrEqual(4);
+    expect(body).toMatchObject({
+      source: "live_testnet",
+      requestedSpendUsd: 25,
+      quoteStatus: "ready"
+    });
+    expect(body.costUsd).toBeGreaterThanOrEqual(24.99);
+    expect(body.costUsd).toBeLessThanOrEqual(25);
+  });
+
   test("rejects malformed testnet quote requests without inspecting Predict", async () => {
     let inspectCount = 0;
     const response = await worker.fetch(

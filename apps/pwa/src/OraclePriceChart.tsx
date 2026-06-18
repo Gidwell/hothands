@@ -841,7 +841,7 @@ function syncOracleMarketPriceLines(
         lineVisible: true,
         lineWidth: 2,
         price: strike.price,
-        title: `Settlement ${strike.label}`,
+        title: "Settlement",
       }),
     );
   }

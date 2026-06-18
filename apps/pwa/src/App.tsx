@@ -162,6 +162,7 @@ const quickAmounts = [10, 25, 50, COPY_AMOUNT_MAX];
 const MARKET_HEAT_PRICE_REFRESH_MS = 1_000;
 const MARKET_HEAT_FEED_UPDATES_REFRESH_MS = 1_000;
 const MARKET_HEAT_ROWS_REFRESH_MS = 15_000;
+const TRADE_QUOTE_LIVE_REFRESH_MS = 3_000;
 const COMPACT_ORACLE_CHART_HISTORY_MS = 15 * 60_000;
 const COMPACT_ORACLE_CHART_MAX_POINTS = 900;
 const DEFAULT_SHARE_URL = "https://hothands.app/";
@@ -948,6 +949,7 @@ function getTradeStrikeOptionsForSelection(
   if (
     !selection ||
     selection.marketId !== row.id ||
+    selection.profile !== undefined ||
     options.some(
       (option) =>
         option.strikeRaw === selection.strikeRaw &&
@@ -970,6 +972,28 @@ function getTradeStrikeOptionsForSelection(
     },
     ...options,
   ];
+}
+
+function resolveLiveTradeMarketSelection(
+  row: TradeMarketLadderRow,
+  selection: TradeMarketSelection | null,
+  side: TradeSide,
+): TradeMarketSelection | null {
+  if (!selection || selection.marketId !== row.id) {
+    return null;
+  }
+
+  if (selection.profile === undefined) {
+    return selection;
+  }
+
+  const liveProfileOption = getTradeStrikeOptions(row, side).find(
+    (option) => option.profile === selection.profile,
+  );
+
+  return liveProfileOption
+    ? buildTradeMarketSelection(row.id, liveProfileOption)
+    : selection;
 }
 
 function buildTradeMarketSelectionFromRow(row: TradeMarketLadderRow): TradeMarketSelection {
@@ -1032,7 +1056,7 @@ function buildTradeLadderDisplayRows({
     null;
   const activeCustomStrike =
     baseSelectedMarket && customStrike?.marketId === baseSelectedMarket.id
-      ? customStrike
+      ? resolveLiveTradeMarketSelection(baseSelectedMarket, customStrike, selectedSide)
       : null;
   const selectedMarket = baseSelectedMarket
     ? activeCustomStrike
@@ -1213,6 +1237,30 @@ function applyCustomStrikeToTradeMarket(
         ? market.moneynessLabel
         : formatTradeMoneyness(customStrike.strike - spot),
   };
+}
+
+export function resolveSelectedTradeMarketForSelection({
+  customStrike,
+  market,
+  side,
+  spotPriceLabel,
+}: {
+  customStrike: TradeMarketSelection | null | undefined;
+  market: TradeMarketLadderRow | null;
+  side: TradeSide;
+  spotPriceLabel: string;
+}): {
+  selectedCustomStrike: TradeMarketSelection | null;
+  selectedMarket: TradeMarketLadderRow | null;
+} {
+  const selectedCustomStrike = market
+    ? resolveLiveTradeMarketSelection(market, customStrike ?? null, side)
+    : null;
+  const selectedMarket = market && selectedCustomStrike
+    ? applyCustomStrikeToTradeMarket(market, selectedCustomStrike, spotPriceLabel)
+    : null;
+
+  return { selectedCustomStrike, selectedMarket };
 }
 
 function selectTradeMarketStrikePrices(
@@ -2610,7 +2658,10 @@ function TradeMarketCard({
   });
   const cardMarket = selectedMarket ?? marketRow;
   const selectedQuoteStatus = isSelectedMarket ? quoteStatus : "idle";
-  void quote;
+  const buyAmountLabel =
+    isSelectedMarket && selectedQuoteStatus === "ready" && quote
+      ? formatCopyAmount(quote.costUsd)
+      : formatCopyAmount(copyAmount);
   void marketPriceLabel;
 
   return (
@@ -2723,7 +2774,7 @@ function TradeMarketCard({
                     <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
                       <span>
                         <small>Buy</small>
-                        {formatCopyAmount(copyAmount)}
+                        {buyAmountLabel}
                       </span>
                       {selectedQuoteStatus === "loading" ? (
                         <span className="metric-muted">
@@ -2844,8 +2895,6 @@ export function TradeTicket({
     hasPredictManagerObjectId &&
     hasSelectedStrike &&
     hasUsableCopyAmount &&
-    quoteStatus === "ready" &&
-    Boolean(quote) &&
     !walletActionPending;
   const tradeWalletButtonLabel = !selectedMarket
     ? "No active market"
@@ -2855,15 +2904,11 @@ export function TradeTicket({
         ? "Create Predict account first"
         : !hasUsableCopyAmount
           ? "Enter amount"
-        : quoteStatus === "loading"
-          ? "Wait for quote"
-          : quoteStatus === "error"
-            ? "Quote unavailable"
-            : quoteStatus !== "ready"
-              ? "Select a price"
-              : walletActionPending
-                ? "Sending..."
-                : "Confirm transaction";
+        : !hasSelectedStrike
+          ? "Select a price"
+          : walletActionPending
+            ? "Sending..."
+            : "Confirm transaction";
   const activeMarketRow =
     displayedMarketRows.find((marketRow) => marketRow.id === (selectedMarket?.id ?? selectedMarketId)) ??
     displayedMarketRows[0] ??
@@ -4510,11 +4555,7 @@ export function MarketHeatPreview({
       ? "Connect wallet first"
       : !hasUsableCopyAmount
         ? "Enter amount"
-      : isQuoteError
-        ? "Quote unavailable — retry"
-        : isQuoteReady
-          ? rowIntentLabel
-          : `Loading ${rowIntentLabel.toLowerCase()} quote...`;
+        : rowIntentLabel;
     const copyAttributionLabel = copyAttributionLabels[row.id];
     const swipePreviewForRow = swipePreview?.rowId === row.id ? swipePreview : null;
     const swipeDirectionMode =
@@ -4531,6 +4572,8 @@ export function MarketHeatPreview({
     const rowSwipeHintMode =
       swipeHintRowId === row.id && !swipePreviewForRow ? activeSwipeHintMode : null;
     const returnPreview = rowQuote ? buildReturnPreviewFromQuote(rowQuote) : null;
+    const buyAmountLabel =
+      isQuoteReady && rowQuote ? formatCopyAmount(rowQuote.costUsd) : formatCopyAmount(copyAmount);
     const rowIdentityTitle = identityMode === "market" ? row.pairLabel : row.displayName;
     const intentActorTitle = row.displayName;
     const traderCostLabel = formatMarketHeatRowCost(row);
@@ -4634,7 +4677,7 @@ export function MarketHeatPreview({
           <div className="trade-ticket-metrics market-heat-ticket-metrics">
             <span>
               <small>Buy</small>
-              {formatCopyAmount(copyAmount)}
+              {buyAmountLabel}
             </span>
             <span className={returnPreview ? "trade-ticket-metric-win" : "metric-muted"}>
               <small>To win</small>
@@ -4648,8 +4691,7 @@ export function MarketHeatPreview({
               data-testid="market-heat-wallet-submit"
               disabled={
                 !walletConnected ||
-                !hasUsableCopyAmount ||
-                (!isQuoteReady && !isQuoteError)
+                !hasUsableCopyAmount
               }
               onClick={(event) => {
                 event.stopPropagation();
@@ -4657,12 +4699,7 @@ export function MarketHeatPreview({
                   return;
                 }
 
-                if (isQuoteError) {
-                  onRetryQuote?.();
-                  return;
-                }
-
-                if (!isQuoteReady) {
+                if (!hasUsableCopyAmount) {
                   return;
                 }
 
@@ -5627,16 +5664,18 @@ export function App() {
     tradeMarketRows.find((marketRow) => marketRow.id === selectedTradeMarketId) ??
     tradeMarketRows[0] ??
     null;
-  const selectedTradeCustomStrike = baseSelectedTradeMarket
+  const storedSelectedTradeCustomStrike = baseSelectedTradeMarket
     ? customTradeStrikes[baseSelectedTradeMarket.id] ?? null
     : null;
-  const selectedTradeMarket = baseSelectedTradeMarket && selectedTradeCustomStrike
-    ? applyCustomStrikeToTradeMarket(
-        baseSelectedTradeMarket,
-        selectedTradeCustomStrike,
-        tradeMarketPriceLabel,
-      )
-    : null;
+  const {
+    selectedCustomStrike: selectedTradeCustomStrike,
+    selectedMarket: selectedTradeMarket,
+  } = resolveSelectedTradeMarketForSelection({
+    customStrike: storedSelectedTradeCustomStrike,
+    market: baseSelectedTradeMarket,
+    side: tradeSide,
+    spotPriceLabel: tradeMarketPriceLabel,
+  });
   const activeChartOracleId =
     activeView === "trade" && baseSelectedTradeMarket
       ? baseSelectedTradeMarket.oracleId
@@ -6985,6 +7024,62 @@ export function App() {
 
   useEffect(() => {
     if (
+      activeView !== "trade" ||
+      previewMode !== "market" ||
+      !realtimeApiBaseUrl ||
+      !tradeQuoteRequested ||
+      !selectedTradeMarket ||
+      !tradeQuoteKey ||
+      activeTradeQuoteStatus !== "ready"
+    ) {
+      return undefined;
+    }
+
+    let isCurrent = true;
+    const refreshQuote = () => {
+      void loadTradeQuote({
+        apiBaseUrl: realtimeApiBaseUrl,
+        market: selectedTradeMarket,
+        side: tradeSide,
+        spendUsd: copyState.copyAmount,
+      })
+        .then((quote) => {
+          if (!isCurrent || !quote) {
+            return;
+          }
+
+          setTradeQuoteState({
+            key: tradeQuoteKey,
+            status: "ready",
+            quote,
+          });
+        })
+        .catch(() => undefined);
+    };
+
+    const timer = window.setInterval(refreshQuote, TRADE_QUOTE_LIVE_REFRESH_MS);
+
+    return () => {
+      isCurrent = false;
+      window.clearInterval(timer);
+    };
+  }, [
+    activeTradeQuoteStatus,
+    activeView,
+    copyState.copyAmount,
+    previewMode,
+    realtimeApiBaseUrl,
+    selectedTradeMarket?.expiry,
+    selectedTradeMarket?.id,
+    selectedTradeMarket?.oracleId,
+    selectedTradeMarket?.strikeRaw,
+    tradeQuoteKey,
+    tradeQuoteRequested,
+    tradeSide,
+  ]);
+
+  useEffect(() => {
+    if (
       (activeView !== "feed" && activeView !== "profile") ||
       previewMode !== "market" ||
       !realtimeApiBaseUrl ||
@@ -7926,10 +8021,10 @@ export function App() {
       return;
     }
 
-    if (!selectedTradeMarket || !activeTradeQuote) {
+    if (!selectedTradeMarket) {
       setWalletTxState({
         status: "error",
-        label: "Wait for a live quote before sending.",
+        label: "Choose a live trade first.",
         digest: null,
       });
       return;
@@ -7944,7 +8039,41 @@ export function App() {
       return;
     }
 
-    const quoteCostAtomic = parseAtomicQuoteCost(activeTradeQuote.cost);
+    setWalletTxState({
+      status: "pending",
+      label: "Refreshing quote...",
+      digest: null,
+    });
+
+    const freshQuote = await loadTradeQuote({
+      apiBaseUrl: realtimeApiBaseUrl,
+      market: selectedTradeMarket,
+      side: tradeSide,
+      spendUsd: copyState.copyAmount,
+      timeoutMs: 10_000,
+    });
+
+    if (!freshQuote) {
+      setTradeQuoteState({
+        key: tradeQuoteKey,
+        status: "error",
+        quote: null,
+      });
+      setWalletTxState({
+        status: "error",
+        label: "Could not refresh this quote. Try again.",
+        digest: null,
+      });
+      return;
+    }
+
+    setTradeQuoteState({
+      key: tradeQuoteKey,
+      status: "ready",
+      quote: freshQuote,
+    });
+
+    const quoteCostAtomic = parseAtomicQuoteCost(freshQuote.cost);
     if (
       quoteCostAtomic !== null &&
       livePredictManagerBankrollAtomic !== null &&
@@ -7970,7 +8099,7 @@ export function App() {
       const transaction = buildTradeMintTransaction({
         predictManagerObjectId: activePredictManagerObjectId,
         market: selectedTradeMarket,
-        quote: activeTradeQuote,
+        quote: freshQuote,
       });
       const result = await dAppKit.signAndExecuteTransaction({ transaction });
       const error = walletResultError(result);

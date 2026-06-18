@@ -419,7 +419,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Heat 4.");
   });
 
-  test("shows a retry state when the live copy quote fails", () => {
+  test("keeps wallet submit available when the live copy quote fails", () => {
     const [row] = buildMarketHeatPreview(copyReadyRows, 1, {
       nowMs: 1_779_158_000_000,
     }).rows;
@@ -445,7 +445,10 @@ describe("MarketHeatPreview component", () => {
       />,
     );
 
-    expect(html).toContain("Quote unavailable — retry");
+    expect(html).toContain("Quote unavailable");
+    expect(html).toContain('data-testid="market-heat-wallet-submit"');
+    expect(html).toContain(">Copy</button>");
+    expect(html).not.toContain('data-testid="market-heat-wallet-submit" disabled=""');
     expect(html).not.toContain("Confirm transaction");
   });
 

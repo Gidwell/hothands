@@ -78,10 +78,15 @@ export interface PredictQuantityQuote {
 const ZERO_SENDER =
   "0x0000000000000000000000000000000000000000000000000000000000000001";
 const QUOTE_SCALE = 1_000_000n;
+const DEFAULT_QUOTE_SEARCH_STEPS = 16;
+const QUOTE_COST_TARGET_TOLERANCE = 10_000n;
 
 export async function getTestnetPredictQuote(
   request: PredictQuoteRequest,
-  { inspectQuantity = inspectPredictQuantityOnTestnet, maxSearchSteps = 8 }: PredictQuoteOptions = {}
+  {
+    inspectQuantity = inspectPredictQuantityOnTestnet,
+    maxSearchSteps = DEFAULT_QUOTE_SEARCH_STEPS
+  }: PredictQuoteOptions = {}
 ): Promise<PredictQuote> {
   const oracleId = parseObjectId(request.oracleId, "oracleId");
   const expiry = parsePositiveBigInt(request.expiry, "expiry");
@@ -202,20 +207,64 @@ async function quoteSpendAmount(
   }
 
   for (let step = 0; step < maxSearchSteps && highQuantity - lowQuantity > 1n; step += 1) {
-    const midQuantity = (lowQuantity + highQuantity) / 2n;
-    const midQuote = await inspectQuantity({ ...market, quantity: midQuantity });
+    const quantity = chooseInterpolatedQuoteQuantity({
+      lowQuantity,
+      lowCost: lowQuote.cost,
+      highQuantity,
+      highCost: highQuote.cost,
+      targetCost: input.requestedSpend
+    });
+    const midQuote = await inspectQuantity({ ...market, quantity });
 
     if (midQuote.cost <= input.requestedSpend) {
-      bestQuantity = midQuantity;
+      bestQuantity = quantity;
       bestQuote = midQuote;
-      lowQuantity = midQuantity;
+      lowQuantity = quantity;
+      lowQuote = midQuote;
+      if (input.requestedSpend - bestQuote.cost <= QUOTE_COST_TARGET_TOLERANCE) {
+        break;
+      }
       continue;
     }
 
-    highQuantity = midQuantity;
+    highQuantity = quantity;
+    highQuote = midQuote;
   }
 
   return { ...bestQuote, quantity: bestQuantity };
+}
+
+function chooseInterpolatedQuoteQuantity({
+  lowQuantity,
+  lowCost,
+  highQuantity,
+  highCost,
+  targetCost
+}: {
+  lowQuantity: bigint;
+  lowCost: bigint;
+  highQuantity: bigint;
+  highCost: bigint;
+  targetCost: bigint;
+}): bigint {
+  const width = highQuantity - lowQuantity;
+  const costWidth = highCost - lowCost;
+  if (width <= 2n || costWidth <= 0n || targetCost <= lowCost) {
+    return (lowQuantity + highQuantity) / 2n;
+  }
+
+  const targetOffset = targetCost - lowCost;
+  const interpolatedOffset = (targetOffset * width) / costWidth;
+  const candidate = lowQuantity + interpolatedOffset;
+
+  if (candidate <= lowQuantity) {
+    return lowQuantity + 1n;
+  }
+  if (candidate >= highQuantity) {
+    return highQuantity - 1n;
+  }
+
+  return candidate;
 }
 
 function estimateInitialQuantity(spendAtomic: bigint, estimatedPrice: number): bigint {

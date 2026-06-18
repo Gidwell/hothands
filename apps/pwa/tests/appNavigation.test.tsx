@@ -24,6 +24,7 @@ import {
   getPredictPortfolioRefreshMs,
   parseStoredStakeAmount,
   resolveSelectedProfileWalletForNav,
+  resolveSelectedTradeMarketForSelection,
   selectActiveFeedExpiryDate,
   shouldAutoRefreshMarketHeatRows,
   shouldAutoRefreshPredictPortfolio,
@@ -2028,6 +2029,114 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("2x payout");
   });
 
+  test("keeps selected payout profiles live as pricing refreshes", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[
+          tradeMarketRowFixture({
+            id: "btc-15m-live-profile",
+            strike: 72_900,
+            strikeLabel: "$72,900",
+            strikeRaw: 72_900_000_000,
+            strikeOptions: [
+              {
+                profile: "standard",
+                strike: 72_900,
+                strikeRaw: 72_900_000_000,
+                strikeLabel: "$72,900",
+                targetPrice: 0.5,
+                payoutMultiple: 2,
+              },
+              {
+                profile: "conservative",
+                strike: 72_700,
+                strikeRaw: 72_700_000_000,
+                strikeLabel: "$72,700",
+                targetPrice: 2 / 3,
+                payoutMultiple: 1.5,
+              },
+              {
+                profile: "risky",
+                strike: 73_250,
+                strikeRaw: 73_250_000_000,
+                strikeLabel: "$73,250",
+                targetPrice: 0.25,
+                payoutMultiple: 4,
+              },
+            ],
+          }),
+        ]}
+        copyAmount={25}
+        selectedMarketId="btc-15m-live-profile"
+        selectedSide="UP"
+        customStrike={{
+          marketId: "btc-15m-live-profile",
+          profile: "standard",
+          strike: 73_000,
+          strikeRaw: 73_000_000_000,
+          strikeLabel: "$73,000",
+          targetPrice: 0.5,
+          payoutMultiple: 2,
+        }}
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('class="trade-chain-row trade-chain-row-up selected"');
+    expect(html).toContain("UP Standard");
+    expect(html).toContain("$72,900 · 2x");
+    expect(html).not.toContain("$73,000 · 2x");
+  });
+
+  test("resolves selected payout profiles before building chart context", () => {
+    const market = tradeMarketRowFixture({
+      id: "btc-15m-live-chart-profile",
+      strike: 72_900,
+      strikeLabel: "$72,900",
+      strikeRaw: 72_900_000_000,
+      strikeOptions: [
+        {
+          profile: "standard",
+          strike: 72_900,
+          strikeRaw: 72_900_000_000,
+          strikeLabel: "$72,900",
+          targetPrice: 0.5,
+          payoutMultiple: 2,
+        },
+        {
+          profile: "conservative",
+          strike: 72_700,
+          strikeRaw: 72_700_000_000,
+          strikeLabel: "$72,700",
+          targetPrice: 2 / 3,
+          payoutMultiple: 1.5,
+        },
+      ],
+    });
+
+    const { selectedCustomStrike, selectedMarket } = resolveSelectedTradeMarketForSelection({
+      customStrike: {
+        marketId: "btc-15m-live-chart-profile",
+        profile: "standard",
+        strike: 73_000,
+        strikeRaw: 73_000_000_000,
+        strikeLabel: "$73,000",
+        targetPrice: 0.5,
+        payoutMultiple: 2,
+      },
+      market,
+      side: "UP",
+      spotPriceLabel: "$72,850",
+    });
+
+    expect(selectedCustomStrike?.strikeLabel).toBe("$72,900");
+    expect(selectedMarket?.strikeLabel).toBe("$72,900");
+    expect(selectedMarket?.strikeRaw).toBe(72_900_000_000);
+  });
+
   test("keeps the payout profile picker free of oracle price divider rows", () => {
     const html = renderToStaticMarkup(
       <TradeTicket
@@ -2373,7 +2482,7 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("Buy</small>$25");
+    expect(html).toContain("Buy</small>$24.98");
     expect(html).not.toContain("$0.50");
     expect(html).not.toContain("Pays $49.96");
     expect(html).toContain("To win</small>$49.96");
@@ -2381,7 +2490,7 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("Max profit</small>+$24.98");
   });
 
-  test("enables wallet submit only after wallet, manager, and quote are ready", () => {
+  test("keeps wallet submit enabled while a fresh quote is loading", () => {
     const html = renderToStaticMarkup(
       <TradeTicket
         marketRows={[
@@ -2428,25 +2537,8 @@ describe("mobile app navigation", () => {
         }}
         selectedMarketId="btc-2h-72000"
         selectedSide="UP"
-        quote={{
-          source: "live_testnet",
-          market: "BTC-USD",
-          oracleId: "0xoracle2h",
-          expiry: "1779172200000",
-          strike: "72000000000",
-          side: "UP",
-          requestedSpendUsd: 25,
-          cost: "24980000",
-          costUsd: 24.98,
-          quantity: "49960000",
-          payoutUsd: 49.96,
-          maxProfitUsd: 24.98,
-          redeemPayout: "24100000",
-          redeemPayoutUsd: 24.1,
-          effectivePrice: 0.5,
-          quoteStatus: "ready",
-        }}
-        quoteStatus="ready"
+        quote={null}
+        quoteStatus="loading"
         predictManagerObjectId="0x1111"
         walletConnected={true}
         onAmountSet={() => undefined}
@@ -2459,6 +2551,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain(">Confirm transaction</button>");
     expect(html).not.toContain("Send to wallet");
     expect(html).not.toContain("disabled");
+    expect(html).not.toContain("Wait for quote");
     expect(html).not.toContain("Trade transaction sent.");
     expect(html).not.toContain("Wallet request started");
   });
