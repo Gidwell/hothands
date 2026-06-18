@@ -157,6 +157,7 @@ describe("MarketHeatPreview component", () => {
     expect(html).not.toContain("Stake amount");
     expect(html).toContain('data-testid="custom-copy-amount"');
     expect(html).toContain('aria-label="Custom copy amount"');
+    expect(html).toContain("<span>Other</span>");
     expect(html).not.toContain("Copy now</strong>");
     expect(html).not.toContain("We&#x27;ll watch this wallet and prepare the next mint for your signature");
     expect(html).not.toContain("Manager 0xaaaa...0000");
@@ -247,13 +248,14 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Cost</small><strong>$4");
     expect(html).toContain("market-heat-position-value-up");
     expect(html).toContain("Value</small><strong>$5.50");
-    expect(html).toContain("Spend</small>$375");
+    expect(html).toContain("Buy</small>$375");
     expect(html).not.toContain("Heat</small><strong>94");
     expect(html).not.toContain("Strike</small>");
     expect(html).not.toContain("at expiry");
     expect(html).not.toContain("Potential payout</small>");
-    expect(html).toContain("Est. payout</small>$937.50");
-    expect(html).toContain("Max profit</small>+$562.50");
+    expect(html).toContain("To win</small>$937.50");
+    expect(html).toContain('class="trade-ticket-metric-win"><small>To win</small>$937.50');
+    expect(html).not.toContain("Max profit</small>+$562.50");
     expect(html).toContain("direction-pill-up market-heat-intent-side");
     expect(html).not.toContain("Same side");
     expect(html).toContain('data-testid="market-heat-wallet-submit"');
@@ -310,7 +312,9 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain("Value</small><strong>$2.50");
     expect(html).not.toContain("at expiry");
     expect(html).not.toContain("Potential payout</small>");
-    expect(html).toContain("Max profit</small>+$562.50");
+    expect(html).toContain("To win</small>$937.50");
+    expect(html).toContain('class="trade-ticket-metric-win"><small>To win</small>$937.50');
+    expect(html).not.toContain("Max profit</small>+$562.50");
     expect(html).not.toContain("Above $7,100");
     expect(html).not.toContain("Confirm transaction");
   });
@@ -360,9 +364,8 @@ describe("MarketHeatPreview component", () => {
       />,
     );
 
-    expect(html).toContain("Est. payout</small>Quoting...");
-    expect(html).toContain("Max profit</small>Quoting...");
-    expect(html).not.toContain("Est. payout</small>$50");
+    expect(html).toContain("To win</small>Quoting...");
+    expect(html).not.toContain("To win</small>$50");
     expect(html).not.toContain("Max profit</small>+$25");
   });
 

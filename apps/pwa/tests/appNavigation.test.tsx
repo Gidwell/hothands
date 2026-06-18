@@ -1699,9 +1699,10 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("Wins if BTC settles");
     expect(html).not.toContain("vs spot");
     expect(html).not.toContain("Live market");
-    expect(html).toContain("Spend</small>$100");
-    expect(html).toContain("Est. payout</small>$250");
-    expect(html).toContain("Max profit</small>+$150");
+    expect(html).toContain("Buy</small>$100");
+    expect(html).toContain("To win</small>$250");
+    expect(html).toContain('class="trade-ticket-metric-win"><small>To win</small>$250');
+    expect(html).not.toContain("Max profit</small>+$150");
     expect(html).toContain("May 18, 23:30 PDT");
     expect(html).not.toContain("Trade this market");
     expect(html).not.toContain('data-testid="trade-row-ticket"');
@@ -1806,9 +1807,10 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Standard");
     expect(html).toContain("Conservative");
     expect(html).toContain("High payout");
-    expect(html).toContain("2.1x payout");
-    expect(html).toContain("1.6x payout");
-    expect(html).toContain("3.6x payout");
+    expect(html).toContain("2.1x");
+    expect(html).toContain("1.6x");
+    expect(html).toContain("3.6x");
+    expect(html).not.toContain("2.1x payout");
     expect(html).toContain("$71,000");
     expect(html).toContain("$71,050");
     expect(html).toContain("$71,120");
@@ -1816,9 +1818,10 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("vs spot");
     expect(html).not.toContain("$0.40");
     expect(html).not.toContain("Pays $250");
-    expect(html).toContain("Est. payout</small>$161.29");
-    expect(html).toContain("Max profit</small>+$61.29");
-    expect(html).not.toContain("Est. payout</small>$250");
+    expect(html).toContain("To win</small>$161.29");
+    expect(html).toContain('class="trade-ticket-metric-win"><small>To win</small>$161.29');
+    expect(html).not.toContain("Max profit</small>+$61.29");
+    expect(html).not.toContain("To win</small>$250");
     expect(html).not.toContain('data-testid="trade-strike-select"');
     expect(html).not.toContain('data-testid="trade-custom-strike"');
   });
@@ -1871,7 +1874,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain('aria-label="Trade conservative payout profile"');
     expect(html).toContain('aria-label="Trade high payout profile"');
     expect(html).not.toContain('aria-label="Selected position"');
-    expect(html).not.toContain("Spend</small>");
+    expect(html).not.toContain("Buy</small>");
     expect(html).not.toContain('data-testid="trade-wallet-submit"');
     expect(html).not.toContain("trade-chain-row-up selected");
   });
@@ -2019,9 +2022,10 @@ describe("mobile app navigation", () => {
     expect(html).toContain('aria-label="Trade conservative payout profile"');
     expect(html).toContain('aria-label="Trade high payout profile"');
     expect(html.match(/aria-label="Trade [^"]+ payout profile"/g) ?? []).toHaveLength(3);
-    expect(html).toContain("2x payout");
-    expect(html).toContain("1.5x payout");
-    expect(html).toContain("4x payout");
+    expect(html).toContain("2x");
+    expect(html).toContain("1.5x");
+    expect(html).toContain("4x");
+    expect(html).not.toContain("2x payout");
   });
 
   test("keeps the payout profile picker free of oracle price divider rows", () => {
@@ -2290,9 +2294,9 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("Spend</small>$25");
-    expect(html).toContain("Est. payout</small>Quote needed");
-    expect(html).toContain("Max profit</small>Quote needed");
+    expect(html).toContain("Buy</small>$25");
+    expect(html).toContain("To win</small>Quote needed");
+    expect(html).not.toContain("Max profit</small>Quote needed");
     expect(html).toContain("Connect wallet first");
   });
 
@@ -2369,11 +2373,12 @@ describe("mobile app navigation", () => {
       />,
     );
 
-    expect(html).toContain("Spend</small>$25");
+    expect(html).toContain("Buy</small>$25");
     expect(html).not.toContain("$0.50");
     expect(html).not.toContain("Pays $49.96");
-    expect(html).toContain("Est. payout</small>$49.96");
-    expect(html).toContain("Max profit</small>+$24.98");
+    expect(html).toContain("To win</small>$49.96");
+    expect(html).toContain('class="trade-ticket-metric-win"><small>To win</small>$49.96');
+    expect(html).not.toContain("Max profit</small>+$24.98");
   });
 
   test("enables wallet submit only after wallet, manager, and quote are ready", () => {

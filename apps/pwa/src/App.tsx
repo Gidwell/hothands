@@ -1320,7 +1320,7 @@ function formatTradeRiskPayout(selection: TradeMarketSelection, side: TradeSide)
           minimumFractionDigits: 1,
         });
 
-  return `${formatted}x payout`;
+  return `${formatted}x`;
 }
 
 function usdAmountInputValue(amount: number): string {
@@ -1436,7 +1436,7 @@ function CopyAmountControls({
         ))}
       </div>
       <label className="custom-copy-amount">
-        <span>Custom</span>
+        <span>Other</span>
         <span className="custom-copy-amount-field">
           <span aria-hidden="true">$</span>
           <EditableUsdAmountInput
@@ -2716,59 +2716,35 @@ function TradeMarketCard({
                       </small>
                     </div>
                     <CopyAmountControls
-                      ariaLabel="Trade spend amounts"
+                      ariaLabel="Trade buy amounts"
                       copyAmount={copyAmount}
                       onAmountSet={onAmountSet}
                     />
                     <div className="trade-ticket-metrics" aria-label="Trade ticket summary">
                       <span>
-                        <small>Spend</small>
+                        <small>Buy</small>
                         {formatCopyAmount(copyAmount)}
                       </span>
                       {selectedQuoteStatus === "loading" ? (
-                        <>
-                          <span className="metric-muted">
-                            <small>Est. payout</small>
-                            Quoting...
-                          </span>
-                          <span className="metric-muted">
-                            <small>Max profit</small>
-                            Quoting...
-                          </span>
-                        </>
+                        <span className="metric-muted">
+                          <small>To win</small>
+                          Quoting...
+                        </span>
                       ) : selectedQuoteStatus === "error" ? (
-                        <>
-                          <span className="metric-muted">
-                            <small>Est. payout</small>
-                            Quote unavailable
-                          </span>
-                          <span className="metric-muted">
-                            <small>Max profit</small>
-                            Quote unavailable
-                          </span>
-                        </>
+                        <span className="metric-muted">
+                          <small>To win</small>
+                          Quote unavailable
+                        </span>
                       ) : returnPreview ? (
-                        <>
-                          <span>
-                            <small>Est. payout</small>
-                            {returnPreview.payoutLabel}
-                          </span>
-                          <span>
-                            <small>Max profit</small>
-                            {returnPreview.profitLabel}
-                          </span>
-                        </>
+                        <span className="trade-ticket-metric-win">
+                          <small>To win</small>
+                          {returnPreview.payoutLabel}
+                        </span>
                       ) : (
-                        <>
-                          <span className="metric-muted">
-                            <small>Est. payout</small>
-                            Quote needed
-                          </span>
-                          <span className="metric-muted">
-                            <small>Max profit</small>
-                            Quote needed
-                          </span>
-                        </>
+                        <span className="metric-muted">
+                          <small>To win</small>
+                          Quote needed
+                        </span>
                       )}
                     </div>
                     <button
@@ -4650,23 +4626,19 @@ export function MarketHeatPreview({
         </div>
         <div className="market-heat-copy-ticket">
           <CopyAmountControls
-            ariaLabel="Quick spend amounts"
+            ariaLabel="Quick buy amounts"
             copyAmount={copyAmount}
             onAmountSet={onAmountSet}
             stopPropagation={true}
           />
           <div className="trade-ticket-metrics market-heat-ticket-metrics">
             <span>
-              <small>Spend</small>
+              <small>Buy</small>
               {formatCopyAmount(copyAmount)}
             </span>
-            <span className={returnPreview ? "" : "metric-muted"}>
-              <small>Est. payout</small>
+            <span className={returnPreview ? "trade-ticket-metric-win" : "metric-muted"}>
+              <small>To win</small>
               {returnPreview?.payoutLabel ?? quoteFallbackLabel}
-            </span>
-            <span className={returnPreview ? "" : "metric-muted"}>
-              <small>Max profit</small>
-              {returnPreview?.profitLabel ?? quoteFallbackLabel}
             </span>
           </div>
           {isWalletSubmitReady ? (
