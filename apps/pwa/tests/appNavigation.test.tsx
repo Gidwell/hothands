@@ -20,6 +20,7 @@ import {
   getAccountSummaryVariant,
   getBankrollFundingUnavailableReason,
   getInitialAppView,
+  isDemoModeEnabled,
   getMarketHeatRowsRefreshMs,
   getPredictPortfolioRefreshMs,
   parseStoredStakeAmount,
@@ -468,6 +469,9 @@ describe("mobile app navigation", () => {
     expect(getInitialAppView("?view=leaderboards", null)).toBe("leaderboards");
     expect(getInitialAppView("?view=not-a-tab", null)).toBe("feed");
     expect(getInitialAppView("", "0x29b8")).toBe("portfolio");
+    expect(isDemoModeEnabled("?demo=true&view=feed")).toBe(true);
+    expect(isDemoModeEnabled("?demo=1")).toBe(true);
+    expect(isDemoModeEnabled("?demo=false")).toBe(false);
     expect(buildAppViewSearch("?devWallet=0xabc", "profile")).toBe(
       "?devWallet=0xabc&view=profile",
     );

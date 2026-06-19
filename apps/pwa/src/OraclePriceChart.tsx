@@ -94,7 +94,8 @@ export function OraclePriceChartCard({
   onOpen: () => void;
 }) {
   const hasChart = chart?.status === "ready" && chart.points.length >= 2;
-  const priceLabel = chart?.latestPriceLabel ?? fallbackPriceLabel;
+  const priceLabel =
+    chart?.sourceLabel === "Demo" ? fallbackPriceLabel : chart?.latestPriceLabel ?? fallbackPriceLabel;
   const changeSummary = hasChart ? buildOracleChangeSummary(chart.points) : null;
 
   return (

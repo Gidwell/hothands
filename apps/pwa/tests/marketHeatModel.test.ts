@@ -17,6 +17,7 @@ import {
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
   sortMarketHeatRows,
+  withDemoMarketHeatPreview,
 } from "../src/marketHeatModel";
 
 describe("market heat preview model", () => {
@@ -254,6 +255,203 @@ describe("market heat preview model", () => {
       entryPriceLabel: "$0.50",
       heatScore: 64,
     });
+  });
+
+  test("adds realistic demo positions to thin intraday market buckets", () => {
+    const nowMs = new Date("2026-06-10T12:40:00-07:00").getTime();
+    const dailyExpiryMs = new Date("2026-06-11T01:00:00-07:00").getTime();
+    const basePreview = buildMarketHeatPreview(
+      [
+        {
+          id: "real-daily-position",
+          wallet: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          manager: "manager 0xaaaa...aaaa",
+          market: "BTC-USD",
+          oracleId: "real-daily-oracle",
+          side: "UP",
+          quantity: 50_000_000,
+          cost: 25_000_000,
+          costUsd: 25,
+          strike: 65_500,
+          strikeRaw: 65_500_000_000,
+          expiryMs: dailyExpiryMs,
+          intervalLabel: "1d",
+          observedAtMs: nowMs - 60_000,
+          heatScore: 64,
+          status: "copy_ready",
+        },
+      ],
+      8,
+      {
+        marketPrice: {
+          market: "BTC-USD",
+          price: 65_735,
+          source: "indexed_testnet",
+        },
+        nowMs,
+        timeZone: "America/Los_Angeles",
+      },
+    );
+    const preview = {
+      ...basePreview,
+      sourceLabel: "Indexed",
+      availableMarkets: [
+        {
+          id: "real-daily-market",
+          oracleId: "real-daily-oracle",
+          pairLabel: "BTC/USD",
+          intervalLabel: "1d",
+          expiry: dailyExpiryMs,
+          expiryMs: dailyExpiryMs,
+          expiryTimeLabel: "Jun 11, 01:00 PDT",
+          strike: 65_500,
+          strikeRaw: 65_500_000_000,
+          strikeLabel: "$65,500",
+          status: "active",
+        },
+      ],
+    };
+
+    const demoPreview = withDemoMarketHeatPreview(preview, {
+      nowMs,
+      timeZone: "America/Los_Angeles",
+    });
+    const demoMarkets = demoPreview.availableMarkets ?? [];
+    const fifteenMinuteRows = demoPreview.rows.filter((row) =>
+      row.oracleId?.startsWith("demo-15m-"),
+    );
+    const hourlyRows = demoPreview.rows.filter((row) =>
+      row.oracleId?.startsWith("demo-1h-"),
+    );
+    const pricedDemoRows = [...fifteenMinuteRows, ...hourlyRows];
+
+    expect(demoMarkets.some((market) => market.id.startsWith("demo-15m-"))).toBe(true);
+    expect(demoMarkets.some((market) => market.id.startsWith("demo-1h-"))).toBe(true);
+    expect(demoMarkets.some((market) => market.id === "real-daily-market")).toBe(true);
+    expect(demoMarkets.some((market) => market.id.startsWith("demo-1d-"))).toBe(false);
+    expect(fifteenMinuteRows).toHaveLength(16);
+    expect(hourlyRows).toHaveLength(16);
+    expect(demoPreview.rows.some((row) => row.oracleId === "real-daily-oracle")).toBe(true);
+    expect(pricedDemoRows.map((row) => row.displayName)).not.toContain("scorz");
+    expect(pricedDemoRows.some((row) => row.displayNameSource === "hot_hands_profile")).toBe(true);
+    expect(pricedDemoRows.some((row) => row.displayNameSource === "mainnet_suins")).toBe(true);
+    expect(pricedDemoRows.some((row) => row.displayNameSource === undefined)).toBe(true);
+    expect(pricedDemoRows.every((row) => row.copyAttribution === undefined)).toBe(true);
+    expect(
+      pricedDemoRows.every((row) => Math.abs(row.strike - 65_735) <= 2_500),
+    ).toBe(true);
+    expect(new Set(pricedDemoRows.map((row) => row.currentPriceLabel)).size).toBeGreaterThan(5);
+    expect(pricedDemoRows.filter((row) => row.heatScore > 70)).toHaveLength(4);
+    expect(
+      selectFeedMarketHeatRows(pricedDemoRows, {
+        limit: 8,
+        nowMs,
+        showExpired: false,
+        sortMode: "heat",
+      }).map((row) => row.id),
+    ).not.toEqual(
+      selectFeedMarketHeatRows(pricedDemoRows, {
+        limit: 8,
+        nowMs,
+        showExpired: false,
+        sortMode: "latest",
+      }).map((row) => row.id),
+    );
+
+    for (const row of pricedDemoRows) {
+      expect(row.status).toBe("copy_ready");
+      expect(row.costUsd).toBeGreaterThan(0);
+      expect(row.quantity).toBeGreaterThan(0);
+      expect(row.entryPriceLabel).toMatch(/^\$0\.\d{2}$/);
+      expect(row.currentPriceLabel).toMatch(/^\$0\.\d{2}$/);
+      expect(row.entryNowTone).not.toBe("unknown");
+      expect(row.walletStatsLabel).toContain("·");
+    }
+  });
+
+  test("backs demo positions with real intraday markets when available", () => {
+    const nowMs = new Date("2026-06-10T12:40:00-07:00").getTime();
+    const fifteenMinuteExpiryMs = new Date("2026-06-10T12:45:00-07:00").getTime();
+    const hourlyExpiryMs = new Date("2026-06-10T13:00:00-07:00").getTime();
+    const basePreview = buildMarketHeatPreview([], 8, {
+      marketPrice: {
+        market: "BTC-USD",
+        price: 65_735,
+        source: "indexed_testnet",
+      },
+      nowMs,
+      timeZone: "America/Los_Angeles",
+    });
+    const pricingModel = {
+      a: 500_000,
+      b: 20_000_000,
+      forward: 65_735_000_000,
+      forwardPrice: 65_735,
+      m: 0,
+      rho: 0,
+      sigma: 20_000_000,
+      timestampMs: nowMs,
+    };
+    const preview = {
+      ...basePreview,
+      availableMarkets: [
+        {
+          id: "real-15m-market",
+          oracleId: "real-15m-oracle",
+          pairLabel: "BTC/USD",
+          intervalLabel: "15m",
+          expiry: fifteenMinuteExpiryMs,
+          expiryMs: fifteenMinuteExpiryMs,
+          expiryTimeLabel: "Jun 10, 12:45 PDT",
+          strike: 65_750,
+          strikeRaw: 65_750_000_000,
+          strikeLabel: "$65,750",
+          minStrikeRaw: 1_000_000,
+          tickSizeRaw: 25_000_000,
+          status: "active",
+          pricingModel,
+        },
+        {
+          id: "real-1h-market",
+          oracleId: "real-1h-oracle",
+          pairLabel: "BTC/USD",
+          intervalLabel: "1h",
+          expiry: hourlyExpiryMs,
+          expiryMs: hourlyExpiryMs,
+          expiryTimeLabel: "Jun 10, 13:00 PDT",
+          strike: 65_750,
+          strikeRaw: 65_750_000_000,
+          strikeLabel: "$65,750",
+          minStrikeRaw: 1_000_000,
+          tickSizeRaw: 25_000_000,
+          status: "active",
+          pricingModel,
+        },
+      ],
+    };
+
+    const demoPreview = withDemoMarketHeatPreview(preview, {
+      nowMs,
+      timeZone: "America/Los_Angeles",
+    });
+    const demoRows = demoPreview.rows.filter((row) => row.id.startsWith("demo-"));
+    const fifteenMinuteRows = demoRows.filter((row) => row.oracleId === "real-15m-oracle");
+    const hourlyRows = demoRows.filter((row) => row.oracleId === "real-1h-oracle");
+
+    expect(demoPreview.availableMarkets?.map((market) => market.id)).toEqual([
+      "real-15m-market",
+      "real-1h-market",
+    ]);
+    expect(fifteenMinuteRows).toHaveLength(16);
+    expect(hourlyRows).toHaveLength(16);
+    expect(
+      demoRows.every(
+        (row) =>
+          row.strikeRaw !== undefined &&
+          row.strikeRaw % 25_000_000 === 0 &&
+          !row.oracleId?.startsWith("demo-"),
+      ),
+    ).toBe(true);
   });
 
   test("formats backend copy attribution summaries on feed rows", () => {

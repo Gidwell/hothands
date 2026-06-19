@@ -74,6 +74,7 @@ import {
   selectFeedMarketHeatRows,
   selectMarketHeatIntent,
   selectVisibleMarketHeatRows,
+  withDemoMarketHeatPreview,
   type MarketHeatIntentMode,
   type MarketHeatIntentState,
   type MarketHeatPreview as MarketHeatPreviewModel,
@@ -579,6 +580,12 @@ export function getInitialAppView(
   return readOnlyWalletAddress ? "portfolio" : "feed";
 }
 
+export function isDemoModeEnabled(search: string | null | undefined): boolean {
+  const value = new URLSearchParams(search ?? "").get("demo")?.toLowerCase();
+
+  return value === "true" || value === "1" || value === "yes";
+}
+
 export function buildAppViewSearch(
   search: string | null | undefined,
   view: AppView,
@@ -884,6 +891,57 @@ function selectMarketHeatRowsForExpiry(
 
     return row.expiryMs === selectedOption.expiryMs;
   });
+}
+
+function buildDemoOraclePriceChart(
+  oracleId: string | null,
+  priceLabel: string | null | undefined,
+  nowMs: number,
+): OraclePriceChart | null {
+  if (!oracleId) {
+    return null;
+  }
+
+  const price = parseUsdAmountInputValue(priceLabel ?? "");
+  if (!Number.isFinite(price) || price <= 0) {
+    return null;
+  }
+
+  const endTimestampMs = Math.floor(nowMs / 30_000) * 30_000;
+  const pointCount = 31;
+  const points = Array.from({ length: pointCount }, (_, index) => {
+    const progress = index / Math.max(1, pointCount - 1);
+    const timestampMs = endTimestampMs - (pointCount - 1 - index) * 30_000;
+    const drift = (progress - 0.5) * price * 0.0018;
+    const wave =
+      Math.sin(index * 0.74) * price * 0.0012 +
+      Math.cos(index * 0.29) * price * 0.0007;
+
+    return {
+      timestampMs,
+      price: Math.max(1, Math.round((price + drift + wave) * 100) / 100),
+    };
+  });
+  const latestPrice = points.at(-1)?.price ?? price;
+
+  return {
+    status: "ready",
+    oracleId,
+    marketLabel: "BTC/USD",
+    sourceLabel: "Demo",
+    title: "Demo BTC oracle price",
+    detail: "Synthetic BTC path for demo mode.",
+    latestPriceLabel: formatUsdValue(latestPrice),
+    historyRange: {
+      downsampled: false,
+      endTimestampMs,
+      maxPoints: pointCount,
+      returnedPointCount: pointCount,
+      startTimestampMs: points[0]?.timestampMs ?? endTimestampMs,
+      totalPointCount: pointCount,
+    },
+    points,
+  };
 }
 
 function formatUsdValue(amount: number): string {
@@ -5554,6 +5612,7 @@ export function App() {
     buildMarketHeatPreview(),
   );
   const marketHeatPreviewRef = useRef(marketHeatPreview);
+  const demoStrikeAnchorPriceLabelRef = useRef<string | null>(null);
   const [oraclePriceChart, setOraclePriceChart] =
     useState<OraclePriceChart | null>(null);
   const oraclePriceChartRef = useRef<OraclePriceChart | null>(null);
@@ -5767,13 +5826,48 @@ export function App() {
     return [...frozenTraders, ...newTraders];
   }, [frozenTraderOrder, replayTraders]);
   const marketHeatNowMs = marketHeatClockMs;
+  const liveOraclePriceLabel =
+    oraclePriceChart?.status === "ready" && oraclePriceChart.sourceLabel !== "Demo"
+      ? oraclePriceChart.latestPriceLabel
+      : null;
+  const isMarketHeatDemoMode = useMemo(
+    () => isDemoModeEnabled(typeof window === "undefined" ? "" : window.location.search),
+    [],
+  );
+  if (!isMarketHeatDemoMode) {
+    demoStrikeAnchorPriceLabelRef.current = null;
+  } else if (
+    demoStrikeAnchorPriceLabelRef.current === null &&
+    marketHeatPreview.sourceLabel !== "Captured"
+  ) {
+    demoStrikeAnchorPriceLabelRef.current = marketHeatPreview.marketPrice.priceLabel;
+  }
+  const demoStrikeAnchorPriceLabel =
+    demoStrikeAnchorPriceLabelRef.current ?? marketHeatPreview.marketPrice.priceLabel;
+  const effectiveMarketHeatPreview = useMemo(
+    () =>
+      isMarketHeatDemoMode
+        ? withDemoMarketHeatPreview(marketHeatPreview, {
+            marketPriceLabel: liveOraclePriceLabel,
+            nowMs: marketHeatNowMs,
+            strikeAnchorPriceLabel: demoStrikeAnchorPriceLabel,
+          })
+        : marketHeatPreview,
+    [
+      demoStrikeAnchorPriceLabel,
+      isMarketHeatDemoMode,
+      liveOraclePriceLabel,
+      marketHeatNowMs,
+      marketHeatPreview,
+    ],
+  );
   const copyAttributionLabelsByRowId = useMemo(
-    () => buildCopyAttributionLabelsByRowId(marketHeatPreview.rows, copyAttributions),
-    [copyAttributions, marketHeatPreview.rows],
+    () => buildCopyAttributionLabelsByRowId(effectiveMarketHeatPreview.rows, copyAttributions),
+    [copyAttributions, effectiveMarketHeatPreview.rows],
   );
   const effectiveMarketHeatSortMode: MarketHeatSortMode =
     marketHeatSortMode === "following" ? "latest" : marketHeatSortMode;
-  const allVisibleMarketHeatRows = selectFeedMarketHeatRows(marketHeatPreview.rows, {
+  const allVisibleMarketHeatRows = selectFeedMarketHeatRows(effectiveMarketHeatPreview.rows, {
     limit: Number.MAX_SAFE_INTEGER,
     nowMs: marketHeatNowMs,
     showExpired: false,
@@ -5783,10 +5877,9 @@ export function App() {
     marketHeatSortMode === "following"
       ? filterMarketHeatRowsByFollowedWallets(allVisibleMarketHeatRows, followedWallets)
       : allVisibleMarketHeatRows;
-  const liveOraclePriceLabel =
-    oraclePriceChart?.status === "ready" ? oraclePriceChart.latestPriceLabel : null;
-  const tradeMarketPriceLabel = liveOraclePriceLabel ?? marketHeatPreview.marketPrice.priceLabel;
-  const allTradeMarketRows = buildTradeMarketLadder(marketHeatPreview, {
+  const tradeMarketPriceLabel =
+    liveOraclePriceLabel ?? effectiveMarketHeatPreview.marketPrice.priceLabel;
+  const allTradeMarketRows = buildTradeMarketLadder(effectiveMarketHeatPreview, {
     intervalLabel: null,
     nowMs: marketHeatNowMs,
     spotPriceLabel: tradeMarketPriceLabel,
@@ -5827,10 +5920,23 @@ export function App() {
     side: tradeSide,
     spotPriceLabel: tradeMarketPriceLabel,
   });
+  const demoModeChartOracleId =
+    isMarketHeatDemoMode
+      ? marketHeatPreview.availableMarkets
+          ?.filter((marketRow) => marketRow.expiryMs > marketHeatNowMs)
+          .sort((left, right) => left.expiryMs - right.expiryMs)[0]?.oracleId ?? null
+      : null;
+  const selectedTradeChartOracleId =
+    baseSelectedTradeMarket &&
+    isMarketHeatDemoMode &&
+    baseSelectedTradeMarket.id.startsWith("demo-")
+      ? demoModeChartOracleId ?? baseSelectedTradeMarket.oracleId
+      : baseSelectedTradeMarket?.oracleId ?? null;
   const activeChartOracleId =
-    activeView === "trade" && baseSelectedTradeMarket
-      ? baseSelectedTradeMarket.oracleId
-      : tradeMarketRows[0]?.oracleId ??
+    activeView === "trade" && selectedTradeChartOracleId
+      ? selectedTradeChartOracleId
+      : demoModeChartOracleId ??
+        tradeMarketRows[0]?.oracleId ??
         sortedMarketHeatRows.find((row) => row.oracleId)?.oracleId ??
         null;
   const displayedTradeMarketRows = tradeMarketRows.map((marketRow) => {
@@ -5858,10 +5964,14 @@ export function App() {
         ? tradeQuoteState.status
         : "idle";
   const activeMarketHeatCopyTrade = marketHeatIntent.selectedRowId
-    ? buildTradeMarketForMarketHeatRow(marketHeatPreview, marketHeatIntent.selectedRowId, {
-        nowMs: marketHeatNowMs,
-        spotPriceLabel: tradeMarketPriceLabel,
-      })
+    ? buildTradeMarketForMarketHeatRow(
+        effectiveMarketHeatPreview,
+        marketHeatIntent.selectedRowId,
+        {
+          nowMs: marketHeatNowMs,
+          spotPriceLabel: tradeMarketPriceLabel,
+        },
+      )
     : null;
   const activeMarketHeatIntentMode = marketHeatIntent.mode ?? "copy";
   const activeMarketHeatQuoteSide = activeMarketHeatCopyTrade
@@ -5936,7 +6046,7 @@ export function App() {
       : null;
   const connectedWalletHeatScore = findWalletHeatScoreSummary(
     walletLeaderboardsState.snapshot,
-    marketHeatPreview.rows,
+    effectiveMarketHeatPreview.rows,
     connectedAccountAddress,
     connectedWalletPerformanceEntry,
   );
@@ -5961,7 +6071,7 @@ export function App() {
       activeProfileWalletAddress,
     );
   const allProfilePositionRows = activeProfileWalletAddress
-    ? selectVisibleMarketHeatRows(marketHeatPreview.rows, {
+    ? selectVisibleMarketHeatRows(effectiveMarketHeatPreview.rows, {
         intervalLabel: null,
         limit: Number.MAX_SAFE_INTEGER,
         nowMs: marketHeatNowMs,
@@ -7147,7 +7257,7 @@ export function App() {
       return;
     }
 
-    const activeMarket = marketHeatPreview.availableMarkets?.find(
+    const activeMarket = effectiveMarketHeatPreview.availableMarkets?.find(
       (marketRow) => marketRow.oracleId === activeChartOracleId,
     );
     const timestampMs =
@@ -7178,7 +7288,37 @@ export function App() {
       oraclePriceChartRef.current = chart;
       setOraclePriceChart(chart);
     }
-  }, [activeChartOracleId, marketHeatPreview.availableMarkets]);
+  }, [activeChartOracleId, effectiveMarketHeatPreview.availableMarkets]);
+
+  useEffect(() => {
+    if (!isMarketHeatDemoMode || !activeChartOracleId) {
+      return;
+    }
+
+    setOraclePriceChart((currentChart) => {
+      if (
+        currentChart?.status === "ready" &&
+        currentChart.oracleId === activeChartOracleId &&
+        currentChart.points.length >= 2 &&
+        currentChart.sourceLabel !== "Demo"
+      ) {
+        return currentChart;
+      }
+
+      const demoChart = buildDemoOraclePriceChart(
+        activeChartOracleId,
+        effectiveMarketHeatPreview.marketPrice.priceLabel,
+        marketHeatNowMs,
+      );
+
+      if (!demoChart) {
+        return currentChart;
+      }
+
+      oraclePriceChartRef.current = demoChart;
+      return demoChart;
+    });
+  }, [activeChartOracleId, isMarketHeatDemoMode, marketHeatNowMs, tradeMarketPriceLabel]);
 
   useEffect(() => {
     if (
@@ -7493,7 +7633,7 @@ export function App() {
     setMarketHeatIntent((state) =>
       state.selectedRowId === rowId && (state.mode ?? "copy") === mode
         ? closeMarketHeatIntent(state)
-        : selectMarketHeatIntent(state, rowId, marketHeatPreview.rows, mode),
+        : selectMarketHeatIntent(state, rowId, effectiveMarketHeatPreview.rows, mode),
     );
   };
   const handleMarketHeatWalletSubmit = async (
@@ -7501,7 +7641,7 @@ export function App() {
     mode: MarketHeatIntentMode = marketHeatIntent.mode ?? "copy",
   ) => {
     setMarketHeatIntent((state) =>
-      selectMarketHeatIntent(state, rowId, marketHeatPreview.rows, mode),
+      selectMarketHeatIntent(state, rowId, effectiveMarketHeatPreview.rows, mode),
     );
 
     if (!currentAccount) {
@@ -7531,8 +7671,9 @@ export function App() {
       return;
     }
 
-    const copyTrade = buildTradeMarketForMarketHeatRow(marketHeatPreview, rowId, {
+    const copyTrade = buildTradeMarketForMarketHeatRow(effectiveMarketHeatPreview, rowId, {
       nowMs: Date.now(),
+      spotPriceLabel: tradeMarketPriceLabel,
     });
     if (!copyTrade) {
       setWalletTxState({
@@ -8441,7 +8582,7 @@ export function App() {
     });
   };
   const handleMarketHeatShare = (rowId: string) => {
-    const row = getCopyableMarketHeatRows(marketHeatPreview.rows).find(
+    const row = getCopyableMarketHeatRows(effectiveMarketHeatPreview.rows).find(
       (candidate) => candidate.id === rowId,
     );
     if (!row) {
@@ -8591,7 +8732,7 @@ export function App() {
           {activeView === "trade" ? null : (
             <OraclePriceChartCard
               chart={oraclePriceChart}
-              fallbackPriceLabel={marketHeatPreview.marketPrice.priceLabel}
+              fallbackPriceLabel={effectiveMarketHeatPreview.marketPrice.priceLabel}
               onOpen={() => handleBottomNavViewChange("trade")}
             />
           )}

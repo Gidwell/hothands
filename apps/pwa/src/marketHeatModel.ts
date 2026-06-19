@@ -211,6 +211,13 @@ export type BuildMarketHeatPreviewOptions = {
   walletDisplayNames?: WalletDisplayNamesByAddress;
 };
 
+export type DemoMarketHeatPreviewOptions = {
+  marketPriceLabel?: string | null;
+  nowMs?: number;
+  strikeAnchorPriceLabel?: string | null;
+  timeZone?: string;
+};
+
 export type SelectVisibleMarketHeatRowsOptions = {
   diversifyWallets?: boolean;
   intervalLabel?: string | null;
@@ -405,6 +412,601 @@ export function buildMarketHeatPreview(
     marketPrice: buildMarketHeatPrice(marketPrice),
     rows: annotateMarketHeatRowPrices(previewRows),
   };
+}
+
+export function withDemoMarketHeatPreview(
+  preview: MarketHeatPreview,
+  {
+    marketPriceLabel,
+    nowMs = Date.now(),
+    strikeAnchorPriceLabel,
+    timeZone,
+  }: DemoMarketHeatPreviewOptions = {},
+): MarketHeatPreview {
+  const baseMarkets = (preview.availableMarkets ?? []).filter(
+    (market) => !isDemoMarketId(market.id),
+  );
+  const baseRows = preview.rows.filter((row) => !isDemoMarketId(row.id));
+  const marketPrice = Math.max(
+    1,
+    parseFormattedUsd(marketPriceLabel ?? preview.marketPrice.priceLabel),
+  );
+  const strikeAnchorPrice = Math.max(
+    1,
+    parseFormattedUsd(strikeAnchorPriceLabel ?? preview.marketPrice.priceLabel),
+  );
+  const demoContext = buildDemoMarketHeatContext(
+    marketPrice,
+    nowMs,
+    timeZone,
+    strikeAnchorPrice,
+    baseMarkets,
+  );
+  const demoMarkets = demoContext.markets.filter(
+    (market) =>
+      !isPacificDailyExpiry(market.expiryMs) ||
+      !baseMarkets.some((baseMarket) => isPacificDailyExpiry(baseMarket.expiryMs)),
+  );
+  const demoRows = demoContext.rows
+    .map((row) =>
+      buildMarketHeatPreviewRowFromInput(row, {
+        nowMs,
+        timeZone,
+        walletDisplayNames: demoContext.walletDisplayNames,
+      }),
+    );
+  const availableMarkets = [...demoMarkets, ...baseMarkets];
+
+  return {
+    ...preview,
+    availableMarkets,
+    rows: annotateMarketHeatRowPrices([...demoRows, ...baseRows], availableMarkets),
+  };
+}
+
+const DEMO_MARKET_ID_PREFIX = "demo-";
+const DEMO_STRIKE_SCALE = 1_000_000;
+const DEMO_STRIKE_TICK_USD = 25;
+const DEMO_STRIKE_TICK_RAW = DEMO_STRIKE_TICK_USD * DEMO_STRIKE_SCALE;
+const DEMO_PRICING_MODEL_A = 500_000;
+const DEMO_PRICING_MODEL_B = 20_000_000;
+const DEMO_PRICING_MODEL_SIGMA = 20_000_000;
+const DEMO_15M_UP_STRIKE_OFFSETS: readonly number[] = [
+  25,
+  50,
+  0,
+  75,
+  25,
+  50,
+  100,
+  0,
+];
+const DEMO_15M_DOWN_STRIKE_OFFSETS: readonly number[] = [
+  -25,
+  -50,
+  0,
+  -75,
+  -25,
+  -50,
+  -100,
+  0,
+];
+const DEMO_1H_UP_STRIKE_OFFSETS: readonly number[] = [
+  100,
+  200,
+  0,
+  300,
+  100,
+  200,
+  400,
+  0,
+];
+const DEMO_1H_DOWN_STRIKE_OFFSETS: readonly number[] = [
+  -100,
+  -200,
+  0,
+  -300,
+  -100,
+  -200,
+  -400,
+  0,
+];
+
+type DemoWalletIdentity = {
+  displayName?: string;
+  source?: WalletDisplayNameSource;
+  wallet: string;
+};
+
+type DemoPositionSpec = {
+  attribution?: MarketHeatCopyAttribution;
+  heatScore: number;
+  identityIndex: number;
+  observedAgoMs: number;
+  quantityUsd: number;
+  roi: number;
+  side: "UP" | "DOWN";
+  streakLength: number;
+  streakType: MarketHeatWalletStreakType;
+  strikeOffset: number;
+  totalPnlAtomic: number;
+};
+
+const DEMO_IDENTITIES: readonly DemoWalletIdentity[] = [
+  { displayName: "momentum", source: "hot_hands_profile", wallet: demoWallet("1001") },
+  { displayName: "breakout.sui", source: "mainnet_suins", wallet: demoWallet("2002") },
+  { wallet: demoWallet("3003") },
+  { displayName: "candles", source: "hot_hands_profile", wallet: demoWallet("4004") },
+  { displayName: "oracle.sui", source: "mainnet_suins", wallet: demoWallet("5005") },
+  { wallet: demoWallet("6006") },
+  { displayName: "reversal", source: "hot_hands_profile", wallet: demoWallet("7007") },
+  { displayName: "strike.sui", source: "mainnet_suins", wallet: demoWallet("8008") },
+  { wallet: demoWallet("9009") },
+  { displayName: "conviction", source: "hot_hands_profile", wallet: demoWallet("a00a") },
+  { displayName: "tempo.sui", source: "mainnet_suins", wallet: demoWallet("b00b") },
+  { wallet: demoWallet("c00c") },
+  { displayName: "edge", source: "hot_hands_profile", wallet: demoWallet("d00d") },
+  { displayName: "volatility.sui", source: "mainnet_suins", wallet: demoWallet("e00e") },
+  { wallet: demoWallet("f00f") },
+  { displayName: "fade desk", source: "hot_hands_profile", wallet: demoWallet("1100") },
+  { displayName: "uponly.sui", source: "mainnet_suins", wallet: demoWallet("2200") },
+  { wallet: demoWallet("3300") },
+  { displayName: "basis", source: "hot_hands_profile", wallet: demoWallet("4400") },
+  { displayName: "counter.sui", source: "mainnet_suins", wallet: demoWallet("5500") },
+];
+
+const DEMO_15M_POSITIONS: readonly DemoPositionSpec[] = [
+  demoPosition(0, "UP", -450, 52, 80, 0.24, 70_000, "win", 5, 28_450_000),
+  demoPosition(1, "DOWN", 250, 76, 55, -0.18, 2 * 60_000, "win", 2, 12_100_000),
+  demoPosition(2, "UP", 700, 44, 36, 0.31, 3 * 60_000, "loss", 1, -4_800_000),
+  demoPosition(3, "DOWN", 900, 64, 120, 0.19, 4 * 60_000, "win", 4, 22_900_000),
+  demoPosition(4, "UP", -150, 82, 45, -0.08, 5 * 60_000, "win", 1, 6_200_000),
+  demoPosition(5, "DOWN", -600, 35, 32, 0.14, 6 * 60_000, "loss", 2, -9_100_000),
+  demoPosition(6, "UP", 350, 58, 95, 0.36, 7 * 60_000, "win", 6, 41_700_000),
+  demoPosition(7, "DOWN", 100, 68, 62, -0.22, 8 * 60_000, "loss", 1, -11_450_000),
+  demoPosition(8, "UP", -900, 47, 28, 0.09, 9 * 60_000, "none", 0, 1_800_000),
+  demoPosition(9, "DOWN", 1200, 61, 75, 0.27, 10 * 60_000, "win", 3, 18_600_000),
+  demoPosition(10, "UP", 0, 27, 50, -0.12, 11 * 60_000, "loss", 1, -6_300_000),
+  demoPosition(11, "DOWN", -250, 50, 40, 0.05, 12 * 60_000, "loss", 3, -14_800_000),
+  demoPosition(12, "UP", 1100, 38, 66, 0.42, 13 * 60_000, "win", 2, 9_900_000),
+  demoPosition(13, "DOWN", 500, 55, 52, -0.15, 14 * 60_000, "none", 0, 750_000),
+  demoPosition(14, "UP", -1200, 31, 88, 0.17, 15 * 60_000, "win", 2, 16_300_000),
+  demoPosition(15, "DOWN", -50, 41, 34, -0.09, 16 * 60_000, "loss", 2, -7_600_000),
+];
+
+const DEMO_1H_POSITIONS: readonly DemoPositionSpec[] = [
+  demoPosition(16, "DOWN", 1500, 40, 100, 0.22, 2 * 60_000, "win", 4, 31_200_000),
+  demoPosition(17, "UP", -700, 72, 60, -0.05, 4 * 60_000, "loss", 1, -5_250_000),
+  demoPosition(18, "DOWN", -1000, 53, 42, 0.29, 6 * 60_000, "win", 2, 8_760_000),
+  demoPosition(19, "UP", 250, 62, 30, -0.16, 8 * 60_000, "loss", 3, -16_700_000),
+  demoPosition(0, "DOWN", 400, 79, 85, 0.11, 10 * 60_000, "win", 5, 24_100_000),
+  demoPosition(1, "UP", -1300, 30, 110, 0.34, 12 * 60_000, "win", 7, 49_400_000),
+  demoPosition(2, "DOWN", 900, 66, 38, -0.21, 14 * 60_000, "loss", 1, -8_900_000),
+  demoPosition(3, "UP", 1600, 50, 55, 0.48, 16 * 60_000, "win", 2, 11_450_000),
+  demoPosition(4, "DOWN", -400, 47, 25, 0.03, 18 * 60_000, "none", 0, -1_000_000),
+  demoPosition(5, "UP", -250, 56, 72, 0.13, 20 * 60_000, "win", 3, 17_800_000),
+  demoPosition(6, "DOWN", 2100, 22, 48, 0.38, 22 * 60_000, "win", 1, 6_900_000),
+  demoPosition(7, "UP", 800, 37, 34, -0.25, 24 * 60_000, "loss", 4, -22_300_000),
+  demoPosition(8, "DOWN", 50, 34, 90, 0.08, 26 * 60_000, "win", 2, 19_250_000),
+  demoPosition(9, "UP", -1800, 59, 64, 0.18, 28 * 60_000, "win", 1, 7_400_000),
+  demoPosition(10, "DOWN", -1500, 26, 44, -0.11, 30 * 60_000, "loss", 2, -10_050_000),
+  demoPosition(11, "UP", 500, 44, 58, 0.21, 32 * 60_000, "win", 3, 13_600_000),
+];
+
+type DemoMarketHeatContext = {
+  markets: MarketHeatAvailableMarket[];
+  rows: MarketHeatPreviewRowInput[];
+  walletDisplayNames: WalletDisplayNamesByAddress;
+};
+
+function buildDemoMarketHeatContext(
+  marketPrice: number,
+  nowMs: number,
+  timeZone?: string,
+  strikeAnchorPrice = marketPrice,
+  baseMarkets: readonly MarketHeatAvailableMarket[] = [],
+): DemoMarketHeatContext {
+  const baseStrike = roundToDemoStrike(strikeAnchorPrice);
+  const fifteenMinuteExpiryMs = nextAlignedExpiryMs(nowMs, 15 * 60_000);
+  const hourlyExpiryMs = nextAlignedExpiryMs(nowMs, 60 * 60_000);
+  const realFifteenMinuteMarket = selectDemoBaseMarket(baseMarkets, "15m", nowMs);
+  const realHourlyMarket = selectDemoBaseMarket(baseMarkets, "1h", nowMs);
+  const syntheticFifteenMinuteMarket =
+    realFifteenMinuteMarket ??
+    buildDemoAvailableMarket({
+      expiryMs: fifteenMinuteExpiryMs,
+      intervalLabel: "15m",
+      marketPrice,
+      nowMs,
+      strike: baseStrike,
+      timeZone,
+    });
+  const hourlyMarket =
+    realHourlyMarket ??
+    (hourlyExpiryMs === syntheticFifteenMinuteMarket.expiryMs
+      ? syntheticFifteenMinuteMarket
+      : buildDemoAvailableMarket({
+          expiryMs: hourlyExpiryMs,
+          intervalLabel: "1h",
+          marketPrice,
+          nowMs,
+          strike: baseStrike,
+          timeZone,
+        }));
+  const markets = [
+    realFifteenMinuteMarket ? null : syntheticFifteenMinuteMarket,
+    realHourlyMarket || hourlyMarket.oracleId === syntheticFifteenMinuteMarket.oracleId
+      ? null
+      : hourlyMarket,
+  ].filter(
+    (market): market is MarketHeatAvailableMarket => market !== null,
+  );
+  const shouldBuildHourlyRows =
+    hourlyMarket.oracleId !== syntheticFifteenMinuteMarket.oracleId;
+
+  return {
+    markets,
+    rows: [
+      ...buildDemoMarketHeatRowsForMarket({
+        intervalLabel: "15m",
+        market: syntheticFifteenMinuteMarket,
+        marketPrice,
+        nowMs,
+        specs: DEMO_15M_POSITIONS,
+        strikeAnchorPrice,
+      }),
+      ...(shouldBuildHourlyRows
+        ? buildDemoMarketHeatRowsForMarket({
+            intervalLabel: "1h",
+            market: hourlyMarket,
+            marketPrice,
+            nowMs,
+            specs: DEMO_1H_POSITIONS,
+            strikeAnchorPrice,
+          })
+        : []),
+    ],
+    walletDisplayNames: buildDemoWalletDisplayNames(),
+  };
+}
+
+function demoPosition(
+  identityIndex: number,
+  side: "UP" | "DOWN",
+  strikeOffset: number,
+  heatScore: number,
+  quantityUsd: number,
+  roi: number,
+  observedAgoMs: number,
+  streakType: MarketHeatWalletStreakType,
+  streakLength: number,
+  totalPnlAtomic: number,
+  attribution?: MarketHeatCopyAttribution,
+): DemoPositionSpec {
+  return {
+    ...(attribution ? { attribution } : {}),
+    heatScore,
+    identityIndex,
+    observedAgoMs,
+    quantityUsd,
+    roi,
+    side,
+    streakLength,
+    streakType,
+    strikeOffset,
+    totalPnlAtomic,
+  };
+}
+
+function buildDemoMarketHeatRowsForMarket({
+  intervalLabel,
+  market,
+  marketPrice,
+  nowMs,
+  specs,
+  strikeAnchorPrice,
+}: {
+  intervalLabel: "15m" | "1h";
+  market: MarketHeatAvailableMarket;
+  marketPrice: number;
+  nowMs: number;
+  specs: readonly DemoPositionSpec[];
+  strikeAnchorPrice: number;
+}): MarketHeatPreviewRowInput[] {
+  return specs.map((spec, index) => {
+    const identity = DEMO_IDENTITIES[spec.identityIndex % DEMO_IDENTITIES.length];
+    const strikeOffset = getDemoStrikeOffset(intervalLabel, spec.side, index);
+    const fallbackStrikeRaw = toDemoMarketStrikeRaw(
+      market,
+      strikeAnchorPrice + (strikeOffset ?? spec.strikeOffset),
+    );
+    const strikeRaw = fallbackStrikeRaw;
+    const strike = toDemoMarketStrike(market, strikeRaw);
+    const currentPrice = estimateDemoMarketHeatRowPrice(market, spec.side, strikeRaw);
+    const entryPrice = clampDemoPositionPrice(currentPrice / (1 + spec.roi));
+    const costUsd = roundUsd(spec.quantityUsd * entryPrice);
+
+    return buildDemoMarketHeatRow({
+      attribution: spec.attribution,
+      costUsd,
+      heatScore: spec.heatScore,
+      intervalLabel,
+      market,
+      nowMs,
+      observedAgoMs: spec.observedAgoMs,
+      quantityUsd: spec.quantityUsd,
+      side: spec.side,
+      streakLength: spec.streakLength,
+      streakType: spec.streakType,
+      strike,
+      strikeRaw,
+      totalPnlAtomic: spec.totalPnlAtomic,
+      wallet: identity.wallet,
+    });
+  });
+}
+
+function getDemoStrikeOffset(
+  intervalLabel: "15m" | "1h",
+  side: "UP" | "DOWN",
+  index: number,
+): number {
+  const offsets =
+    intervalLabel === "15m"
+      ? side === "UP"
+        ? DEMO_15M_UP_STRIKE_OFFSETS
+        : DEMO_15M_DOWN_STRIKE_OFFSETS
+      : side === "UP"
+        ? DEMO_1H_UP_STRIKE_OFFSETS
+        : DEMO_1H_DOWN_STRIKE_OFFSETS;
+
+  return offsets[index % offsets.length] ?? 0;
+}
+
+function selectDemoBaseMarket(
+  baseMarkets: readonly MarketHeatAvailableMarket[],
+  bucket: "15m" | "1h",
+  nowMs: number,
+): MarketHeatAvailableMarket | null {
+  const activeMarkets = baseMarkets
+    .filter((market) => market.expiryMs > nowMs)
+    .sort(
+      (left, right) =>
+        left.expiryMs - right.expiryMs ||
+        Math.abs((left.latestPrice ?? left.pricingModel?.forwardPrice ?? 0) - left.strike) -
+          Math.abs((right.latestPrice ?? right.pricingModel?.forwardPrice ?? 0) - right.strike) ||
+        left.id.localeCompare(right.id),
+    );
+
+  if (bucket === "15m") {
+    const cutoffMs = nowMs + 15 * 60_000;
+    return activeMarkets.find((market) => market.expiryMs <= cutoffMs) ?? null;
+  }
+
+  const cutoffMs = nowMs + 2 * 60 * 60_000;
+  return (
+    activeMarkets.find(
+      (market) => market.expiryMs <= cutoffMs && isPacificHourlyExpiry(market.expiryMs),
+    ) ?? null
+  );
+}
+
+function buildDemoWalletDisplayNames(): WalletDisplayNamesByAddress {
+  return DEMO_IDENTITIES.reduce<WalletDisplayNamesByAddress>((displayNames, identity) => {
+    if (identity.displayName && identity.source) {
+      displayNames[identity.wallet] = {
+        name: identity.displayName,
+        source: identity.source,
+      };
+    }
+
+    return displayNames;
+  }, {});
+}
+
+function isDemoMarketId(id: string): boolean {
+  return id.startsWith(DEMO_MARKET_ID_PREFIX);
+}
+
+function buildDemoAvailableMarket({
+  expiryMs,
+  intervalLabel,
+  marketPrice,
+  nowMs,
+  strike,
+  timeZone,
+}: {
+  expiryMs: number;
+  intervalLabel: "15m" | "1h";
+  marketPrice: number;
+  nowMs: number;
+  strike: number;
+  timeZone?: string;
+}): MarketHeatAvailableMarket {
+  const strikeRaw = toDemoStrikeRaw(strike);
+  const id = `${DEMO_MARKET_ID_PREFIX}${intervalLabel}-${expiryMs}`;
+
+  return {
+    id,
+    oracleId: `${id}-oracle`,
+    pairLabel: "BTC/USD",
+    intervalLabel,
+    expiry: expiryMs,
+    expiryMs,
+    expiryTimeLabel: formatExpiryTime(expiryMs, timeZone),
+    strike,
+    strikeRaw,
+    strikeLabel: formatStrike(strike),
+    minStrikeRaw: Math.max(DEMO_STRIKE_TICK_RAW, toDemoStrikeRaw(strike - 10_000)),
+    tickSizeRaw: DEMO_STRIKE_TICK_RAW,
+    latestPrice: marketPrice,
+    latestPriceTimestampMs: nowMs,
+    status: "active",
+    pricingModel: {
+      a: DEMO_PRICING_MODEL_A,
+      b: DEMO_PRICING_MODEL_B,
+      forward: toDemoStrikeRaw(marketPrice),
+      forwardPrice: marketPrice,
+      m: 0,
+      rho: 0,
+      sigma: DEMO_PRICING_MODEL_SIGMA,
+      timestampMs: nowMs,
+    },
+  };
+}
+
+function buildDemoMarketHeatRow({
+  attribution,
+  costUsd,
+  heatScore,
+  intervalLabel,
+  market,
+  nowMs,
+  observedAgoMs,
+  quantityUsd,
+  side,
+  streakLength,
+  streakType,
+  strike,
+  strikeRaw,
+  totalPnlAtomic,
+  wallet,
+}: {
+  attribution?: MarketHeatCopyAttribution;
+  costUsd: number;
+  heatScore: number;
+  intervalLabel: "15m" | "1h";
+  market: MarketHeatAvailableMarket;
+  nowMs: number;
+  observedAgoMs: number;
+  quantityUsd: number;
+  side: "UP" | "DOWN";
+  streakLength: number;
+  streakType: MarketHeatWalletStreakType;
+  strike: number;
+  strikeRaw: number;
+  totalPnlAtomic: number;
+  wallet: string;
+}): MarketHeatPreviewRowInput {
+  const normalizedCostUsd = roundUsd(costUsd);
+  const normalizedQuantityUsd = Math.max(quantityUsd, normalizedCostUsd);
+  const rowKey = `${intervalLabel}-${market.expiryMs}-${wallet.slice(2, 8)}-${side}-${strikeRaw}`;
+
+  return {
+    id: `${DEMO_MARKET_ID_PREFIX}${rowKey}`,
+    oracleId: market.oracleId,
+    wallet,
+    manager: `manager ${wallet.slice(0, 8)}...${wallet.slice(-4)}`,
+    market: "BTC-USD",
+    side,
+    quantity: Math.round(normalizedQuantityUsd * 1_000_000),
+    cost: Math.round(normalizedCostUsd * 1_000_000),
+    costUsd: normalizedCostUsd,
+    strike,
+    strikeRaw,
+    expiryMs: market.expiryMs,
+    intervalLabel,
+    observedAtMs: Math.max(0, Math.min(nowMs - observedAgoMs, market.expiryMs - 1)),
+    heatScore,
+    status: "copy_ready",
+    walletStats: {
+      currentStreakLength: streakLength,
+      currentStreakType: streakType,
+      lastSeenMs: Math.max(0, nowMs - observedAgoMs),
+      totalPnl: totalPnlAtomic,
+    },
+    ...(attribution ? { copyAttribution: attribution } : {}),
+  };
+}
+
+function estimateDemoMarketHeatRowPrice(
+  market: MarketHeatAvailableMarket,
+  side: "UP" | "DOWN",
+  strikeRaw: number,
+): number {
+  const up = computeOracleIndicativeUpPrice(market.pricingModel, strikeRaw);
+  const price =
+    side === "UP" ? up : up === undefined ? undefined : roundPrice(Math.max(0, 1 - up));
+
+  return clampDemoPositionPrice(price ?? 0.5);
+}
+
+function toDemoMarketStrikeRaw(
+  market: Pick<MarketHeatAvailableMarket, "minStrikeRaw" | "strike" | "strikeRaw" | "tickSizeRaw">,
+  strike: number,
+): number {
+  const scale = computeStrikeRawScale(market) ?? DEMO_STRIKE_SCALE;
+  const tickSizeRaw = market.tickSizeRaw;
+  const minStrikeRaw = market.minStrikeRaw ?? tickSizeRaw ?? DEMO_STRIKE_TICK_RAW;
+  const raw = Math.round(Math.max(DEMO_STRIKE_TICK_USD, strike) * scale);
+
+  if (tickSizeRaw === undefined || !Number.isFinite(tickSizeRaw) || tickSizeRaw <= 0) {
+    return Math.max(minStrikeRaw, raw);
+  }
+
+  const tickAlignedRaw = Math.round(raw / tickSizeRaw) * tickSizeRaw;
+
+  return Math.max(minStrikeRaw, tickAlignedRaw);
+}
+
+function toDemoMarketStrike(
+  market: Pick<MarketHeatAvailableMarket, "strike" | "strikeRaw">,
+  strikeRaw: number,
+): number {
+  const scale = computeStrikeRawScale(market) ?? DEMO_STRIKE_SCALE;
+
+  return roundSyntheticStrike(strikeRaw / scale);
+}
+
+function clampDemoPositionPrice(price: number): number {
+  if (!Number.isFinite(price)) {
+    return 0.5;
+  }
+
+  return roundPrice(Math.max(0.05, Math.min(0.95, price)));
+}
+
+function nextAlignedExpiryMs(nowMs: number, intervalMs: number): number {
+  return Math.ceil((nowMs + 1000) / intervalMs) * intervalMs;
+}
+
+function roundToDemoStrike(price: number): number {
+  return Math.max(
+    DEMO_STRIKE_TICK_USD,
+    Math.round(price / DEMO_STRIKE_TICK_USD) * DEMO_STRIKE_TICK_USD,
+  );
+}
+
+function toDemoStrikeRaw(strike: number): number {
+  return Math.round(strike * DEMO_STRIKE_SCALE);
+}
+
+function demoWallet(seed: string): string {
+  const hex = seed.replace(/[^0-9a-f]/gi, "").toLowerCase();
+  const prefix = hex || "0";
+  return `0x${prefix.padEnd(64, "0").slice(0, 64)}`;
+}
+
+const DEMO_PACIFIC_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  hour: "2-digit",
+  hourCycle: "h23",
+  minute: "2-digit",
+  timeZone: "America/Los_Angeles",
+});
+
+function isPacificDailyExpiry(expiryMs: number): boolean {
+  const parts = DEMO_PACIFIC_TIME_FORMATTER.formatToParts(expiryMs);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+
+  return hour === 1 && minute === 0;
+}
+
+function isPacificHourlyExpiry(expiryMs: number): boolean {
+  const parts = DEMO_PACIFIC_TIME_FORMATTER.formatToParts(expiryMs);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+
+  return minute === 0;
 }
 
 function buildMarketHeatPreviewRowFromInput(
