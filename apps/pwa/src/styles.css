@@ -2281,6 +2281,15 @@ button:disabled {
 
 .market-heat-row {
   cursor: pointer;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.market-heat-row input,
+.market-heat-row textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .market-heat-row-compact {
@@ -5217,6 +5226,8 @@ button:disabled {
 .market-heat-copy-ticket {
   display: grid;
   gap: 8px;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .market-heat-ticket-metrics {

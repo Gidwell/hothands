@@ -557,10 +557,10 @@ const DEMO_IDENTITIES: readonly DemoWalletIdentity[] = [
 
 const DEMO_15M_POSITIONS: readonly DemoPositionSpec[] = [
   demoPosition(0, "UP", -450, 52, 80, 0.24, 70_000, "win", 5, 28_450_000),
-  demoPosition(1, "DOWN", 250, 76, 55, -0.18, 2 * 60_000, "win", 2, 12_100_000),
+  demoPosition(1, "DOWN", 250, 76, 55, 0.18, 2 * 60_000, "win", 2, 12_100_000),
   demoPosition(2, "UP", 700, 44, 36, 0.31, 3 * 60_000, "loss", 1, -4_800_000),
   demoPosition(3, "DOWN", 900, 64, 120, 0.19, 4 * 60_000, "win", 4, 22_900_000),
-  demoPosition(4, "UP", -150, 82, 45, -0.08, 5 * 60_000, "win", 1, 6_200_000),
+  demoPosition(4, "UP", -150, 82, 45, 0.08, 5 * 60_000, "win", 1, 6_200_000),
   demoPosition(5, "DOWN", -600, 35, 32, 0.14, 6 * 60_000, "loss", 2, -9_100_000),
   demoPosition(6, "UP", 350, 58, 95, 0.36, 7 * 60_000, "win", 6, 41_700_000),
   demoPosition(7, "DOWN", 100, 68, 62, -0.22, 8 * 60_000, "loss", 1, -11_450_000),
@@ -576,12 +576,12 @@ const DEMO_15M_POSITIONS: readonly DemoPositionSpec[] = [
 
 const DEMO_1H_POSITIONS: readonly DemoPositionSpec[] = [
   demoPosition(16, "DOWN", 1500, 40, 100, 0.22, 2 * 60_000, "win", 4, 31_200_000),
-  demoPosition(17, "UP", -700, 72, 60, -0.05, 4 * 60_000, "loss", 1, -5_250_000),
+  demoPosition(17, "UP", -700, 72, 60, 0.05, 4 * 60_000, "loss", 1, -5_250_000),
   demoPosition(18, "DOWN", -1000, 53, 42, 0.29, 6 * 60_000, "win", 2, 8_760_000),
   demoPosition(19, "UP", 250, 62, 30, -0.16, 8 * 60_000, "loss", 3, -16_700_000),
   demoPosition(0, "DOWN", 400, 79, 85, 0.11, 10 * 60_000, "win", 5, 24_100_000),
   demoPosition(1, "UP", -1300, 30, 110, 0.34, 12 * 60_000, "win", 7, 49_400_000),
-  demoPosition(2, "DOWN", 900, 66, 38, -0.21, 14 * 60_000, "loss", 1, -8_900_000),
+  demoPosition(2, "DOWN", 900, 66, 38, 0.21, 14 * 60_000, "loss", 1, -8_900_000),
   demoPosition(3, "UP", 1600, 50, 55, 0.48, 16 * 60_000, "win", 2, 11_450_000),
   demoPosition(4, "DOWN", -400, 47, 25, 0.03, 18 * 60_000, "none", 0, -1_000_000),
   demoPosition(5, "UP", -250, 56, 72, 0.13, 20 * 60_000, "win", 3, 17_800_000),

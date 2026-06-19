@@ -357,6 +357,19 @@ describe("market heat preview model", () => {
         sortMode: "latest",
       }).map((row) => row.id),
     );
+    for (const rows of [fifteenMinuteRows, hourlyRows]) {
+      for (const sortMode of ["heat", "latest"] as const) {
+        const visibleRows = selectFeedMarketHeatRows(rows, {
+          limit: 8,
+          nowMs,
+          showExpired: false,
+          sortMode,
+        });
+        expect(visibleRows.filter((row) => row.entryNowTone === "up").length).toBeGreaterThan(
+          visibleRows.filter((row) => row.entryNowTone === "down").length,
+        );
+      }
+    }
 
     for (const row of pricedDemoRows) {
       expect(row.status).toBe("copy_ready");
