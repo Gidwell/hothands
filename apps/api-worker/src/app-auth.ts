@@ -215,16 +215,34 @@ export async function handleHotHandsAppRequest(
   }
 
   if (url.pathname === "/app/follows") {
-    const auth = await requireWalletSession(request, appStore, nowMs());
-    if (auth instanceof Response) {
-      return auth;
-    }
-
     if (request.method === "GET") {
+      const walletParam = url.searchParams.get("wallet");
+      if (walletParam !== null) {
+        const wallet = normalizeWalletAddress(walletParam);
+        if (!wallet) {
+          return json({ error: "invalid_wallet" }, 400);
+        }
+
+        return json({
+          wallet,
+          follows: await appStore.listWalletFollows(wallet),
+        });
+      }
+
+      const auth = await requireWalletSession(request, appStore, nowMs());
+      if (auth instanceof Response) {
+        return auth;
+      }
+
       return json({
         wallet: auth.wallet,
         follows: await appStore.listWalletFollows(auth.wallet),
       });
+    }
+
+    const auth = await requireWalletSession(request, appStore, nowMs());
+    if (auth instanceof Response) {
+      return auth;
     }
 
     if (request.method === "POST") {

@@ -4,6 +4,7 @@ import {
   deleteFollowedWalletFromApi,
   loadAuthenticatedWalletProfileFromApi,
   loadFollowedWalletsFromApi,
+  loadPublicFollowedWalletsFromApi,
   readStoredWalletAuthSession,
   recordCopyReceiptToApi,
   requestWalletAuthSession,
@@ -150,6 +151,50 @@ describe("wallet auth client", () => {
         url: "http://api/app/follows?leaderWallet=0xleader",
         authorization: "Bearer session-token",
         method: "DELETE",
+      },
+    ]);
+  });
+
+  test("loads public followed wallets for a profile without bearer auth", async () => {
+    const requests: Array<{ url: string; authorization: string | null; method: string }> = [];
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        url: String(input),
+        authorization: new Headers(init?.headers).get("authorization"),
+        method: init?.method ?? "GET",
+      });
+      return Response.json({
+        wallet: "0xprofile",
+        follows: [
+          {
+            followerWallet: "0xprofile",
+            leaderWallet: "0xleader",
+            leaderDisplayName: "leader.sui",
+            createdAtMs: 1_000,
+            updatedAtMs: 2_000,
+          },
+        ],
+      });
+    };
+
+    await expect(
+      loadPublicFollowedWalletsFromApi({
+        apiBaseUrl: "http://api",
+        fetchImpl,
+        wallet: "0xprofile",
+      }),
+    ).resolves.toEqual([
+      {
+        displayName: "leader.sui",
+        wallet: "0xleader",
+      },
+    ]);
+
+    expect(requests).toEqual([
+      {
+        url: "http://api/app/follows?wallet=0xprofile",
+        authorization: null,
+        method: "GET",
       },
     ]);
   });

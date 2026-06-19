@@ -8,10 +8,10 @@ import {
 const profileCard: HotHandsShareCardInput = {
   kind: "profile",
   title: "0x4a2c...9b9e",
-  subtitle: "Verifiable DeepBook Predict record",
   walletLabel: "0x4a2c...9b9e",
   walletAddress: "0x4a2cc121769d36c23dad6bb2b5382eb9aeb870fcf4022746b1aacb25948e9b9e",
   stats: [
+    { label: "Heat", value: "82" },
     { label: "Win rate", value: "94%" },
     { label: "PnL", value: "+$24.69" },
     { label: "Streak", value: "13 wins" },
@@ -25,6 +25,7 @@ describe("share cards", () => {
     const text = buildHotHandsShareText(profileCard);
 
     expect(text).toContain("0x4a2c...9b9e on Hot Hands");
+    expect(text).toContain("Heat: 82");
     expect(text).toContain("Win rate: 94%");
     expect(text).toContain("PnL: +$24.69");
     expect(text).toContain("Copied by 11");

@@ -200,6 +200,53 @@ describe("testnet API dev server harness", () => {
     });
   });
 
+  test("reads public profile follows without wallet auth", async () => {
+    const profileWallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000a1";
+    const leaderWallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000b2";
+    const otherWallet =
+      "0x00000000000000000000000000000000000000000000000000000000000000c3";
+    const fetchHandler = createTestnetDevServerFetch({
+      appStore: createTestAppStore({
+        follows: [
+          {
+            followerWallet: profileWallet,
+            leaderWallet,
+            leaderDisplayName: "leader.sui",
+            createdAtMs: 1_000,
+            updatedAtMs: 2_000,
+          },
+          {
+            followerWallet: otherWallet,
+            leaderWallet: profileWallet,
+            createdAtMs: 1_000,
+            updatedAtMs: 2_000,
+          },
+        ],
+      }),
+      nowMs: () => 2_000,
+    });
+
+    const response = await fetchHandler(
+      new Request(`http://127.0.0.1:8789/app/follows?wallet=${profileWallet}`),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      wallet: profileWallet,
+      follows: [
+        {
+          followerWallet: profileWallet,
+          leaderWallet,
+          leaderDisplayName: "leader.sui",
+          createdAtMs: 1_000,
+          updatedAtMs: 2_000,
+        },
+      ],
+    });
+  });
+
   test("claims and updates wallet profiles behind wallet auth", async () => {
     const wallet =
       "0x00000000000000000000000000000000000000000000000000000000000000a1";

@@ -122,6 +122,7 @@ import {
   deleteFollowedWalletFromApi,
   loadAuthenticatedWalletProfileFromApi,
   loadFollowedWalletsFromApi,
+  loadPublicFollowedWalletsFromApi,
   readStoredWalletAuthSession,
   recordCopyReceiptToApi,
   requestWalletAuthSession,
@@ -163,6 +164,7 @@ const MARKET_HEAT_PRICE_REFRESH_MS = 1_000;
 const MARKET_HEAT_FEED_UPDATES_REFRESH_MS = 1_000;
 const MARKET_HEAT_ROWS_REFRESH_MS = 15_000;
 const TRADE_QUOTE_LIVE_REFRESH_MS = 3_000;
+const COUNTDOWN_DANGER_THRESHOLD_MS = 2 * 60_000;
 const COMPACT_ORACLE_CHART_HISTORY_MS = 15 * 60_000;
 const COMPACT_ORACLE_CHART_MAX_POINTS = 900;
 const DEFAULT_SHARE_URL = "https://hothands.app/";
@@ -494,6 +496,12 @@ export type FollowedWallet = {
   wallet: string;
 };
 
+type ProfileFollowedWalletsState = {
+  status: "idle" | "loading" | "ready" | "error";
+  wallet: string | null;
+  wallets: FollowedWallet[];
+};
+
 function followedWalletRecordsToUi(records: FollowedWalletRecord[]): FollowedWallet[] {
   return records.map((record) => ({
     displayName: record.displayName || formatWalletAddress(record.wallet),
@@ -679,6 +687,7 @@ export function resolveMarketHeatSwipeAction(
 export type TradeExpiryOption = {
   count: number;
   expiryMs: number;
+  isCountdownDanger?: boolean;
   label: string;
   marketId?: string;
   oracleId?: string;
@@ -742,6 +751,15 @@ function isDailyExpiry(expiryMs: number): boolean {
   return hour === 1 && minute === 0;
 }
 
+function isCountdownDanger(expiryMs: number | null | undefined, nowMs: number): boolean {
+  if (!expiryMs) {
+    return false;
+  }
+
+  const remainingMs = expiryMs - nowMs;
+  return remainingMs > 0 && remainingMs < COUNTDOWN_DANGER_THRESHOLD_MS;
+}
+
 export function buildTradeExpiryOptions(
   marketRows: TradeMarketLadderRow[],
   nowMs: number,
@@ -752,6 +770,7 @@ export function buildTradeExpiryOptions(
     return {
       count: market ? 1 : 0,
       expiryMs: market?.expiryMs ?? 0,
+      isCountdownDanger: isCountdownDanger(market?.expiryMs, nowMs),
       label: bucket.label,
       ...(market ? { marketId: market.id, oracleId: market.oracleId } : {}),
       sublabel: market ? formatTradeBucketCountdown(market.expiryMs, nowMs) : "No market",
@@ -1615,6 +1634,18 @@ function isLiveCountdownLabel(label: string | null | undefined): boolean {
   return unit === "m" || value <= 24;
 }
 
+function isPortfolioCountdownDanger(
+  expiryMs: number | null | undefined,
+  nowMs: number | null | undefined,
+  label?: string | null,
+): boolean {
+  if (typeof nowMs === "number") {
+    return isCountdownDanger(expiryMs, nowMs);
+  }
+
+  return /^[12]m left$/i.test(label ?? "");
+}
+
 function formatMarketHeatRoiLabel(
   entryPrice: number | undefined,
   currentPrice: number | undefined,
@@ -1669,13 +1700,13 @@ function buildProfilePnlSparkline(historyItems: PredictPortfolioHistoryItem[]): 
 } | null {
   let cumulativePnl = 0;
   const values = [0];
+  const recentPnls = historyItems
+    .map((item) => parsePnlAtomicLabel(item))
+    .filter((pnl): pnl is number => pnl !== null && Number.isFinite(pnl))
+    .slice(0, 10)
+    .reverse();
 
-  for (const item of [...historyItems].reverse()) {
-    const pnl = parsePnlAtomicLabel(item);
-    if (pnl === null || !Number.isFinite(pnl)) {
-      continue;
-    }
-
+  for (const pnl of recentPnls) {
     cumulativePnl += pnl;
     values.push(cumulativePnl);
   }
@@ -1723,10 +1754,10 @@ function ProfilePnlSparkline({
       data-testid="profile-pnl-sparkline"
     >
       <span>
-        <small>PNL path</small>
+        <small>Last 10 PNL</small>
         <strong>{sparkline.latestLabel}</strong>
       </span>
-      <svg viewBox="0 0 120 34" role="img" aria-label={`Profile PNL path ${sparkline.latestLabel}`}>
+      <svg viewBox="0 0 120 34" role="img" aria-label={`Profile last 10 PNL ${sparkline.latestLabel}`}>
         <path className="profile-pnl-sparkline-baseline" d="M 3,31 L 117,31" />
         <path className="profile-pnl-sparkline-line" d={sparkline.path} />
       </svg>
@@ -1788,10 +1819,10 @@ function profileStatValue(
 
 function buildProfileShareStats(summary: ProfileStatSummary): HotHandsShareStat[] {
   return [
-    { label: "Win rate", value: profileStatValue(summary, "Win rate") },
+    { label: "Heat", value: profileStatValue(summary, "Heat") },
     { label: "PnL", value: profileStatValue(summary, "All-time PNL") },
+    { label: "Win rate", value: profileStatValue(summary, "Win rate") },
     { label: "Streak", value: profileStatValue(summary, "Current streak") },
-    { label: "Calls", value: profileStatValue(summary, "Total calls") },
   ];
 }
 
@@ -2549,7 +2580,9 @@ function TradeExpiryRail({
       {options.map((option) => (
         <button
           type="button"
-          className="trade-expiry-option"
+          className={`trade-expiry-option${
+            option.isCountdownDanger ? " trade-expiry-option-danger" : ""
+          }`}
           aria-pressed={selectedExpiryDate === option.value}
           data-testid={`${testIdPrefix}-${marketDurationTestId(option.value)}`}
           key={option.value}
@@ -3181,6 +3214,8 @@ function PortfolioHistoryList({
         const timeLabel = isOpen && item.timeLabel ? item.timeLabel : item.expiryTimeLabel;
         const displayTimeLabel = isOpen ? compactPortfolioExpiryLabel(timeLabel) : timeLabel;
         const isLiveCountdown = isOpen && isLiveCountdownLabel(timeLabel);
+        const isCountdownDangerState =
+          isLiveCountdown && isPortfolioCountdownDanger(null, null, timeLabel);
         const payoutLabel = isOpen ? "-" : item.payoutLabel;
         const pnlLabel = isOpen ? "-" : item.pnlLabel;
 
@@ -3198,7 +3233,7 @@ function PortfolioHistoryList({
             <div
               className={`portfolio-expiry-cell${
                 isLiveCountdown ? " portfolio-countdown-live" : ""
-              }`}
+              }${isCountdownDangerState ? " portfolio-countdown-danger" : ""}`}
             >
               <strong>{displayTimeLabel}</strong>
             </div>
@@ -3347,6 +3382,8 @@ export function PortfolioPanel({
                 ? formatPortfolioTimeRemaining(position.expiryMs, nowMs)
                 : position.timeLabel;
             const isLiveCountdown = !isExpired && isLiveCountdownLabel(timeLabel);
+            const isCountdownDangerState =
+              isLiveCountdown && isPortfolioCountdownDanger(position.expiryMs, nowMs, timeLabel);
             const primaryTimeLabel = isExpired ? position.expiryTimeLabel : timeLabel;
             const displayTimeLabel = isExpired
               ? primaryTimeLabel
@@ -3385,7 +3422,7 @@ export function PortfolioPanel({
                 <div
                   className={`portfolio-expiry-cell${
                     isLiveCountdown ? " portfolio-countdown-live" : ""
-                  }`}
+                  }${isCountdownDangerState ? " portfolio-countdown-danger" : ""}`}
                 >
                   <strong>{displayTimeLabel}</strong>
                 </div>
@@ -3438,11 +3475,14 @@ export function ProfilePanel({
   copyAttributionLabels = {},
   followedWallets,
   ownProfileDisplayName = "Your wallet",
+  profileFollowedWallets = followedWallets,
+  profileFollowedWalletsStatus = "ready",
   profileDisplayNameDraft = "",
   profileDisplayNameSaveStatus = "idle",
   profileCopyAttributionLabel = null,
   profileHistoryItems = [],
   profileHistoryStatus = "idle",
+  initialActivityTab = "positions",
   profileStats = buildProfileStatSummary(null),
   profileWallet,
   profilePositionRows = [],
@@ -3471,11 +3511,14 @@ export function ProfilePanel({
   copyAttributionLabels?: Record<string, string>;
   followedWallets: FollowedWallet[];
   ownProfileDisplayName?: string;
+  profileFollowedWallets?: FollowedWallet[];
+  profileFollowedWalletsStatus?: ProfileFollowedWalletsState["status"];
   profileDisplayNameDraft?: string;
   profileDisplayNameSaveStatus?: WalletProfileState["status"];
   profileCopyAttributionLabel?: string | null;
   profileHistoryItems?: PredictPortfolioHistoryItem[];
   profileHistoryStatus?: ProfileHistoryStatus;
+  initialActivityTab?: PortfolioTab;
   profileStats?: ProfileStatSummary;
   profileWallet: FollowedWallet | null;
   profilePositionRows?: MarketHeatPreviewRow[];
@@ -3500,6 +3543,8 @@ export function ProfilePanel({
   onUnfollowWallet: (wallet: string) => void;
 }) {
   const [walletInput, setWalletInput] = useState("");
+  const [activeActivityTab, setActiveActivityTab] =
+    useState<PortfolioTab>(initialActivityTab);
   const activeWallet =
     profileWallet ??
     (currentWalletAddress
@@ -3514,6 +3559,7 @@ export function ProfilePanel({
           followedWallet.wallet.toLowerCase() === activeWallet.wallet.toLowerCase(),
       )
     : false;
+  const isOwnProfile = isOwnActiveWallet;
   const normalizedInputWallet = normalizeProfileWalletAddress(walletInput);
   const profileHistoryEmptyLabel =
     profileHistoryStatus === "loading"
@@ -3534,7 +3580,11 @@ export function ProfilePanel({
     <section className="profile-panel" aria-label="Profile" data-testid="profile-view">
       <div className="section-heading">
         <p>Profile</p>
-        <span>{followedWallets.length} following</span>
+        <span>
+          {profileFollowedWalletsStatus === "loading"
+            ? "Loading following"
+            : `${profileFollowedWallets.length} following`}
+        </span>
       </div>
       <div className="profile-card">
         <span className="profile-card-label">Wallet</span>
@@ -3640,94 +3690,132 @@ export function ProfilePanel({
         <ProfilePnlSparkline historyItems={profileHistoryItems} />
       </div>
       {activeWallet ? (
-        <MarketHeatPreview
-          ariaLabel={`${activeWallet.displayName} positions`}
-          canShowMore={profilePositionsCanShowMore}
-          copyAmount={copyAmount}
-          emptyDetail="This wallet has no active positions to copy right now."
-          emptyTitle="No open positions"
-          rows={profilePositionRows}
-          selectedMode={selectedProfilePositionMode}
-          selectedRowId={selectedProfilePositionRowId}
-          showControls={false}
-          showEmptyAction={false}
-          showExpired={false}
-          showMoreLabel={profilePositionsShowMoreLabel}
-          sortMode="latest"
-          sourceLabel=""
-          testId="profile-positions"
-          title="Positions"
-          identityMode="market"
-          walletConnected={walletConnected}
-          copyAttributionLabels={copyAttributionLabels}
-          quote={quote}
-          quoteStatus={quoteStatus}
-          onAmountSet={onAmountSet}
-          onSelectRow={onProfilePositionSelect}
-          onShowExpiredChange={() => undefined}
-          onShowMore={onProfilePositionsShowMore}
-          onSortModeChange={() => undefined}
-          onWalletSubmit={onProfilePositionWalletSubmit}
-          onRetryQuote={onProfileQuoteRetry}
-          onShareRow={onShareRow}
-        />
+        <>
+          <div className="section-heading market-heat-heading profile-activity-heading">
+            <div className="market-heat-heading-title">
+              <p>Positions</p>
+            </div>
+            <div className="portfolio-tabs profile-activity-tabs" aria-label="Profile activity tabs">
+              <button
+                type="button"
+                aria-pressed={activeActivityTab === "positions"}
+                data-testid="profile-positions-tab"
+                onClick={() => setActiveActivityTab("positions")}
+              >
+                Positions
+              </button>
+              <button
+                type="button"
+                aria-pressed={activeActivityTab === "history"}
+                data-testid="profile-history-tab"
+                onClick={() => setActiveActivityTab("history")}
+              >
+                History
+              </button>
+            </div>
+          </div>
+          {activeActivityTab === "positions" ? (
+            <MarketHeatPreview
+              ariaLabel={`${activeWallet.displayName} positions`}
+              canShowMore={profilePositionsCanShowMore}
+              copyAmount={copyAmount}
+              emptyDetail="This wallet has no active positions to copy right now."
+              emptyTitle="No open positions"
+              rows={profilePositionRows}
+              selectedMode={selectedProfilePositionMode}
+              selectedRowId={selectedProfilePositionRowId}
+              showControls={false}
+              showEmptyAction={false}
+              showExpired={false}
+              showHeading={false}
+              showMoreLabel={profilePositionsShowMoreLabel}
+              sortMode="latest"
+              sourceLabel=""
+              testId="profile-positions"
+              title="Positions"
+              identityMode="market"
+              walletConnected={walletConnected}
+              copyAttributionLabels={copyAttributionLabels}
+              quote={quote}
+              quoteStatus={quoteStatus}
+              onAmountSet={onAmountSet}
+              onSelectRow={onProfilePositionSelect}
+              onShowExpiredChange={() => undefined}
+              onShowMore={onProfilePositionsShowMore}
+              onSortModeChange={() => undefined}
+              onWalletSubmit={onProfilePositionWalletSubmit}
+              onRetryQuote={onProfileQuoteRetry}
+              onShareRow={onShareRow}
+            />
+          ) : (
+            <PortfolioHistoryList
+              emptyLabel={profileHistoryEmptyLabel}
+              items={profileHistoryItems}
+              testId="profile-trade-history"
+            />
+          )}
+        </>
       ) : null}
-      {activeWallet ? (
-        <PortfolioHistoryList
-          emptyLabel={profileHistoryEmptyLabel}
-          items={profileHistoryItems}
-          testId="profile-trade-history"
-        />
-      ) : null}
-      <form
-        className="profile-follow-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!normalizedInputWallet) {
-            return;
-          }
+      {isOwnProfile ? (
+        <form
+          className="profile-follow-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!normalizedInputWallet) {
+              return;
+            }
 
-          const wallet = {
-            displayName: formatWalletAddress(normalizedInputWallet),
-            wallet: normalizedInputWallet,
-          };
-          onFollowWallet(wallet);
-          onSelectWallet(wallet);
-          setWalletInput("");
-        }}
-      >
-        <label>
-          <span>Add wallet</span>
-          <input
-            aria-label="Wallet address to follow"
-            data-testid="profile-follow-wallet-input"
-            placeholder="0x..."
-            value={walletInput}
-            onChange={(event) => setWalletInput(event.currentTarget.value)}
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={!normalizedInputWallet}
-          data-testid="profile-follow-wallet-submit"
+            const wallet = {
+              displayName: formatWalletAddress(normalizedInputWallet),
+              wallet: normalizedInputWallet,
+            };
+            onFollowWallet(wallet);
+            onSelectWallet(wallet);
+            setWalletInput("");
+          }}
         >
-          Add
-        </button>
-      </form>
+          <label>
+            <span>Add wallet</span>
+            <input
+              aria-label="Wallet address to follow"
+              data-testid="profile-follow-wallet-input"
+              placeholder="0x..."
+              value={walletInput}
+              onChange={(event) => setWalletInput(event.currentTarget.value)}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={!normalizedInputWallet}
+            data-testid="profile-follow-wallet-submit"
+          >
+            Add
+          </button>
+        </form>
+      ) : null}
       <div className="profile-following-list">
         <span className="profile-card-label">Following</span>
-        {followedWallets.length ? (
-          followedWallets.map((wallet) => (
+        {profileFollowedWalletsStatus === "loading" ? (
+          <div className="profile-empty">Loading following...</div>
+        ) : profileFollowedWallets.length ? (
+          profileFollowedWallets.map((wallet) => (
             <article className="profile-following-row" key={wallet.wallet}>
               <button type="button" onClick={() => onSelectWallet(wallet)}>
-                <strong>{wallet.displayName}</strong>
-                <small>{wallet.wallet}</small>
+                <strong>{wallet.displayName || formatWalletAddress(wallet.wallet)}</strong>
               </button>
-              <button type="button" onClick={() => onUnfollowWallet(wallet.wallet)}>
-                Unfollow
-              </button>
+              {isOwnProfile ? (
+                <button
+                  type="button"
+                  className="profile-following-remove"
+                  onClick={() => onUnfollowWallet(wallet.wallet)}
+                >
+                  Unfollow
+                </button>
+              ) : null}
             </article>
           ))
+        ) : profileFollowedWalletsStatus === "error" ? (
+          <div className="profile-empty">Could not load following</div>
         ) : (
           <div className="profile-empty">No followed wallets yet</div>
         )}
@@ -5275,6 +5363,12 @@ export function App() {
   const [followedWallets, setFollowedWallets] = useState<FollowedWallet[]>(() =>
     readFollowedWallets(),
   );
+  const [profileFollowedWalletsState, setProfileFollowedWalletsState] =
+    useState<ProfileFollowedWalletsState>({
+      status: "idle",
+      wallet: null,
+      wallets: [],
+    });
   const [selectedProfileWallet, setSelectedProfileWallet] =
     useState<FollowedWallet | null>(null);
   const appScrollRef = useRef<HTMLDivElement | null>(null);
@@ -5842,6 +5936,83 @@ export function App() {
     profilePositionShowMoreCount === 1
       ? "Show 1 more"
       : `Show ${profilePositionShowMoreCount} more`;
+  const profileFollowedWalletsForPanel =
+    isOwnActiveProfileWallet ||
+    !activeProfileWalletAddress ||
+    profileFollowedWalletsState.wallet?.toLowerCase() !==
+      activeProfileWalletAddress.toLowerCase()
+      ? isOwnActiveProfileWallet
+        ? followedWallets
+        : []
+      : profileFollowedWalletsState.wallets;
+  const profileFollowedWalletsStatusForPanel: ProfileFollowedWalletsState["status"] =
+    isOwnActiveProfileWallet
+      ? "ready"
+      : !activeProfileWalletAddress
+        ? "idle"
+        : profileFollowedWalletsState.wallet?.toLowerCase() ===
+            activeProfileWalletAddress.toLowerCase()
+          ? profileFollowedWalletsState.status
+          : "loading";
+
+  useEffect(() => {
+    if (!activeProfileWalletAddress || isOwnActiveProfileWallet) {
+      return undefined;
+    }
+
+    if (!realtimeApiBaseUrl) {
+      setProfileFollowedWalletsState({
+        status: "error",
+        wallet: activeProfileWalletAddress,
+        wallets: [],
+      });
+      return undefined;
+    }
+
+    let isCurrent = true;
+    const wallet = activeProfileWalletAddress;
+    setProfileFollowedWalletsState((state) =>
+      state.wallet?.toLowerCase() === wallet.toLowerCase() && state.status === "ready"
+        ? state
+        : {
+            status: "loading",
+            wallet,
+            wallets:
+              state.wallet?.toLowerCase() === wallet.toLowerCase() ? state.wallets : [],
+          },
+    );
+
+    loadPublicFollowedWalletsFromApi({
+      apiBaseUrl: realtimeApiBaseUrl,
+      wallet,
+    })
+      .then((records) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setProfileFollowedWalletsState({
+          status: "ready",
+          wallet,
+          wallets: followedWalletRecordsToUi(records),
+        });
+      })
+      .catch(() => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setProfileFollowedWalletsState({
+          status: "error",
+          wallet,
+          wallets: [],
+        });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [activeProfileWalletAddress, isOwnActiveProfileWallet, realtimeApiBaseUrl]);
 
   useEffect(() => {
     if (connectedAccountAddress || wallets.length <= 1) {
@@ -6015,7 +6186,7 @@ export function App() {
         }
 
         setProfileHistoryState({
-          history: snapshot.history.slice(0, 8),
+          history: snapshot.history,
           status: "ready",
           wallet: activeProfileWalletAddress,
         });
@@ -8201,13 +8372,14 @@ export function App() {
     }
 
     const walletLabel =
-      selectedProfileWallet?.displayName ??
-      (isOwnActiveProfileWallet ? "Your wallet" : formatWalletAddress(activeProfileWalletAddress));
+      selectedProfileWallet?.displayName?.trim() ||
+      (isOwnActiveProfileWallet
+        ? connectedWalletDisplayName
+        : formatWalletAddress(activeProfileWalletAddress));
 
     void openShareCard({
       kind: "profile",
       title: walletLabel,
-      subtitle: "Verifiable DeepBook Predict record",
       walletLabel,
       walletAddress: activeProfileWalletAddress,
       stats: buildProfileShareStats(activeProfileStats),
@@ -8448,6 +8620,8 @@ export function App() {
               copyAttributionLabels={copyAttributionLabelsByRowId}
               followedWallets={followedWallets}
               ownProfileDisplayName={connectedWalletDisplayName}
+              profileFollowedWallets={profileFollowedWalletsForPanel}
+              profileFollowedWalletsStatus={profileFollowedWalletsStatusForPanel}
               profileDisplayNameDraft={walletProfileDisplayNameDraft}
               profileDisplayNameSaveStatus={walletProfileState.status}
               profileCopyAttributionLabel={activeProfileCopyAttributionLabel}

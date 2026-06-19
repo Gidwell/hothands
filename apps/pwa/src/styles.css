@@ -987,6 +987,11 @@ button:disabled {
   margin-top: 12px;
 }
 
+.profile-activity-heading + .market-heat-list,
+.profile-activity-heading + .portfolio-history {
+  margin-top: 0;
+}
+
 .market-heat-list,
 .portfolio-panel,
 .wallet-leaderboards-panel,
@@ -3611,6 +3616,12 @@ button:disabled {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hh-accent) 22%, transparent);
 }
 
+.trade-expiry-option.trade-expiry-option-danger small,
+.trade-expiry-option.trade-expiry-option-danger[aria-pressed="true"] small,
+.market-heat-expiry-group .trade-expiry-option.trade-expiry-option-danger small {
+  color: var(--hh-down);
+}
+
 .trade-oracle-chart-panel {
   position: sticky;
   top: 8px;
@@ -4259,6 +4270,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  padding-left: 8px;
   padding-right: 32px;
   text-align: left;
   color: var(--hh-text);
@@ -5436,6 +5448,11 @@ button:disabled {
   color: var(--hh-up);
 }
 
+.portfolio-countdown-danger strong,
+.portfolio-countdown-danger small {
+  color: var(--hh-down);
+}
+
 .portfolio-side-up,
 .portfolio-side-down {
   display: inline-grid;
@@ -5792,7 +5809,7 @@ button:disabled {
 .profile-follow-button,
 .profile-settings-form button,
 .profile-follow-form button,
-.profile-following-row > button:last-child {
+.profile-following-remove {
   min-height: 34px;
   border-radius: 7px;
   color: #ffffff;
@@ -5866,7 +5883,7 @@ button:disabled {
   text-align: left;
 }
 
-.profile-following-row > button:last-child {
+.profile-following-remove {
   padding: 0 10px;
   color: var(--hh-accent);
   border: 1px solid color-mix(in srgb, var(--hh-accent) 52%, var(--hh-line));

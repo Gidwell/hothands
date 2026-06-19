@@ -370,6 +370,30 @@ describe("mobile app navigation", () => {
     ]);
   });
 
+  test("marks canonical market countdowns as danger under two minutes", () => {
+    const nowMs = new Date("2026-06-10T12:28:01-07:00").getTime();
+    const expiryMs = new Date("2026-06-10T12:30:00-07:00").getTime();
+
+    expect(
+      buildTradeExpiryOptions(
+        [
+          tradeMarketRowFixture({
+            id: "market-final-seconds",
+            oracleId: "oracle-final-seconds",
+            expiryMs,
+            expiryTimeLabel: "Jun 10, 12:30 PDT",
+          }),
+        ],
+        nowMs,
+      )[0],
+    ).toEqual(
+      expect.objectContaining({
+        isCountdownDanger: true,
+        sublabel: "1:59",
+      }),
+    );
+  });
+
   test("lets canonical bucket pills point to the same market when expiries line up", () => {
     const nowMs = new Date("2026-06-10T00:50:00-07:00").getTime();
     const dailyAndHourlyMs = new Date("2026-06-10T01:00:00-07:00").getTime();
@@ -749,6 +773,12 @@ describe("mobile app navigation", () => {
             wallet: "0x195b00000000000000000000000000000000000000000000000000000000756c",
           },
         ]}
+        profileFollowedWallets={[
+          {
+            displayName: "scorz",
+            wallet: "0xsc0rz00000000000000000000000000000000000000000000000000000000",
+          },
+        ]}
         profileWallet={{
           displayName: "0x195b...756c",
           wallet: "0x195b00000000000000000000000000000000000000000000000000000000756c",
@@ -764,17 +794,24 @@ describe("mobile app navigation", () => {
     expect(html).toContain("1 following");
     expect(html).toContain('data-testid="profile-follow-toggle"');
     expect(html).toContain("Following");
-    expect(html).toContain('data-testid="profile-follow-wallet-input"');
-    expect(html).toContain('data-testid="profile-follow-wallet-submit"');
+    expect(html).not.toContain('data-testid="profile-follow-wallet-input"');
+    expect(html).not.toContain('data-testid="profile-follow-wallet-submit"');
     expect(html).toContain("0x195b...756c");
-    expect(html).toContain("Unfollow");
+    expect(html).toContain("scorz");
+    expect(html).not.toContain("0xsc0rz00000000000000000000000000000000000000000000000000000000");
+    expect(html).not.toContain("Unfollow");
   });
 
   test("renders the current wallet as the profile when no external wallet is selected", () => {
     const html = renderToStaticMarkup(
       <ProfilePanel
         currentWalletAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
-        followedWallets={[]}
+        followedWallets={[
+          {
+            displayName: "scorz",
+            wallet: "0xsc0rz00000000000000000000000000000000000000000000000000000000",
+          },
+        ]}
         profileWallet={null}
         onFollowWallet={() => undefined}
         onSelectWallet={() => undefined}
@@ -785,6 +822,8 @@ describe("mobile app navigation", () => {
     expect(html).toContain("Your wallet");
     expect(html).toContain("0x00000000000000000000000000000000000000000000000000000000000000aa");
     expect(html).toContain("Add wallet");
+    expect(html).toContain("scorz");
+    expect(html).toContain("Unfollow");
     expect(html).not.toContain('data-testid="profile-follow-toggle"');
     expect(html).not.toContain("Follow wallet");
   });
@@ -954,6 +993,11 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain('data-testid="profile-positions"');
+    expect(html).toContain('data-testid="profile-positions-tab"');
+    expect(html).toContain('data-testid="profile-history-tab"');
+    expect(html).toContain('aria-pressed="true" data-testid="profile-positions-tab"');
+    expect(html).toContain('aria-pressed="false" data-testid="profile-history-tab"');
+    expect(html).not.toContain('data-testid="profile-trade-history"');
     expect(html).toContain("Positions");
     expect(html).toContain('data-testid="market-heat-row"');
     expect(html).toContain("0xaaaa...6666");
@@ -963,7 +1007,7 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain('data-testid="market-heat-share"');
     expect(html).toContain("wallet-identicon");
     expect(html).toContain('data-testid="profile-pnl-sparkline"');
-    expect(html).toContain("PNL path");
+    expect(html).toContain("Last 10 PNL");
     expect(html).toContain("+$0.50");
     expect(html).toContain("UP");
     expect(html).toContain("$62,500");
@@ -994,18 +1038,44 @@ describe("mobile app navigation", () => {
           displayName: "0xaaaa...6666",
           wallet: profileWallet,
         }}
+        initialActivityTab="history"
         onFollowWallet={() => undefined}
         onSelectWallet={() => undefined}
         onUnfollowWallet={() => undefined}
       />,
     );
 
+    expect(html).toContain('aria-pressed="false" data-testid="profile-positions-tab"');
+    expect(html).toContain('aria-pressed="true" data-testid="profile-history-tab"');
     expect(html).toContain('data-testid="profile-trade-history"');
     expect(html).toContain("$60,001");
     expect(html).toContain("$60,008");
     expect(html).not.toContain("$60,009");
     expect(html).toContain('data-testid="profile-trade-history-show-more"');
     expect(html).toContain(">Show more</button>");
+  });
+
+  test("renders profile sparkline as last ten realized PNL", () => {
+    const html = renderToStaticMarkup(
+      <ProfilePanel
+        currentWalletAddress="0x00000000000000000000000000000000000000000000000000000000000000aa"
+        followedWallets={[]}
+        profileHistoryItems={Array.from({ length: 11 }, (_, index) => ({
+          ...portfolioHistoryItemFixture(index + 1),
+          pnlAtomic: index === 10 ? "-100000000" : "1000000",
+          pnlLabel: index === 10 ? "-$100" : "+$1",
+          pnlTone: index === 10 ? ("negative" as const) : ("positive" as const),
+        }))}
+        profileWallet={null}
+        onFollowWallet={() => undefined}
+        onSelectWallet={() => undefined}
+        onUnfollowWallet={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("Last 10 PNL");
+    expect(html).toContain("+$10.00");
+    expect(html).not.toContain("-$90.00");
   });
 
   test("renders portfolio positions with a live countdown cue under 24h", () => {
@@ -1047,6 +1117,44 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("<small>Open</small>");
     expect(html).not.toContain("Quoted now");
     expect(html).not.toContain("<strong>Jun 12, 2026, 5:30 PM</strong>");
+  });
+
+  test("renders portfolio countdowns as danger under two minutes", () => {
+    const html = renderToStaticMarkup(
+      <PortfolioPanel
+        nowMs={1_779_159_681_000}
+        positions={[
+          {
+            actionLabel: "Redeem",
+            closeValueLabel: "$2.41",
+            closeValueAtomic: "2410000",
+            closeValueStatusLabel: "Quoted now",
+            costBasisAtomic: "1800000",
+            costBasisLabel: "$1.80",
+            direction: "UP",
+            expiry: 1_779_159_800,
+            expiryMs: 1_779_159_800_000,
+            expiryTimeLabel: "Jun 12, 2026, 5:30 PM",
+            id: "position-final-countdown",
+            isExpired: false,
+            managerId: "0xmanager",
+            maxPayoutAtomic: "4000000",
+            maxPayoutLabel: "$4",
+            oracleId: "0xoracle",
+            quantity: "4000000",
+            statusLabel: "Open",
+            strike: "65000000000",
+            strikeLabel: "$65,000.00",
+            timeLabel: "30m left",
+          },
+        ]}
+        onPositionAction={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("portfolio-countdown-live");
+    expect(html).toContain("portfolio-countdown-danger");
+    expect(html).toContain("<strong>2m</strong>");
   });
 
   test("filters market heat rows to followed wallets", () => {
@@ -1180,10 +1288,10 @@ describe("mobile app navigation", () => {
       input: {
         kind: "profile",
         title: "0x4a2c...9b9e",
-        subtitle: "Verifiable DeepBook Predict record",
         walletLabel: "0x4a2c...9b9e",
         walletAddress: "0x4a2cc121769d36c23dad6bb2b5382eb9aeb870fcf4022746b1aacb25948e9b9e",
         stats: [
+          { label: "Heat", value: "82" },
           { label: "Win rate", value: "94%" },
           { label: "PnL", value: "+$24.69" },
         ],

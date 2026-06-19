@@ -163,6 +163,28 @@ export async function loadFollowedWalletsFromApi({
   }));
 }
 
+export async function loadPublicFollowedWalletsFromApi({
+  apiBaseUrl,
+  fetchImpl = fetch,
+  wallet,
+}: {
+  apiBaseUrl: string | undefined;
+  fetchImpl?: typeof fetch;
+  wallet: string;
+}): Promise<FollowedWalletRecord[]> {
+  const url = buildApiUrl(apiBaseUrl, "/app/follows");
+  url.searchParams.set("wallet", wallet);
+  const response = await fetchJson<FollowedWalletsResponse>({
+    fetchImpl,
+    url,
+  });
+
+  return response.follows.map((follow) => ({
+    wallet: follow.leaderWallet,
+    ...(follow.leaderDisplayName ? { displayName: follow.leaderDisplayName } : {}),
+  }));
+}
+
 export async function loadAuthenticatedWalletProfileFromApi({
   apiBaseUrl,
   fetchImpl = fetch,
