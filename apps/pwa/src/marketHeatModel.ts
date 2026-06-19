@@ -27,6 +27,10 @@ export type MarketHeatWalletStats = {
 export type MarketHeatCopyAttribution = {
   count: number;
   amountUsd: number;
+  copyCount?: number;
+  fadeCount?: number;
+  copyAmountUsd?: number;
+  fadeAmountUsd?: number;
 };
 
 export type MarketHeatPreviewRowInput = {
@@ -477,6 +481,10 @@ function normalizeCopyAttribution(
 
   const count = Math.floor(attribution.count);
   const amountUsd = attribution.amountUsd;
+  const copyCount = optionalNonNegativeInteger(attribution.copyCount);
+  const fadeCount = optionalNonNegativeInteger(attribution.fadeCount);
+  const copyAmountUsd = optionalNonNegativeNumber(attribution.copyAmountUsd);
+  const fadeAmountUsd = optionalNonNegativeNumber(attribution.fadeAmountUsd);
 
   if (count <= 0 || !Number.isFinite(amountUsd) || amountUsd < 0) {
     return undefined;
@@ -485,20 +493,44 @@ function normalizeCopyAttribution(
   return {
     amountUsd,
     count,
+    ...(copyCount === undefined ? {} : { copyCount }),
+    ...(fadeCount === undefined ? {} : { fadeCount }),
+    ...(copyAmountUsd === undefined ? {} : { copyAmountUsd }),
+    ...(fadeAmountUsd === undefined ? {} : { fadeAmountUsd }),
   };
 }
 
 function formatCopyAttributionSummary(attribution: MarketHeatCopyAttribution): string {
-  const countLabel = attribution.count === 1
-    ? "1 copier"
-    : `${attribution.count.toLocaleString("en-US")} copiers`;
-  const amount = attribution.amountUsd;
-  const amountLabel = `$${amount.toLocaleString("en-US", {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
-  })}`;
+  const copyCount = Math.max(0, Math.floor(attribution.copyCount ?? attribution.count));
+  const fadeCount = Math.max(0, Math.floor(attribution.fadeCount ?? 0));
+  const labels = [
+    copyCount > 0 ? `${copyCount.toLocaleString("en-US")}C` : null,
+    fadeCount > 0 ? `${fadeCount.toLocaleString("en-US")}F` : null,
+  ].filter((label): label is string => Boolean(label));
 
-  return `${countLabel} · ${amountLabel}`;
+  return labels.length ? labels.join("/") : "0C";
+}
+
+export function formatMarketHeatCopyAttributionDetailLabel(
+  attribution: MarketHeatCopyAttribution,
+): string {
+  const copyCount = Math.max(0, Math.floor(attribution.copyCount ?? attribution.count));
+  const fadeCount = Math.max(0, Math.floor(attribution.fadeCount ?? 0));
+  const labels = [
+    copyCount > 0
+      ? `${copyCount.toLocaleString("en-US")} ${copyCount === 1 ? "copy" : "copies"}`
+      : null,
+    fadeCount > 0
+      ? `${fadeCount.toLocaleString("en-US")} ${fadeCount === 1 ? "fade" : "fades"}`
+      : null,
+  ].filter((label): label is string => Boolean(label));
+
+  return labels.length ? labels.join(" - ") : "0 copies";
+}
+
+function optionalNonNegativeInteger(value: unknown): number | undefined {
+  const normalized = optionalNonNegativeNumber(value);
+  return normalized === undefined ? undefined : Math.floor(normalized);
 }
 
 export function getCopyableMarketHeatRows(

@@ -274,8 +274,10 @@ describe("market heat preview model", () => {
           heatScore: 82,
           status: "copy_ready",
           copyAttribution: {
-            amountUsd: 42.5,
-            count: 2,
+            amountUsd: 142.5,
+            copyCount: 2,
+            count: 3,
+            fadeCount: 1,
           },
         },
       ],
@@ -283,7 +285,7 @@ describe("market heat preview model", () => {
       { nowMs: 1_779_071_000_000 },
     ).rows;
 
-    expect(row?.copyAttributionLabel).toBe("2 copiers · $42.50");
+    expect(row?.copyAttributionLabel).toBe("2C/1F");
   });
 
   test("selects and closes a next-mint row without implying a ready signature", () => {

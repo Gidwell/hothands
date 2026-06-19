@@ -255,7 +255,7 @@ describe("testnet market heat endpoint", () => {
               updatedAtMs: 1_779_071_260_000
             },
             {
-              receiptId: "fade-ignored",
+              receiptId: "fade-1",
               copierWallet: "0xfader",
               sourceWallet: "0xtrader-new",
               sourcePositionId:
@@ -276,8 +276,12 @@ describe("testnet market heat endpoint", () => {
     expect(body.rows[0]).toMatchObject({
       wallet: "0xtrader-new",
       copyAttribution: {
-        count: 2,
-        amountUsd: 37.5
+        amountUsd: 137.5,
+        copyAmountUsd: 37.5,
+        copyCount: 2,
+        count: 3,
+        fadeAmountUsd: 100,
+        fadeCount: 1
       }
     });
   });

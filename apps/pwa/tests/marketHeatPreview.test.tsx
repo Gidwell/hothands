@@ -188,6 +188,12 @@ describe("MarketHeatPreview component", () => {
         showExpired={false}
         canShowMore={false}
         copyAmount={25}
+        copyAttributionLabels={{
+          [row.id]: {
+            compact: "1C/1F",
+            detail: "1 copy - 1 fade",
+          },
+        }}
         quote={quoteFixture()}
         quoteStatus="ready"
         showMoreLabel="Show more"
@@ -206,6 +212,8 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain('data-testid="market-heat-intent-panel"');
     expect(html).toContain('data-testid="custom-copy-amount"');
     expect(html).toContain('data-testid="market-heat-wallet-submit"');
+    expect(html).toContain("1C/1F");
+    expect(html).toContain("1 copy - 1 fade");
   });
 
   test("requires an explicit wallet handoff after selecting copy amount", () => {

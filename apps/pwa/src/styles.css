@@ -5198,6 +5198,22 @@ button:disabled {
   color: var(--hh-down);
 }
 
+.market-heat-copy-detail {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--hh-accent) 24%, var(--hh-line));
+  border-radius: 999px;
+  color: var(--hh-accent);
+  background: color-mix(in srgb, var(--hh-accent) 12%, transparent);
+  font-size: 0.62rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
 .market-heat-copy-ticket {
   display: grid;
   gap: 8px;

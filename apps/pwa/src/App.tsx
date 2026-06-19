@@ -38,6 +38,7 @@ import {
 import {
   appendCopyAttributionRecord,
   buildCopyAttributionSourcePositionId,
+  formatCopyAttributionDetailLabel,
   formatCopyAttributionLabel,
   readCopyAttributionRecords,
   summarizeCopyAttribution,
@@ -63,6 +64,7 @@ import {
   buildTradeMarketLadder,
   closeMarketHeatIntent,
   computeOracleIndicativeUpPrice,
+  formatMarketHeatCopyAttributionDetailLabel,
   getCopyableMarketHeatRows,
   loadTradeQuote,
   loadMarketHeatFeedUpdates,
@@ -335,16 +337,24 @@ function copyAttributionTargetForMarketHeatRow(row: MarketHeatPreviewRow): CopyA
 function buildCopyAttributionLabelsByRowId(
   rows: MarketHeatPreviewRow[],
   records: CopyAttributionRecord[],
-): Record<string, string> {
-  return getCopyableMarketHeatRows(rows).reduce<Record<string, string>>((labels, row) => {
+): Record<string, CopyAttributionRowLabels> {
+  return getCopyableMarketHeatRows(rows).reduce<Record<string, CopyAttributionRowLabels>>((labels, row) => {
     if (row.copyAttributionLabel) {
-      labels[row.id] = row.copyAttributionLabel;
+      labels[row.id] = {
+        compact: row.copyAttributionLabel,
+        detail: row.copyAttribution
+          ? formatMarketHeatCopyAttributionDetailLabel(row.copyAttribution)
+          : row.copyAttributionLabel,
+      };
       return labels;
     }
 
     const summary = summarizeCopyAttribution(copyAttributionTargetForMarketHeatRow(row), records);
     if (summary.count > 0 || summary.amount > 0) {
-      labels[row.id] = formatCopyAttributionLabel(summary);
+      labels[row.id] = {
+        compact: formatCopyAttributionLabel(summary),
+        detail: formatCopyAttributionDetailLabel(summary),
+      };
     }
     return labels;
   }, {});
@@ -366,13 +376,17 @@ function buildCopyAttributionLabelForRows(
     .reduce(
       (total, item) => ({
         amount: total.amount + item.amountUsd,
+        copyAmount: total.copyAmount + (item.copyAmountUsd ?? item.amountUsd),
+        copyCount: total.copyCount + (item.copyCount ?? item.count),
         count: total.count + item.count,
+        fadeAmount: total.fadeAmount + (item.fadeAmountUsd ?? 0),
+        fadeCount: total.fadeCount + (item.fadeCount ?? 0),
       }),
-      { amount: 0, count: 0 },
+      { amount: 0, copyAmount: 0, copyCount: 0, count: 0, fadeAmount: 0, fadeCount: 0 },
     );
 
   if (backendSummary.count > 0 || backendSummary.amount > 0) {
-    return formatCopyAttributionLabel(backendSummary);
+    return formatCopyAttributionDetailLabel(backendSummary);
   }
 
   const summary = getCopyableMarketHeatRows(rows)
@@ -380,16 +394,47 @@ function buildCopyAttributionLabelForRows(
     .reduce(
       (total, item) => ({
         amount: total.amount + item.amount,
+        copyAmount: total.copyAmount + item.copyAmount,
+        copyCount: total.copyCount + item.copyCount,
         count: total.count + item.count,
+        fadeAmount: total.fadeAmount + item.fadeAmount,
+        fadeCount: total.fadeCount + item.fadeCount,
       }),
-      { amount: 0, count: 0 },
+      { amount: 0, copyAmount: 0, copyCount: 0, count: 0, fadeAmount: 0, fadeCount: 0 },
     );
 
   if (summary.count <= 0 && summary.amount <= 0) {
     return null;
   }
 
-  return formatCopyAttributionLabel(summary);
+  return formatCopyAttributionDetailLabel(summary);
+}
+
+type CopyAttributionRowLabels =
+  | string
+  | {
+      compact: string;
+      detail: string;
+    };
+
+function compactCopyAttributionLabel(
+  labels: CopyAttributionRowLabels | undefined,
+): string | null {
+  if (!labels) {
+    return null;
+  }
+
+  return typeof labels === "string" ? labels : labels.compact;
+}
+
+function detailCopyAttributionLabel(
+  labels: CopyAttributionRowLabels | undefined,
+): string | null {
+  if (!labels) {
+    return null;
+  }
+
+  return typeof labels === "string" ? labels : labels.detail;
 }
 
 export type TradeSide = "UP" | "DOWN";
@@ -3508,7 +3553,7 @@ export function ProfilePanel({
 }: {
   currentWalletAddress?: string | null;
   copyAmount?: number;
-  copyAttributionLabels?: Record<string, string>;
+  copyAttributionLabels?: Record<string, CopyAttributionRowLabels>;
   followedWallets: FollowedWallet[];
   ownProfileDisplayName?: string;
   profileFollowedWallets?: FollowedWallet[];
@@ -4499,7 +4544,7 @@ export function MarketHeatPreview({
   selectedRowId: string | null;
   selectedMode?: MarketHeatIntentMode;
   copyAmount: number;
-  copyAttributionLabels?: Record<string, string>;
+  copyAttributionLabels?: Record<string, CopyAttributionRowLabels>;
   expiryOptions?: TradeExpiryOption[];
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
@@ -4644,7 +4689,9 @@ export function MarketHeatPreview({
       : !hasUsableCopyAmount
         ? "Enter amount"
         : rowIntentLabel;
-    const copyAttributionLabel = copyAttributionLabels[row.id];
+    const copyAttributionLabelsForRow = copyAttributionLabels[row.id];
+    const copyAttributionLabel = compactCopyAttributionLabel(copyAttributionLabelsForRow);
+    const copyAttributionDetailLabel = detailCopyAttributionLabel(copyAttributionLabelsForRow);
     const swipePreviewForRow = swipePreview?.rowId === row.id ? swipePreview : null;
     const swipeDirectionMode =
       swipePreviewForRow && row.status === "copy_ready"
@@ -4755,6 +4802,11 @@ export function MarketHeatPreview({
             <strong>{traderValue.label}</strong>
           </span>
         </div>
+        {copyAttributionDetailLabel ? (
+          <div className="market-heat-copy-detail" aria-label="Copy and fade activity">
+            {copyAttributionDetailLabel}
+          </div>
+        ) : null}
         <div className="market-heat-copy-ticket">
           <CopyAmountControls
             ariaLabel="Quick buy amounts"
@@ -7576,6 +7628,7 @@ export function App() {
         amount: copiedAmount,
         copied_position_id: copiedPositionId,
         copier: currentAccount.address,
+        mode,
         position_id: sourcePositionId,
         source_wallet: copyTrade.row.wallet,
         timestamp: Date.now(),
@@ -8401,14 +8454,14 @@ export function App() {
       return;
     }
 
-    const copiedLabel = copyAttributionLabelsByRowId[row.id];
+    const copiedLabel = detailCopyAttributionLabel(copyAttributionLabelsByRowId[row.id]);
     void openShareCard({
       kind: "call",
       title: `${row.side} ${row.pairLabel} call`,
       subtitle: `${row.displayName} · ${row.statusLabel}`,
       walletLabel: row.displayName,
       walletAddress: row.wallet,
-      stats: buildCallShareStats(row, copiedLabel),
+      stats: buildCallShareStats(row, copiedLabel ?? undefined),
       call: {
         direction: row.side,
         expiry: row.expiryTimeLabel,

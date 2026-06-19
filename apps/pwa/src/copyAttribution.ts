@@ -1,6 +1,8 @@
 export const COPY_ATTRIBUTION_STORAGE_KEY = "hot-hands-copy-attribution-records";
 const MAX_STORED_COPY_ATTRIBUTIONS = 200;
 
+export type CopyAttributionMode = "copy" | "fade";
+
 export type CopyAttributionRecord = {
   id: string;
   copier: string;
@@ -8,6 +10,7 @@ export type CopyAttributionRecord = {
   position_id: string;
   amount: number;
   timestamp: number;
+  mode?: CopyAttributionMode;
   copied_position_id?: string;
 };
 
@@ -21,6 +24,10 @@ export type CopyAttributionTarget = {
 export type CopyAttributionSummary = {
   amount: number;
   count: number;
+  copyAmount: number;
+  copyCount: number;
+  fadeAmount: number;
+  fadeCount: number;
 };
 
 type CopyAttributionStorage = Pick<Storage, "getItem" | "setItem">;
@@ -132,12 +139,49 @@ export function summarizeCopyAttribution(
       (total, record) => total + (Number.isFinite(record.amount) ? record.amount : 0),
       0,
     ),
+    copyCount: localRecords.filter((record) => (record.mode ?? "copy") === "copy").length,
+    copyAmount: localRecords.reduce(
+      (total, record) =>
+        (record.mode ?? "copy") === "copy" && Number.isFinite(record.amount)
+          ? total + record.amount
+          : total,
+      0,
+    ),
+    fadeCount: localRecords.filter((record) => record.mode === "fade").length,
+    fadeAmount: localRecords.reduce(
+      (total, record) =>
+        record.mode === "fade" && Number.isFinite(record.amount)
+          ? total + record.amount
+          : total,
+      0,
+    ),
   };
 }
 
 export function formatCopyAttributionLabel(summary: CopyAttributionSummary): string {
-  const countLabel = summary.count === 1 ? "1 copier" : `${summary.count.toLocaleString("en-US")} copiers`;
-  return `${countLabel} · ${formatCopyAttributionAmount(summary.amount)}`;
+  const copyCount = Math.max(0, Math.floor(summary.copyCount ?? summary.count));
+  const fadeCount = Math.max(0, Math.floor(summary.fadeCount ?? 0));
+  const labels = [
+    copyCount > 0 ? `${copyCount.toLocaleString("en-US")}C` : null,
+    fadeCount > 0 ? `${fadeCount.toLocaleString("en-US")}F` : null,
+  ].filter((label): label is string => Boolean(label));
+
+  return labels.length ? labels.join("/") : "0C";
+}
+
+export function formatCopyAttributionDetailLabel(summary: CopyAttributionSummary): string {
+  const copyCount = Math.max(0, Math.floor(summary.copyCount ?? summary.count));
+  const fadeCount = Math.max(0, Math.floor(summary.fadeCount ?? 0));
+  const labels = [
+    copyCount > 0
+      ? `${copyCount.toLocaleString("en-US")} ${copyCount === 1 ? "copy" : "copies"}`
+      : null,
+    fadeCount > 0
+      ? `${fadeCount.toLocaleString("en-US")} ${fadeCount === 1 ? "fade" : "fades"}`
+      : null,
+  ].filter((label): label is string => Boolean(label));
+
+  return labels.length ? labels.join(" - ") : "0 copies";
 }
 
 export function formatCopyAttributionAmount(amount: number): string {
@@ -161,6 +205,7 @@ function parseCopyAttributionRecord(value: unknown): CopyAttributionRecord | nul
   const positionId = stringValue(record.position_id);
   const amount = finiteNumber(record.amount);
   const timestamp = finiteNumber(record.timestamp);
+  const mode = copyAttributionModeValue(record.mode);
   const copiedPositionId = stringValue(record.copied_position_id);
 
   if (!id || !copier || !sourceWallet || !positionId || amount === null || timestamp === null) {
@@ -174,8 +219,13 @@ function parseCopyAttributionRecord(value: unknown): CopyAttributionRecord | nul
     position_id: positionId,
     amount,
     timestamp,
+    ...(mode ? { mode } : {}),
     ...(copiedPositionId ? { copied_position_id: copiedPositionId } : {}),
   };
+}
+
+function copyAttributionModeValue(value: unknown): CopyAttributionMode | null {
+  return value === "copy" || value === "fade" ? value : null;
 }
 
 function stringValue(value: unknown): string | null {

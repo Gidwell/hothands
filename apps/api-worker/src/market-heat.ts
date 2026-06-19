@@ -88,6 +88,10 @@ export interface MarketHeatWalletStats {
 export interface MarketHeatCopyAttribution {
   count: number;
   amountUsd: number;
+  copyCount?: number;
+  fadeCount?: number;
+  copyAmountUsd?: number;
+  fadeAmountUsd?: number;
 }
 
 export interface MarketHeatRow {
@@ -237,17 +241,43 @@ function summarizeCopyReceiptsBySourcePositionId(
   const summaries = new Map<string, MarketHeatCopyAttribution>();
 
   for (const receipt of receipts) {
-    if (receipt.status !== "submitted" || receipt.mode !== "copy") {
+    if (receipt.status !== "submitted") {
       continue;
     }
 
     const current = summaries.get(receipt.sourcePositionId) ?? {
       amountUsd: 0,
-      count: 0
+      copyAmountUsd: 0,
+      copyCount: 0,
+      count: 0,
+      fadeAmountUsd: 0,
+      fadeCount: 0
     };
+    const amountUsd = roundUsd(receipt.amountUsd);
+    const nextSummary = {
+      amountUsd: roundUsd(current.amountUsd + amountUsd),
+      copyAmountUsd: current.copyAmountUsd ?? 0,
+      copyCount: current.copyCount ?? 0,
+      count: current.count + 1,
+      fadeAmountUsd: current.fadeAmountUsd ?? 0,
+      fadeCount: current.fadeCount ?? 0
+    };
+
+    if (receipt.mode === "fade") {
+      nextSummary.fadeAmountUsd = roundUsd(nextSummary.fadeAmountUsd + amountUsd);
+      nextSummary.fadeCount += 1;
+    } else {
+      nextSummary.copyAmountUsd = roundUsd(nextSummary.copyAmountUsd + amountUsd);
+      nextSummary.copyCount += 1;
+    }
+
     summaries.set(receipt.sourcePositionId, {
-      amountUsd: roundUsd(current.amountUsd + receipt.amountUsd),
-      count: current.count + 1
+      amountUsd: nextSummary.amountUsd,
+      copyAmountUsd: nextSummary.copyAmountUsd,
+      copyCount: nextSummary.copyCount,
+      count: nextSummary.count,
+      fadeAmountUsd: nextSummary.fadeAmountUsd,
+      fadeCount: nextSummary.fadeCount
     });
   }
 

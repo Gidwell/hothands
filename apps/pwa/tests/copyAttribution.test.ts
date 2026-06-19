@@ -49,7 +49,11 @@ describe("copy attribution", () => {
     };
     expect(summarizeCopyAttribution(target, [])).toEqual({
       amount: 0,
+      copyAmount: 0,
+      copyCount: 0,
       count: 0,
+      fadeAmount: 0,
+      fadeCount: 0,
     });
 
     const records = appendCopyAttributionRecord(
@@ -58,6 +62,7 @@ describe("copy attribution", () => {
         amount: 25,
         copied_position_id: "copier-position",
         copier: "0xcopier",
+        mode: "copy",
         position_id: target.positionId,
         source_wallet: target.sourceWallet,
         timestamp: 1_779_158_000_000,
@@ -67,8 +72,53 @@ describe("copy attribution", () => {
     const summary = summarizeCopyAttribution(target, records);
 
     expect(summary.count).toBe(1);
+    expect(summary.copyCount).toBe(1);
+    expect(summary.fadeCount).toBe(0);
     expect(summary.amount).toBe(25);
-    expect(formatCopyAttributionLabel(summary)).toBe("1 copier · $25");
+    expect(formatCopyAttributionLabel(summary)).toBe("1C");
+  });
+
+  test("formats mixed copy and fade receipts compactly", () => {
+    const target = {
+      positionId: "source-position",
+      sourceWallet: "0xsource",
+    };
+    const records = [
+      appendCopyAttributionRecord(
+        [],
+        {
+          amount: 25,
+          copier: "0xcopier",
+          mode: "copy",
+          position_id: target.positionId,
+          source_wallet: target.sourceWallet,
+          timestamp: 1_779_158_000_000,
+        },
+        "copy-1",
+      )[0],
+      appendCopyAttributionRecord(
+        [],
+        {
+          amount: 20,
+          copier: "0xfader",
+          mode: "fade",
+          position_id: target.positionId,
+          source_wallet: target.sourceWallet,
+          timestamp: 1_779_158_100_000,
+        },
+        "fade-1",
+      )[0],
+    ].filter((record): record is CopyAttributionRecord => Boolean(record));
+
+    const summary = summarizeCopyAttribution(target, records);
+
+    expect(summary).toMatchObject({
+      amount: 45,
+      copyCount: 1,
+      count: 2,
+      fadeCount: 1,
+    });
+    expect(formatCopyAttributionLabel(summary)).toBe("1C/1F");
   });
 
   test("round-trips receipts through storage", () => {
