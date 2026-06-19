@@ -4988,7 +4988,12 @@ export function MarketHeader({
   return (
     <header className="market-strip" data-testid="market-header">
       <div className="market-live">
-        <span aria-hidden="true" />
+        <img
+          src="/favicon.svg"
+          alt=""
+          aria-hidden="true"
+          className="market-logo"
+        />
         <div>
           <h1>Hot Hands</h1>
         </div>

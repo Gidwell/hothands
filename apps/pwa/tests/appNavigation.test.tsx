@@ -172,6 +172,8 @@ describe("mobile app navigation", () => {
     );
 
     expect(html).toContain('data-testid="market-header-wallet"');
+    expect(html).toContain('class="market-logo"');
+    expect(html).toContain('src="/favicon.svg"');
     expect(html).toContain('data-testid="wallet-connect"');
     expect(html).toContain("Connect wallet");
     expect(html).not.toContain("BTC/USD");
