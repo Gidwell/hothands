@@ -212,8 +212,12 @@ describe("MarketHeatPreview component", () => {
     expect(html).toContain('data-testid="market-heat-intent-panel"');
     expect(html).toContain('data-testid="custom-copy-amount"');
     expect(html).toContain('data-testid="market-heat-wallet-submit"');
-    expect(html).toContain("1C/1F");
+    expect(html).toContain(
+      '<div class="market-heat-identity-meta"><span>just now</span><span class="market-heat-copy-attribution">1C/1F</span></div>',
+    );
     expect(html).toContain("1 copy - 1 fade");
+    expect(html.indexOf("Copy 0xbbbb2")).toBeLessThan(html.indexOf("1 copy - 1 fade"));
+    expect(html.indexOf("1 copy - 1 fade")).toBeLessThan(html.indexOf("Entry Price"));
   });
 
   test("requires an explicit wallet handoff after selecting copy amount", () => {

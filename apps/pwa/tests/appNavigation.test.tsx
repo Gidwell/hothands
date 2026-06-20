@@ -1790,17 +1790,16 @@ describe("mobile app navigation", () => {
     expect(html.indexOf('data-testid="trade-market-card"')).toBeLessThan(
       html.indexOf('data-testid="trade-expiry-15m"'),
     );
-    expect(html.indexOf('data-testid="trade-expiry-15m"')).toBeLessThan(
-      html.indexOf("Market Ends"),
-    );
+    expect(html).toContain("15:00");
+    expect(html).toContain("2:00:00");
     expect(html).toContain('data-testid="oracle-chart-range-4H"');
     expect(html).not.toContain("Up/Down");
     expect(html).not.toContain("Range");
     expect(html).not.toContain('aria-label="Trade product type"');
     expect(html).toContain("BTC/USD");
     expect(html).not.toContain('aria-label="Trade expiration times"');
-    expect(html).toContain("Market Ends");
-    expect(html).toContain("23:30 PDT");
+    expect(html).not.toContain("Market Ends");
+    expect(html).not.toContain("23:30 PDT");
     expect(html).toContain('aria-label="Trade side"');
     expect(html).toContain('data-testid="trade-side-up"');
     expect(html).toContain('data-testid="trade-side-down"');
@@ -1820,7 +1819,7 @@ describe("mobile app navigation", () => {
     expect(html).toContain("To win</small>$250");
     expect(html).toContain('class="trade-ticket-metric-win"><small>To win</small>$250');
     expect(html).not.toContain("Max profit</small>+$150");
-    expect(html).toContain("May 18, 23:30 PDT");
+    expect(html).not.toContain("May 18, 23:30 PDT");
     expect(html).not.toContain("Trade this market");
     expect(html).not.toContain('data-testid="trade-row-ticket"');
     expect(html).not.toContain('data-testid="trade-strike-select"');
@@ -2161,7 +2160,8 @@ describe("mobile app navigation", () => {
 
     expect(html.match(/data-testid="trade-market-card"/g) ?? []).toHaveLength(1);
     expect(html).not.toContain('aria-label="Trade expiration times"');
-    expect(html).toContain("01:00 PDT");
+    expect(html).not.toContain("Market Ends");
+    expect(html).not.toContain("01:00 PDT");
     expect(html).not.toContain("05:00 PDT");
     expect(html).toContain("$62,000");
     expect(html).not.toContain("$63,000");

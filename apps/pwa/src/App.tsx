@@ -2791,6 +2791,7 @@ function TradeMarketCard({
   isSelectedMarket,
   marketPriceLabel = null,
   marketRow,
+  nowMs,
   quote = null,
   quoteStatus = "idle",
   returnPreview,
@@ -2811,6 +2812,7 @@ function TradeMarketCard({
   isSelectedMarket: boolean;
   marketPriceLabel?: string | null;
   marketRow: TradeMarketLadderRow;
+  nowMs: number;
   quote?: TradeQuote | null;
   quoteStatus?: TradeQuoteStatus;
   returnPreview: ReturnPreview | null;
@@ -2835,8 +2837,16 @@ function TradeMarketCard({
     selectedMarketId: marketRow.id,
     selectedSide,
   });
-  const cardMarket = selectedMarket ?? marketRow;
   const selectedQuoteStatus = isSelectedMarket ? quoteStatus : "idle";
+  const countdownExpiryOptions = expiryOptions.map((option) =>
+    option.marketId && option.expiryMs > 0
+      ? {
+          ...option,
+          isCountdownDanger: isCountdownDanger(option.expiryMs, nowMs),
+          sublabel: formatTradeBucketCountdown(option.expiryMs, nowMs),
+        }
+      : option,
+  );
   const buyAmountLabel =
     isSelectedMarket && selectedQuoteStatus === "ready" && quote
       ? formatCopyAmount(quote.costUsd)
@@ -2851,14 +2861,10 @@ function TradeMarketCard({
         </div>
         <div className="trade-chain-summary-expiry">
           <TradeExpiryRail
-            options={expiryOptions}
+            options={countdownExpiryOptions}
             selectedExpiryDate={selectedExpiryDate}
             onExpiryChange={onExpiryChange}
           />
-        </div>
-        <div className="trade-chain-summary-market">
-          <small>Market Ends</small>
-          <strong>{cardMarket.expiryTimeLabel}</strong>
         </div>
       </div>
 
@@ -3127,6 +3133,7 @@ export function TradeTicket({
           isSelectedMarket={true}
           marketPriceLabel={marketPriceLabel}
           marketRow={activeMarketRow}
+          nowMs={nowMs}
           quote={quote}
           quoteStatus={quoteStatus}
           returnPreview={returnPreview}
@@ -4841,10 +4848,10 @@ export function MarketHeatPreview({
           </div>
           <div className="market-heat-identity-meta">
             <span>{rowIdentityDetail}</span>
+            {copyAttributionLabel ? (
+              <span className="market-heat-copy-attribution">{copyAttributionLabel}</span>
+            ) : null}
           </div>
-          {copyAttributionLabel ? (
-            <span className="market-heat-copy-attribution">{copyAttributionLabel}</span>
-          ) : null}
         </div>
       </>
     );
@@ -4894,6 +4901,11 @@ export function MarketHeatPreview({
             {rowIntentSide}
           </span>
         </div>
+        {copyAttributionDetailLabel ? (
+          <div className="market-heat-copy-detail" aria-label="Copy and fade activity">
+            {copyAttributionDetailLabel}
+          </div>
+        ) : null}
         <div
           className="market-heat-trader-entry"
           aria-label={`${intentActorTitle} original entry`}
@@ -4913,11 +4925,6 @@ export function MarketHeatPreview({
             <strong>{traderValue.label}</strong>
           </span>
         </div>
-        {copyAttributionDetailLabel ? (
-          <div className="market-heat-copy-detail" aria-label="Copy and fade activity">
-            {copyAttributionDetailLabel}
-          </div>
-        ) : null}
         <div className="market-heat-copy-ticket">
           <CopyAmountControls
             ariaLabel="Quick buy amounts"

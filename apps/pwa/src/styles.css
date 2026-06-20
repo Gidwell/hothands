@@ -3725,14 +3725,26 @@ button:disabled {
 }
 
 .trade-chain-summary-expiry .trade-expiry-option {
-  min-height: 44px;
+  min-height: 54px;
   min-width: 0;
-  padding: 7px;
+  padding: 8px 7px;
   text-align: center;
 }
 
 .trade-chain-summary-expiry .trade-expiry-option small {
-  display: none;
+  display: block;
+  margin-top: 4px;
+  color: var(--hh-muted);
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.trade-chain-summary-expiry .trade-expiry-option[aria-pressed="true"] small {
+  color: var(--hh-muted);
+}
+
+.trade-chain-summary-expiry .trade-expiry-option.trade-expiry-option-danger small {
+  color: var(--hh-down);
 }
 
 .trade-chain-summary-expiry .trade-expiry-option strong {
@@ -4880,11 +4892,32 @@ button:disabled {
   font-size: 0.56rem;
 }
 
-.market-heat-copy-attribution {
-  color: #7c3aed;
-  font-weight: 950;
+.market-heat-identity-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.market-heat-identity-meta > span:first-child {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-heat-copy-attribution {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 16px;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--hh-accent) 24%, var(--hh-line));
+  border-radius: 999px;
+  color: var(--hh-accent);
+  background: color-mix(in srgb, var(--hh-accent) 12%, transparent);
+  font-weight: 950;
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -5939,8 +5972,8 @@ button:disabled {
   display: grid;
   column-gap: 8px;
   align-items: center;
-  min-height: 46px;
-  padding: 7px 10px;
+  min-height: 50px;
+  padding: 8px 10px;
 }
 
 .wallet-leaderboard-table-head-pnl,
@@ -6024,7 +6057,7 @@ button:disabled {
 .wallet-leaderboard-metrics span,
 .wallet-leaderboard-pnl {
   color: var(--hh-text);
-  font-size: 0.62rem;
+  font-size: 0.76rem;
   font-weight: 900;
   line-height: 1.05;
 }
@@ -6057,16 +6090,16 @@ button:disabled {
 }
 
 .wallet-leaderboard-main small {
-  font-size: 0.54rem;
+  font-size: 0.62rem;
   line-height: 1.05;
 }
 
 .wallet-leaderboard-rank {
-  min-width: 24px;
-  min-height: 24px;
+  min-width: 26px;
+  min-height: 26px;
   padding: 0;
   border-radius: 999px;
-  font-size: 0.58rem;
+  font-size: 0.68rem;
 }
 
 @media (max-width: 430px) {

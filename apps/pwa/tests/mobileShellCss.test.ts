@@ -60,6 +60,9 @@ describe("mobile shell CSS", () => {
     expect(css).toContain(".wallet-leaderboard-streak-positive");
     expect(css).toContain(".wallet-leaderboard-streak-negative");
     expect(css).toContain(".wallet-leaderboard-profile-button strong");
+    expect(css).toContain("font-size: 0.76rem;");
+    expect(css).toContain("font-size: 0.62rem;");
+    expect(css).toContain("min-height: 50px;");
     expect(css).toContain("text-overflow: ellipsis;");
   });
 
@@ -117,6 +120,27 @@ describe("mobile shell CSS", () => {
     expect(css).not.toContain(".trade-chain-row-down .trade-chain-price strong");
   });
 
+  test("shows countdown labels in the trade market bucket rail", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+    const tradeExpirySmallBlock = css.match(
+      /\.trade-chain-summary-expiry \.trade-expiry-option small \{[\s\S]*?\}/,
+    )?.[0];
+    const selectedTradeExpirySmallBlock = css.match(
+      /\.trade-chain-summary-expiry \.trade-expiry-option\[aria-pressed="true"\] small \{[\s\S]*?\}/,
+    )?.[0];
+
+    expect(css).toContain(".trade-chain-summary-expiry .trade-expiry-option {");
+    expect(css).toContain("min-height: 54px;");
+    expect(tradeExpirySmallBlock).toContain("display: block;");
+    expect(tradeExpirySmallBlock).toContain("color: var(--hh-muted);");
+    expect(tradeExpirySmallBlock).not.toContain("display: none;");
+    expect(selectedTradeExpirySmallBlock).toContain("color: var(--hh-muted);");
+    expect(selectedTradeExpirySmallBlock).not.toContain("var(--hh-accent)");
+    expect(css).toContain(
+      ".trade-chain-summary-expiry .trade-expiry-option.trade-expiry-option-danger small",
+    );
+  });
+
   test("lets the feed market bucket rail use the full mobile width before scrolling", async () => {
     const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
 
@@ -150,6 +174,17 @@ describe("mobile shell CSS", () => {
     expect(numericCellBlock).toContain("overflow: visible;");
     expect(numericCellBlock).toContain("text-overflow: clip;");
     expect(numericCellBlock).not.toContain("text-overflow: ellipsis;");
+  });
+
+  test("renders compact copy/fade feed counts as a purple time-line pill", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+
+    expect(css).toContain(".market-heat-identity-meta {");
+    expect(css).toContain(".market-heat-copy-attribution {");
+    expect(css).toContain("border: 1px solid color-mix(in srgb, var(--hh-accent) 24%, var(--hh-line));");
+    expect(css).toContain("border-radius: 999px;");
+    expect(css).toContain("background: color-mix(in srgb, var(--hh-accent) 12%, transparent);");
+    expect(css).toContain("color: var(--hh-accent);");
   });
 
   test("keeps mobile money-entry inputs at iOS-safe font size", async () => {
