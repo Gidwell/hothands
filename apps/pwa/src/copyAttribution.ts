@@ -130,7 +130,8 @@ export function summarizeCopyAttribution(
   const localRecords = records.filter(
     (record) =>
       record.position_id === target.positionId &&
-      record.source_wallet.toLowerCase() === normalizedWallet,
+      record.source_wallet.toLowerCase() === normalizedWallet &&
+      record.copier.toLowerCase() !== normalizedWallet,
   );
 
   return {

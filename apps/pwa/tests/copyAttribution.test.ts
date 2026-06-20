@@ -78,6 +78,63 @@ describe("copy attribution", () => {
     expect(formatCopyAttributionLabel(summary)).toBe("1C");
   });
 
+  test("does not count copy or fade receipts where the copier is the source wallet", () => {
+    const target = {
+      positionId: "source-position",
+      sourceWallet: "0xsource",
+    };
+    const records = [
+      appendCopyAttributionRecord(
+        [],
+        {
+          amount: 25,
+          copier: "0xsource",
+          mode: "copy",
+          position_id: target.positionId,
+          source_wallet: target.sourceWallet,
+          timestamp: 1_779_158_000_000,
+        },
+        "self-copy",
+      )[0],
+      appendCopyAttributionRecord(
+        [],
+        {
+          amount: 20,
+          copier: "0xSOURCE",
+          mode: "fade",
+          position_id: target.positionId,
+          source_wallet: target.sourceWallet,
+          timestamp: 1_779_158_100_000,
+        },
+        "self-fade",
+      )[0],
+      appendCopyAttributionRecord(
+        [],
+        {
+          amount: 15,
+          copier: "0xfollower",
+          mode: "copy",
+          position_id: target.positionId,
+          source_wallet: target.sourceWallet,
+          timestamp: 1_779_158_200_000,
+        },
+        "copy-1",
+      )[0],
+    ].filter((record): record is CopyAttributionRecord => Boolean(record));
+
+    const summary = summarizeCopyAttribution(target, records);
+
+    expect(summary).toMatchObject({
+      amount: 15,
+      copyAmount: 15,
+      copyCount: 1,
+      count: 1,
+      fadeAmount: 0,
+      fadeCount: 0,
+    });
+    expect(formatCopyAttributionLabel(summary)).toBe("1C");
+  });
+
   test("formats mixed copy and fade receipts compactly", () => {
     const target = {
       positionId: "source-position",

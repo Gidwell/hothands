@@ -241,7 +241,7 @@ function summarizeCopyReceiptsBySourcePositionId(
   const summaries = new Map<string, MarketHeatCopyAttribution>();
 
   for (const receipt of receipts) {
-    if (receipt.status !== "submitted") {
+    if (receipt.status !== "submitted" || isSelfCopyReceipt(receipt)) {
       continue;
     }
 
@@ -282,6 +282,10 @@ function summarizeCopyReceiptsBySourcePositionId(
   }
 
   return summaries;
+}
+
+function isSelfCopyReceipt(receipt: Pick<CopyReceipt, "copierWallet" | "sourceWallet">): boolean {
+  return receipt.copierWallet.trim().toLowerCase() === receipt.sourceWallet.trim().toLowerCase();
 }
 
 function buildMarketHeatSourcePositionId(row: MarketHeatRow): string {

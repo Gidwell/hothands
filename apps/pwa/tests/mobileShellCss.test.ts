@@ -106,6 +106,17 @@ describe("mobile shell CSS", () => {
     expect(css).toContain("z-index: 8;");
   });
 
+  test("keeps trade payout text positive while side is shown by the direction pill", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+
+    expect(css).toContain(".trade-chain-direction-pill {");
+    expect(css).toContain("min-height: 19px;");
+    expect(css).toContain("min-width: 42px;");
+    expect(css).toContain("font-size: 0.6rem;");
+    expect(css).toContain(".trade-chain-price strong {\n  color: var(--hh-up);");
+    expect(css).not.toContain(".trade-chain-row-down .trade-chain-price strong");
+  });
+
   test("lets the feed market bucket rail use the full mobile width before scrolling", async () => {
     const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
 
@@ -139,5 +150,14 @@ describe("mobile shell CSS", () => {
     expect(numericCellBlock).toContain("overflow: visible;");
     expect(numericCellBlock).toContain("text-overflow: clip;");
     expect(numericCellBlock).not.toContain("text-overflow: ellipsis;");
+  });
+
+  test("keeps mobile money-entry inputs at iOS-safe font size", async () => {
+    const css = await Bun.file(new URL("../src/styles.css", import.meta.url)).text();
+
+    expect(css).toContain(
+      ".custom-copy-amount-field input,\n  .bankroll-funding-input input,\n  .account-stake-amount input {",
+    );
+    expect(css).toContain("font-size: 16px;");
   });
 });

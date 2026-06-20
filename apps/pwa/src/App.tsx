@@ -1043,6 +1043,35 @@ function buildTradeMarketSelection(marketId: string, option: TradeStrikeOption):
   };
 }
 
+export function shouldToggleTradeMarketSelectionClosed(
+  currentSelection: TradeMarketSelection | null | undefined,
+  nextSelection: TradeMarketSelection,
+): boolean {
+  if (!currentSelection || currentSelection.marketId !== nextSelection.marketId) {
+    return false;
+  }
+
+  const currentProfile = currentSelection.profile ?? null;
+  const nextProfile = nextSelection.profile ?? null;
+
+  if (currentProfile !== null || nextProfile !== null) {
+    return currentProfile === nextProfile;
+  }
+
+  return currentSelection.strikeRaw === nextSelection.strikeRaw;
+}
+
+export function pruneTradeSelectionsForView(
+  view: AppView,
+  selections: Record<string, TradeMarketSelection>,
+): Record<string, TradeMarketSelection> {
+  if (view === "trade" || Object.keys(selections).length === 0) {
+    return selections;
+  }
+
+  return {};
+}
+
 function getTradeStrikeOptions(
   row: TradeMarketLadderRow,
   side: TradeSide | null = null,
@@ -2054,6 +2083,10 @@ function isWalletWarningLabel(label: string): boolean {
   return /deposit bankroll|wait for a live quote|create a predict account/i.test(label);
 }
 
+function buildTestnetTransactionUrl(digest: string): string {
+  return `https://testnet.suivision.xyz/txblock/${encodeURIComponent(digest)}`;
+}
+
 function walletResultDigest(result: unknown): string | null {
   if (!result || typeof result !== "object") {
     return null;
@@ -2436,7 +2469,17 @@ export function ToastStack({
           <div>
             <strong>{toast.title}</strong>
             <span>{toast.message}</span>
-            {toast.digest ? <small>Tx {formatWalletAddress(toast.digest)}</small> : null}
+            {toast.digest ? (
+              <small>
+                <a
+                  href={buildTestnetTransactionUrl(toast.digest)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Tx {formatWalletAddress(toast.digest)}
+                </a>
+              </small>
+            ) : null}
           </div>
           <button
             type="button"
@@ -2882,7 +2925,11 @@ function TradeMarketCard({
                   </span>
                   <span className="trade-chain-strike-price">
                     <strong>{selection.strikeLabel}</strong>
-                    <small>Strike</small>
+                    <span
+                      className={`direction-pill direction-pill-${selectedSide.toLowerCase()} trade-chain-direction-pill`}
+                    >
+                      {selectedSide}
+                    </span>
                   </span>
                   <span className="trade-chain-price">
                     <strong>{payoutLabel}</strong>
@@ -2890,7 +2937,13 @@ function TradeMarketCard({
                   </span>
                 </button>
                 {isSelectedStrike ? (
-                  <section className="trade-order-panel" aria-label="Selected position">
+                  <section
+                    className="trade-order-panel"
+                    aria-label="Selected position"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
                     <div className="trade-row-ticket-heading">
                       <div>
                         <span>Selected</span>
@@ -6009,6 +6062,26 @@ export function App() {
     setSelectedTradeMarketId((marketId) => marketId ?? baseSelectedTradeMarket.id);
   }, [activeView, baseSelectedTradeMarket?.id]);
 
+  useEffect(() => {
+    if (activeView === "trade") {
+      return;
+    }
+
+    setCustomTradeStrikes((state) => pruneTradeSelectionsForView(activeView, state));
+    setTradeQuoteRequested(false);
+    setTradeQuoteState((state) => {
+      if (state.key === null && state.status === "idle" && state.quote === null) {
+        return state;
+      }
+
+      return {
+        key: null,
+        status: "idle",
+        quote: null,
+      };
+    });
+  }, [activeView]);
+
   const marketHeatVisibleTotal = expiryFilteredMarketHeatRows.length;
   const marketHeatRemainingCount = Math.max(
     0,
@@ -8071,6 +8144,19 @@ export function App() {
     });
   };
   const handleTradeMarketChange = (selection: TradeMarketSelection) => {
+    if (shouldToggleTradeMarketSelectionClosed(storedSelectedTradeCustomStrike, selection)) {
+      setTradeQuoteRequested(false);
+      setCustomTradeStrikes((state) => {
+        if (!state[selection.marketId]) {
+          return state;
+        }
+
+        const { [selection.marketId]: _clearedStrike, ...remainingSelections } = state;
+        return remainingSelections;
+      });
+      return;
+    }
+
     setTradeQuoteRequested(true);
     setSelectedTradeMarketId(selection.marketId);
     setCustomTradeStrikes((state) => ({

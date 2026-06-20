@@ -88,6 +88,9 @@ describe("toast notifications", () => {
     expect(html).toContain('data-testid="toast-success"');
     expect(html).toContain('data-testid="toast-error"');
     expect(html).toContain("Copy transaction sent.");
+    expect(html).toContain('href="https://testnet.suivision.xyz/txblock/0xabcdef123456"');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noreferrer"');
     expect(html).toContain("Connect a Sui testnet wallet first.");
     expect(html).toContain('aria-label="Dismiss Done"');
     expect(html).toContain('aria-label="Dismiss Action needed"');

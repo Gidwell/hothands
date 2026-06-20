@@ -24,9 +24,11 @@ import {
   getMarketHeatRowsRefreshMs,
   getPredictPortfolioRefreshMs,
   parseStoredStakeAmount,
+  pruneTradeSelectionsForView,
   resolveSelectedProfileWalletForNav,
   resolveSelectedTradeMarketForSelection,
   selectActiveFeedExpiryDate,
+  shouldToggleTradeMarketSelectionClosed,
   shouldAutoRefreshMarketHeatRows,
   shouldAutoRefreshPredictPortfolio,
   shouldAutoRefreshWalletLeaderboards,
@@ -1929,6 +1931,10 @@ describe("mobile app navigation", () => {
     expect(html).toContain("$71,000");
     expect(html).toContain("$71,050");
     expect(html).toContain("$71,120");
+    expect(html).toContain(
+      'class="direction-pill direction-pill-up trade-chain-direction-pill">UP</span>',
+    );
+    expect(html).not.toContain("<small>Strike</small>");
     expect(html).not.toContain("Wins if BTC settles");
     expect(html).not.toContain("vs spot");
     expect(html).not.toContain("$0.40");
@@ -1939,6 +1945,117 @@ describe("mobile app navigation", () => {
     expect(html).not.toContain("To win</small>$250");
     expect(html).not.toContain('data-testid="trade-strike-select"');
     expect(html).not.toContain('data-testid="trade-custom-strike"');
+  });
+
+  test("uses the DOWN pill for down payout profiles while keeping positive payout copy green", () => {
+    const html = renderToStaticMarkup(
+      <TradeTicket
+        marketRows={[
+          tradeMarketRowFixture({
+            id: "btc-15m-down-profile",
+            strike: 71_000,
+            strikeLabel: "$71,000",
+            strikeRaw: 71_000_000_000,
+            strikeOptions: [
+              {
+                profile: "standard",
+                strike: 71_000,
+                strikeRaw: 71_000_000_000,
+                strikeLabel: "$71,000",
+                targetPrice: 0.5,
+                upEstimatedPrice: 0.45,
+                downEstimatedPrice: 0.55,
+              },
+            ],
+          }),
+        ]}
+        copyAmount={25}
+        selectedMarketId="btc-15m-down-profile"
+        selectedSide="DOWN"
+        customStrike={{
+          marketId: "btc-15m-down-profile",
+          profile: "standard",
+          strike: 71_000,
+          strikeRaw: 71_000_000_000,
+          strikeLabel: "$71,000",
+          targetPrice: 0.5,
+          payoutMultiple: 2,
+          upEstimatedPrice: 0.45,
+          downEstimatedPrice: 0.55,
+        }}
+        quote={{
+          source: "live_testnet",
+          market: "BTC-USD",
+          oracleId: "0xoracle",
+          expiry: "1779165900000",
+          strike: "71000000000",
+          side: "DOWN",
+          requestedSpendUsd: 25,
+          cost: "25000000",
+          costUsd: 25,
+          quantity: "45454545",
+          payoutUsd: 45.45,
+          maxProfitUsd: 20.45,
+          redeemPayout: "25000000",
+          redeemPayoutUsd: 25,
+          effectivePrice: 0.55,
+          quoteStatus: "ready",
+        }}
+        quoteStatus="ready"
+        onAmountSet={() => undefined}
+        onMarketChange={() => undefined}
+        onSideChange={() => undefined}
+        onWalletSubmit={() => undefined}
+      />,
+    );
+
+    expect(html).toContain(
+      'class="direction-pill direction-pill-down trade-chain-direction-pill">DOWN</span>',
+    );
+    expect(html).not.toContain("<small>Strike</small>");
+    expect(html).toContain('class="trade-ticket-metric-win"><small>To win</small>$45.45');
+  });
+
+  test("toggles an open trade row closed when the selected row is tapped again", () => {
+    const selected = {
+      marketId: "btc-15m-71000",
+      profile: "standard" as const,
+      strike: 71_000,
+      strikeLabel: "$71,000",
+      strikeRaw: 71_000_000_000,
+    };
+
+    expect(shouldToggleTradeMarketSelectionClosed(selected, selected)).toBe(true);
+    expect(
+      shouldToggleTradeMarketSelectionClosed(selected, {
+        ...selected,
+        strike: 70_950,
+        strikeLabel: "$70,950",
+        strikeRaw: 70_950_000_000,
+      }),
+    ).toBe(true);
+    expect(
+      shouldToggleTradeMarketSelectionClosed(selected, {
+        ...selected,
+        profile: "conservative",
+        strikeRaw: 70_500_000_000,
+      }),
+    ).toBe(false);
+    expect(shouldToggleTradeMarketSelectionClosed(null, selected)).toBe(false);
+  });
+
+  test("clears open trade row selections when leaving Trade", () => {
+    const selected = {
+      marketId: "btc-15m-71000",
+      profile: "standard" as const,
+      strike: 71_000,
+      strikeLabel: "$71,000",
+      strikeRaw: 71_000_000_000,
+    };
+    const selections = { [selected.marketId]: selected };
+
+    expect(pruneTradeSelectionsForView("trade", selections)).toBe(selections);
+    expect(pruneTradeSelectionsForView("feed", selections)).toEqual({});
   });
 
   test("keeps strike rows unselected until the user picks one", () => {

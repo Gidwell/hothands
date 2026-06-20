@@ -265,6 +265,18 @@ describe("testnet market heat endpoint", () => {
               amountUsd: 100,
               createdAtMs: 1_779_071_270_000,
               updatedAtMs: 1_779_071_270_000
+            },
+            {
+              receiptId: "self-fade",
+              copierWallet: "0xTRADER-NEW",
+              sourceWallet: "0xtrader-new",
+              sourcePositionId:
+                "0xtrader-new:btc-indexed-long:1779158400000:72125000000:DOWN",
+              mode: "fade",
+              status: "submitted",
+              amountUsd: 500,
+              createdAtMs: 1_779_071_280_000,
+              updatedAtMs: 1_779_071_280_000
             }
           ]
         }

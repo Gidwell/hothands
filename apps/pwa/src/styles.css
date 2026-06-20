@@ -1948,6 +1948,12 @@ button:disabled {
   color: #98a2b3;
 }
 
+.toast a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .toast button {
   display: grid;
   place-items: center;
@@ -3907,6 +3913,14 @@ button:disabled {
   white-space: nowrap;
 }
 
+.trade-chain-direction-pill {
+  min-height: 19px;
+  min-width: 42px;
+  border-radius: 6px;
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
 .trade-chain-strike-price {
   justify-items: center;
   text-align: center;
@@ -3917,12 +3931,8 @@ button:disabled {
   text-align: right;
 }
 
-.trade-chain-row-up .trade-chain-price strong {
+.trade-chain-price strong {
   color: var(--hh-up);
-}
-
-.trade-chain-row-down .trade-chain-price strong {
-  color: var(--hh-down);
 }
 
 .trade-chain-row-wrap .trade-order-panel {
@@ -6170,6 +6180,12 @@ button:disabled {
   .account-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
+  }
+
+  .custom-copy-amount-field input,
+  .bankroll-funding-input input,
+  .account-stake-amount input {
+    font-size: 16px;
   }
 
   .account-pnl {
