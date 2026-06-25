@@ -239,6 +239,12 @@ Custom domain:
 app.hothands.fun
 ```
 
+DNS:
+
+```text
+CNAME app hothands.pages.dev
+```
+
 Build command:
 
 ```bash
@@ -270,6 +276,12 @@ Custom domain:
 
 ```text
 hothands.fun
+```
+
+DNS:
+
+```text
+CNAME @ hothands-landing.pages.dev
 ```
 
 Build command:
