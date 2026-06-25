@@ -1,27 +1,32 @@
 # Deployment
 
-Hot Hands deploys as three production pieces:
+Hot Hands deploys as four production pieces:
 
-- Cloudflare Pages serves the PWA from `apps/pwa/dist`.
+- Cloudflare Pages serves the landing page from `apps/landing`.
+- Cloudflare Pages serves the trading PWA from `apps/pwa/dist`.
 - Railway runs the Bun API service.
 - Railway runs the live indexer worker.
 - Railway Postgres stores indexed Predict data and app-owned state.
 
 ## Current Production
 
-- PWA: `https://hothands.pages.dev`
+- Landing page: `https://hothands.fun`
+- Trading PWA: `https://app.hothands.fun`
+- PWA fallback: `https://hothands.pages.dev`
 - API: `https://hothands-api-production.up.railway.app`
 - Railway project: `capable-expression`
 - Railway services: `Postgres`, `hothands-api`, `hothands-indexer`
-- Cloudflare Pages project: `hothands`
+- Cloudflare Pages landing project: `hothands-landing`
+- Cloudflare Pages PWA project: `hothands`
 
 The first production deployment was created from the CLI. GitHub auto-deploys
 still need provider dashboard access to `Gidwell/hothands`:
 
 - Railway: connect `hothands-api` and `hothands-indexer` to `Gidwell/hothands`
   on `main`.
-- Cloudflare Pages: connect the `hothands` Pages project to `Gidwell/hothands`
-  on `main` and set the production build variables below.
+- Cloudflare Pages: connect the `hothands` and `hothands-landing` Pages
+  projects to `Gidwell/hothands` on `main` and set the production build
+  variables below.
 
 ## Railway
 
@@ -220,6 +225,20 @@ Production branch:
 main
 ```
 
+### Trading PWA
+
+Project:
+
+```text
+hothands
+```
+
+Custom domain:
+
+```text
+app.hothands.fun
+```
+
 Build command:
 
 ```bash
@@ -236,7 +255,33 @@ Variables:
 
 ```text
 VITE_HOT_HANDS_API_URL=https://<railway-api-domain>
-VITE_HOT_HANDS_SHARE_URL=https://<cloudflare-pages-domain>
+VITE_HOT_HANDS_SHARE_URL=https://app.hothands.fun
+```
+
+### Landing Page
+
+Project:
+
+```text
+hothands-landing
+```
+
+Custom domain:
+
+```text
+hothands.fun
+```
+
+Build command:
+
+```bash
+# none
+```
+
+Build output directory:
+
+```text
+apps/landing
 ```
 
 ### Manual Cloudflare Pages Deploys
@@ -245,8 +290,14 @@ Until Cloudflare GitHub auto-deploys are connected, build the PWA with the
 production API URL and deploy the static bundle:
 
 ```bash
-VITE_HOT_HANDS_API_URL=https://hothands-api-production.up.railway.app VITE_HOT_HANDS_SHARE_URL=https://hothands.pages.dev bun run build:pwa
+VITE_HOT_HANDS_API_URL=https://hothands-api-production.up.railway.app VITE_HOT_HANDS_SHARE_URL=https://app.hothands.fun bun run build:pwa
 wrangler pages deploy apps/pwa/dist --project-name hothands --branch main --commit-hash <git-sha> --commit-message "<deploy message>"
+```
+
+Deploy the static landing page separately:
+
+```bash
+wrangler pages deploy apps/landing --project-name hothands-landing --branch main --commit-hash <git-sha> --commit-message "<deploy message>"
 ```
 
 ## First Deploy Checklist
