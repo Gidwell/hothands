@@ -144,7 +144,7 @@ import {
   selectDusdcDepositCoin,
   usdToDusdcAtomic,
 } from "./walletBalance";
-import { findPredictManagerForOwner } from "./predictManager";
+import { findIndexedPredictManagerForOwner, findPredictManagerForOwner } from "./predictManager";
 import {
   createPredictPortfolioCloseQuoteClient,
   createPredictPortfolioIndexedEventClient,
@@ -6635,10 +6635,20 @@ export function App() {
       status: "checking",
     });
 
-    void findPredictManagerForOwner({
-      owner: connectedAccountAddress,
-      maxPages: 10,
-    })
+    void (async () => {
+      const onchainObjectId = await findPredictManagerForOwner({
+        owner: connectedAccountAddress,
+        maxPages: 10,
+      });
+
+      return (
+        onchainObjectId ??
+        (await findIndexedPredictManagerForOwner({
+          apiBaseUrl: realtimeApiBaseUrl,
+          owner: connectedAccountAddress,
+        }))
+      );
+    })()
       .then((objectId) => {
         if (!isCurrent) {
           return;
@@ -6678,7 +6688,7 @@ export function App() {
     return () => {
       isCurrent = false;
     };
-  }, [connectedAccountAddress, predictManagerRefreshKey]);
+  }, [connectedAccountAddress, predictManagerRefreshKey, realtimeApiBaseUrl]);
 
   useEffect(() => {
     setDismissedPortfolioPositionIds(

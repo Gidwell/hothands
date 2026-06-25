@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  findIndexedPredictManagerForOwner,
   findPredictManagerForOwner,
   PREDICT_MANAGER_CREATED_EVENT_TYPE,
 } from "../src/predictManager";
@@ -72,5 +73,41 @@ describe("PredictManager discovery", () => {
     });
 
     expect(managerId).toBeNull();
+  });
+
+  test("recovers a manager id from indexed wallet trade events", async () => {
+    const urls: string[] = [];
+    const managerId = await findIndexedPredictManagerForOwner({
+      apiBaseUrl: "https://api.hot-hands.test",
+      owner:
+        "0x00000000000000000000000000000000000000000000000000000000000000aa",
+      fetcher: async (url) => {
+        urls.push(url.toString());
+        if (url.toString().includes("eventType=mint")) {
+          return new Response(JSON.stringify({ data: [] }));
+        }
+
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                parsedJson: {
+                  manager_id:
+                    "0x0000000000000000000000000000000000000000000000000000000000000abc",
+                },
+              },
+            ],
+          }),
+        );
+      },
+    });
+
+    expect(urls).toEqual([
+      "https://api.hot-hands.test/testnet/portfolio-events?wallet=0x00000000000000000000000000000000000000000000000000000000000000aa&eventType=mint&limit=1",
+      "https://api.hot-hands.test/testnet/portfolio-events?wallet=0x00000000000000000000000000000000000000000000000000000000000000aa&eventType=redeem&limit=1",
+    ]);
+    expect(managerId).toBe(
+      "0x0000000000000000000000000000000000000000000000000000000000000abc",
+    );
   });
 });

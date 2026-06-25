@@ -24,6 +24,12 @@ export type FindPredictManagerForOwnerOptions = {
   owner: string;
 };
 
+export type FindIndexedPredictManagerForOwnerOptions = {
+  apiBaseUrl?: string | null;
+  fetcher?: typeof fetch;
+  owner: string;
+};
+
 export async function findPredictManagerForOwner({
   client = createPredictManagerEventClient(),
   limit = 50,
@@ -55,6 +61,37 @@ export async function findPredictManagerForOwner({
     }
 
     cursor = response.nextCursor;
+  }
+
+  return null;
+}
+
+export async function findIndexedPredictManagerForOwner({
+  apiBaseUrl,
+  fetcher = fetch,
+  owner,
+}: FindIndexedPredictManagerForOwnerOptions): Promise<string | null> {
+  const normalizedBaseUrl = apiBaseUrl?.trim();
+  if (!normalizedBaseUrl) {
+    return null;
+  }
+
+  const normalizedOwner = normalizeSuiAddress(owner);
+  for (const eventType of ["mint", "redeem"]) {
+    const url = new URL(`${normalizedBaseUrl.replace(/\/+$/, "")}/testnet/portfolio-events`);
+    url.searchParams.set("wallet", normalizedOwner);
+    url.searchParams.set("eventType", eventType);
+    url.searchParams.set("limit", "1");
+
+    const response = await fetcher(url.toString());
+    if (!response.ok) {
+      continue;
+    }
+
+    const managerId = parseIndexedPortfolioManagerId(await response.json());
+    if (managerId) {
+      return managerId;
+    }
   }
 
   return null;
@@ -93,6 +130,30 @@ function parsePredictManagerCreatedEvent(
     managerId,
     owner,
   };
+}
+
+function parseIndexedPortfolioManagerId(payload: unknown): string | null {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return null;
+  }
+
+  for (const event of payload.data) {
+    if (!isRecord(event)) {
+      continue;
+    }
+
+    const parsedJson = isRecord(event.parsedJson)
+      ? event.parsedJson
+      : isRecord(event.json)
+        ? event.json
+        : null;
+    const managerId = parsedJson?.manager_id ?? parsedJson?.managerId;
+    if (typeof managerId === "string" && managerId.trim()) {
+      return managerId;
+    }
+  }
+
+  return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
